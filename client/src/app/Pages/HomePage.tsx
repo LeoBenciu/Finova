@@ -61,8 +61,8 @@ const HomePage = () => {
 
 
         <div className='h-[28rem] rounded-lg bg-black col-span-3 py-4 px-8 flex flex-col gap-3'>
-          <h4 className="text-left">Documents Status</h4>
-          <div className="border-[var(--card)] border flex-1 rounded-2xl ">
+          <h4 className="text-left text-2xl font-bold mb-3">Documents Status</h4>
+          <div className="border-[var(--card)] border-2 flex-1 rounded-2xl ">
             <div className="bg-[var(--card)] min-w-full max-w-full min-h-[40px] max-h-[40px] rounded-t-xl"></div>
 
           </div>

@@ -6,7 +6,6 @@ import { Area, AreaChart, CartesianGrid, XAxis } from "recharts"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
@@ -25,153 +24,88 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-const chartData = [
-  { date: "2024-04-01", desktop: 222, mobile: 150 },
-  { date: "2024-04-02", desktop: 97, mobile: 180 },
-  { date: "2024-04-03", desktop: 167, mobile: 120 },
-  { date: "2024-04-04", desktop: 242, mobile: 260 },
-  { date: "2024-04-05", desktop: 373, mobile: 290 },
-  { date: "2024-04-06", desktop: 301, mobile: 340 },
-  { date: "2024-04-07", desktop: 245, mobile: 180 },
-  { date: "2024-04-08", desktop: 409, mobile: 320 },
-  { date: "2024-04-09", desktop: 59, mobile: 110 },
-  { date: "2024-04-10", desktop: 261, mobile: 190 },
-  { date: "2024-04-11", desktop: 327, mobile: 350 },
-  { date: "2024-04-12", desktop: 292, mobile: 210 },
-  { date: "2024-04-13", desktop: 342, mobile: 380 },
-  { date: "2024-04-14", desktop: 137, mobile: 220 },
-  { date: "2024-04-15", desktop: 120, mobile: 170 },
-  { date: "2024-04-16", desktop: 138, mobile: 190 },
-  { date: "2024-04-17", desktop: 446, mobile: 360 },
-  { date: "2024-04-18", desktop: 364, mobile: 410 },
-  { date: "2024-04-19", desktop: 243, mobile: 180 },
-  { date: "2024-04-20", desktop: 89, mobile: 150 },
-  { date: "2024-04-21", desktop: 137, mobile: 200 },
-  { date: "2024-04-22", desktop: 224, mobile: 170 },
-  { date: "2024-04-23", desktop: 138, mobile: 230 },
-  { date: "2024-04-24", desktop: 387, mobile: 290 },
-  { date: "2024-04-25", desktop: 215, mobile: 250 },
-  { date: "2024-04-26", desktop: 75, mobile: 130 },
-  { date: "2024-04-27", desktop: 383, mobile: 420 },
-  { date: "2024-04-28", desktop: 122, mobile: 180 },
-  { date: "2024-04-29", desktop: 315, mobile: 240 },
-  { date: "2024-04-30", desktop: 454, mobile: 380 },
-  { date: "2024-05-01", desktop: 165, mobile: 220 },
-  { date: "2024-05-02", desktop: 293, mobile: 310 },
-  { date: "2024-05-03", desktop: 247, mobile: 190 },
-  { date: "2024-05-04", desktop: 385, mobile: 420 },
-  { date: "2024-05-05", desktop: 481, mobile: 390 },
-  { date: "2024-05-06", desktop: 498, mobile: 520 },
-  { date: "2024-05-07", desktop: 388, mobile: 300 },
-  { date: "2024-05-08", desktop: 149, mobile: 210 },
-  { date: "2024-05-09", desktop: 227, mobile: 180 },
-  { date: "2024-05-10", desktop: 293, mobile: 330 },
-  { date: "2024-05-11", desktop: 335, mobile: 270 },
-  { date: "2024-05-12", desktop: 197, mobile: 240 },
-  { date: "2024-05-13", desktop: 197, mobile: 160 },
-  { date: "2024-05-14", desktop: 448, mobile: 490 },
-  { date: "2024-05-15", desktop: 473, mobile: 380 },
-  { date: "2024-05-16", desktop: 338, mobile: 400 },
-  { date: "2024-05-17", desktop: 499, mobile: 420 },
-  { date: "2024-05-18", desktop: 315, mobile: 350 },
-  { date: "2024-05-19", desktop: 235, mobile: 180 },
-  { date: "2024-05-20", desktop: 177, mobile: 230 },
-  { date: "2024-05-21", desktop: 82, mobile: 140 },
-  { date: "2024-05-22", desktop: 81, mobile: 120 },
-  { date: "2024-05-23", desktop: 252, mobile: 290 },
-  { date: "2024-05-24", desktop: 294, mobile: 220 },
-  { date: "2024-05-25", desktop: 201, mobile: 250 },
-  { date: "2024-05-26", desktop: 213, mobile: 170 },
-  { date: "2024-05-27", desktop: 420, mobile: 460 },
-  { date: "2024-05-28", desktop: 233, mobile: 190 },
-  { date: "2024-05-29", desktop: 78, mobile: 130 },
-  { date: "2024-05-30", desktop: 340, mobile: 280 },
-  { date: "2024-05-31", desktop: 178, mobile: 230 },
-  { date: "2024-06-01", desktop: 178, mobile: 200 },
-  { date: "2024-06-02", desktop: 470, mobile: 410 },
-  { date: "2024-06-03", desktop: 103, mobile: 160 },
-  { date: "2024-06-04", desktop: 439, mobile: 380 },
-  { date: "2024-06-05", desktop: 88, mobile: 140 },
-  { date: "2024-06-06", desktop: 294, mobile: 250 },
-  { date: "2024-06-07", desktop: 323, mobile: 370 },
-  { date: "2024-06-08", desktop: 385, mobile: 320 },
-  { date: "2024-06-09", desktop: 438, mobile: 480 },
-  { date: "2024-06-10", desktop: 155, mobile: 200 },
-  { date: "2024-06-11", desktop: 92, mobile: 150 },
-  { date: "2024-06-12", desktop: 492, mobile: 420 },
-  { date: "2024-06-13", desktop: 81, mobile: 130 },
-  { date: "2024-06-14", desktop: 426, mobile: 380 },
-  { date: "2024-06-15", desktop: 307, mobile: 350 },
-  { date: "2024-06-16", desktop: 371, mobile: 310 },
-  { date: "2024-06-17", desktop: 475, mobile: 520 },
-  { date: "2024-06-18", desktop: 107, mobile: 170 },
-  { date: "2024-06-19", desktop: 341, mobile: 290 },
-  { date: "2024-06-20", desktop: 408, mobile: 450 },
-  { date: "2024-06-21", desktop: 169, mobile: 210 },
-  { date: "2024-06-22", desktop: 317, mobile: 270 },
-  { date: "2024-06-23", desktop: 480, mobile: 530 },
-  { date: "2024-06-24", desktop: 132, mobile: 180 },
-  { date: "2024-06-25", desktop: 141, mobile: 190 },
-  { date: "2024-06-26", desktop: 434, mobile: 380 },
-  { date: "2024-06-27", desktop: 448, mobile: 490 },
-  { date: "2024-06-28", desktop: 149, mobile: 200 },
-  { date: "2024-06-29", desktop: 103, mobile: 160 },
-  { date: "2024-06-30", desktop: 446, mobile: 400 },
+
+// Sample data for the year 2025 – one data point per month.
+const sampleData2025 = [
+  { month: "Jan", income: 5000, expenses: 3200 },
+  { month: "Feb", income: 6000, expenses: 3500 },
+  { month: "Mar", income: 5500, expenses: 3000 },
+  { month: "Apr", income: 7000, expenses: 4000 },
+  { month: "May", income: 6500, expenses: 3800 },
+  { month: "Jun", income: 7200, expenses: 4100 },
+  { month: "Jul", income: 6800, expenses: 3900 },
+  { month: "Aug", income: 7500, expenses: 4200 },
+  { month: "Sep", income: 7000, expenses: 4000 },
+  { month: "Oct", income: 7300, expenses: 4100 },
+  { month: "Nov", income: 7100, expenses: 4050 },
+  { month: "Dec", income: 7600, expenses: 4300 },
 ]
 
+// For years other than 2025, we simply generate zero values.
+const generateEmptyData = (year: number) =>
+  Array.from({ length: 12 }, (_, i) => {
+    const monthLabel = new Date(year, i, 1).toLocaleString("en-US", {
+      month: "short",
+    })
+    return { month: monthLabel, income: 0, expenses: 0 }
+  })
+
+// A simple lookup for sample data by year.
+const sampleDataByYear: Record<string, { month: string; income: number; expenses: number }[]> = {
+  "2020": generateEmptyData(2020),
+  "2021": generateEmptyData(2021),
+  "2022": generateEmptyData(2022),
+  "2023": generateEmptyData(2023),
+  "2025": sampleData2025,
+}
+
 const chartConfig = {
-  visitors: {
-    label: "Visitors",
-  },
-  desktop: {
+  income: {
     label: "Income",
     color: "var(--primary)",
   },
-  mobile: {
+  expenses: {
     label: "Expenses",
-    color: "#FF6B6B",
+    color: "#ef4444",
   },
 } satisfies ChartConfig
 
 export function ChartDashboard() {
-  const [timeRange, setTimeRange] = React.useState("90d")
+  const [year, setYear] = React.useState("2025");
 
-  const filteredData = chartData.filter((item) => {
-    const date = new Date(item.date)
-    const referenceDate = new Date("2024-06-30")
-    let daysToSubtract = 90
-    if (timeRange === "30d") {
-      daysToSubtract = 30
-    } else if (timeRange === "7d") {
-      daysToSubtract = 7
-    }
-    const startDate = new Date(referenceDate)
-    startDate.setDate(startDate.getDate() - daysToSubtract)
-    return date >= startDate
-  })
+  // Get the appropriate data based on the selected year.
+  const chartData = React.useMemo(() => {
+    return sampleDataByYear[year] || generateEmptyData(parseInt(year, 10))
+  }, [year])
 
   return (
     <Card className="min-w-full min-h-full max-w-full max-h-full border-none flex flex-col">
       <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
         <div className="grid flex-1 gap-1 text-center sm:text-left">
-          <CardTitle>Income & Expenses</CardTitle>
+          <CardTitle>Income & Expenses ({year})</CardTitle>
         </div>
-        <Select value={timeRange} onValueChange={setTimeRange}>
+        <Select value={year} onValueChange={setYear}>
           <SelectTrigger
             className="w-[160px] rounded-lg sm:ml-auto border-transparent outline-transparent focus:outline-transparent focus:border-transparent focus:ring-0"
-            aria-label="Select a value"
+            aria-label="Select a year"
           >
-            <SelectValue placeholder="Last 3 months" />
+            <SelectValue placeholder="Select Year" />
           </SelectTrigger>
           <SelectContent className="rounded-xl bg-[var(--background)] border-0">
-            <SelectItem value="90d" className="rounded-lg cursor-pointer">
-              Last 3 months
+            <SelectItem value="2020" className="rounded-lg cursor-pointer">
+              2020
             </SelectItem>
-            <SelectItem value="30d" className="rounded-lg cursor-pointer">
-              Last 30 days
+            <SelectItem value="2021" className="rounded-lg cursor-pointer">
+              2021
             </SelectItem>
-            <SelectItem value="7d" className="rounded-lg cursor-pointer">
-              Last 7 days
+            <SelectItem value="2022" className="rounded-lg cursor-pointer">
+              2022
+            </SelectItem>
+            <SelectItem value="2023" className="rounded-lg cursor-pointer">
+              2023
+            </SelectItem>
+            <SelectItem value="2025" className="rounded-lg cursor-pointer">
+              2025
             </SelectItem>
           </SelectContent>
         </Select>
@@ -181,75 +115,62 @@ export function ChartDashboard() {
           config={chartConfig}
           className="aspect-auto h-[250px] w-full"
         >
-          <AreaChart data={filteredData}>
+          <AreaChart data={chartData}>
             <defs>
-              <linearGradient id="fillDesktop" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-desktop)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-desktop)"
+                  stopColor="var(--color-income)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
-              <linearGradient id="fillMobile" x1="0" y1="0" x2="0" y2="1">
+              <linearGradient id="fillExpenses" x1="0" y1="0" x2="0" y2="1">
                 <stop
                   offset="5%"
-                  stopColor="var(--color-mobile)"
+                  stopColor="var(--color-expenses)"
                   stopOpacity={0.8}
                 />
                 <stop
                   offset="95%"
-                  stopColor="var(--color-mobile)"
+                  stopColor="var(--color-expenses)"
                   stopOpacity={0.1}
                 />
               </linearGradient>
             </defs>
             <CartesianGrid vertical={false} />
             <XAxis
-              dataKey="date"
+              dataKey="month"
               tickLine={false}
               axisLine={false}
               tickMargin={8}
               minTickGap={32}
-              tickFormatter={(value) => {
-                const date = new Date(value)
-                return date.toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                })
-              }}
             />
             <ChartTooltip
               cursor={false}
               content={
                 <ChartTooltipContent
-                  labelFormatter={(value) => {
-                    return new Date(value).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })
-                  }}
+                  labelFormatter={(value) => value}
                   indicator="dot"
                 />
               }
             />
-
             <Area
-              dataKey="mobile"
+              dataKey="expenses"
               type="natural"
-              fill="url(#fillMobile)"
-              stroke="var(--color-mobile)"
+              fill="url(#fillExpenses)"
+              stroke="var(--color-expenses)"
               stackId="a"
             />
             <Area
-              dataKey="desktop"
+              dataKey="income"
               type="natural"
-              fill="url(#fillDesktop)"
-              stroke="var(--color-desktop)"
+              fill="url(#fillIncome)"
+              stroke="var(--color-income)"
               stackId="a"
             />
             <ChartLegend content={<ChartLegendContent />} />
