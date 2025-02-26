@@ -1,5 +1,5 @@
-import { CloudUpload } from "lucide-react"
-import { useSelector } from "react-redux";
+import { useSelector } from "react-redux"
+import MyDropzone from "@/components/Dropzone";
 
 const FileUploadPage = () => {
 
@@ -8,16 +8,12 @@ const FileUploadPage = () => {
 
   return (
     <div className="min-w-full min-h-screen" >
-      <div className="bg-[var(--foreground)] min-h-[18rem] mx-60 rounded-4xl mb-28 p-7 flex-col flex gap-3">
+      <div className="bg-[var(--foreground)] min-h-[18rem] max-w-96 rounded-4xl mb-28 px-3 pb-10 pt-8 flex-col flex gap-3">
         <h2 className="text-2xl text-left font-bold ml-10">{language==='ro'?'Incarca documente':'Document upload'}</h2>
         <div className="flex flex-1 px-10 items-center">
           <div className="border-5 border-dashed border-[var(--card)] rounded-4xl py-5 flex justify-center items-center
-          flex-col flex-1">
-            <CloudUpload size={60} className="text-[var(--primary)] mb-2"/>
-            <p className="text-lg font-semibold mb-2">{language==='ro'?'Trage fisier(e) pentru a le incarca':'Drag file(s) to upload'}</p>
-            <p className="text-sm mb-2">{language==='ro'?'sau':'or'}</p>
-            <button className="border-2 border-[var(--primary)] bg-transparent hover:bg-[var(--primary)] hover:text-white
-            text-[var(--primary)] py-1 px-2 rounded-2xl font-semibold">{language==='ro'?'Cauta fisiere':'Browse files'}</button>
+          flex-col flex-1 min-h-52 max-h-52" >
+            <MyDropzone/>
           </div>
         </div>
       </div>
