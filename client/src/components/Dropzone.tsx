@@ -3,9 +3,13 @@ import {useDropzone} from 'react-dropzone'
 import { useSelector } from 'react-redux';
 import { CloudUpload } from 'lucide-react';
 
-function MyDropzone() {
+interface MyDropzoneProps{
+  setDocuments: (files: File[])=>void;
+}
+
+function MyDropzone({setDocuments}: MyDropzoneProps) {
   const onDrop = useCallback((acceptedFiles :File[]) => {
-    console.log(acceptedFiles);
+    setDocuments(acceptedFiles);
   }, [])
   const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop});
   const language = useSelector((state: {user:{language:string}})=>state.user.language)

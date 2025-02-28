@@ -1,19 +1,29 @@
 import { useSelector } from "react-redux"
 import MyDropzone from "@/components/Dropzone";
+import { useEffect, useState } from "react";
 
 const FileUploadPage = () => {
+
+  const [documents, setDocuments] = useState<File[]>();
+
+  useEffect(()=>{
+    console.log(documents);
+  },[documents])
 
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
 
   return (
     <div className="min-w-full min-h-screen" >
-      <div className="bg-[var(--foreground)] min-h-[18rem] max-w-96 rounded-4xl mb-28 px-3 pb-10 pt-8 flex-col flex gap-3">
-        <h2 className="text-2xl text-left font-bold ml-10">{language==='ro'?'Incarca documente':'Document upload'}</h2>
+      <div className="bg-[var(--foreground)] min-h-[18rem] max-w-[34rem] rounded-4xl mb-28 px-3 pb-10 pt-8 flex-col flex gap-3">
+        <div className="flex items-center mb-4 px-10 justify-between">
+        <h2 className="text-2xl text-left font-bold">{language==='ro'?'Incarca documente':'Document upload'}</h2>
+        <button className="bg-[var(--primary)] hover:bg-[var(--primary)]/90 rounded-2xl font-bold py-1 px-3">{language==='ro'?"Proceseaza documente":"Process documents"}</button>
+        </div>
         <div className="flex flex-1 px-10 items-center">
           <div className="border-5 border-dashed border-[var(--card)] rounded-4xl py-5 flex justify-center items-center
           flex-col flex-1 min-h-52 max-h-52" >
-            <MyDropzone/>
+            <MyDropzone setDocuments={ setDocuments }/>
           </div>
         </div>
       </div>

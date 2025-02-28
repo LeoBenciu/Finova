@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int               @id @default(autoincrement())
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  email               String            @unique
+  role                Role              @default(USER)
+  hashPassword        String
+  name                String
+  phoneNumber         String
+  accountingCompanyId Int
+  accoutingCompany    AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+}
+
+model Document {
+  id              Int            @id @default(autoincrement())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  name            String
+  type            String
+  path            String
+  status          DocumentStatus @default(PENDING)
+  clientcompanyId Int
+  clientCompany   ClientCompany  @relation(fields: [clientcompanyId], references: [id])
+  processedData   ProcessedData?
+  Transaction     Transaction[]
+}
+
+model ProcessedData {
+  id              Int            @id @default(autoincrement())
+  fileId          Int            @unique
+  document        Document       @relation(fields: [fileId], references: [id])
+  extractedText   String?
+  extractedFields Json
+  status          DocumentStatus @default(COMPLETED)
+}
+
+model ClientCompany {
+  id                  Int               @id @default(autoincrement())
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  name                String
+  accountingCompanyId Int
+  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+  documents           Document[]
+  transactions        Transaction[]
+}
+
+model AccountingCompany {
+  id        Int             @id @default(autoincrement())
+  createAt  DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  name      String
+  users     User[]
+  clients   ClientCompany[]
+}
+
+model Transaction {
+  id              Int               @id @default(autoincrement())
+  createAt        DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  clientCompanyId Int
+  clientCompany   ClientCompany     @relation(fields: [clientCompanyId], references: [id])
+  documentId      Int
+  document        Document          @relation(fields: [documentId], references: [id])
+  transactionData Json
+  status          TransactionStatus @default(PENDING)
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum TransactionStatus {
+  PENDING
+  SENT
+  FAILED
+}
