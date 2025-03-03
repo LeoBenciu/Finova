@@ -1,16 +1,40 @@
 import { useSelector } from "react-redux"
 import MyDropzone from "@/components/Dropzone";
 import { useEffect, useState } from "react";
+import { useExtractDataMutation } from "@/redux/slices/apiSlice";
 
 const FileUploadPage = () => {
 
   const [documents, setDocuments] = useState<File[]>();
+  const [processedFiles, setProcessedFiles] = useState<Record<string, any>>({});
+  const [process, {isLoading}] = useExtractDataMutation();
 
   useEffect(()=>{
     console.log(documents);
   },[documents])
 
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
+
+  const handleTooLongString =(str: string): string=>{
+    if(str.length>15) return str.slice(0,15)+'..';
+    return str;
+  }
+
+  const handleProcessFile = async(file: File) =>{
+    try
+    {
+      const processedFile = await process(file).unwrap();
+      console.log(processedFile)
+      setProcessedFiles({
+        ...processedFiles,
+        [file.name]: processedFile
+      })
+    }
+    catch(e)
+    {
+      console.error('Failed to process the document:', e)
+    }
+  }
 
 
   return (
@@ -23,7 +47,7 @@ const FileUploadPage = () => {
         <div className="flex flex-1 px-10 items-center">
           <div className="border-5 border-dashed border-[var(--card)] rounded-4xl py-5 flex justify-center items-center
           flex-col flex-1 min-h-52 max-h-52" >
-            <MyDropzone setDocuments={ setDocuments }/>
+            <MyDropzone setDocuments={ setDocuments } documents={documents}/>
           </div>
         </div>
       </div>
@@ -52,7 +76,31 @@ const FileUploadPage = () => {
               <p className="font-bold">{language==='ro'?'Actiuni':'Actions'}</p>  
             </div>
          </div>
+
+        {documents?.map((doc)=>(
+          <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-6" key={doc.name}>
+             <div className="flex items-center justify-center">
+               <p className="font-bold">{handleTooLongString(doc.name)}</p>
+             </div>
+             <div className="flex items-center justify-center">
+               <p className="font-bold">{processedFiles[doc.name]? processedFiles[doc.name].result.document_type:''}</p>
+             </div>
+             <div className="flex items-center justify-center">
+               <p className="font-bold">{language==='ro'?'Data incarcarii':'Upload Date'}</p>
+             </div>
+             <div className="flex items-center justify-center">
+               <p className="font-bold">{language==='ro'?'Data procesarii':'Processed Date'}</p>
+             </div>
+             <div className="flex items-center justify-center">
+               <p className="font-bold">Status</p>
+             </div>
+             <div className="flex items-center justify-center">
+               <button className="py-1 px-4" onClick={()=>handleProcessFile(doc)}>{isLoading?'Loading':'Process File'}</button> 
+             </div>
+          </div>
+        ))}
         </div>
+
       </div>
     </div>
   )

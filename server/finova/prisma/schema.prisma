@@ -12,12 +12,14 @@ model User {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   email               String            @unique
-  role                Role              @default(USER)
+  role                Role              @default(ADMIN)
   hashPassword        String
   name                String
   phoneNumber         String
   accountingCompanyId Int
   accoutingCompany    AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+
+  @@map("Users")
 }
 
 model Document {
@@ -32,6 +34,8 @@ model Document {
   clientCompany   ClientCompany  @relation(fields: [clientcompanyId], references: [id])
   processedData   ProcessedData?
   Transaction     Transaction[]
+
+  @@map("Documents")
 }
 
 model ProcessedData {
@@ -48,6 +52,7 @@ model ClientCompany {
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
   name                String
+  ein                 String            @unique
   accountingCompanyId Int
   accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
   documents           Document[]
@@ -59,6 +64,7 @@ model AccountingCompany {
   createAt  DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   name      String
+  ein       String          @unique
   users     User[]
   clients   ClientCompany[]
 }
@@ -73,6 +79,8 @@ model Transaction {
   document        Document          @relation(fields: [documentId], references: [id])
   transactionData Json
   status          TransactionStatus @default(PENDING)
+
+  @@map("Transactions")
 }
 
 enum Role {

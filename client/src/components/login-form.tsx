@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import React from "react"
+import React,{ FormEvent, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -7,11 +7,16 @@ import googleLogo from "@/assets/google-icon-logo-svgrepo-com.svg"
 import { X } from "lucide-react"
 import * as motion from "motion/react-client"
 import { AnimatePresence } from "motion/react"
-import { useNavigate } from 'react-router'
+import { useLoginMutation } from "@/redux/slices/apiSlice"
 
 
 interface LoginFormProps extends React.ComponentPropsWithoutRef<"form"> {
   language?: string;
+}
+
+type login = {
+  email: string,
+  password: string
 }
 
 export function LoginForm({
@@ -21,10 +26,32 @@ export function LoginForm({
 }: LoginFormProps) {
 
   const [isForgotPassword,setIsForgotPassword] = React.useState(false);
-  const navigate = useNavigate();
+  const [formData, setFormData] = useState<login>({
+    email:'',
+    password: ''
+  });
+  const [login, { isLoading }] = useLoginMutation();
+
+  const handleSubmitLogin = async(e: FormEvent<HTMLFormElement>) =>{
+    e.preventDefault();
+    try{
+      const user = await login(formData).unwrap();
+      console.log('Successful login!', user);
+    }catch(err){
+      console.error("Failed login:",err);
+    }
+  };
+
+
+  const handleFormDataChange = (e:React.ChangeEvent<HTMLInputElement>) =>{
+    setFormData({
+      ...formData,
+      [e.target.id]: e.target.value,
+    });
+  }
 
   return (
-    <form className={cn("flex flex-col gap-6", className)} {...props}>
+    <form className={cn("flex flex-col gap-6", className)} {...props} onSubmit={handleSubmitLogin}>
       <div className="flex flex-col items-center gap-2 text-center min-w-[320px] max-w-[320px]">
         <p className="text-balance text-sm text-muted-foreground">
           {language==='ro'?'Introduceți datele pentru a vă conecta la contul dumneavoastră.':
@@ -36,7 +63,7 @@ export function LoginForm({
         <div className="grid gap-2">
           <Label htmlFor="email" className="text-left">Email</Label>
           <Input id="email" type="email" placeholder={language==='ro'?'exemplu@exemplu.com':'example@example.com'} required 
-          className="bg-[var(--background)] border-none"/>
+          className="bg-[var(--background)] border-none" onChange={handleFormDataChange}/>
         </div>
         <div className="grid gap-2">
           <div className="flex items-center">
@@ -53,10 +80,10 @@ export function LoginForm({
             </button>
           </div>
           <Input id="password" type="password"placeholder={language==='ro'?'parola': 'password'}
-           required className="bg-[var(--background)] border-none"/>
+           required className="bg-[var(--background)] border-none" onChange={handleFormDataChange}/>
         </div>
-        <Button type="submit" className="w-full bg-[var(--primary)]" onClick={(e)=>{e.preventDefault(); navigate('/home')}}>
-          Login
+        <Button type="submit" className="w-full bg-[var(--primary)]">
+          {isLoading?'Loggin in...':'Login'}
         </Button>
         <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
           <span className="relative z-10 bg-[var(--foreground)] px-2 text-muted-foreground">
