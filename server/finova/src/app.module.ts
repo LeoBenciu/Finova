@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import {ConfigModule} from '@nestjs/config'
 import { AuthModule } from './auth/auth.module';
 import { UserModule } from './user/user.module';
-import { FileManagementModule } from './file-management/file-management.module';
+import { FilesModule } from './files/files.module';
 import { DataExtractionModule } from './data-extraction/data-extraction.module';
 import { DataEntryModule } from './data-entry/data-entry.module';
-import { DashboardModule } from './dashboard/dashboard.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ClientCompaniesModule } from './client-companies/client-companies.module';
+import { AccountingCompaniesModule } from './accounting-companies/accounting-companies.module';
 
 @Module({
   imports: [
@@ -15,11 +16,12 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
     AuthModule,
     UserModule,
-    FileManagementModule,
+    FilesModule,
     DataExtractionModule,
     DataEntryModule,
-    DashboardModule,
     PrismaModule,
+    ClientCompaniesModule,
+    AccountingCompaniesModule,
    ],
 })
 export class AppModule {}

@@ -35,6 +35,10 @@ const FileUploadPage = () => {
       console.error('Failed to process the document:', e)
     }
   }
+  const setCurrentTime = ():Date=>{
+    const date = new Date();
+    return date;
+  }
 
 
   return (

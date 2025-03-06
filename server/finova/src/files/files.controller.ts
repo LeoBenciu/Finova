@@ -1,11 +1,11 @@
 import { Controller, Get, Put, Delete, Post, UseGuards } from '@nestjs/common';
-import { FileManagementService } from './file-management.service';
+import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 
 @UseGuards(JwtGuard)
-@Controller('file-management')
-export class FileManagementController {
-    constructor(private fileMangementService: FileManagementService){}
+@Controller('files')
+export class FilesController {
+    constructor(private fileMangementService: FilesService){}
 
     @Get(':company')
     getFiles()

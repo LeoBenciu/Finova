@@ -1,5 +1,5 @@
 import { Role } from "@prisma/client"
-import { IsEmail, IsNotEmpty, IsPhoneNumber, IsString } from "class-validator"
+import { IsEmail, IsNotEmpty, IsPhoneNumber, IsString, Matches } from "class-validator"
 export class User {
     id: 1
     createdAt: Date

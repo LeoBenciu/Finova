@@ -33,7 +33,7 @@ model Document {
   clientcompanyId Int
   clientCompany   ClientCompany  @relation(fields: [clientcompanyId], references: [id])
   processedData   ProcessedData?
-  Transaction     Transaction[]
+  rpaActions      RpaAction[]
 
   @@map("Documents")
 }
@@ -47,40 +47,51 @@ model ProcessedData {
   status          DocumentStatus @default(COMPLETED)
 }
 
+model RpaAction {
+  id              Int             @id @default(autoincrement())
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  documentId      Int
+  document        Document        @relation(fields: [documentId], references: [id])
+  clientCompanyId Int
+  clientCompany   ClientCompany   @relation(fields: [clientCompanyId], references: [id])
+  actionType      RpaActionType
+  status          RpaActionStatus @default(PENDING)
+  result          Json? // For storing error messages, success details, etc.
+  triggeredBy     Int? // User ID who triggered the action (could be null if automated)
+
+  @@map("RpaActions")
+}
+
 model ClientCompany {
-  id                  Int               @id @default(autoincrement())
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  name                String
-  ein                 String            @unique
-  accountingCompanyId Int
-  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
-  documents           Document[]
-  transactions        Transaction[]
+  id                Int                 @id @default(autoincrement())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  name              String
+  ein               String              @unique
+  accountingClients AccountingClients[]
+  documents         Document[]
+  rpaActions        RpaAction[]
 }
 
 model AccountingCompany {
-  id        Int             @id @default(autoincrement())
-  createAt  DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  name      String
-  ein       String          @unique
-  users     User[]
-  clients   ClientCompany[]
+  id                Int                 @id @default(autoincrement())
+  createAt          DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  name              String
+  ein               String              @unique
+  users             User[]
+  accountingClients AccountingClients[]
 }
 
-model Transaction {
-  id              Int               @id @default(autoincrement())
-  createAt        DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  clientCompanyId Int
-  clientCompany   ClientCompany     @relation(fields: [clientCompanyId], references: [id])
-  documentId      Int
-  document        Document          @relation(fields: [documentId], references: [id])
-  transactionData Json
-  status          TransactionStatus @default(PENDING)
+model AccountingClients {
+  accountingCompanyId Int
+  clientCompanyId     Int
+  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+  clientCompany       ClientCompany     @relation(fields: [clientCompanyId], references: [id])
+  createdAt           DateTime          @default(now())
 
-  @@map("Transactions")
+  @@id([accountingCompanyId, clientCompanyId])
 }
 
 enum Role {
@@ -95,8 +106,17 @@ enum DocumentStatus {
   FAILED
 }
 
-enum TransactionStatus {
+enum RpaActionType {
+  DATA_ENTRY
+  VALIDATION
+  CORRECTION
+  OTHER
+}
+
+enum RpaActionStatus {
   PENDING
-  SENT
+  IN_PROGRESS
+  COMPLETED
   FAILED
+  CANCELED
 }

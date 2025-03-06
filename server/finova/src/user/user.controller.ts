@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Put, Req, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
 import {Request} from 'express';
 import { JwtGuard } from 'src/auth/guard';
@@ -12,20 +12,29 @@ export class UserController {
 
     @Get('/me')
     getMe(@Req() req: Request){
-        return req.user;
+        const user = req.user as User;
+        return this.userService.getMyDetails(user);
     }
 
     @Put('/me')
     updateMyAccount(@Req() req: Request, @Body() dto:UpdateUserDto)
     { 
         const user = req.user as User;
-        return this.userService.updateMyAccount(user, dto);
+        return this.userService.updateMyDetails(user, dto);
     }
 
-    @Get('/company')
-    getMyCompany(@Req() req: Request)
+    @Put('/me/password')
+    updateAccountPassword(@Req() req: Request, @Body() body:{password:string})
+    {
+        const {password} = body;
+        const user = req.user as User;
+        return this.userService.updateAccountPassword(password, user);
+    }
+
+    @Delete('/me')
+    deleteMyAccount(@Req() req: Request)
     {
         const user = req.user as User;
-        return this.userService.getMyCompany(user);
+        return this.userService.deleteMyAccount(user);
     }
 }

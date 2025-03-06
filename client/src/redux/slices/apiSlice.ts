@@ -5,7 +5,7 @@ export const finovaApi = createApi({
     baseQuery: fetchBaseQuery({
         baseUrl: import.meta.env.REACT_APP_BASE_URL || 'http://localhost:3000',
         prepareHeaders: (headers)=>{
-            headers.set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYmVuY2l1bGVvbmFyZG9AZ21haWwuY29tIiwiaWF0IjoxNzQxMDA3MDkzLCJleHAiOjE3NDEwMTQyOTN9.bxaimlUSnDliwBBPxecNd9sEcRxfaqLq-osPcsuiu0c');
+            headers.set('Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsImVtYWlsIjoiYmVuY2l1bGVvbmFyZG9AZ21haWwuY29tIiwiaWF0IjoxNzQxMDk1NTQ0LCJleHAiOjE3NDExMDI3NDR9.RkXfK8mc0BdYVWAA-drIisN_-et47gb3x4etXRavlM4');
 
             return headers;
         }

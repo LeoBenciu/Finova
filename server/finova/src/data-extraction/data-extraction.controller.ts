@@ -3,7 +3,6 @@ import { JwtGuard } from 'src/auth/guard';
 import { DataExtractionService } from './data-extraction.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Express } from 'express'
-import * as fs from "fs";
 
 @UseGuards(JwtGuard)
 @Controller('data-extraction')
