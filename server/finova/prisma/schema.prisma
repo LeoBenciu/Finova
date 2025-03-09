@@ -17,50 +17,46 @@ model User {
   name                String
   phoneNumber         String
   accountingCompanyId Int
-  accoutingCompany    AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
-
-  @@map("Users")
+  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+  rpaActionsTriggered RpaAction[]       @relation("TriggeredByUser")
 }
 
 model Document {
-  id              Int            @id @default(autoincrement())
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  name            String
-  type            String
-  path            String
-  status          DocumentStatus @default(PENDING)
-  clientcompanyId Int
-  clientCompany   ClientCompany  @relation(fields: [clientcompanyId], references: [id])
-  processedData   ProcessedData?
-  rpaActions      RpaAction[]
-
-  @@map("Documents")
+  id                 Int               @id @default(autoincrement())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  name               String
+  type               String
+  path               String
+  s3Key              String
+  contentType        String
+  fileSize           Int?
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  processedData      ProcessedData?
+  rpaActions         RpaAction[]
 }
 
 model ProcessedData {
-  id              Int            @id @default(autoincrement())
-  fileId          Int            @unique
-  document        Document       @relation(fields: [fileId], references: [id])
-  extractedText   String?
+  id              Int      @id @default(autoincrement())
+  documentId      Int      @unique
+  document        Document @relation(fields: [documentId], references: [id])
   extractedFields Json
-  status          DocumentStatus @default(COMPLETED)
 }
 
 model RpaAction {
-  id              Int             @id @default(autoincrement())
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  documentId      Int
-  document        Document        @relation(fields: [documentId], references: [id])
-  clientCompanyId Int
-  clientCompany   ClientCompany   @relation(fields: [clientCompanyId], references: [id])
-  actionType      RpaActionType
-  status          RpaActionStatus @default(PENDING)
-  result          Json? // For storing error messages, success details, etc.
-  triggeredBy     Int? // User ID who triggered the action (could be null if automated)
-
-  @@map("RpaActions")
+  id                 Int               @id @default(autoincrement())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  documentId         Int
+  document           Document          @relation(fields: [documentId], references: [id])
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  actionType         RpaActionType
+  status             RpaActionStatus   @default(PENDING)
+  result             Json? // For storing error messages, success details, etc.
+  triggeredById      Int? // User ID who triggered the action, could be null if automated
+  triggeredBy        User?             @relation("TriggeredByUser", fields: [triggeredById], references: [id])
 }
 
 model ClientCompany {
@@ -70,13 +66,11 @@ model ClientCompany {
   name              String
   ein               String              @unique
   accountingClients AccountingClients[]
-  documents         Document[]
-  rpaActions        RpaAction[]
 }
 
 model AccountingCompany {
   id                Int                 @id @default(autoincrement())
-  createAt          DateTime            @default(now())
+  createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   name              String
   ein               String              @unique
@@ -85,25 +79,21 @@ model AccountingCompany {
 }
 
 model AccountingClients {
+  id                  Int               @id @default(autoincrement())
   accountingCompanyId Int
   clientCompanyId     Int
   accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
   clientCompany       ClientCompany     @relation(fields: [clientCompanyId], references: [id])
   createdAt           DateTime          @default(now())
+  documents           Document[]
+  rpaActions          RpaAction[]
 
-  @@id([accountingCompanyId, clientCompanyId])
+  @@unique([accountingCompanyId, clientCompanyId])
 }
 
 enum Role {
   USER
   ADMIN
-}
-
-enum DocumentStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
 }
 
 enum RpaActionType {

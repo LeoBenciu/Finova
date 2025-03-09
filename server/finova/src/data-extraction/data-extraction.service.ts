@@ -18,9 +18,12 @@ export class DataExtractionService {
             this.prompt = `You are a bookkeeping data extraction assistant. When you receive text from a scanned document, your task is to extract the relevant bookkeeping details and output them as a JSON object. The scanned document may be an invoice, receipt, or another type of bookkeeping document. Please extract the following fields when available:
             document_type: Choose between Invoice/Receipt if something else set to null.
             vendor: The name of the vendor or service provider.
+            vendor_ein: The Unique identifier of the vendor company(Just the number without any RO in front of it).
+            buyer: The name of the buyer.
+            buyer_ein: The Unique identifier of the buyer company(Just the number without any RO in front of it).
             document_number: The unique identifier for the document (this could be an invoice number, receipt number, etc.).
-            document_date: The date the document was issued (format: YYYY-MM-DD).
-            due_date: The payment due date (if applicable, format: YYYY-MM-DD).
+            document_date: The date the document was issued (format: DD-MM-YYYY).
+            due_date: The payment due date (if applicable, format: DD-MM-YYYY).
             total_amount: The total amount charged or paid.
             vat_amount: Calculate the total VAT by summing the VAT from each line item.
             receipt_of: The invoice for which the receipt was made.
@@ -61,8 +64,10 @@ export class DataExtractionService {
             {
                 jsonStr = jsonStr.substring(3, jsonStr.length - 3).trim();
             }
+            const extractedJsonData = JSON.parse(jsonStr);
 
-            return JSON.parse(jsonStr);
+            
+            return extractedJsonData;
         }
         catch(e)
         {

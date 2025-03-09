@@ -59,7 +59,7 @@ export class AuthService{
                 hashPassword: hash,
                 name: dto.name,
                 phoneNumber: dto.phoneNumber,
-                accoutingCompany: {
+                accountingCompany: {
                     connect: {
                         ein: company.ein
                     }
