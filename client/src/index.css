@@ -8,6 +8,10 @@ input[type="number"]::-webkit-outer-spin-button {
     margin: 0;
 }
 
+input:focus{
+  outline-color:#5271FF;
+  box-shadow: 0 0 5px rgba(255, 87, 51, 0.5);
+}
 
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
@@ -65,6 +69,25 @@ button {
   cursor: pointer;
   transition: border-color 0.25s;
 }
+
+textarea {
+  scrollbar-width: thin;
+  scrollbar-color: #888 transparent; 
+}
+
+textarea::-webkit-scrollbar {
+  width: 8px;
+}
+
+textarea::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+textarea::-webkit-scrollbar-thumb {
+  background-color: #888;
+  border-radius: 10px;
+}
+
 
 .hide-scrollbar::-webkit-scrollbar {
   display: none;

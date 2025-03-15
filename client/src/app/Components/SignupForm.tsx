@@ -36,13 +36,13 @@ export function SignupForm({
           className="bg-[var(--background)] border-none" required />
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="email" className="text-left">{language==='ro'?'Cod Unic de Identificare Companie':'Employer Identification Number'}</Label>
-          <Input id="email" type="email" placeholder={language==='ro'?'CUI':'EIN'} required 
+          <Label htmlFor="ein" className="text-left">{language==='ro'?'Cod Unic de Identificare Companie':'Employer Identification Number'}</Label>
+          <Input id="ein" type="text" placeholder={language==='ro'?'CUI':'EIN'} required 
           className="bg-[var(--background)] border-none"/>
         </div>
         <div className="grid gap-2">
-          <Label htmlFor="email" className="text-left">{language==='ro'?'Utilizator':'Username'}</Label>
-          <Input id="email" type="email" placeholder={language==='ro'?'Nume Prenume':'First & Last Name'} required 
+          <Label htmlFor="nume prenume" className="text-left">{language==='ro'?'Utilizator':'Username'}</Label>
+          <Input id="nume prenume" type="text" placeholder={language==='ro'?'Nume Prenume':'First & Last Name'} required 
           className="bg-[var(--background)] border-none"/>
         </div>
         <Button type="submit" className="w-full bg-[var(--primary)]">

@@ -11,6 +11,7 @@ interface MyDropzoneProps{
 function MyDropzone({setDocuments, documents}: MyDropzoneProps) {
   const onDrop = useCallback((acceptedFiles :File[]) => {
     setDocuments(documents ? [...documents, ...acceptedFiles] : acceptedFiles);
+    console.log('Accepted files:', acceptedFiles)
   }, [documents])
   const {getRootProps, getInputProps, isDragActive} = useDropzone({onDrop});
   const language = useSelector((state: {user:{language:string}})=>state.user.language)

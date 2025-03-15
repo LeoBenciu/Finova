@@ -1,9 +1,7 @@
-import { ForbiddenException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { AccountingCompany, ClientCompany, User } from '@prisma/client';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientCompanyDto, DeleteClientCompanyDto } from './dto';
-import { NODATA } from 'dns';
 
 @Injectable()
 export class ClientCompaniesService {

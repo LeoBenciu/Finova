@@ -8,6 +8,7 @@ import { X } from "lucide-react"
 import * as motion from "motion/react-client"
 import { AnimatePresence } from "motion/react"
 import { useLoginMutation } from "@/redux/slices/apiSlice"
+import { useNavigate } from "react-router"
 
 
 interface LoginFormProps extends React.ComponentPropsWithoutRef<"form"> {
@@ -31,12 +32,14 @@ export function LoginForm({
     password: ''
   });
   const [login, { isLoading }] = useLoginMutation();
+  const navigate = useNavigate();
 
   const handleSubmitLogin = async(e: FormEvent<HTMLFormElement>) =>{
     e.preventDefault();
     try{
-      const user = await login(formData).unwrap();
-      console.log('Successful login!', user);
+      const response = await login(formData).unwrap();
+      localStorage.setItem('token',response.access_token);
+      navigate('/home');
     }catch(err){
       console.error("Failed login:",err);
     }
@@ -75,6 +78,7 @@ export function LoginForm({
               }
               }
               className="ml-auto text-sm underline-offset-4 hover:underline bg-transparent text-[var(--primary)]"
+              type='button'
             >
               {language==='ro'?'Ai uitat parola?':'Forgot your password?'}
             </button>
