@@ -11,16 +11,12 @@ export class SignupDto{
 
     @IsString()
     @IsNotEmpty()
-    name: string
-
+    username: string
+    
     @IsString()
     @IsPhoneNumber()
     @IsNotEmpty()
     phoneNumber: string
-
-    @IsString()
-    @IsNotEmpty()
-    company: string
 
     @IsNotEmpty()
     @Matches(/^\d{2,10}$/, { message: 'Invalid Romanian CIF. It must be 2-10 digits long without the "RO" prefix.' })

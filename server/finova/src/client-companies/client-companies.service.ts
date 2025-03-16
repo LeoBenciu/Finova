@@ -2,11 +2,12 @@ import { Injectable, InternalServerErrorException, NotFoundException } from '@ne
 import { User } from '@prisma/client';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientCompanyDto, DeleteClientCompanyDto } from './dto';
+import { AnafService } from 'src/anaf/anaf.service';
 
 @Injectable()
 export class ClientCompaniesService {
 
-    constructor(private prisma:PrismaService){}
+    constructor(private prisma:PrismaService, private anaf:AnafService){}
 
     async getClientCompany(clientId: number, reqUser: User)
     {
@@ -79,7 +80,7 @@ export class ClientCompaniesService {
     }
 
 
-    async createClientCompany(dto: CreateClientCompanyDto, reqUser: User)
+    async createClientCompany(ein:{ein:string}, reqUser: User)
     {
         try
         {
@@ -89,10 +90,16 @@ export class ClientCompaniesService {
 
             if(!user) throw new NotFoundException('User not found in the database!');
             
+            const companyData = await this.anaf.getCompanyDetails(ein.ein);
+
+            if(!companyData) throw new NotFoundException('Company dosen\'t exist');
+
             let newCompany = await this.prisma.clientCompany.upsert({
-                where: { ein: dto.ein },
+                where: { ein:String(companyData.date_generale.cui) },
                 update: {},
-                create: { name: dto.name, ein: dto.ein }
+                create: { name: companyData.date_generale.denumire,
+                          ein: String(companyData.date_generale.cui),
+                           }
             });
 
             const existingLink = await this.prisma.accountingClients.findFirst({
@@ -120,8 +127,8 @@ export class ClientCompaniesService {
         }
         catch(e)
         {
-            console.error('Error creating client company',e)
-            return e;
+            console.error('Error creating client company', e);
+            throw new InternalServerErrorException('Failed to create client company');
         }
     }
 

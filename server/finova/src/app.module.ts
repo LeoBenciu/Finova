@@ -8,6 +8,7 @@ import { DataEntryModule } from './data-entry/data-entry.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { ClientCompaniesModule } from './client-companies/client-companies.module';
 import { AccountingCompaniesModule } from './accounting-companies/accounting-companies.module';
+import { AnafModule } from './anaf/anaf.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AccountingCompaniesModule } from './accounting-companies/accounting-com
     PrismaModule,
     ClientCompaniesModule,
     AccountingCompaniesModule,
+    AnafModule,
    ],
 })
 export class AppModule {}

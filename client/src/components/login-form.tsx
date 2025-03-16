@@ -31,15 +31,16 @@ export function LoginForm({
     email:'',
     password: ''
   });
-  const [login, { isLoading }] = useLoginMutation();
+  const [login, { isLoading: isLoadingLogin,  isError:isLoginError }] = useLoginMutation();
   const navigate = useNavigate();
 
   const handleSubmitLogin = async(e: FormEvent<HTMLFormElement>) =>{
     e.preventDefault();
     try{
       const response = await login(formData).unwrap();
+      if(response){
       localStorage.setItem('token',response.access_token);
-      navigate('/home');
+      navigate('/home');}
     }catch(err){
       console.error("Failed login:",err);
     }
@@ -56,11 +57,17 @@ export function LoginForm({
   return (
     <form className={cn("flex flex-col gap-6", className)} {...props} onSubmit={handleSubmitLogin}>
       <div className="flex flex-col items-center gap-2 text-center min-w-[320px] max-w-[320px]">
-        <p className="text-balance text-sm text-muted-foreground">
+        {!isLoginError&&(<p className="text-balance text-sm text-muted-foreground">
           {language==='ro'?'Introduceți datele pentru a vă conecta la contul dumneavoastră.':
           'Enter your details below to login to your account'}
-        </p>
+        </p>)}
+        {isLoginError&&(<p className="text-red-500 font-normal text-base">
+          {language==='ro'?`Conectarea la contul de utilizator a esuat! 
+          Va rugam sa verificati daca datele introduse sunt corecte!`:
+          `Failed user login! Please check if the inserted details are correct!`}
+          </p>)}
       </div>
+      
 
       <div className="grid gap-6">
         <div className="grid gap-2">
@@ -87,7 +94,7 @@ export function LoginForm({
            required className="bg-[var(--background)] border-none" onChange={handleFormDataChange}/>
         </div>
         <Button type="submit" className="w-full bg-[var(--primary)]">
-          {isLoading?'Loggin in...':'Login'}
+          {isLoadingLogin?'Loggin in...':'Login'}
         </Button>
         <div className="relative text-center text-sm after:absolute after:inset-0 after:top-1/2 after:z-0 after:flex after:items-center after:border-t after:border-border">
           <span className="relative z-10 bg-[var(--foreground)] px-2 text-muted-foreground">

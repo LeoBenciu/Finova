@@ -83,13 +83,12 @@ export const finovaApi = createApi({
         }),
 
         createClientCompany: build.mutation({
-            query:({name,ein})=>({
+            query:(ein)=>({
                 url:'/client-companies',
                 method:'POST',
                 body:{
-                    name,
                     ein
-                }
+                }    
             })
         }),
 
@@ -103,10 +102,48 @@ export const finovaApi = createApi({
             })
         }),
 
+        getUserData: build.query({
+            query:()=>({
+                url:'/users/me',
+                method:'GET',
+            })
+        }),
+
+        deleteUserAccount: build.mutation({
+            query:()=>({
+                url:'/users/me',
+                method:'DELETE'
+            })
+        }),
+
+        modifyUserAccount: build.mutation({
+            query:({name,email,role,phoneNumber})=>({
+                url:'/users/me',
+                method:'PUT',
+                body:{
+                    name,
+                    email,
+                    role,
+                    phoneNumber
+                }
+            })
+        }),
+
+        modifyUserPassword: build.mutation({
+            query:({password})=>({
+                url:'/users/me/password',
+                method:'PUT',
+                body:{
+                    password
+                }
+            })
+        }),
+
     })
 })
 
 export const {useLoginMutation, useSignupMutation, useExtractDataMutation, 
     useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
-useCreateClientCompanyMutation,
-useDeleteClientCompanyMutation} = finovaApi;
+useCreateClientCompanyMutation,useGetUserDataQuery,
+useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
+useModifyUserAccountMutation,useModifyUserPasswordMutation} = finovaApi;

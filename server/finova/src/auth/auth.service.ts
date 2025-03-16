@@ -6,6 +6,7 @@ import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { AccountingCompany, User } from "@prisma/client";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
+import { AnafService } from "src/anaf/anaf.service";
 
 @Injectable()
 export class AuthService{
@@ -13,7 +14,8 @@ export class AuthService{
     constructor(
         private prisma: PrismaService,
         private jwt: JwtService,
-        private config: ConfigService){}
+        private config: ConfigService,
+        private anaf:AnafService){}
 
     async login(dto: LoginDto){
         const user:User = await this.prisma.user.findUnique({
@@ -32,12 +34,9 @@ export class AuthService{
     }
 
     async signup(dto: SignupDto){
-        //generate hashed password
         const hash = await argon.hash(dto.password);
 
-        //add user & Company in db
         try{
-            //existingCompany OR null
             let company: AccountingCompany|null = await this.prisma.accountingCompany.findUnique({
                 where: {
                     ein: dto.ein
@@ -45,9 +44,13 @@ export class AuthService{
             });
 
             if(!company) {
+                const companyData = await this.anaf.getCompanyDetails(dto.ein);
+
+                if(!companyData) throw new NotFoundException('Company dosen\'t exist');
+
                 company = await this.prisma.accountingCompany.create({
                     data:{
-                        name: dto.company,
+                        name: companyData.date_generale.denumire,
                         ein: dto.ein
                     }
                 });
@@ -57,7 +60,7 @@ export class AuthService{
                data:{ 
                 email: dto.email,
                 hashPassword: hash,
-                name: dto.name,
+                name: dto.username,
                 phoneNumber: dto.phoneNumber,
                 accountingCompany: {
                     connect: {
@@ -76,6 +79,7 @@ export class AuthService{
                     throw new ForbiddenException('Account already created with this email!');
                 }
             }
+            console.error(err);
             throw err;
         };
     }

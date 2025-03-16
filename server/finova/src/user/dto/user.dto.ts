@@ -13,23 +13,19 @@ export class User {
 
 export class UpdateUserDto{
 
-    @IsNotEmpty()
-    @IsEmail()
+    @IsNotEmpty({ message: 'Email is required' })
+    @IsEmail({}, { message: 'Please provide a valid email address' })
     email: string
 
-    @IsNotEmpty()
+    @IsNotEmpty({ message: 'Role is required' })
     role: Role
 
-    @IsNotEmpty()
-    @IsString()
-    password: string
-
-    @IsNotEmpty()
-    @IsString()
+    @IsNotEmpty({ message: 'Name is required' })
+    @IsString({ message: 'Name must be a string' })
     name: string
 
-    @IsNotEmpty()
-    @IsPhoneNumber()
-    @IsString()
+    @IsNotEmpty({ message: 'Phone number is required' })
+    @IsPhoneNumber(undefined, { message: 'Please provide a valid phone number' })
+    @IsString({ message: 'Phone number must be a string' })
     phoneNumber: string
 }

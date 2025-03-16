@@ -1,10 +1,20 @@
 import { useSelector } from "react-redux"
 import { ChartDashboard } from "../Components/ChartDashboard";
+import InitialClientCopanyModalSelect from "../Components/InitialClientCompanyModalSelect";
+
+type clientCompanyName = {
+  clientCompany:{
+    current:{
+      name:string,
+      ein:string
+    }
+  }
+}
 
 const HomePage = () => {
 
+  const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name)
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
-  console.log(language);
 
   return (
     <div className=' mx-auto min-h-full max-h-full md:min-w-[768px] lg:min-w-[1024px] max-w-[1210px] px-10 py-0'>
@@ -68,6 +78,7 @@ const HomePage = () => {
           </div>
         </div>
       </div>
+      {clientCompanyName===''&&(<InitialClientCopanyModalSelect/>)}
     </div>
   )
 }

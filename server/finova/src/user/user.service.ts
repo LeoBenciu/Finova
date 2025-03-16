@@ -72,6 +72,7 @@ export class UserService {
             delete newUser.hashPassword;
             return newUser;
         } catch (e) {
+            console.error('Password update failed:', e)
             throw new InternalServerErrorException('Failed to update user password');
         }
     }

@@ -1,9 +1,11 @@
 import { createSlice } from "@reduxjs/toolkit";
+const clientCompanyName = localStorage.getItem('ClientCompanyName')||'';
+const clientCompanyEin = localStorage.getItem('ClientCompanyEin')||'';
 
 const initialState = {
     current: {
-        name: '',
-        ein: '9324593'
+        name: clientCompanyName,
+        ein: clientCompanyEin
     }
 };
 
@@ -14,6 +16,8 @@ const clientCompanySlice = createSlice({
         setCurrentCompany:(state,action)=>{
             state.current.name = action.payload.name;
             state.current.ein = action.payload.ein;
+            localStorage.setItem('ClientCompanyName', action.payload.name);
+            localStorage.setItem('ClientCompanyEin',action.payload.ein)
         }
     }
 });

@@ -3,7 +3,7 @@ import {Request} from 'express';
 import { JwtGuard } from 'src/auth/guard';
 import { ClientCompaniesService } from './client-companies.service';
 import { User } from '@prisma/client';
-import { CreateClientCompanyDto,DeleteClientCompanyDto } from './dto';
+import { DeleteClientCompanyDto } from './dto';
 
 @UseGuards(JwtGuard)
 @Controller('client-companies')
@@ -28,11 +28,10 @@ export class ClientCompaniesController {
 
 
     @Post('')
-    createClientCompany(@Body() createCompanyDto:CreateClientCompanyDto, @Req() req: Request)
+    createClientCompany(@Body() ein:{ein:string}, @Req() req: Request)
     {
         const user = req.user as User;
-        const finalData = {...createCompanyDto}
-        return this.clientCompaniesService.createClientCompany(finalData, user);
+        return this.clientCompaniesService.createClientCompany(ein, user);
     }
 
     @Delete('')
