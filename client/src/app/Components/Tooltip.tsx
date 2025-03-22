@@ -18,7 +18,7 @@ export function TooltipDemo({trigger,tip}:TooltipProps) {
         <TooltipTrigger asChild>
             {trigger}
         </TooltipTrigger>
-        <TooltipContent className="bg-[var(--background)] font-bold">
+        <TooltipContent className="bg-[var(--primary)] font-bold">
           <p>{tip}</p>
         </TooltipContent>
       </Tooltip>

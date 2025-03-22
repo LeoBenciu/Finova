@@ -75,6 +75,36 @@ export const finovaApi = createApi({
             }
         }),
 
+        updateFileAndExtractedData: build.mutation({
+            query:({processedData,clientCompanyEin,docId})=>{
+                const formData: FormData = new FormData();
+                formData.append('clientCompanyEin', clientCompanyEin);
+                formData.append('processedData',JSON.stringify(processedData));
+                formData.append('documentId',docId);
+
+                return{
+                    url:`/files`,
+                    method:'PUT',
+                    body: {
+                        clientCompanyEin,
+                        processedData: JSON.stringify(processedData),
+                        docId
+                    },
+                    formData: true
+                }
+            }
+        }),
+
+        deleteFileAndExtractedData: build.mutation({
+            query:({docId, clientCompanyEin})=>({
+                url:`/files`,
+                method:'DELETE',
+                body:{
+                    clientCompanyEin,
+                    docId
+                }})
+        }),
+
         getClientCompanies: build.mutation({
             query:()=>({
                 url:'/client-companies',
@@ -139,6 +169,13 @@ export const finovaApi = createApi({
             })
         }),
 
+        getFiles: build.query({
+            query:({company})=>({
+                url:`/files/${company}`,
+                method:'GET'
+            })
+        }),
+
     })
 })
 
@@ -146,4 +183,6 @@ export const {useLoginMutation, useSignupMutation, useExtractDataMutation,
     useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
 useCreateClientCompanyMutation,useGetUserDataQuery,
 useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
-useModifyUserAccountMutation,useModifyUserPasswordMutation} = finovaApi;
+useModifyUserAccountMutation,useModifyUserPasswordMutation,
+useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
+useDeleteFileAndExtractedDataMutation} = finovaApi;

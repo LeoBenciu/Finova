@@ -83,11 +83,13 @@ const ClientCompanies = () => {
     min-h-96 px-10 grid grid-cols-1 md:grid-cols-2 items-start col-start-1">
       
       <div className="flex flex-col">
-      <h2 className="font-bold text-4xl text-left">Client Companies</h2>
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">Client Companies</h2>
 
-      <div className="bg-[var(--card)] mt-10
-      min-h-96 max-h-[35rem] min-w-96 p-5 rounded-2xl">
-        <div className="min-w-full flex items-center bg-white rounded-lg min-h-8">
+      <div className="mt-10
+      min-h-96 max-h-[35rem] min-w-96 p-5 rounded-2xl
+      bg-[var(--foreground)] shadow-[0_0_10px_rgba(0,0,0,0.3)]">
+        <div className="min-w-full flex items-center bg-white rounded-lg min-h-8
+        ring-1 ring-[var(--text1)]">
             <input className="bg-white text-black
             rounded-lg px-2 flex-1 min-h-full focus:outline-none focus:shadow-none"
             placeholder="Search by name or ein"
@@ -95,10 +97,12 @@ const ClientCompanies = () => {
             <Search className="text-black mr-3"></Search>
         </div>
         <div className="
-        grid grid-cols-5 items-center p-3 bg-[#2c2a2f] 
-        rounded-xl mt-5">
-            <p className='col-span-2 text-lg font-extrabold'>Name</p>
-            <p className='col-span-2 text-lg font-extrabold'>EIN</p>
+        grid grid-cols-5 items-center p-3
+        rounded-xl mt-5 bg-[var(--background)]">
+            <p className='col-span-2 text-lg font-extrabold
+            text-[var(--text1)]'>Name</p>
+            <p className='col-span-2 text-lg font-extrabold
+            text-[var(--text1)]'>EIN</p>
         </div>
         {isClientCompaniesLoading&&(
             <div className="mt-10 max-w-[150px] mx-auto">
@@ -111,17 +115,17 @@ const ClientCompanies = () => {
             <div key={company.ein} className="
             grid grid-cols-5 items-center p-3">
                 <div className="col-span-2 flex items-center justify-center">
-                <p className="text-center">{company.name}</p>
+                <p className="text-center text-[var(--text2)]">{company.name}</p>
                 </div>
 
                 <div className="col-span-2">
-                <p >{company.ein}</p>
+                <p className="text-[var(--text2)]">{company.ein}</p>
                 </div>
 
                 <div className="flex items-center
                 justify-center">
                     <Trash2 size={20} 
-                    className="hover:text-red-500 cursor-pointer"
+                    className="text-red-500 hover:text-red-300 cursor-pointer"
                     onClick={()=>deleteClientCompany(company.ein)}></Trash2>
                 </div>
             </div>
@@ -133,17 +137,19 @@ const ClientCompanies = () => {
 
     <div className="flex flex-col justify-center min-w-full px-10">
         <button className="max-w-max mx-auto max-h-40 py-[0.45rem]
-        flex items-center gap-3 text-[var(--foreground)]
-        bg-[var(--foreground)] cursor-default">
+        flex items-center gap-3
+        bg-[var(--foreground)] cursor-default ">
             Create new company</button>
-        <div className="bg-[var(--card)] mt-10
-         min-w-96 p-5 rounded-2xl">
-            <h3 className="text-2xl font-bold mb-5">Create New Company</h3>
+        <div className="bg-[var(--foreground)] mt-10
+         min-w-96 p-5 rounded-2xl  shadow-[0_0_10px_rgba(0,0,0,0.3)]">
+            <h3 className="text-2xl font-bold mb-5
+            text-[var(--text1)]">Create New Company</h3>
 
             <label htmlFor="Company ein" className="
-            mt-10">EIN</label>
+            mt-10 text-[var(--text2)]">EIN</label>
             <input className="bg-white min-w-full rounded-lg min-h-8 mt-2
-            text-black px-3 focus:outline-none" type='text'
+            text-black px-3 focus:outline-none ring-1 ring-[var(--text1)]
+            focus:ring-[var(--primary)] focus:ring-1" type='text'
             id='Company ein' onChange={(e)=>setEinNewCompany(e.target.value)}
                 value={einNewCompany}></input>
 

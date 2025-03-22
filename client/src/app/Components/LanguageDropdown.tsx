@@ -34,20 +34,20 @@ React.useEffect(()=>{
         {language==='ro'&&(<img src={ro} alt="Romania Flag" className='rounded-full size-9 cursor-pointer'/>)}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 bg-[var(--background)] border-0">
+      <DropdownMenuContent className="w-56 bg-[var(--background)] text-[var(--text1)] border-0">
         <DropdownMenuLabel>{language==='ro'? 'Selectați o limbă': 'Select a language'}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
           checked={romana}
           onCheckedChange={()=>{setRomana(true); setEnglish(false)}}
-          className='cursor-pointer hover:bg-[var(--card)]'
+          className='cursor-pointer hover:bg-[var(--text4)]'
         >
           Română
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={english}
           onCheckedChange={()=>{setEnglish(true); setRomana(false)}}
-          className='cursor-pointer hover:bg-[var(--card)]'
+          className='cursor-pointer hover:bg-[var(--text4)]'
         >
           English
         </DropdownMenuCheckboxItem>

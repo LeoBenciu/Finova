@@ -14,10 +14,10 @@ const SettingsPage = () => {
   const [section, setSection] = useState<Section>(Section.USER);
 
   return (
-    <div className="bg-[var(--foreground)] min-w-[1000px] min-h-[850px] rounded-3xl">
+    <div className="bg-[var(--foreground)] min-w-full min-h-[850px] rounded-3xl">
       <div className="grid grid-cols-4 min-w-full rounded-t-3xl min-h-15">
-        <button className={`${section===Section.USER?'bg-transparent text-[var(--primary)] font-bold':'text-neutral-400 hover:bg-[var(--background)]'} 
-        text-lg m-2 mr-0 rounded-xl`}
+        <button className={`${section===Section.USER?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
+        text-lg m-2 mr-0 rounded-xl bg-[var(--background)]`}
         onClick={()=>setSection(Section.USER)}>
           User
         </button>
@@ -28,8 +28,8 @@ const SettingsPage = () => {
           Company
         </button>)}
 
-        <button className={`${section===Section.CLIENTCOMPANIES?'bg-transparent text-[var(--primary)] font-bold':'text-neutral-400 hover:bg-[var(--background)]'} 
-        text-lg m-2 rounded-xl`}
+        <button className={`${section===Section.CLIENTCOMPANIES?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
+        text-lg m-2 rounded-xl bg-[var(--background)]`}
          onClick={()=>setSection(Section.CLIENTCOMPANIES)}>
           Client Companies
         </button>

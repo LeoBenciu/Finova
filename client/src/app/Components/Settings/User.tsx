@@ -4,6 +4,7 @@ import { Check, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import AreYouSureModal from "../AreYouSureModalR";
+import { Input } from "@/components/ui/input";
 
 interface UserProps{
    
@@ -74,45 +75,58 @@ const User = ({}:UserProps) => {
     className="mt-10 mx-10 min-w-96 
     min-h-96 px-10 grid grid-cols-2 items-start col-start-1">
       
-      <div className="flex flex-col">
-      <h2 className="font-bold text-4xl text-left">User Account</h2>
+      <div className="flex flex-col items-center">
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">User Account</h2>
       {isErrorDeleting&&(<p className="text-red-500 mt-3 text-left">Failed to delete the user account!</p>)}
       {isErrorUpdating&&(<p className="text-red-500 mt-3 text-left">Failed to save the modified user details! Please try again later!</p>)}
 
-      <label htmlFor="nameInput" className="mt-9 text-left">Name</label>
+      <label htmlFor="nameInput" className="mt-9 text-left text-[var(--text1)]
+      min-w-96 px-5">Name</label>
       <input id='nameInput'
-      className="bg-[var(--card)] mt-3 max-w-96 min-h-11 rounded-2xl p-2"
+      className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)] min-w-96
+      text-[var(--text1)] border-none shadow-[0_0_10px_rgba(0,0,0,0.3)]"
       value={name} onChange={(e)=>setName(e.target.value)}></input>
 
-      <label htmlFor="emailInput" className="mt-9 text-left">Email</label>
+      <label htmlFor="emailInput" className="mt-9 text-left text-[var(--text1)]
+      min-w-96 px-5">Email</label>
       <input id='emailInput'
-      className="bg-[var(--card)] mt-3 max-w-96 min-h-11 rounded-2xl p-2"
+      className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)]
+      shadow-[0_0_10px_rgba(0,0,0,0.3)] text-[var(--text1)]
+      min-w-96"
       value={email} onChange={(e)=>setEmail(e.target.value)}></input>
 
-      <label htmlFor="phoneInput" className="mt-9 text-left">Phone Number</label>
+      <label htmlFor="phoneInput" className="mt-9 text-left text-[var(--text1)]
+      min-w-96 px-5">Phone Number</label>
       <input id='phoneInput' 
-      className=" mt-3 max-w-96 min-h-11 rounded-2xl p-2 bg-[var(--card)]"
+      className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)]
+      shadow-[0_0_10px_rgba(0,0,0,0.3)] text-[var(--text1)]
+      min-w-96"
       value={phoneNumber} onChange={(e)=>setPhoneNumber(e.target.value)}></input>
 
-      <p className="mt-9 text-left">Role</p>
+      <p className="mt-9 text-left text-[var(--text1)]
+      min-w-96 px-5">Role</p>
       <Select value={role} onValueChange={setRole}>
         <SelectTrigger 
-        className=" mt-3 max-w-96 min-h-11 rounded-2xl p-2 bg-[var(--card)]
-        focus:ring-[var(--primary)]">
+        className=" bg-[var(--foreground)] mt-3 min-w-96 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)]
+      shadow-[0_0_10px_rgba(0,0,0,0.3)] text-[var(--text1)]">
           <SelectValue placeholder="User Role" />
         </SelectTrigger>
         <SelectContent 
-        className=" mt-3 max-w-96 min-h-11 rounded-2xl p-2 bg-[var(--card)] 
-        border-none">
-          <SelectItem value="USER">User</SelectItem>
-          <SelectItem value="ADMIN">Admin</SelectItem>
+        className=" mt-3 max-w-96 min-h-11 rounded-2xl p-2 text-[var(--text1)]
+        border-none bg-[var(--foreground)] shadow-[0_0_10px_rgba(0,0,0,0.3)]">
+          <SelectItem value="USER" className="cursor-pointer">User</SelectItem>
+          <SelectItem value="ADMIN" className="cursor-pointer">Admin</SelectItem>
         </SelectContent>
       </Select>
 
       <button 
       className={`max-w-96 ${accountChanged?'bg-transparent':'bg-[var(--primary)]'} rounded-2xl font-bold text-md mt-15
       hover:bg-[var(--primary)]/30 hover:text-[var(--primary)] flex justify-center
-      items-center gap-3`}
+      items-center gap-3 min-w-96`}
        onClick={handleUpdateUserAccount}>
         {accountChanged?'Account Details Changed Succesfully':'Save Account Details'}
         {accountChanged&&(<Check size={20}></Check>)}
@@ -120,7 +134,8 @@ const User = ({}:UserProps) => {
 
       <button 
       className="max-w-96 bg-transparent rounded-2xl font-bold text-md mt-9
-      text-white flex justify-center gap-3 items-center hover:text-red-500"
+      hover:text-red-300 flex justify-center gap-3 items-center text-red-500
+      min-w-96"
       onClick={()=>setIsSureModal(true)}>
         <Trash2 size={20}></Trash2>
         Delete Account
@@ -128,19 +143,22 @@ const User = ({}:UserProps) => {
       </div>
       
 
-      <div className="flex flex-col">
-      <h2 className="font-bold text-4xl text-left">Account Password</h2>
+      <div className="flex flex-col items-center">
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">Account Password</h2>
       {isErrorUpdatingPassword&&(<p className="text-red-500 mt-3 text-left">Failed to change the password! Please try again later!</p>)}
 
-      <label htmlFor="passwordInput" className="mt-10 text-left">New Password</label>
+      <label htmlFor="passwordInput" className="mt-10 text-left text-[var(--text1)]
+      min-w-96 px-5">New Password</label>
       <input id='passwordInput' 
-      className="bg-[var(--card)] mt-3 max-w-96 min-h-11 rounded-2xl p-2"
+      className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)]
+      shadow-[0_0_10px_rgba(0,0,0,0.3)] text-[var(--text1)] min-w-96"
       value={password} onChange={(e)=>setPassword(e.target.value)}
       type="password"></input>
       <button 
       className={`max-w-96 ${passwordChanged?'bg-transparent':'bg-[var(--primary)]'} rounded-2xl font-bold text-md mt-15
       hover:bg-[var(--primary)]/30 hover:text-[var(--primary)] flex justify-center
-      items-center gap-3`}
+      items-center gap-3 min-w-96`}
       onClick={handleUpdatePassword}>
         {passwordChanged?'Password Changed Succesfully':'Save New Password'}
         {passwordChanged&&(<Check size={20}></Check>)}

@@ -5,8 +5,18 @@ import { useExtractDataMutation } from "@/redux/slices/apiSlice";
 import { Cpu, Trash } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
+import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 
 const ExtractedDataEdit = lazy(() => import('../Components/EditExtractedData/EditExtractedDataComponent'));
+
+type clientCompanyName = {
+  clientCompany:{
+    current:{
+      name:string,
+      ein:string
+    }
+  }
+}
 
 const FileUploadPage = () => {
   // State
@@ -17,10 +27,10 @@ const FileUploadPage = () => {
   const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
 
   useEffect(()=>{
-    console.log('ProcessedFiles:',processedFiles);
-    console.log("Current",currentProcessingFile);
-  },[processedFiles])
+    console.log('Documents', documents)
+  },[documents])
   
+  const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name)
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const [process, {isLoading}] = useExtractDataMutation();
 
@@ -63,29 +73,27 @@ const FileUploadPage = () => {
   }, [processedFiles]);
 
   return (
-    <div className="min-w-full min-h-screen">
-      <div className="bg-[var(--foreground)] min-h-[19rem] max-h-[19rem] min-w-[30rem] max-w-[30rem] rounded-4xl mb-28 px-3 pb-10 pt-8 flex-col flex gap-3 mx-auto">
-        <div className="flex items-center mb-4 px-10 justify-between">
-          <h2 className="text-2xl text-center font-bold">
-            {language === 'ro' ? 'Incarca documente' : 'Document upload'}
-          </h2>
-        </div>
-        <div className="flex flex-1 px-10 items-center">
-          <div className="border-5 border-dashed border-[var(--card)] rounded-4xl py-5 flex justify-center items-center
-          flex-col flex-1 min-h-47 max-h-47">
+    <div className="min-w-[1000px] min-h-screen">
+      <div>
+        <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">File Upload</h1>
+      </div>
+      <div className="bg-[var(--foreground)] min-h-[20rem] max-h-[20rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3">
+        <div className="flex flex-1 px-2 items-center py-1">
+          <div className="border-2 border-dashed border-[var(--text4)] rounded-2xl py-5 flex justify-center items-center
+          flex-col flex-1 min-h-[17rem] max-h-47">
             <MyDropzone setDocuments={setDocuments} documents={documents} />
           </div>
         </div>
       </div>
 
       {documents && documents.length > 0 && (
-        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-full rounded-3xl p-5 flex flex-col">
-          <p className="text-left text-2xl font-bold mb-3">
+        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl p-5 flex flex-col">
+          <p className="text-left text-2xl font-bold mb-3 text-[var(--text1)]">
             {language === 'ro' ? 'Status Fisiere' : 'Status files'}
           </p>
 
-          <div className="min-w-full max-w-full border-2 border-[var(--card)] rounded-2xl flex- max-h-fit">
-            <div className="bg-[var(--card)] min-w-full max-w-full min-h-[40px] max-h-[40px] rounded-t-xl grid grid-cols-5">
+          <div className="min-w-full max-w-full border-2 border-[var(--text2)] rounded-2xl flex- max-h-fit">
+            <div className="bg-[var(--text2)] min-w-full max-w-full min-h-[40px] max-h-[40px] rounded-t-xl grid grid-cols-5">
               <div className="flex items-center justify-center">
                 <p className="font-bold">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
               </div>
@@ -93,7 +101,7 @@ const FileUploadPage = () => {
                 <p className="font-bold">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-bold">{language === 'ro' ? 'Data incarcarii' : 'Upload Date'}</p>
+                <p className="font-bold">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
               </div>
               <div className="flex items-center justify-center">
                 <p className="font-bold">Status</p>
@@ -106,16 +114,16 @@ const FileUploadPage = () => {
             {documents.map((doc) => (
               <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5" key={doc.name}>
                 <div className="flex items-center justify-center">
-                  <p className="font-normal">{handleTooLongString(doc.name)}</p>
+                  <p className="font-normal text-[var(--text1)] ">{handleTooLongString(doc.name)}</p>
                 </div>
                 <div className="flex items-center justify-center">
-                  <p className="font-normal">{processedFiles[doc.name]?.result.document_type || '-'}</p>
+                  <p className="font-normal text-[var(--text1)]">{processedFiles[doc.name]?.result.document_type || '-'}</p>
                 </div>
                 <div className="flex items-center justify-center">
-                  <p className="font-normal">{processedFiles[doc.name]?.result.document_date || '-'}</p>
+                  <p className="font-normal text-[var(--text1)]">{processedFiles[doc.name]?.result.document_date || '-'}</p>
                 </div>
                 <div className="flex items-center justify-center">
-                  <p className="font-normal">
+                  <p className="font-normal text-[var(--text1)]">
                     {processedFiles[doc.name]?.saved ? (language === 'ro' ? 'Salvat' : 'Saved'):processedFiles[doc.name]
                       ? (language === 'ro' ? 'Procesat' : 'Processed')
                       : (language === 'ro' ? 'Incarcat (Nu este salvat)' : 'Uploaded (Not saved)')}
@@ -131,7 +139,7 @@ const FileUploadPage = () => {
                           className={`cursor-pointer ${
                             currentProcessingFile?.name === doc.name && isLoading
                               ? 'text-[var(--primary)] animate-pulse'
-                              : 'hover:text-[var(--primary)]'
+                              : 'text-[var(--primary)]'
                           }`}
                           onClick={() => handleProcessFile(doc)}
                         />
@@ -144,7 +152,7 @@ const FileUploadPage = () => {
                     trigger={
                       <Trash
                         size={18}
-                        className="cursor-pointer hover:text-red-500"
+                        className="cursor-pointer text-red-500"
                         onClick={() => handleDeleteDocument(doc.name)}
                       />
                     }
@@ -172,6 +180,8 @@ const FileUploadPage = () => {
           setProcessedFiles={setProcessedFiles}
         />
       </Suspense>
+
+      {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
     </div>
   );
 };

@@ -11,9 +11,9 @@ import { useEffect, useState } from "react";
 import { useSelector } from "react-redux"
 
 interface SelectDocTypeProps{
-    value: string,
+    value?: string,
     setEditFile:(value: any) => void;
-    editFile: {
+    editFile?: {
       result: Record<string, any>;
     } | undefined;
 }
@@ -29,12 +29,14 @@ export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps
 
     const [selectorValue, setSelectorValue] = useState<string>('');
 
-    useEffect(()=>{
-        setSelectorValue(value);
-    },[])
+    if(value){
+      useEffect(()=>{
+          setSelectorValue(value);
+      },[])
+    };
 
-  return (
-    <Select value={selectorValue} onValueChange={(e)=>{setSelectorValue(e);
+    const handleSelect = (e:string)=>{
+      setSelectorValue(e);
       setEditFile({
         ...editFile,
         result: {
@@ -42,15 +44,30 @@ export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps
           document_type:e
         }
       });
-    }}>
-      <SelectTrigger className="min-w-35 max-w-35 py-3 rounded-2xl bg-[var(--card)]">
+    }
+
+    const handleSelect2 =(val:string)=>{
+      if(val==='Invoice')
+      { 
+        setEditFile('Invoice');
+        setSelectorValue('Invoice');
+      }else {
+        setEditFile('Receipt');
+        setSelectorValue('Receipt');
+      };
+    }
+
+  return (
+    <Select value={selectorValue} onValueChange={(e)=>{value?handleSelect(e):handleSelect2(e)}}>
+      <SelectTrigger className="min-w-35 max-w-35 py-3 rounded-2xl bg-[var(--foreground)]
+      text-[var(--text1)] focus:ring-[var(--primary)]">
         <SelectValue placeholder={language==='ro'?'Tipul documentului':"Document Type"} />
       </SelectTrigger>
-      <SelectContent className="bg-[var(--card)] cursor-pointer">
+      <SelectContent className="bg-[var(--foreground)] cursor-pointer">
         <SelectGroup>
           {documentTypes.map((document)=>(
             <SelectItem value={document} 
-            className="cursor-pointer">
+            className="cursor-pointer text-[var(--text1)]">
                 {language==='ro'?(document==="Invoice"?'Factura':'Chitanta'):document}
             </SelectItem>
           ))}

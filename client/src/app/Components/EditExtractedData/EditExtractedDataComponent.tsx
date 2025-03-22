@@ -141,7 +141,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
     >
       <div className="bg-black/80 fixed inset-0 min-w-vw min-h-vh flex justify-center items-center">
         <motion.div 
-          className="bg-neutral-800 max-w-[70rem] min-h-[95vh] min-w-[70rem] max-h-[95vh] rounded-3xl flex"
+          className="bg-[var(--foreground)] max-w-[70rem] min-h-[95vh] min-w-[70rem] max-h-[95vh] rounded-3xl flex"
           variants={containerVariants}
         >
           <DocumentViewer onClose={handleCloseModal} currentFile={currentFile}/>
@@ -157,7 +157,8 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
 
             <div className={`h-full overflow-auto transition-opacity duration-300 ${contentVisible ? 'opacity-100' : 'opacity-0'}`}>
               <div className="flex flex-row justify-between items-center p-5 pb-0">
-                <h3 className="text-left font-bold text-3xl">Extracted data</h3>
+                <h3 className="text-left font-bold text-3xl
+                text-[var(--text1)]">Extracted data</h3>
                 <button
                   className="bg-[var(--primary)] max-h-8 p-2 px-4 flex justify-center items-center gap-2 hover:text-[var(--primary)] hover:bg-[var(--primary)]/20"
                   onClick={handleSaveButton}
@@ -170,7 +171,8 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
               <div className="p-4 flex justify-center items-center min-h-[790px] flex-col">
                 {editFile && (
                   <div className="bg-[var(--background)] rounded-3xl min-h-[790px] flex-1 grid grid-cols-2">
-                    <div className="p-4 flex justify-center items-center">Document Type</div>
+                    <div className="p-4 flex justify-center items-center
+                    text-[var(--text2)] font-bold">Document Type</div>
                     <div className="p-4 flex justify-center items-center">
                       <SelectDocType value={editFile?.result.document_type} 
                       editFile={editFile} setEditFile={setEditFile}/>
