@@ -2,7 +2,7 @@ import { Search } from "lucide-react"
 import LoadingComponent from "./LoadingComponent"
 import { useEffect, useState } from "react";
 import { useGetClientCompaniesMutation } from "@/redux/slices/apiSlice";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { setCurrentCompany } from '@/redux/slices/clientCompanySlice';
 import Logo from '@/assets/2solLqZ3AFncSar4MubKNQ4TreZ.svg'
 import { useNavigate } from "react-router";
@@ -17,6 +17,7 @@ const InitialClientCompanyModalSelect = () => {
 
         const dispatch = useDispatch();
         const navigate = useNavigate();
+        const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
         const [companies, setCompanies] = useState<Company[]>();
         const [filteredCompanies, setFilteredCompanies] = useState<Company[]>();
@@ -45,24 +46,26 @@ const InitialClientCompanyModalSelect = () => {
     <div className="absolute inset-0 bg-[var(--background)] min-w-vw min-h-vh flex 
     flex-col justify-center items-center">
       <img src={Logo} alt="Finova logo" className='h-24'/>
-      <h2 className="font-bold text-3xl mt-6" onClick={()=>console.log(localStorage.getItem('ClientCompanyName'))}>
-        Select a starting client company
+      <h2 className="font-bold text-3xl mt-6 text-[var(--text1)]"
+       onClick={()=>console.log(localStorage.getItem('ClientCompanyName'))}>
+        {language==='ro'?'Selecteaza un client':'Select a starting client company'}
       </h2>
       <div className="bg-[var(--foreground)] min-w-[30rem] min-h-72 max-h-[38rem] rounded-2xl mt-10
       p-10 max-w-[30rem]">
 
-        <div className="min-w-full flex items-center bg-white rounded-lg min-h-8">
+        <div className="min-w-full flex items-center bg-white rounded-lg min-h-8
+        ring-1 ring-[var(--text1)]">
             <input className="bg-white text-black
             rounded-lg px-2 flex-1 min-h-full focus:outline-none focus:shadow-none"
-            placeholder="Search by name or ein"
+            placeholder={language==='ro'?'Cauta dupa nume sau cui':"Search by name or ein"}
             onChange={(e)=>handleFilterCompanies(e.target.value)}></input>
             <Search className="text-black mr-3"></Search>
         </div>
         <div className="
-        grid grid-cols-2 items-center p-3 bg-[#2c2a2f] 
+        grid grid-cols-2 items-center p-3 bg-[var(--text1)] 
         rounded-xl mt-5">
-            <p className='text-lg font-extrabold'>Name</p>
-            <p className='text-lg font-extrabold'>EIN</p>
+            <p className='text-lg font-extrabold'>{language==='ro'?'Nume':'Name'}</p>
+            <p className='text-lg font-extrabold'>{language==='ro'?'CUI':'EIN'}</p>
         </div>
         {isClientCompaniesLoading&&(
             <div className="mt-10 max-w-[150px] mx-auto">
@@ -74,23 +77,25 @@ const InitialClientCompanyModalSelect = () => {
         {!isClientCompaniesLoading&&(filteredCompanies?.map((company:Company)=>(
             <div key={company.ein} className="
             grid grid-cols-2 items-center p-3 hover:bg-[var(--primary)]
-            rounded-xl cursor-pointer"
+            rounded-xl cursor-pointer group"
             onClick={()=>{dispatch(setCurrentCompany({name:company.name,ein:company.ein}))}}>
                 <div className="flex items-center justify-center">
-                <p className="text-center font-bold">{company.name}</p>
+                <p className="text-center font-bold text-[var(--text1)]
+                group-hover:text-[var(--primaryText)]">{company.name}</p>
                 </div>
 
                 <div>
-                <p className="text-center font-bold">{company.ein}</p>
+                <p className="text-center font-bold text-[var(--text1)]
+                group-hover:text-[var(--primaryText)]">{company.ein}</p>
                 </div>
             </div>
         )))}
         {filteredCompanies?.length===0||!filteredCompanies&&(
             <div className="flex mt-10 flex-col items-center
             justify-center">
-            <p className="font-bold">There are no 
+            <p className="font-bold">{language==='ro'?'Nu sunt companii asociate acestui cont':`There are no 
                 client companies associated with this account!
-                Please <span className="text-[var(--primary)]
+                Please `}<span className="text-[var(--primary)]
                 cursor-pointer" onClick={()=>{
                     navigate('/settings');
                 }}>

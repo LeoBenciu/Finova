@@ -4,7 +4,7 @@ import { Check, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import AreYouSureModal from "../AreYouSureModalR";
-import { Input } from "@/components/ui/input";
+import { useSelector } from "react-redux";
 
 interface UserProps{
    
@@ -27,6 +27,7 @@ const User = ({}:UserProps) => {
   const [deleteAccount,{isError:isErrorDeleting}] = useDeleteUserAccountMutation();
   const [updateAccount,{isError:isErrorUpdating}] = useModifyUserAccountMutation();
   const [updateAccountPassword,{isError:isErrorUpdatingPassword}] = useModifyUserPasswordMutation();
+  const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
 
   useEffect(()=>{
@@ -41,7 +42,7 @@ const User = ({}:UserProps) => {
       await deleteAccount({}).unwrap();
       navigate('/authentication')
     } catch (e) {
-      console.error('Failed to cancel user account')
+      console.error(language==='ro'?'Stergerea contului a esuat':'Failed to cancel user account')
     }
   };
 
@@ -66,7 +67,7 @@ const User = ({}:UserProps) => {
         setPasswordChanged(false);
       },2500)
     } catch (e) {
-      console.error('Failed to change user password!')
+      console.error(language==='ro'?'Schimbarea parolei a esuat':'Failed to change user password!')
     }
   }
 
@@ -76,12 +77,13 @@ const User = ({}:UserProps) => {
     min-h-96 px-10 grid grid-cols-2 items-start col-start-1">
       
       <div className="flex flex-col items-center">
-      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">User Account</h2>
-      {isErrorDeleting&&(<p className="text-red-500 mt-3 text-left">Failed to delete the user account!</p>)}
-      {isErrorUpdating&&(<p className="text-red-500 mt-3 text-left">Failed to save the modified user details! Please try again later!</p>)}
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">{language==='ro'?'Cont Utilizator':'User Account'}</h2>
+      {isErrorDeleting&&(<p className="text-red-500 mt-3 text-left">{language==='ro'?'Stergerea contului a esuat!':'Failed to delete user account!'}</p>)}
+      {isErrorUpdating&&(<p className="text-red-500 mt-3 text-left">{language==='ro'?'Nu s-a reușit salvarea detaliilor de utilizator modificate! Vă rugăm să încercați din nou mai târziu!':
+      'Failed to save the modified user details! Please try again later!'}</p>)}
 
       <label htmlFor="nameInput" className="mt-9 text-left text-[var(--text1)]
-      min-w-96 px-5">Name</label>
+      min-w-96 px-5">{language==='ro'?'Nume':'Name'}</label>
       <input id='nameInput'
       className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
       focus:outline-none focus:ring-1 ring-[var(--primary)] min-w-96
@@ -98,7 +100,7 @@ const User = ({}:UserProps) => {
       value={email} onChange={(e)=>setEmail(e.target.value)}></input>
 
       <label htmlFor="phoneInput" className="mt-9 text-left text-[var(--text1)]
-      min-w-96 px-5">Phone Number</label>
+      min-w-96 px-5">{language==='ro'?'Numar de telefon':'Phone Number'}</label>
       <input id='phoneInput' 
       className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
       focus:outline-none focus:ring-1 ring-[var(--primary)]
@@ -107,7 +109,7 @@ const User = ({}:UserProps) => {
       value={phoneNumber} onChange={(e)=>setPhoneNumber(e.target.value)}></input>
 
       <p className="mt-9 text-left text-[var(--text1)]
-      min-w-96 px-5">Role</p>
+      min-w-96 px-5">{language==='ro'?'Rol':'Role'}</p>
       <Select value={role} onValueChange={setRole}>
         <SelectTrigger 
         className=" bg-[var(--foreground)] mt-3 min-w-96 max-w-96 min-h-11 rounded-2xl p-2
@@ -128,7 +130,7 @@ const User = ({}:UserProps) => {
       hover:bg-[var(--primary)]/30 hover:text-[var(--primary)] flex justify-center
       items-center gap-3 min-w-96`}
        onClick={handleUpdateUserAccount}>
-        {accountChanged?'Account Details Changed Succesfully':'Save Account Details'}
+        {accountChanged?(language==='ro'?'Detaliile Contului Schimbate Cu Succes':'Account Details Changed Succesfully'):(language==='ro'?'Salveaza Detaliile Contului':'Save Account Details')}
         {accountChanged&&(<Check size={20}></Check>)}
       </button>
 
@@ -138,17 +140,17 @@ const User = ({}:UserProps) => {
       min-w-96"
       onClick={()=>setIsSureModal(true)}>
         <Trash2 size={20}></Trash2>
-        Delete Account
+        {language==='ro'?'Sterge cont':'Delete account'}
       </button>
       </div>
       
 
       <div className="flex flex-col items-center">
-      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">Account Password</h2>
-      {isErrorUpdatingPassword&&(<p className="text-red-500 mt-3 text-left">Failed to change the password! Please try again later!</p>)}
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">{language==='ro'?'Parola Cont':'Account Password'}</h2>
+      {isErrorUpdatingPassword&&(<p className="text-red-500 mt-3 text-left">{language==='ro'?'Schimbarea parolei a esuat! Va rugam reincercati mai tarziu!':'Failed to change the password! Please try again later!'}</p>)}
 
       <label htmlFor="passwordInput" className="mt-10 text-left text-[var(--text1)]
-      min-w-96 px-5">New Password</label>
+      min-w-96 px-5">{language==='ro'?'Parola noua':'New Password'}</label>
       <input id='passwordInput' 
       className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
       focus:outline-none focus:ring-1 ring-[var(--primary)]
@@ -160,7 +162,7 @@ const User = ({}:UserProps) => {
       hover:bg-[var(--primary)]/30 hover:text-[var(--primary)] flex justify-center
       items-center gap-3 min-w-96`}
       onClick={handleUpdatePassword}>
-        {passwordChanged?'Password Changed Succesfully':'Save New Password'}
+        {passwordChanged?(language==='ro'?'Parola schimbata cu succes':'Password Changed Succesfully'):(language==='ro'?'Salveaza Parola':'Save New Password')}
         {passwordChanged&&(<Check size={20}></Check>)}
       </button>
       </div>
@@ -179,3 +181,4 @@ const User = ({}:UserProps) => {
 }
 
 export default User
+

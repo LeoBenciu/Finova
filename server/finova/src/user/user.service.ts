@@ -98,5 +98,4 @@ export class UserService {
             throw new InternalServerErrorException("Failed to delete user account!");
         }
     }
-
 }

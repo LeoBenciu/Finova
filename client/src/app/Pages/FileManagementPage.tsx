@@ -8,6 +8,7 @@ import { Trash2 } from 'lucide-react';
 import { MyTooltip } from '../Components/MyTooltip';
 import AreYouSureModalR from '../Components/AreYouSureModalR';
 import FilesSearchFiltersComponent from '../Components/FilesSearchFiltersComponent';
+import {format, parse, compareAsc, addDays} from 'date-fns'
 
 type clientCompanyName = {
   clientCompany:{
@@ -31,33 +32,50 @@ const FileManagementPage = () => {
   //State for filters
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
-  const [createdAtFilter, setCreatedAtFilter] = useState<string>('');
+  const [intervalDateFilter, setIntervalDateFilter] = useState<{
+    from: string|undefined,
+    to:string|undefined
+  }>({
+    from: undefined,
+    to:undefined,
+  });
+
+  useEffect(()=>{
+    console.log('IntervalDateFitler:', filteredFiles);
+  },[filteredFiles])
 
   useEffect(()=>{
     let newFilteredFiles = files.documents;
     if(nameSearch.length>0){
        newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.name.includes(nameSearch)
+        file.name.toLowerCase().includes(nameSearch.toLowerCase())
       ))
     };
     if(typeFilter){
-      console.log(files)
       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
         file.type===typeFilter
       ))
     };
-    if(createdAtFilter.length>0){
+    if(intervalDateFilter.from !== undefined){
+      const date1 = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.createdAt>=createdAtFilter
+        compareAsc(file.createdAt, date1) >=0
       ))
-    };
+    }
+    if(intervalDateFilter.to !== undefined){
+      const date2 = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
+      const date2End = addDays(date2,1);
+      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
+        compareAsc(file.createdAt, date2End) <0
+      ))
+    }
 
     setFilteredFiles({
       ...files,
       documents: newFilteredFiles
     })
   },[typeFilter, setTypeFilter,nameSearch, 
-    setNameSearch,createdAtFilter,setCreatedAtFilter]);
+    setNameSearch,intervalDateFilter,setIntervalDateFilter]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
   const { data: filesData } = useGetFilesQuery({company:clientCompanyEin});
@@ -69,7 +87,7 @@ const FileManagementPage = () => {
     try {
       await deleteFile({clientCompanyEin,docId}).unwrap();
       const updatedDocuments = files.documents.filter((file:any) => file.id !== docId);
-      setFiles({...files, documents: updatedDocuments});
+      setFilteredFiles({...files, documents: updatedDocuments});
       setCurrentFile({});
     } catch (e) {
       console.error('Failed to delete the file and data from the database', e)
@@ -88,24 +106,19 @@ const FileManagementPage = () => {
   }, []);
 
 
-  const formatData = useCallback((str:string):string=>{
-    return str.slice(0,10).split('-').reverse().join('-');
-  },[]);
-
-
   return (
     <div>
       <div>
         <h1 className="mb-10 text-4xl font-bold text-left
-        text-[var(--text1)]">File Management</h1>
+        text-[var(--text1)]">{language==='ro'?'Management Documente':'File Management'}</h1>
       </div>
 
       <FilesSearchFiltersComponent 
       nameSearch={nameSearch}
       setNameSearch={setNameSearch}
       setTypeFilter={setTypeFilter}
-      createdAtFilter={createdAtFilter}
-      setCreatedAtFilter={setCreatedAtFilter}/>
+      intervalDate={intervalDateFilter}
+      setIntervalDate={setIntervalDateFilter}/>
 
       <div className="bg-[var(--foreground)] min-w-full  
       min-h-max max-h-[1000px] rounded-2xl my-auto p-5">
@@ -114,7 +127,7 @@ const FileManagementPage = () => {
         border-[var(--card)] '>
           <div className='min-w-full min-h-10 max-h-10
            rounded-t-2xl bg-[var(--text1)] grid
-           grid-cols-5 border-[1px] border-[var(--text1)]'>
+           grid-cols-6 border-[1px] border-[var(--text1)]'>
               <div className='flex items-center justify-center '>
                 <p>{language==='ro'?'Nume':'Name'}</p>
               </div>
@@ -131,62 +144,18 @@ const FileManagementPage = () => {
                 <p>{language==='ro'?'Date extrase':'Extracted data'}</p>
               </div>
 
+              <div className='flex items-center justify-center'>
+                <p>Status</p> 
+              </div>
+
               <div className='flex items-center justify-center '>
                 <p>{language==='ro'?'Actiuni':'Actions'}</p>
               </div>
           </div>
 
-          {!filteredFiles&&files?.documents?.map((file:any)=>(
-              <div key={file.name} className='min-w-full min-h-12 max-h-12 grid
-              grid-cols-5'>
-                  <div className='flex items-center justify-center '>
-                  <MyTooltip content={file.name} trigger={
-                    <a href={file.signedUrl} target="_blank" rel="noopener noreferrer"
-                    className='cursor-pointer'>
-                     { handleTooLongString(file.name)}
-                    </a>
-                  }/>
-                  </div>
-
-
-                  <div className='flex items-center justify-center text-[var(--text1)]'>
-                      <p className='text-[var(--text1)]'>{file.type}</p>
-                  </div>
-
-                  <div className='flex items-center justify-center'>
-                      <p>{formatData(file.createdAt)}</p> 
-                  </div>
-
-                  <div className='flex items-center justify-center
-                  text-[var(--primary)] hover:text-[var(--primary)]/70 hover:cursor-pointer gap-1
-                  font-bold' onClick={()=>{
-                    setIsModalOpen(true);
-                    setCurrentFile(file)
-                  }}>
-                    <Eye  size={20} 
-                    className='cursor-pointer'/>
-                    View
-                  </div>
-
-                  <div className='flex items-center justify-center gap-5'>
-                    <MyTooltip content='Submit data' trigger={
-                    <Bot size={24} className='hover:text-[var(--primary)]
-                    cursor-pointer'></Bot>
-                    }/>
-                    <MyTooltip content='Delete File and Data' trigger={
-                    <Trash2 size={20} className='text-red-500
-                    cursor-pointer' onClick={()=>{setIsSureModal(true);
-                      setCurrentFile(file);
-                    }}></Trash2>
-                  }/>
-                  </div>
-              </div>
-          )
-          )}
-
           {filteredFiles?.documents?.map((file:any)=>(
              <div key={file.name} className='min-w-full min-h-12 max-h-12 grid
-             grid-cols-5'>
+             grid-cols-6'>
                  <div className='flex items-center justify-center '>
                  <MyTooltip content={file.name} trigger={
                    <a href={file.signedUrl} target="_blank" rel="noopener noreferrer"
@@ -198,11 +167,11 @@ const FileManagementPage = () => {
 
 
                  <div className='flex items-center justify-center'>
-                     <p className='text-[var(--text1)]'>{file.type}</p>
+                     <p className='text-[var(--text1)]'>{language==='ro'?(file.type==='Invoice'?'Factura':'Chitanta'):file.type}</p>
                  </div>
 
                  <div className='flex items-center justify-center'>
-                     <p className='text-[var(--text1)]'>{formatData(file.createdAt)}</p> 
+                     <p className='text-[var(--text1)]'>{format(file.createdAt,'dd-MM-yyyy')}</p> 
                  </div>
 
                  <div className='flex items-center justify-center
@@ -213,16 +182,21 @@ const FileManagementPage = () => {
                  }}>
                    <Eye  size={20} 
                    className='cursor-pointer'/>
-                   View
+                   {language==='ro'?'Vezi':'View'}
                  </div>
 
+                 <div className='flex items-center justify-center'>
+                      <p className='text-[var(--text1)]'>{
+                    file.rpa.length===0?(language==='ro'?'In asteptare':'Pending'):''}</p> 
+                  </div>
+
                  <div className='flex items-center justify-center gap-5'>
-                   <MyTooltip content='Submit data' trigger={
+                   <MyTooltip content={language==='ro'?'Proceseaza date':'Submit data'} trigger={
                    <Bot size={24} className='hover:text-[var(--primary)]/70
                    text-[var(--primary)]
                    cursor-pointer'></Bot>
                    }/>
-                   <MyTooltip content='Delete File and Data' trigger={
+                   <MyTooltip content={language==='ro'?'Sterge Fisiere si date':'Delete File and Data'} trigger={
                    <Trash2 size={20} className='text-red-500
                    cursor-pointer' onClick={()=>{setIsSureModal(true);
                      setCurrentFile(file);
@@ -242,14 +216,14 @@ const FileManagementPage = () => {
       setIsModalOpen={setIsModalOpen}
       isOpen={isModalOpen}
       processedFiles={files}
-      setProcessedFiles={setFiles}
+      setProcessedFiles={setFilteredFiles}
       currentFile ={currentFile}
       setCurrentFile={setCurrentFile}
       />)}
 
       {isSureModal&&(
-        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData[0].documentId)} confirmButton='Confirm'
-        text="Are you sure you want to permanently DELETE the file and it's data?"/>
+        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData[0].documentId)} confirmButton={language==='ro'?'Sterge':'Delete'}
+        text={language==='ro'?"Esti sigur/a ca vrei sa STERGI permanent fisierul si datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and it's data?"}/>
       )}
 
       {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}

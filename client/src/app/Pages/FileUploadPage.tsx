@@ -75,7 +75,7 @@ const FileUploadPage = () => {
   return (
     <div className="min-w-[1000px] min-h-screen">
       <div>
-        <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">File Upload</h1>
+        <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">{language==='ro'?'Incarca Documente':'File Upload'}</h1>
       </div>
       <div className="bg-[var(--foreground)] min-h-[20rem] max-h-[20rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3">
         <div className="flex flex-1 px-2 items-center py-1">
@@ -145,7 +145,7 @@ const FileUploadPage = () => {
                         />
                       </div>
                     }
-                    tip={'Process'}
+                    tip={language==='ro'?'Proceseaza':'Process'}
                   />)}
 
                   <TooltipDemo

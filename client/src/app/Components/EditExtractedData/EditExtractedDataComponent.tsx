@@ -58,7 +58,8 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
   const [internalLoading, setInternalLoading] = useState(isLoading);
   const [contentVisible, setContentVisible] = useState(false);
 
-  const currentClientCompanyEin =  useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein)
+  const currentClientCompanyEin =  useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein);
+  const language =useSelector((state:{user:{language:string}})=>state.user.language);
 
   useEffect(() => {
     if (isLoading) {
@@ -148,7 +149,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
 
           <div className="flex-1 relative">
             {internalLoading && (
-              <div className="absolute inset-0 flex justify-center items-center bg-neutral-800 rounded-tr-3xl rounded-br-3xl z-10">
+              <div className="absolute inset-0 flex justify-center items-center bg-[var(--foreground)] rounded-tr-3xl rounded-br-3xl z-10">
                 <div className="w-[150px] bg-[var(--background)] rounded-4xl py-6 px-5">
                   <LoadingComponent />
                 </div>
@@ -158,7 +159,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
             <div className={`h-full overflow-auto transition-opacity duration-300 ${contentVisible ? 'opacity-100' : 'opacity-0'}`}>
               <div className="flex flex-row justify-between items-center p-5 pb-0">
                 <h3 className="text-left font-bold text-3xl
-                text-[var(--text1)]">Extracted data</h3>
+                text-[var(--text1)]">{language==='ro'?'Date extrase':'Extracted data'}</h3>
                 <button
                   className="bg-[var(--primary)] max-h-8 p-2 px-4 flex justify-center items-center gap-2 hover:text-[var(--primary)] hover:bg-[var(--primary)]/20"
                   onClick={handleSaveButton}
@@ -172,7 +173,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                 {editFile && (
                   <div className="bg-[var(--background)] rounded-3xl min-h-[790px] flex-1 grid grid-cols-2">
                     <div className="p-4 flex justify-center items-center
-                    text-[var(--text2)] font-bold">Document Type</div>
+                    text-[var(--text2)] font-bold">{language==='ro'?"Tipul Documentului":'Document Type'}</div>
                     <div className="p-4 flex justify-center items-center">
                       <SelectDocType value={editFile?.result.document_type} 
                       editFile={editFile} setEditFile={setEditFile}/>
@@ -180,7 +181,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
 
                     {editFile?.result.receipt_of && (
                       <EditableField
-                        label="Receipt for Invoice No."
+                        label={language==='ro'?"Chitanta pentru factura nr.":"Receipt for Invoice No."}
                         fieldName="receipt_of"
                         editFile={editFile}
                         setEditFile={setEditFile}
@@ -188,63 +189,63 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                     )}
 
                     <EditableField
-                      label="Document Number"
+                      label={language==='ro'?'Numarul documentului':'Document number'}
                       fieldName="document_number"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Date"
+                      label={language==='ro'?'Data':'Date'}
                       fieldName="document_date"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Due Date"
+                      label={language==='ro'?'Data scadentei':'Due date'}
                       fieldName="due_date"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Buyer"
+                      label={language==='ro'?'Cumparator':'Buyer'}
                       fieldName="buyer"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Buyer EIN"
+                      label={language==='ro'?'CUI Cumparator':'Buyer EIN'}
                       fieldName="buyer_ein"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Vendor"
+                      label={language==='ro'?'Vanzator':'Vendor'}
                       fieldName="vendor"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Vendor EIN"
+                      label={language==='ro'?'CUI Vanzator':'Vendor EIN'}
                       fieldName="vendor_ein"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="Total Amount"
+                      label={language==='ro'?'Suma totala':'Total amount'}
                       fieldName="total_amount"
                       editFile={editFile}
                       setEditFile={setEditFile}
                     />
 
                     <EditableField
-                      label="VAT Amount"
+                      label={language==='ro'?'Total TVA':'Vat amount'}
                       fieldName="vat_amount"
                       editFile={editFile}
                       setEditFile={setEditFile}
@@ -258,7 +259,8 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                     onClick={toggleLineItems}
                     whileTap={{ y: 2 }}
                   >
-                    {lineItems ? 'Hide ' : 'Show '} line items
+                    {language==='ro'?((lineItems ?'Ascunde ':'Arata ')):((lineItems ? 'Hide ' : 'Show '))}
+                    {language==='ro'?'articole':'line items'}
                     <ArrowUp
                       size={20}
                       className={lineItems ? 'rotate-180' : 'rotate-90'}
@@ -276,7 +278,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                         flex items-center justify-center gap-3'
                         onClick={handleCreateNewLineItem}>
                           <CirclePlus size={20}></CirclePlus>
-                          New item
+                          {language==='ro'?'Creeaza articol':'New item'}
                         </button>
 
                         <button className='hover:bg-red-500 bg-red-500/30
@@ -284,7 +286,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                          flex items-center justify-center gap-3'
                          onClick={()=>{handleDeleteLineItems(); toggleLineItems()}}>
                           <Trash2 size={20}></Trash2>
-                          Delete items
+                          {language==='ro'?'Sterge articole':'Delete items'}
                         </button>
                       </div>
                       {editFile.result.line_items.map((item: Item, index: number) => (

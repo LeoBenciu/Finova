@@ -79,6 +79,15 @@ textarea::-webkit-scrollbar {
   width: 8px;
 }
 
+div::-webkit-scrollbar{
+  width:8px;
+}
+
+div::-webkit-scrollbar-thumb {
+  background-color: #1a1a1a;
+  border-radius: 10px;
+}
+
 .scrollbar-custom::-webkit-scrollbar-track {
   background: transparent; 
 }

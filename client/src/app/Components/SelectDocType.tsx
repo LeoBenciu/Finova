@@ -16,9 +16,10 @@ interface SelectDocTypeProps{
     editFile?: {
       result: Record<string, any>;
     } | undefined;
+    shadow?:boolean
 }
 
-export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps) {
+export function SelectDocType({value, setEditFile, editFile,shadow}: SelectDocTypeProps) {
 
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
@@ -59,8 +60,8 @@ export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps
 
   return (
     <Select value={selectorValue} onValueChange={(e)=>{value?handleSelect(e):handleSelect2(e)}}>
-      <SelectTrigger className="min-w-35 max-w-35 py-3 rounded-2xl bg-[var(--foreground)]
-      text-[var(--text1)] focus:ring-[var(--primary)]">
+      <SelectTrigger className={`min-w-35 max-w-35 py-3 rounded-2xl bg-[var(--foreground)]
+      text-[var(--text1)] focus:ring-[var(--primary)] ${shadow?'shadow-[0_0_15px_rgba(0,0,0,0.3)]':''}`}>
         <SelectValue placeholder={language==='ro'?'Tipul documentului':"Document Type"} />
       </SelectTrigger>
       <SelectContent className="bg-[var(--foreground)] cursor-pointer">

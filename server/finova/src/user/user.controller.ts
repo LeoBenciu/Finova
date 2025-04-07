@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Put, Req,Post, UseGuards } from '@nestjs/common';
 import { UserService } from './user.service';
 import {Request} from 'express';
 import { JwtGuard } from 'src/auth/guard';
@@ -37,4 +37,5 @@ export class UserController {
         const user = req.user as User;
         return this.userService.deleteMyAccount(user);
     }
+
 }

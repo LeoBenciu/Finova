@@ -2,7 +2,7 @@ import { Controller, Get, Put, Delete, Post, UseGuards, Param, Body, UseIntercep
 import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { PostFileDto } from './dto';
+import { DeleteFileDto, PostFileDto, UpdateFileDto } from './dto';
 import { User } from '@prisma/client';
 import { Request } from 'express';
 
@@ -12,9 +12,11 @@ export class FilesController {
     constructor(private fileMangementService: FilesService){}
 
     @Get(':company')
-    getFiles()
+    getFiles(@Param('company') company:string, @Req() req:Request)
     {
-        return this.fileMangementService.getFiles();
+        const ein = company;
+        const user = req.user as User;
+        return this.fileMangementService.getFiles(ein, user);
     }
     @Post('')
     @UseInterceptors(FileInterceptor('file'))
@@ -25,15 +27,18 @@ export class FilesController {
       return this.fileMangementService.postFile(dto.clientCompanyEin, processedData, file,user);
     }
 
-    @Put(':company')
-    updateFiles()
+    @Put('')
+    updateFiles(@Body() dto:UpdateFileDto, @Req() req:Request & {user:User})
     {
-        return this.fileMangementService.updateFiles();
+        const processedData = JSON.parse(dto.processedData);
+        const user = req.user as User;
+        return this.fileMangementService.updateFiles(processedData, dto.clientCompanyEin, user, dto.docId);
     }
 
-    @Delete(':company')
-    deleteFile()
+    @Delete('')
+    deleteFile(@Body() dto:DeleteFileDto, @Req() req:Request &{ user: User})
     {
-        return this.fileMangementService.deleteFiles();
+        const user = req.user as User;
+        return this.fileMangementService.deleteFiles(dto.clientCompanyEin, dto.docId, user);
     }
 }

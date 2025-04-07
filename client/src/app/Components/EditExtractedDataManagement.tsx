@@ -56,6 +56,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
     
     const currentClientCompanyEin =  useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein);
     const [updateFile] = useUpdateFileAndExtractedDataMutation();
+    const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
     const handleUpdateButton = useCallback(async () => {
         try {
@@ -165,7 +166,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
     >
         <div className="bg-black/80 fixed inset-0 min-w-vw min-h-vh flex justify-center items-center">
         <motion.div 
-          className="bg-neutral-800 max-w-[70rem] min-h-[95vh] min-w-[70rem] max-h-[95vh] rounded-3xl flex"
+          className="bg-[var(--foreground)] max-w-[70rem] min-h-[95vh] min-w-[70rem] max-h-[95vh] rounded-3xl flex"
           variants={containerVariants}
         >
 
@@ -176,19 +177,20 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
 
             <div className={`h-full overflow-auto transition-opacity duration-300 opacity-100`}>
               <div className="flex flex-row justify-between items-center p-5 pb-0">
-                <h3 className="text-left font-bold text-3xl">Extracted data</h3>
+                <h3 className="text-left font-bold text-3xl
+                text-[var(--text1)]">{language==='ro'?'Date extrase':'Extracted data'}</h3>
                 {!savedUpdates&&(
                 <button
                   className="bg-[var(--primary)] max-h-8 p-2 px-2 flex justify-center items-center gap-1 hover:text-[var(--primary)] hover:bg-[var(--primary)]/20"
                   onClick={handleUpdateButton}
                 >
                   <FilePenLine size={15} />
-                  Update
+                  {language==='ro'?'Actualizeaza':'Update'}
                 </button>)}
                 {savedUpdates&&(
                 <div className="text-xl font-bold text-green-600 flex
                 items-center gap-3">
-                Saved
+                {language==='ro'?'Salvat':'Saved'}
                 <Save size={20}/>
                 </div>
                 )}
@@ -197,7 +199,8 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
               <div className="p-4 flex justify-center items-center min-h-[790px] flex-col">
     
                   <div className="bg-[var(--background)] rounded-3xl min-h-[790px] flex-1 grid grid-cols-2">
-                    <div className="p-4 flex justify-center items-center">Document Type</div>
+                    <div className="p-4 flex justify-center items-center
+                    text-[var(--text1)] font-bold">{language==='ro'?'Tipul documentului':'Document type'}</div>
 
                 
                     <div className="p-4 flex justify-center items-center">
@@ -223,7 +226,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
 
                     {currentFile.processedData[0].extractedFields.result.receipt_of && (
                     <EditableField
-                        label="Receipt for Invoice No."
+                        label={language==='ro'?"Chitanta pentru factura nr.":"Receipt for Invoice No."}
                         fieldName="receipt_of"
                         editFile={{
                             result: currentFile.processedData[0].extractedFields.result
@@ -247,7 +250,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     )}
 
                     <EditableField
-                      label="Document Number"
+                      label={language==='ro'?'Numarul documentului':'Document number'}
                       fieldName="document_number"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -270,7 +273,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Date"
+                      label={language==='ro'?'Data':'Date'}
                       fieldName="document_date"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -293,7 +296,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Due Date"
+                      label={language==='ro'?'Data scadentei':'Due date'}
                       fieldName="due_date"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -316,7 +319,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Buyer"
+                      label={language==='ro'?'Cumparator':'Buyer'}
                       fieldName="buyer"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -339,7 +342,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Buyer EIN"
+                      label={language==='ro'?'CUI Cumparator':'Buyer EIN'}
                       fieldName="buyer_ein"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -362,7 +365,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Vendor"
+                      label={language==='ro'?'Vanzator':'Vendor'}
                       fieldName="vendor"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -385,7 +388,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Vendor EIN"
+                      label={language==='ro'?'CUI Vanzator':'Vendor EIN'}
                       fieldName="vendor_ein"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -408,7 +411,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="Total Amount"
+                      label={language==='ro'?'Suma totala':'Total amount'}
                       fieldName="total_amount"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -431,7 +434,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     />
 
                     <EditableField
-                      label="VAT Amount"
+                      label={language==='ro'?'Total TVA':'Vat amount'}
                       fieldName="vat_amount"
                       editFile={{
                         result: currentFile.processedData[0].extractedFields.result
@@ -461,7 +464,8 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                     onClick={toggleLineItems}
                     whileTap={{ y: 2 }}
                   >
-                    {lineItems ? 'Hide ' : 'Show '} line items
+                   {language==='ro'?((lineItems ?'Ascunde ':'Arata ')):((lineItems ? 'Hide ' : 'Show '))}
+                   {language==='ro'?'articole':'line items'}
                     <ArrowUp
                       size={20}
                       className={lineItems ? 'rotate-180' : 'rotate-90'}
@@ -479,7 +483,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                         flex items-center justify-center gap-3'
                         onClick={handleCreateNewLineItem}>
                           <CirclePlus size={20}></CirclePlus>
-                          New item
+                          {language==='ro'?'Creeaza articol':'New item'}
                         </button>
 
                         <button className='hover:bg-red-500 bg-red-500/30
@@ -487,7 +491,7 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
                          flex items-center justify-center gap-3'
                          onClick={()=>{handleDeleteLineItems(); toggleLineItems()}}>
                           <Trash2 size={20}></Trash2>
-                          Delete items
+                          {language==='ro'?'Sterge articole':'Delete items'}
                         </button>
                       </div>
                       {currentFile.processedData[0].extractedFields.result.line_items.map((item: Item, index: number) => (

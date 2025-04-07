@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import * as motion from 'motion/react-client'
+import { useSelector } from 'react-redux';
 
 interface AreYouSureProps{
     setCloseModal:(is:boolean)=>void;
@@ -7,6 +8,8 @@ interface AreYouSureProps{
 }
 
 const AreYouSureModal = ({setCloseModal,setIsModalOpen}:AreYouSureProps) => {
+    const language = useSelector((state:{user:{language:string}})=>state.user.language);
+
   return (
     <motion.div
     className='
@@ -23,20 +26,20 @@ const AreYouSureModal = ({setCloseModal,setIsModalOpen}:AreYouSureProps) => {
             </div>
 
             <p className='mt-2 px-8
-            text-[var(--text1)]'>Are you sure you want to exit without saving the file & the processed data?</p>
+            text-[var(--text1)]'>{language==='ro'?'Sunteți sigur că doriți să ieșiți fără a salva fișierul și datele extrase?':'Are you sure you want to exit without saving the file & the processed data?'}</p>
 
             <div className='bg-[var(--card)] min-h-[1px] max-h-[1px] mx-10 mt-7'></div>
 
             <div className='flex flex-row mt-7 justify-end gap-3 px-7'>
                 <button className='text-neutral-300 bg-[var(--text1)]
                 hover:bg-neutral-600'
-                onClick={()=>setCloseModal(false)}>Cancel</button>
+                onClick={()=>setCloseModal(false)}>{language==='ro'?'Anuleaza':'Cancel'}</button>
                 <button className='bg-[var(--primary)] 
                 hover:bg-[var(--primary)]/70
                 hover:text-[var(--primary)]'
                 onClick={()=>{setIsModalOpen(false);
                     setCloseModal(false)
-                }}>Exit</button>
+                }}>{language==='ro'?'Iesi':'Exit'}</button>
             </div>
         </div>
 

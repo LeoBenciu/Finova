@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useSelector } from "react-redux"
 
 // Sample data for the year 2025 – one data point per month.
 const sampleData2025 = [
@@ -59,19 +60,22 @@ const sampleDataByYear: Record<string, { month: string; income: number; expenses
   "2025": sampleData2025,
 }
 
-const chartConfig = {
-  income: {
-    label: "Income",
-    color: "var(--primary)",
-  },
-  expenses: {
-    label: "Expenses",
-    color: "#ef4444",
-  },
-} satisfies ChartConfig
-
 export function ChartDashboard() {
   const [year, setYear] = React.useState("2025");
+  const language = useSelector((state:{user:{language:string}})=>state.user.language);
+
+  const chartConfig = React.useMemo(() => {
+    return {
+      income: {
+        label: language === 'ro' ? 'Venituri' : 'Income',
+        color: "var(--primary)",
+      },
+      expenses: {
+        label: language === 'ro' ? 'Cheltuieli' : "Expenses",
+        color: "#ef4444",
+      },
+    } satisfies ChartConfig
+  }, [language])
 
   // Get the appropriate data based on the selected year.
   const chartData = React.useMemo(() => {
@@ -82,7 +86,7 @@ export function ChartDashboard() {
     <Card className="min-w-full min-h-full max-w-full max-h-full border-none flex flex-col">
       <CardHeader className="flex items-center gap-2 space-y-0 border-b py-5 sm:flex-row">
         <div className="grid flex-1 gap-1 text-center sm:text-left">
-          <CardTitle className="text-[var(--text1)]">Income & Expenses ({year})</CardTitle>
+          <CardTitle className="text-[var(--text1)]">{language==='ro'?'Venituri & Cheltuieli':'Income & Expenses'} ({year})</CardTitle>
         </div>
         <Select value={year} onValueChange={setYear}>
           <SelectTrigger

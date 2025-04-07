@@ -176,6 +176,25 @@ export const finovaApi = createApi({
             })
         }),
 
+        forgotPassword: build.mutation({
+            query:(email)=>({
+                url:'/auth/forgot-password',
+                method:'POST',
+                body:email
+            })
+        }),
+
+        resetPassword: build.mutation({
+            query:({token, newPassword})=>({
+                url:'auth/reset-password',
+                method:'POST',
+                body: {
+                    token,
+                    newPassword
+                }
+            })
+        })
+
     })
 })
 
@@ -185,4 +204,5 @@ useCreateClientCompanyMutation,useGetUserDataQuery,
 useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
 useModifyUserAccountMutation,useModifyUserPasswordMutation,
 useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
-useDeleteFileAndExtractedDataMutation} = finovaApi;
+useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
+useResetPasswordMutation} = finovaApi;

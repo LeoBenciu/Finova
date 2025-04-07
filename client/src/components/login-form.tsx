@@ -3,12 +3,9 @@ import React,{ FormEvent, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import googleLogo from "@/assets/google-icon-logo-svgrepo-com.svg"
-import { X } from "lucide-react"
-import * as motion from "motion/react-client"
-import { AnimatePresence } from "motion/react"
 import { useLoginMutation } from "@/redux/slices/apiSlice"
 import { useNavigate } from "react-router"
+import { ForgotPasswordModal } from "@/app/Components/ForgotPasswordComponent"
 
 
 interface LoginFormProps extends React.ComponentPropsWithoutRef<"form"> {
@@ -26,7 +23,7 @@ export function LoginForm({
   ...props
 }: LoginFormProps) {
 
-  const [isForgotPassword,setIsForgotPassword] = React.useState(false);
+  const [isForgotPassword,setIsForgotPassword] = useState<boolean>(false);
   const [formData, setFormData] = useState<login>({
     email:'',
     password: ''
@@ -55,6 +52,7 @@ export function LoginForm({
   }
 
   return (
+    <div>
     <form className={cn("flex flex-col gap-6", className)} {...props} onSubmit={handleSubmitLogin}>
       <div className="flex flex-col items-center gap-2 text-center min-w-[320px] max-w-[320px]">
         {!isLoginError&&(<p className="text-balance text-sm text-muted-foreground
@@ -102,34 +100,14 @@ export function LoginForm({
       </div>
 
 
-      <AnimatePresence initial={false}>
-      {isForgotPassword&&(<div className="absolute inset-0 bg-black/70 z-30 flex items-center justify-center">
-        <motion.div className="flex flex-col bg-[var(--foreground)] px-5 pt-5 pb-8 rounded-lg min-w-xl max-w-lg min-h-max"
-              initial={{ opacity: 0, scale: 0 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0 }}>
-          <div className="flex min-w-full max-w-full min-h-max max-h-max items-center justify-between mb-8">
-            <X size={30} className="text-red-500 cursor-pointer" onClick={()=>setIsForgotPassword(false)}/>
-            <h3 className="font-bold text-2xl text-[var(--text1)]">{language==='ro'?'Ai uitat parola?':'Forgot your password?'}</h3>
-            <X size={30} className="text-transparent"/>
-          </div>
-
-          <p className="mb-6 text-[var(--text3)]">
-            {language==='ro'?'Completează adresa contului pentru a primi un email de resetare':'No worries. We\'ll send you a link to reset your password.'}
-          </p>
-
-          <label htmlFor="reset email" className="text-left mb-2 ml-2 text-[var(--text1)]">Email</label>
-          <input className="bg-transparent border-[var(--text)] border-2 
-          rounded-lg min-w-16 max-w-full py-2 px-4 mb-10 focus:border-none focus:ring-3 
-          focus:ring-[var(--primary)] focus:outline-none text-[var(--text1)]" id="reset email"></input>
-
-          <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}
-             className="bg-[var(--primary)] max-w-max mx-auto"
-             onClick={(e)=>e.preventDefault()}>{language==='ro'?'Trimite email de resetare a parolei':'Send email to reset password'}
-          </motion.button>
-        </motion.div>
-      </div>)}
-      </AnimatePresence>
     </form>
+      {isForgotPassword&&(
+        <ForgotPasswordModal
+        isOpen={isForgotPassword}
+        setIsForgotPassword={setIsForgotPassword}
+        language={language}
+        ></ForgotPasswordModal>
+      )}
+    </div>
   )
 }

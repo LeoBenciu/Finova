@@ -1,5 +1,6 @@
 import { Trash2 } from 'lucide-react';
 import React from 'react';
+import { useSelector } from 'react-redux';
 
 interface LineItemsProps {
   editFile?: Record<string, any>;
@@ -33,6 +34,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
       },
     });
   };
+  const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
   return (
     <div className="bg-[var(--background)] rounded-3xl min-h-max min-w-full flex-1 grid grid-cols-2 mt-10">
@@ -40,7 +42,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
       <div className="p-4 flex justify-center items-center" onClick={handleRemoveLineItem}>
         <Trash2 size={20} className='hover:text-red-300 text-red-500 cursor-pointer'></Trash2>
       </div>
-      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">Description</div>
+      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Descriere':'Description'}</div>
       <div className="p-4 flex justify-center items-center">
         <textarea
           value={item ? item.description : '-'}
@@ -50,7 +52,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
         />
       </div>
 
-      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">Quantity</div>
+      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Cantitate':'Quantity'}</div>
       <div className="p-4 flex justify-center items-center">
         <input
           value={item ? item.quantity : '-'}
@@ -70,7 +72,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
         />
       </div>
 
-      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">Unit price</div>
+      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Pret articol':'Unit price'}</div>
       <div className="p-4 flex justify-center items-center">
         <input
           value={item ? item.unit_price : '-'}
@@ -80,7 +82,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
         />
       </div>
 
-      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">Vat amount</div>
+      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'TVA':'Vat amount'}</div>
       <div className="p-4 flex justify-center items-center">
         <input
           value={item ? item.vat_amount : '-'}
