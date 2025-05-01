@@ -9,6 +9,9 @@ export default {
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
   		},
+		boxShadow: {
+		'around': '0 0 10px rgba(0, 0, 0, 0.1)',
+		},
   		colors: {
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
@@ -65,4 +68,3 @@ export default {
   },
   plugins: [require("tailwindcss-animate")],
 }
-

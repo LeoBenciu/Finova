@@ -17,14 +17,14 @@ import { useDispatch, useSelector } from 'react-redux'
 type Checked = DropdownMenuCheckboxItemProps["checked"]
 
 export function LanguageDropdown() {
-  const [romana, setRomana] = React.useState<Checked>(false)
-  const [english, setEnglish] = React.useState<Checked>(true)
+  const [romana] = React.useState<Checked>()
+  const [english] = React.useState<Checked>()
   const dispatch = useDispatch();
   const language = useSelector((state: { user: { language: string } })=> state.user.language);
 
-React.useEffect(()=>{
-    dispatch(setCurrentLanguage(romana?'ro':'en'))
-}, [english,romana])
+const handleChangeLanguage = (lg:string)=>{
+  dispatch(setCurrentLanguage(lg));
+}
 
   return (
     <DropdownMenu>
@@ -34,20 +34,20 @@ React.useEffect(()=>{
         {language==='ro'&&(<img src={ro} alt="Romania Flag" className='rounded-full size-9 cursor-pointer'/>)}
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-56 bg-[var(--background)] border-0">
+      <DropdownMenuContent className="w-56 bg-[var(--background)] text-[var(--text1)] border-0">
         <DropdownMenuLabel>{language==='ro'? 'Selectați o limbă': 'Select a language'}</DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuCheckboxItem
           checked={romana}
-          onCheckedChange={()=>{setRomana(true); setEnglish(false)}}
-          className='cursor-pointer hover:bg-[var(--card)]'
+          onCheckedChange={()=>{handleChangeLanguage('ro')}}
+          className='cursor-pointer hover:bg-[var(--text4)]'
         >
           Română
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={english}
-          onCheckedChange={()=>{setEnglish(true); setRomana(false)}}
-          className='cursor-pointer hover:bg-[var(--card)]'
+          onCheckedChange={()=>{handleChangeLanguage('en')}}
+          className='cursor-pointer hover:bg-[var(--text4)]'
         >
           English
         </DropdownMenuCheckboxItem>

@@ -21,7 +21,7 @@ const AuthenticationPage = () => {
                 <img src={Logo} alt="Finova Logoll" className="min-w-72 max-w-72"/>
               </a>
             </div>
-            <TabsAuth content1={<LoginForm language={language}/>} content2={<SignupForm language={language}/>} isLogin={isLogin}
+            <TabsAuth content1={<LoginForm language={language}/>} content2={<SignupForm language={language} />} isLogin={isLogin}
             setIsLogin={setIsLogin}/>
           </div>
         </div>

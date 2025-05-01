@@ -7,6 +7,7 @@ import FileUploadPage from './app/Pages/FileUploadPage';
 import FileManagementPage from './app/Pages/FileManagementPage';
 import SettingsPage from './app/Pages/SettingsPage';
 import ReportsPage from './app/Pages/ReportsPage';
+import ResetPasswordPage from './app/Pages/ResetPasswordPage';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path='/authentication' element={<AuthenticationPage/>}/>
+        <Route path='/reset-password' element={<ResetPasswordPage/>}/>
         <Route path='/' element={<MainPage/>}>
           <Route path='/home' element={<HomePage/>}></Route>
           <Route path='/file-upload' element={<FileUploadPage/>}></Route>

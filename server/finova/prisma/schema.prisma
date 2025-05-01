@@ -1,0 +1,225 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int               @id @default(autoincrement())
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  email               String            @unique
+  role                Role              @default(ADMIN)
+  hashPassword        String
+  name                String
+  phoneNumber         String
+  accountingCompanyId Int
+  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+  rpaActionsTriggered RpaAction[]       @relation("TriggeredByUser")
+}
+
+model Document {
+  id                 Int               @id @default(autoincrement())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  name               String
+  type               String
+  path               String
+  s3Key              String
+  contentType        String
+  fileSize           Int?
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  processedData      ProcessedData?
+  rpaActions         RpaAction[]
+}
+
+model ProcessedData {
+  id              Int      @id @default(autoincrement())
+  documentId      Int      @unique
+  document        Document @relation(fields: [documentId], references: [id])
+  extractedFields Json
+}
+
+model RpaAction {
+  id                 Int               @id @default(autoincrement())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  documentId         Int
+  document           Document          @relation(fields: [documentId], references: [id])
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  actionType         RpaActionType
+  status             RpaActionStatus   @default(PENDING)
+  result             Json? // For storing error messages, success details, etc.
+  triggeredById      Int? // User ID who triggered the action, could be null if automated
+  triggeredBy        User?             @relation("TriggeredByUser", fields: [triggeredById], references: [id])
+}
+
+model ClientCompany {
+  id                Int                 @id @default(autoincrement())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  name              String
+  ein               String              @unique
+  accountingClients AccountingClients[]
+  Article           Article[]
+  Management        Management[]
+}
+
+model AccountingCompany {
+  id                Int                 @id @default(autoincrement())
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  name              String
+  ein               String              @unique
+  users             User[]
+  accountingClients AccountingClients[]
+}
+
+model AccountingClients {
+  id                  Int               @id @default(autoincrement())
+  accountingCompanyId Int
+  clientCompanyId     Int
+  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
+  clientCompany       ClientCompany     @relation(fields: [clientCompanyId], references: [id])
+  createdAt           DateTime          @default(now())
+  documents           Document[]
+  rpaActions          RpaAction[]
+
+  @@unique([accountingCompanyId, clientCompanyId])
+}
+
+model Article {
+  id              Int           @id @default(autoincrement())
+  code            Int
+  name            String
+  vat             VatRate
+  unitOfMeasure   UnitOfMeasure
+  type            ArticleType
+  clientCompanyId Int
+  clientCompany   ClientCompany @relation(fields: [clientCompanyId], references: [id])
+
+  @@index([clientCompanyId])
+}
+
+model Management {
+  id              Int            @id @default(autoincrement())
+  clientCompanyId Int
+  clientCompany   ClientCompany  @relation(fields: [clientCompanyId], references: [id])
+  code            Int            @unique
+  name            String
+  type            ManagementType
+  manager         String?
+  isSellingPrice  Boolean
+  analitic371     String?
+  analitic378     String?
+  analitic4428    String?
+  analitic607     String?
+  analitic707     String?
+  vatRate         VatRate
+
+  @@index([clientCompanyId])
+}
+
+enum ManagementType {
+  CANTITATIV_VALORIC
+  GLOBAL_VALORIC
+}
+
+enum ArticleType {
+  MARFURI
+  MATERII_PRIME
+  PRODUSE_FINITE
+  SEMIFABRICATE
+  SERVICII_VANDUTE
+  MATERIALE_AUXILIARE
+  AMBALAJE
+  TAXA_VERDE
+  OBIECTE_DE_INVENTAR
+  AMENAJARI_PROVIZORII
+  MATERIALE_SPRE_PRELUCRARE
+  MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
+  DISCOUNT_FINANCIAL_INTRARI
+  DISCOUNT_FINANCIAL_IESIRI
+  COMBUSTIBILI
+  PIESE_DE_SCHIMB
+  ALTE_MATERIALE_CONSUMABILE
+  DISCOUNT_COMERCIAL_INTRARI
+  DISCOUNT_COMERCIAL_IESIRI
+  AMBALAJE_SGR
+}
+
+enum UnitOfMeasure {
+  BUCATA
+  KILOGRAM
+  LITRU
+  METRU
+  GRAM
+  CUTIE
+  PACHET
+  PUNGA
+  SET
+  METRU_PATRAT
+  METRU_CUB
+  MILIMETRU
+  CENTIMETRU
+  TONA
+  PERECHE
+  SAC
+  MILILITRU
+  KILOWATT_ORA
+  MINUT
+  ORA
+  ZI_DE_LUCRU
+  LUNI_DE_LUCRU
+  DOZA
+  UNITATE_DE_SERVICE
+  O_MIE_DE_BUCATI
+  TRIMESTRU
+  PROCENT
+  KILOMETRU
+  LADA
+  DRY_TONE
+  CENTIMETRU_PATRAT
+  MEGAWATI_ORA
+  ROLA
+  TAMBUR
+  SAC_PLASTIC
+  PALET_LEMN
+  UNITATE
+  TONA_NETA
+  HECTOMETRU_PATRAT
+  FOAIE
+}
+
+enum VatRate {
+  ZERO
+  NINETEEN
+  NINE
+  FIVE
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum RpaActionType {
+  DATA_ENTRY
+  VALIDATION
+  CORRECTION
+  OTHER
+}
+
+enum RpaActionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+  CANCELED
+}
