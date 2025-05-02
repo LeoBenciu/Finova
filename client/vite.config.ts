@@ -15,11 +15,24 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: {
+      output: {
+        manualChunks: undefined,
+      },
+    },
   },
   server: {
-    historyApiFallback: true,
+    proxy: {
+      "^(?!/api).*": {
+        target: "",
+        changeOrigin: false,
+        rewrite: (path) => path,
+        configure: (proxy, _options) => {
+          proxy.on('error', (err, _req, _res) => {
+            console.log('proxy error', err);
+          });
+        },
+      },
+    },
   },
-  preview: {
-    historyApiFallback: true,
-  }
 })
