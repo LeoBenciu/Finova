@@ -3,7 +3,7 @@ import { logout } from '@/app/helper/authHelpers';
 
 
 const baseQuery = fetchBaseQuery({
-    baseUrl: import.meta.env.REACT_APP_BASE_URL || 'http://localhost:3000',
+    baseUrl: 'https://finova-6eeu.onrender.com',
     prepareHeaders: (headers)=>{
         const token = localStorage.getItem('token');
         if(token){
