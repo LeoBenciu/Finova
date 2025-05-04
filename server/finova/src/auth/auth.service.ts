@@ -113,7 +113,7 @@ export class AuthService{
                 secret: this.config.get('JWT_SECRET')
                 });
 
-            const resetUrl = `localhost:5173/reset-password?token=${token}`;
+            const resetUrl = `https://finova-frontend.onrender.com/reset-password?token=${token}`;
 
             await this.mailerService.sendMail({
                 to: user.email,

@@ -93,7 +93,7 @@ const InitialClientCompanyModalSelect = () => {
         {filteredCompanies?.length===0||!filteredCompanies&&(
             <div className="flex mt-10 flex-col items-center
             justify-center">
-            <p className="font-bold">{language==='ro'?'Nu sunt companii asociate acestui cont':`There are no 
+            <p className="font-bold text-black">{language==='ro'?'Nu sunt companii asociate acestui cont':`There are no 
                 client companies associated with this account!
                 Please `}<span className="text-[var(--primary)]
                 cursor-pointer" onClick={()=>{
