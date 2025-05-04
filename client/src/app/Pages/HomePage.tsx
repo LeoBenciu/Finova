@@ -81,10 +81,12 @@ const HomePage = () => {
 
           <div className="justify-between flex items-start flex-col ">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {companyData?.incomeCurrentMonth.toFixed(2) || '0.00'}
+            $ $ {companyData?.incomeCurrentMonth !== undefined ? companyData.incomeCurrentMonth.toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">{incomePercentChange}</div>
+          <div className={`${Number(incomePercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+            {Number(incomePercentChange) > 0 ? `+${incomePercentChange}` : incomePercentChange}%
+          </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
@@ -95,10 +97,12 @@ const HomePage = () => {
 
           <div className="justify-between flex flex-col items-start">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {companyData?.expensesCurrentMonth.toFixed(2) || '0.00'}
+            $ {companyData?.expensesCurrentMonth !== undefined ? companyData.expensesCurrentMonth.toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-red-500/30 text-sm  px-1 text-red-500 font-bold rounded-full">{expensesPercentChange}</div>
+          <div className={`${Number(expensesPercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+            {Number(expensesPercentChange) > 0 ? `+${expensesPercentChange}` : expensesPercentChange}%
+          </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
@@ -109,10 +113,12 @@ const HomePage = () => {
 
           <div className="justify-between flex flex-col items-start">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {((companyData?.incomeCurrentMonth || 0) - (companyData?.expensesCurrentMonth || 0)).toFixed(2)}
+            $ {companyData ? ((companyData.incomeCurrentMonth || 0) - (companyData.expensesCurrentMonth || 0)).toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">{profitPercentageChange}</div>
+          <div className={`${Number(profitPercentageChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+            {Number(profitPercentageChange) > 0 ? `+${profitPercentageChange}` : profitPercentageChange}%
+          </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
