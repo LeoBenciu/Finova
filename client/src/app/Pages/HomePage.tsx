@@ -3,7 +3,7 @@ import { ChartDashboard } from "../Components/ChartDashboard";
 import InitialClientCopanyModalSelect from "../Components/InitialClientCompanyModalSelect";
 import { useGetCompanyDataQuery } from "@/redux/slices/apiSlice";
 import LoadingComponent from "../Components/LoadingComponent";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type clientCompany = {
   clientCompany:{
@@ -24,6 +24,19 @@ const HomePage = () => {
     currentCompanyEin:clientCompanyEin,
     year: dashboardYear
   });
+  const incomePercentChange = companyData && companyData.incomeLastMonth !== 0 ? 
+  ((companyData.incomeCurrentMonth - companyData.incomeLastMonth) / Math.abs(companyData.incomeLastMonth) * 100).toFixed(0) : 0;
+  const expensesPercentChange = companyData && companyData.expensesLastMonth !== 0 ? 
+    ((companyData.expensesCurrentMonth - companyData.expensesLastMonth) / Math.abs(companyData.expensesLastMonth) * 100).toFixed(0) : 0;
+  const lastMonthProfit = companyData ? (companyData.incomeLastMonth - companyData.expensesLastMonth) : 0;
+  const currentMonthProfit = companyData ? (companyData.incomeCurrentMonth - companyData.expensesCurrentMonth) : 0;
+  const profitPercentageChange = companyData && lastMonthProfit !== 0 ? 
+    ((currentMonthProfit - lastMonthProfit) / Math.abs(lastMonthProfit) * 100).toFixed(0) : 0;
+
+
+  useEffect(()=>{
+    console.log('LOG',companyData);
+  },[companyData]);
 
   const errors = [
     {
@@ -67,9 +80,11 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Venituri, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex items-start flex-col ">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 7.650,12{companyData.incomeCurrentMonth}</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
+            $ {companyData?.incomeCurrentMonth.toFixed(2) || '0.00'}
+          </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">+2%</div>
+            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">{incomePercentChange}</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
@@ -79,9 +94,11 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Cheltuieli, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex flex-col items-start">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 5.200,00 {companyData.expensesCurrentMonth}</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
+            $ {companyData?.expensesCurrentMonth.toFixed(2) || '0.00'}
+          </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-red-500/30 text-sm  px-1 text-red-500 font-bold rounded-full">-5%</div>
+            <div className="bg-red-500/30 text-sm  px-1 text-red-500 font-bold rounded-full">{expensesPercentChange}</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
@@ -91,9 +108,11 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Profit, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex flex-col items-start">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 2.450,12{companyData.incomeCurrentMonth-companyData.expensesCurrentMonth}</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
+            $ {((companyData?.incomeCurrentMonth || 0) - (companyData?.expensesCurrentMonth || 0)).toFixed(2)}
+          </h2>
           <div className="flex items-end gap-1">
-            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">+2%</div>
+            <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">{profitPercentageChange}</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
           </div>
