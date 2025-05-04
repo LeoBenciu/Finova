@@ -99,7 +99,7 @@ const InitialClientCompanyModalSelect = () => {
                 cursor-pointer" onClick={()=>{
                     navigate('/settings');
                 }}>
-                    Create New Company
+                    {language==='ro'?" creeaza o noua companie":" create new company"}
                 </span></p>
             </div>
         )}

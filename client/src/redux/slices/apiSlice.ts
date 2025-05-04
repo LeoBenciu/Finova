@@ -242,6 +242,17 @@ export const finovaApi = createApi({
             })
         }),
 
+        getCompanyData: build.query({
+            query: ({currentCompanyEin, year})=>({
+                url:'client-companies/data',
+                method: 'GET',
+                body:{
+                    currentCompanyEin: currentCompanyEin,
+                    year
+                }
+            })
+        }),
+
     })
 })
 
@@ -253,4 +264,5 @@ useModifyUserAccountMutation,useModifyUserPasswordMutation,
 useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
 useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
 useResetPasswordMutation, useInsertClientInvoiceMutation,
-useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery} = finovaApi;
+useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
+useGetCompanyDataQuery} = finovaApi;

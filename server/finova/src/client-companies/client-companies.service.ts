@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientCompanyDto, DeleteClientCompanyDto, NewManagementDto } from './dto';
 import { AnafService } from 'src/anaf/anaf.service';
@@ -478,7 +478,100 @@ export class ClientCompaniesService {
         return newManagement;
 
       } catch (e) {
-        console.error('error creating a new management:', e );
+        console.error('Error creating a new management:', e );
+        return e;
+      }
+    }
+
+    async getCompanyData (currentCompanyEin:string, reqUser:User, year:string)
+    {
+      try {
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+          where:{
+            ein: currentCompanyEin
+          }
+        });
+
+        if(!clientCompany) throw new NotFoundException('Client company not found in the database');
+
+        const user = await this.prisma.user.findUnique({
+          where:{
+            id: reqUser.id
+          }
+        });
+
+        if(!user) throw new NotFoundException('Not found user in the database');
+
+        const accountingClient = await this.prisma.accountingClients.findMany({
+          where:{
+            accountingCompanyId: user.accountingCompanyId,
+            clientCompanyId: clientCompany.id
+          }
+        });
+
+        if(accountingClient.length === 0) throw new UnauthorizedException("Sorry! You don't have access to this data");
+
+        const documents = await this.prisma.document.findMany({
+          where:{
+            accountingClientId: accountingClient[0].id
+          }
+        });
+
+        if(documents.length === 0) throw new NotFoundException('There are no documents processed for this company so there is no data in the database');
+
+        const processedData = await this.prisma.processedData.findMany({
+          where:{
+            documentId: {
+              in: documents.map(doc => doc.id)
+            }
+          }
+        });
+        let incomeLastMonth:number = 0;
+        let expensesLastMonth:number = 0;
+        let incomeCurrentMonth:number = 0;
+        let expensesCurrentMonth:number = 0;
+        let now = new Date();
+        let currentMonth = now.toLocaleDateString('en-GB').split('/').join('-').slice(3,5);
+        let currentYear = now.toLocaleDateString('en-GB').split('/').join('-').slice(6);
+
+        processedData.forEach((docData) => {
+          const extractedData = docData.extractedFields as { result: { buyerEin: string, total_amount: number, vat_amount: number, document_date: string } };
+          if(extractedData.result.document_date.slice(6)===currentYear){
+            if(extractedData.result.buyerEin === currentCompanyEin){
+              if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth)-1)
+              {
+                expensesLastMonth +=  extractedData.result.total_amount - extractedData.result.vat_amount;
+              }
+              else if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth))
+              {
+                expensesCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+              }
+            }else{
+              if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth)-1)
+                {
+                  incomeLastMonth +=extractedData.result.total_amount - extractedData.result.vat_amount;
+                }
+                else if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth))
+                {
+                  incomeCurrentMonth +=extractedData.result.total_amount - extractedData.result.vat_amount;
+                }
+            }
+          }
+        });
+
+        return {
+          incomeLastMonth, 
+          expensesLastMonth,
+          incomeCurrentMonth,
+          expensesCurrentMonth,
+          graphData:{
+
+          },
+          rpaProcesses: 'here'
+        }
+
+      } catch (e) {
+        console.error('Not found company data in the database:', e);
         return e;
       }
     }

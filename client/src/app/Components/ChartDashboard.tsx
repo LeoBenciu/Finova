@@ -60,9 +60,13 @@ const sampleDataByYear: Record<string, { month: string; income: number; expenses
   "2025": sampleData2025,
 }
 
-export function ChartDashboard() {
+export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: string) => void}) {
   const [year, setYear] = React.useState("2025");
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
+
+  React.useEffect(()=>{
+    setDashboardYear(year);
+  },[year,setYear])
 
   const chartConfig = React.useMemo(() => {
     return {

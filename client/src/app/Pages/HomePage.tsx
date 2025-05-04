@@ -1,8 +1,11 @@
 import { useSelector } from "react-redux"
 import { ChartDashboard } from "../Components/ChartDashboard";
 import InitialClientCopanyModalSelect from "../Components/InitialClientCompanyModalSelect";
+import { useGetCompanyDataQuery } from "@/redux/slices/apiSlice";
+import LoadingComponent from "../Components/LoadingComponent";
+import { useState } from "react";
 
-type clientCompanyName = {
+type clientCompany = {
   clientCompany:{
     current:{
       name:string,
@@ -13,8 +16,14 @@ type clientCompanyName = {
 
 const HomePage = () => {
 
-  const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name)
+  const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name);
+  const clientCompanyEin = useSelector((state:clientCompany)=>state.clientCompany.current.ein);
+  const [dashboardYear, setDashboardYear] =useState<string>();
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
+  const { data: companyData, isLoading: isCompanyDataLoading, isError: IsCompanyDataError } = useGetCompanyDataQuery({
+    currentCompanyEin:clientCompanyEin,
+    year: dashboardYear
+  });
 
   const errors = [
     {
@@ -43,6 +52,10 @@ const HomePage = () => {
     },
   ]
 
+  if(isCompanyDataLoading) return <LoadingComponent></LoadingComponent>
+
+  if(IsCompanyDataError) return <p>Error</p>
+
   return (
     <div className=' min-h-full max-h-full min-w-full px-10 py-0'>
       <div>
@@ -54,7 +67,7 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Venituri, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex items-start flex-col ">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 7.650,12</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 7.650,12{companyData.incomeCurrentMonth}</h2>
           <div className="flex items-end gap-1">
             <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">+2%</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
@@ -66,7 +79,7 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Cheltuieli, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex flex-col items-start">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 5.200,00</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 5.200,00 {companyData.expensesCurrentMonth}</h2>
           <div className="flex items-end gap-1">
             <div className="bg-red-500/30 text-sm  px-1 text-red-500 font-bold rounded-full">-5%</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
@@ -78,7 +91,7 @@ const HomePage = () => {
           <p className="text-left text-[var(--text1)]">{language==='ro'?'Profit, fara TVA':'Income, excluding VAT'}</p>
 
           <div className="justify-between flex flex-col items-start">
-          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 2.450,12</h2>
+          <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">$ 2.450,12{companyData.incomeCurrentMonth-companyData.expensesCurrentMonth}</h2>
           <div className="flex items-end gap-1">
             <div className="bg-green-500/30 text-sm  px-1 text-green-500 font-bold rounded-full">+2%</div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
@@ -89,7 +102,7 @@ const HomePage = () => {
 
 
         <div className='h-96 rounded-lg bg-[var(--foreground)] col-span-2'>
-          <ChartDashboard/>
+          <ChartDashboard setDashboardYear={setDashboardYear}/>
         </div>
 
         <div className='h-96 rounded-lg bg-[var(--foreground)] col-span-1 py-3 px-5'>

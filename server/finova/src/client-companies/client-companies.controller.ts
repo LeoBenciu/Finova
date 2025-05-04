@@ -79,4 +79,11 @@ export class ClientCompaniesController {
       return this.clientCompaniesService.saveNewManagement(dto);
     }
     
+    @Get('data')
+    getCompanyData(@Body() body:{currentCompanyEin:string, year:string}, @Req() req:Request)
+    {
+      const user = req.user as User;
+      return this.clientCompaniesService.getCompanyData(body.currentCompanyEin, user, body.year);
+    }
+
 }
