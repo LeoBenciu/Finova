@@ -536,25 +536,28 @@ export class ClientCompaniesService {
 
         processedData.forEach((docData) => {
           const extractedData = docData.extractedFields as { result: { buyerEin: string, total_amount: number, vat_amount: number, document_date: string } };
-          if(extractedData.result.document_date.slice(6)===currentYear){
-            if(extractedData.result.buyerEin === currentCompanyEin){
-              if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth)-1)
-              {
-                expensesLastMonth +=  extractedData.result.total_amount - extractedData.result.vat_amount;
-              }
-              else if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth))
-              {
-                expensesCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
-              }
-            }else{
-              if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth)-1)
-                {
-                  incomeLastMonth +=extractedData.result.total_amount - extractedData.result.vat_amount;
-                }
-                else if(Number(extractedData.result.document_date.slice(3,5))===Number(currentMonth))
-                {
-                  incomeCurrentMonth +=extractedData.result.total_amount - extractedData.result.vat_amount;
-                }
+          
+          const docYear = extractedData.result.document_date.split('/')[2] || 
+                          extractedData.result.document_date.slice(6);
+          
+          if (year && docYear !== year) {
+            return;
+          }
+          
+          const docMonth = extractedData.result.document_date.split('/')[1] || 
+                          extractedData.result.document_date.slice(3, 5);
+          
+          if (extractedData.result.buyerEin === currentCompanyEin) {
+            if (Number(docMonth) === Number(currentMonth) - 1) {
+              expensesLastMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+            } else if (Number(docMonth) === Number(currentMonth)) {
+              expensesCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+            }
+          } else {
+            if (Number(docMonth) === Number(currentMonth) - 1) {
+              incomeLastMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+            } else if (Number(docMonth) === Number(currentMonth)) {
+              incomeCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
             }
           }
         });

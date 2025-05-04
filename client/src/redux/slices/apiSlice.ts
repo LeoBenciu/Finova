@@ -245,7 +245,7 @@ export const finovaApi = createApi({
         getCompanyData: build.query({
             query: ({currentCompanyEin, year})=>({
                 url:'client-companies/data',
-                method: 'GET',
+                method: 'POST',
                 body:{
                     currentCompanyEin: currentCompanyEin,
                     year

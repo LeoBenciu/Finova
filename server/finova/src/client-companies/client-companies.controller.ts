@@ -79,7 +79,7 @@ export class ClientCompaniesController {
       return this.clientCompaniesService.saveNewManagement(dto);
     }
     
-    @Get('data')
+    @Post('data')
     getCompanyData(@Body() body:{currentCompanyEin:string, year:string}, @Req() req:Request)
     {
       const user = req.user as User;
