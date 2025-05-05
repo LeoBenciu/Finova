@@ -527,8 +527,6 @@ export class ClientCompaniesService {
           }
         });
 
-        return processedData;
-        
         let incomeLastMonth:number = 0;
         let expensesLastMonth:number = 0;
         let incomeCurrentMonth:number = 0;
