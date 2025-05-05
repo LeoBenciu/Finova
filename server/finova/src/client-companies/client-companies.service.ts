@@ -483,97 +483,121 @@ export class ClientCompaniesService {
       }
     }
 
-    async getCompanyData (currentCompanyEin:string, reqUser:User, year:string)
-    {
+    async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
       try {
         const clientCompany = await this.prisma.clientCompany.findUnique({
-          where:{
+          where: {
             ein: currentCompanyEin
           }
         });
-
-        if(!clientCompany) throw new NotFoundException('Client company not found in the database');
-
+    
+        if (!clientCompany) throw new NotFoundException('Client company not found in the database');
+    
         const user = await this.prisma.user.findUnique({
-          where:{
+          where: {
             id: reqUser.id
           }
         });
-
-        if(!user) throw new NotFoundException('Not found user in the database');
-
+    
+        if (!user) throw new NotFoundException('Not found user in the database');
+    
         const accountingClient = await this.prisma.accountingClients.findMany({
-          where:{
+          where: {
             accountingCompanyId: user.accountingCompanyId,
             clientCompanyId: clientCompany.id
           }
         });
-
-        if(accountingClient.length === 0) throw new UnauthorizedException("Sorry! You don't have access to this data");
-
+    
+        if (accountingClient.length === 0) throw new UnauthorizedException("Sorry! You don't have access to this data");
+    
         const documents = await this.prisma.document.findMany({
-          where:{
+          where: {
             accountingClientId: accountingClient[0].id
           }
         });
-
-        if(documents.length === 0) throw new NotFoundException('There are no documents processed for this company so there is no data in the database');
-
+    
+        if (documents.length === 0) throw new NotFoundException('There are no documents processed for this company so there is no data in the database');
+    
         const processedData = await this.prisma.processedData.findMany({
-          where:{
+          where: {
             documentId: {
               in: documents.map(doc => doc.id)
             }
           }
         });
-
-        let incomeLastMonth:number = 0;
-        let expensesLastMonth:number = 0;
-        let incomeCurrentMonth:number = 0;
-        let expensesCurrentMonth:number = 0;
+    
+        let incomeLastMonth: number = 0;
+        let expensesLastMonth: number = 0;
+        let incomeCurrentMonth: number = 0;
+        let expensesCurrentMonth: number = 0;
         let now = new Date();
-        let currentMonth = now.toLocaleDateString('en-GB').split('/').join('-').slice(3,5);
+        let currentMonth = now.toLocaleDateString('en-GB').split('/').join('-').slice(3, 5);
         let currentYear = now.toLocaleDateString('en-GB').split('/').join('-').slice(6);
-
+    
+        const monthlyData = Array(12).fill(0).map((_, i) => ({
+          month: i + 1,
+          monthName: new Date(2000, i, 1).toLocaleString('en-US', { month: 'short' }),
+          income: 0,
+          expenses: 0
+        }));
+    
         processedData.forEach((docData) => {
-          const extractedData = docData.extractedFields as { result: { buyerEin: string, total_amount: number, vat_amount: number, document_date: string } };
-          
-          const docYear = extractedData.result.document_date.split('/')[2] || 
-                          extractedData.result.document_date.slice(6);
-          
+          const extractedData = docData.extractedFields as {
+            result: {
+              buyerEin: string,
+              total_amount: number,
+              vat_amount: number,
+              document_date: string
+            }
+          };
+    
+          const docYear = extractedData.result.document_date.split('/')[2] ||
+            extractedData.result.document_date.slice(6);
+    
           if (year && docYear !== year) {
             return;
           }
+    
+          const docMonth = extractedData.result.document_date.split('/')[1] ||
+            extractedData.result.document_date.slice(3, 5);
           
-          const docMonth = extractedData.result.document_date.split('/')[1] || 
-                          extractedData.result.document_date.slice(3, 5);
+          const docMonthIndex = Number(docMonth) - 1; // Convert to 0-based index
           
+          const amountWithoutVat = extractedData.result.total_amount - extractedData.result.vat_amount;
+    
           if (extractedData.result.buyerEin === currentCompanyEin) {
             if (Number(docMonth) === Number(currentMonth) - 1) {
-              expensesLastMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+              expensesLastMonth += amountWithoutVat;
             } else if (Number(docMonth) === Number(currentMonth)) {
-              expensesCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+              expensesCurrentMonth += amountWithoutVat;
+            }
+            
+            if (docMonthIndex >= 0 && docMonthIndex < 12) {
+              monthlyData[docMonthIndex].expenses += amountWithoutVat;
             }
           } else {
             if (Number(docMonth) === Number(currentMonth) - 1) {
-              incomeLastMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+              incomeLastMonth += amountWithoutVat;
             } else if (Number(docMonth) === Number(currentMonth)) {
-              incomeCurrentMonth += extractedData.result.total_amount - extractedData.result.vat_amount;
+              incomeCurrentMonth += amountWithoutVat;
+            }
+            
+            if (docMonthIndex >= 0 && docMonthIndex < 12) {
+              monthlyData[docMonthIndex].income += amountWithoutVat;
             }
           }
         });
-
+    
         return {
-          incomeLastMonth, 
+          incomeLastMonth,
           expensesLastMonth,
           incomeCurrentMonth,
           expensesCurrentMonth,
-          graphData:{
-
+          graphData: {
+            monthlyData
           },
           rpaProcesses: 'here'
         }
-
       } catch (e) {
         console.error('Not found company data in the database:', e);
         return e;
