@@ -26,47 +26,36 @@ import {
 } from "@/components/ui/select"
 import { useSelector } from "react-redux"
 
-// Sample data for the year 2025 – one data point per month.
-const sampleData2025 = [
-  { month: "Jan", income: 5000, expenses: 3200 },
-  { month: "Feb", income: 6000, expenses: 3500 },
-  { month: "Mar", income: 5500, expenses: 3000 },
-  { month: "Apr", income: 7000, expenses: 4000 },
-  { month: "May", income: 6500, expenses: 3800 },
-  { month: "Jun", income: 7200, expenses: 4100 },
-  { month: "Jul", income: 6800, expenses: 3900 },
-  { month: "Aug", income: 7500, expenses: 4200 },
-  { month: "Sep", income: 7000, expenses: 4000 },
-  { month: "Oct", income: 7300, expenses: 4100 },
-  { month: "Nov", income: 7100, expenses: 4050 },
-  { month: "Dec", income: 7600, expenses: 4300 },
-]
+export function ChartDashboard({ setDashboardYear, chartData }: { setDashboardYear: (year: string) => void, chartData: any }) {
+  const currentYear = new Date().getFullYear();
+  const availableYears = React.useMemo(() => {
+    return Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
+  }, [currentYear]);
 
-// For years other than 2025, we simply generate zero values.
-const generateEmptyData = (year: number) =>
-  Array.from({ length: 12 }, (_, i) => {
-    const monthLabel = new Date(year, i, 1).toLocaleString("en-US", {
-      month: "short",
-    })
-    return { month: monthLabel, income: 0, expenses: 0 }
-  })
-
-// A simple lookup for sample data by year.
-const sampleDataByYear: Record<string, { month: string; income: number; expenses: number }[]> = {
-  "2020": generateEmptyData(2020),
-  "2021": generateEmptyData(2021),
-  "2022": generateEmptyData(2022),
-  "2023": generateEmptyData(2023),
-  "2025": sampleData2025,
-}
-
-export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: string) => void}) {
-  const [year, setYear] = React.useState("2025");
+  const [year, setYear] = React.useState(currentYear.toString());
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
-  React.useEffect(()=>{
+  interface MonthlyDataItem {
+    monthName: string;
+    income: number;
+    expenses: number;
+  }
+
+  const formattedChartData = React.useMemo(() => {
+    if (!chartData || !chartData.graphData || !chartData.graphData.monthlyData) {
+      return [];
+    }
+    
+    return chartData.graphData.monthlyData.map((item: MonthlyDataItem) => ({
+      month: item.monthName,
+      income: item.income,
+      expenses: item.expenses
+    }));
+  }, [chartData]);
+
+  React.useEffect(() => {
     setDashboardYear(year);
-  },[year,setYear])
+  }, [year, setDashboardYear]);
 
   const chartConfig = React.useMemo(() => {
     return {
@@ -79,12 +68,7 @@ export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: str
         color: "#ef4444",
       },
     } satisfies ChartConfig
-  }, [language])
-
-  // Get the appropriate data based on the selected year.
-  const chartData = React.useMemo(() => {
-    return sampleDataByYear[year] || generateEmptyData(parseInt(year, 10))
-  }, [year])
+  }, [language]);
 
   return (
     <Card className="min-w-full min-h-full max-w-full max-h-full border-none flex flex-col">
@@ -101,21 +85,15 @@ export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: str
             <SelectValue placeholder="Select Year" />
           </SelectTrigger>
           <SelectContent className="rounded-xl bg-[var(--background)] border-0">
-            <SelectItem value="2020" className="rounded-lg cursor-pointer text-[var(--text1)]">
-              2020
-            </SelectItem>
-            <SelectItem value="2021" className="rounded-lg cursor-pointer text-[var(--text1)]">
-              2021
-            </SelectItem>
-            <SelectItem value="2022" className="rounded-lg cursor-pointer text-[var(--text1)]">
-              2022
-            </SelectItem>
-            <SelectItem value="2023" className="rounded-lg cursor-pointer text-[var(--text1)]">
-              2023
-            </SelectItem>
-            <SelectItem value="2025" className="rounded-lg cursor-pointer text-[var(--text1)]">
-              2025
-            </SelectItem>
+            {availableYears.map((yearOption) => (
+              <SelectItem 
+                key={yearOption} 
+                value={yearOption} 
+                className="rounded-lg cursor-pointer text-[var(--text1)]"
+              >
+                {yearOption}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </CardHeader>
@@ -124,7 +102,10 @@ export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: str
           config={chartConfig}
           className="aspect-auto h-[250px] w-full text-[var(--text1)]"
         >
-          <AreaChart data={chartData} margin={{ left: 10, right: 10 }}>
+          <AreaChart 
+            data={formattedChartData} 
+            margin={{ left: 10, right: 10 }}
+          >
             <defs>
               <linearGradient id="fillIncome" x1="0" y1="0" x2="0" y2="1">
                 <stop
@@ -159,7 +140,6 @@ export function ChartDashboard({setDashboardYear}: {setDashboardYear: (year: str
               tickMargin={8}
               minTickGap={0}
               color="text-[var(--primaryText)]"
-              ticks={chartData.map(d => d.month)}
               interval={0}
               tick={{ fill: "var(--text1)" }}
             />

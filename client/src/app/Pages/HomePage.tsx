@@ -127,7 +127,7 @@ const HomePage = () => {
 
 
         <div className='h-96 rounded-lg bg-[var(--foreground)] col-span-2'>
-          <ChartDashboard setDashboardYear={setDashboardYear}/>
+          <ChartDashboard setDashboardYear={setDashboardYear} chartData={companyData}/>
         </div>
 
         <div className='h-96 rounded-lg bg-[var(--foreground)] col-span-1 py-3 px-5'>
