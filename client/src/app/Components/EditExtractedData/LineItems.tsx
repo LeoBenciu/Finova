@@ -119,30 +119,55 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
 
       <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Tip':'Type'}</div>
       <div className="p-4 flex justify-center items-center">
+      {id===item.buyer_ein&&(
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
           text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type:'MARFURI'}
           onChange={(e)=>handleChange('type', e.target.value)}>
+          <option value="NEDEFINIT">Nedefinit</option>
           <option value="MARFURI">Marfuri</option>
           <option value="MATERII_PRIME">Materii prime</option>
           <option value="MATERIALE_AUXILIARE">Materiale auxiliare</option>
           <option value="COMBUSTIBILI">Combustibili</option>
           <option value="PIESE_DE_SCHIMB">Piese de schimb</option>
           <option value="ALTE_MATERIALE_CONSUMABILE">Alte mat. consumabile</option>
-          <option value="PRODUSE_FINITE">Produse finite</option>
           <option value="AMBALAJE">Ambalaje</option>
           <option value="OBIECTE_DE_INVENTAR">Obiecte de inventar</option>
-          <option value="SEMIFABRICATE">Semifabricate</option>
           <option value="AMENAJARI_PROVIZORII">Amenajari provizorii</option>
           <option value="MATERIALE_SPRE_PRELUCRARE">Mat. spre prelucrare</option>
           <option value="MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE">Mat. in pastrare/consig</option>
           <option value="DISCOUNT_FINANCIAL_INTRARI">Discount financiar intrari</option>
-          <option value="DISCOUNT_FINANCIAL_IESIRI">Discount financiar iesiri</option>
           <option value="DISCOUNT_COMERCIAL_INTRARI">Discount comercial intrari</option>
+          <option value="AMBALAJE_SGR">Ambalaje SGR</option>
+        </select>
+      )}
+
+      {id!==item.buyer_ein&&(
+        <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
+          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type:'MARFURI'}
+          onChange={(e)=>handleChange('type', e.target.value)}>
+          <option value="NEDEFINIT">Nedefinit</option>
+          <option value="MARFURI">Marfuri</option>
+          <option value="PRODUSE_FINITE">Produse finite</option>
+          <option value="AMBALAJE">Ambalaje</option>
+          <option value="SEMIFABRICATE">Semifabricate</option>
+          <option value="DISCOUNT_FINANCIAL_IESIRI">Discount financiar iesiri</option>
           <option value="DISCOUNT_COMERCIAL_IESIRI">Discount comercial iesiri</option>
           <option value="SERVICII_VANDUTE">Servicii vandute</option>
           <option value="AMBALAJE_SGR">Ambalaje SGR</option>
-          <option value="TAXA_VERDE">Taxa verde</option>/
+          <option value="TAXA_VERDE">Taxa verde</option>
+          <option value="PRODUSE_REZIDUALE">Produse reziduale</option>
         </select>
+      )}
+      </div>
+
+      <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Cont Contabil':'Account Code'}</div>
+      <div className="p-4 flex justify-center items-center">
+        <input
+          value={item ? (item.account_code? item.account_code : '0'):'-'}
+          className="bg-[var(--foreground)] max-w-35 text-center py-2 rounded-2xl pl-1
+          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]"
+          onChange={(e) => handleChange('account_code', Number(e.target.value))}
+        />
       </div>
 
       <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Gestiune':'Management'}</div>
