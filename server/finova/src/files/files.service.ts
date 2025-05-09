@@ -130,8 +130,8 @@ export class FilesService {
             });
 
             processedData.result.line_items.forEach(async(item)=>{
-                if(item.isNew){
-                    const newArticle = await this.prisma.article.create({
+                if(item.isNew && item.type !== "Nedefinit"){
+                    await this.prisma.article.create({
                         data:{
                             code: item.articleCode,
                             name: item.name,
@@ -142,7 +142,7 @@ export class FilesService {
                         }
                     })
                 }
-            })
+            });
 
             const processedDataDb = await this.prisma.processedData.create({
                 data:{

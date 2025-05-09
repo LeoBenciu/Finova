@@ -28,6 +28,7 @@ export class DataExtractionService {
             2. **Extract Document Details**:
                - Extract the following fields when available:
                  - document_type: "Invoice" or "Receipt" (set to null if neither).
+                 - invoice_type: Incoming or Outgoing.
                  - vendor: Name of the vendor or service provider.
                  - vendor_ein: Vendor's unique identifier (number only, remove "RO" prefix).
                  - buyer: Name of the buyer.
@@ -84,6 +85,7 @@ export class DataExtractionService {
             **Example Output**:
             {
               "document_type": "Invoice",
+              "invoice_type": "Incoming",
               "vendor": "Vendor SRL",
               "vendor_ein": "12345678",
               "buyer": "Buyer SRL",
