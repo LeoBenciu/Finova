@@ -248,68 +248,51 @@ export class DataExtractionService {
         }
     }
 
-    private validateExtractedData(data: any, existingArticles: any[], managementRecords: any[], clientCompanyEin: string) {
+    private validateExtractedData(
+        data: any,
+        existingArticles: any[],
+        managementRecords: any[],
+        clientCompanyEin: string
+      ) {
         if (!data || typeof data !== 'object') {
-            throw new Error('Invalid extracted data format')
+          throw new Error('Invalid extracted data format');
         }
-
-        if (data.buyer_ein === clientCompanyEin) {
+      
+        if (!data.invoice_type || !data.reason_invoice) {
+          if (data.buyer_ein === clientCompanyEin) {
             data.invoice_type = "Incoming";
-            data.reason_invoice = `The buyer_ein (${data.buyer_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an incoming invoice`;
-        } else if (data.vendor_ein === clientCompanyEin) {
+            data.reason_invoice = `The buyer_ein (${data.buyer_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an incoming invoice (fallback, no explicit label found)`;
+          } else if (data.vendor_ein === clientCompanyEin) {
             data.invoice_type = "Outgoing";
-            data.reason_invoice = `The vendor_ein (${data.vendor_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an outgoing invoice`;
+            data.reason_invoice = `The vendor_ein (${data.vendor_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an outgoing invoice (fallback, no explicit label found)`;
+          } else {
+            data.invoice_type = null;
+            data.reason_invoice = "Could not determine invoice direction: no explicit label or matching EIN found.";
+          }
         }
-
-        if (data.line_items && Array.isArray(data.line_items)) {
-            data.line_items.forEach((item: any, index: number) => {
-                if (item.type === 'Nedefinit' || item.type === 'NEDEFINIT') {
-                    item.management = null;
-                    
-                    if (item.name && (item.name.toLowerCase().includes('transport') || 
-                                      item.name.toLowerCase().includes('livrare') ||
-                                      item.name.toLowerCase().includes('expeditie'))) {
-                        item.account_code = "624";
-                    }
-                }
-                
-                if (!item.isNew) {
-                    const matchedArticle = existingArticles.find(
-                        (a) => a.code === item.articleCode || 
-                              (a.name && item.name && a.name.toLowerCase() === item.name.toLowerCase())
-                    );
-                    
-                    if (!matchedArticle) {
-                        this.logger.warn(`No matching article found for line item ${index}, marking as new`);
-                        item.isNew = true;
-                        item.type = item.type || (data.invoice_type === "Incoming" ? 'MARFURI' : 'MARFURI');
-                        item.vat = item.vat || 'NINETEEN';
-                        item.um = item.um || 'BUCATA';
-                    } else {
-                        item.type = matchedArticle.type;
-                        item.articleCode = matchedArticle.code;
-                        item.name = matchedArticle.name;
-                        item.vat = matchedArticle.vat;
-                        item.um = matchedArticle.unitOfMeasure;
-                    }
-                }
-                
-                if (item.type && typeof item.type === 'string') {
-                    item.type = item.type.toUpperCase();
-                }
-                if (item.vat && typeof item.vat === 'string') {
-                    item.vat = item.vat.toUpperCase();
-                }
-                if (item.um && typeof item.um === 'string') {
-                    item.um = item.um.toUpperCase();
-                }
-            });
-
-            data.vat_amount = data.line_items.reduce((sum: number, item: any) => {
-                return sum + (Number(item.vat_amount || 0) * Number(item.quantity || 1));
-            }, 0);
-            
-            data.vat_amount = Math.round((data.vat_amount + Number.EPSILON) * 100) / 100;
+      
+        if (Array.isArray(data.line_items)) {
+          data.line_items = data.line_items.map((item: any) => {
+            if (item.quantity !== undefined) {
+              item.quantity = Number(item.quantity);
+            }
+            if (item.unit_price !== undefined) {
+              item.unit_price = Number(item.unit_price);
+            }
+            if (item.vat_amount !== undefined) {
+              item.vat_amount = Number(item.vat_amount);
+            }
+            if (item.total !== undefined) {
+              item.total = Number(item.total);
+            }
+            return item;
+          });
+        } else {
+          data.line_items = [];
         }
-    }
+      
+      
+        return data;
+      }
+      
 }
