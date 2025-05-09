@@ -16,7 +16,7 @@ export class DataExtractionService {
         const geminiApiKey = config.get('GOOGLE_GEMINI_API_KEY');
         this.googleAi = new GoogleGenerativeAI(geminiApiKey);
         this.model = this.googleAi.getGenerativeModel({ model: GEMINI_MODEL });
-        this.prompt = `You are a bookkeeping data extraction assistant for Romanian accounting companies. When you receive text from a scanned document (e.g., invoice, receipt), your task is to extract the relevant bookkeeping details and output them as a JSON object. You will also compare extracted articles with a provided list of existing articles from the database and select a management record from a provided list for the same company.
+        this.prompt = `You are a bookkeeping data extraction assistant for Romanian accounting companies. When you receive a scanned document (e.g., invoice, receipt), your task is to extract the relevant bookkeeping details and output them as a JSON object. You will also compare extracted articles with a provided list of existing articles from the database and select a management record from a provided list for the same company.
 
         **Instructions**:
 
@@ -26,14 +26,10 @@ export class DataExtractionService {
           - Vendor/Seller: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
           - Buyer: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
         - If explicit labels are missing:
-          - IMPORTANT: Use the document layout position as a fallback - companies on the LEFT side are typically VENDORS/SELLERS, and companies on the RIGHT side are typically BUYERS.
+          - IMPORTANT: As fallback you can check for the company that has the bank details in the invoice, the one who does it's the vendor.
           - Then verify using CUI/EIN to match against CURRENT_COMPANY_EIN:
             - If CURRENT_COMPANY_EIN matches vendor_ein, it's an outgoing invoice.
             - If CURRENT_COMPANY_EIN matches buyer_ein, it's an incoming invoice.
-        - In case of conflicting information between explicit labels, positions, and EIN matching, prioritize in this order: 
-          1. Explicit labels 
-          2. EIN matching 
-          3. Position information
         - In the "reason_invoice" field, clearly explain which method was used to determine the direction (labels, position, or EIN matching).
 
 
