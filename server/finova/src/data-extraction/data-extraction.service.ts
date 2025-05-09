@@ -20,18 +20,13 @@ export class DataExtractionService {
 
         **Instructions**:
 
-        1. **Determine Invoice Direction and Parties (Buyer/Vendor):**
-        - First try to determine the buyer and vendor using explicit labels or keywords in the document.
-        - For Romanian documents, use:
-          - Vendor/Seller: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
-          - Buyer: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
-        - If explicit labels are missing:
-          - IMPORTANT: As fallback you can check for the company that has the bank details in the invoice, the one who does it's the vendor.
-          - Then verify using CUI/EIN to match against CURRENT_COMPANY_EIN:
-            - If CURRENT_COMPANY_EIN matches vendor_ein, it's an outgoing invoice.
-            - If CURRENT_COMPANY_EIN matches buyer_ein, it's an incoming invoice.
-        - In the "reason_invoice" field, clearly explain which method was used to determine the direction (labels, position, or EIN matching).
-
+        1. **Determine Invoice Direction and Parties (Buyer/Vendor) - THIS IS CRITICAL:**
+        - IMPORTANT: DO NOT fabricate or hallucinate any labels like "Furnizor" or "Cumpărător" if they are not explicitly present in the document.
+        - First, check if the document has explicit labels or keywords:
+          - Vendor/Seller labels: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
+          - Buyer labels: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
+        - If labels are missing, use the following fallbacks IN THIS ORDER:
+          - Fallback: The company that has bank details (IBAN/account numbers) is most likely the VENDOR/SELLER. Look for IBAN numbers, bank names, or account details.
 
         2. **Extract Document Details**:
            - Extract the following fields when available:
