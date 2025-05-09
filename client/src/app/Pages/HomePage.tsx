@@ -85,7 +85,7 @@ const HomePage = () => {
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(incomePercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
-            {Number(incomePercentChange) >= 0 ? `+${incomePercentChange}` : `-${incomePercentChange}`}%
+            {Number(incomePercentChange) >= 0 ? `+${incomePercentChange}` : `${incomePercentChange}`}%
           </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
@@ -101,7 +101,7 @@ const HomePage = () => {
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(expensesPercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
-            {Number(expensesPercentChange) >= 0 ? `+${expensesPercentChange}` : `-${expensesPercentChange}`}%
+            {Number(expensesPercentChange) >= 0 ? `+${expensesPercentChange}` : `${expensesPercentChange}`}%
           </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
@@ -117,7 +117,7 @@ const HomePage = () => {
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(profitPercentageChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
-            {Number(profitPercentageChange) >= 0 ? `+${profitPercentageChange}` : `-${profitPercentageChange}`}%
+            {Number(profitPercentageChange) >= 0 ? `+${profitPercentageChange}` : `${profitPercentageChange}`}%
           </div>
             <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
           </div>
