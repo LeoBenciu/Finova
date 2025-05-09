@@ -22,6 +22,7 @@ export class DataExtractionService {
 
             1. **Determine Invoice Direction**:
                - First, identify if this is an incoming invoice (from supplier) or outgoing invoice (to customer) by comparing the buyer_ein with the CURRENT_COMPANY_EIN ({{CURRENT_COMPANY_EIN}}).
+               - The buyer from an invoice is usually on the right side of the invoice and the supplier's details on the left side unless is specified the reverse way.
                - If buyer_ein matches CURRENT_COMPANY_EIN, this is an incoming invoice (from supplier).
                - If vendor_ein matches CURRENT_COMPANY_EIN, this is an outgoing invoice (to customer).
 

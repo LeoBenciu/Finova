@@ -121,7 +121,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
       <div className="p-4 flex justify-center items-center">
       {id===item.buyer_ein&&(
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
-          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type:'MARFURI'}
+          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type.toUpperCase():'NEDEFINIT'}
           onChange={(e)=>handleChange('type', e.target.value)}>
           <option value="NEDEFINIT">Nedefinit</option>
           <option value="MARFURI">Marfuri</option>
@@ -173,11 +173,11 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
       <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Gestiune':'Management'}</div>
       <div className="p-4 flex justify-center items-center">
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
-          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.management:'-'}
+          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.management.toUpperCase():'-'}
           onChange={(e)=>{handleChange('management', e.target.value)}}>
               <option key={"None"} value={'-'}>-</option>
             {managementList?.map((management:Management, index:number)=>(
-              <option key={index} value={management.name}>{management.name} ({management.type})</option>
+              <option key={index} value={management.name.toUpperCase()}>{management.name} ({management.type})</option>
             ))}
         </select>
       </div>
