@@ -122,7 +122,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
 
       <div className="p-4 flex justify-center items-center text-[var(--text2)] font-bold">{language==='ro'?'Tip':'Type'}</div>
       <div className="p-4 flex justify-center items-center">
-      {id===item.buyer_ein&&(
+      {id===editFile?.result?.buyer_ein&&(
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
           text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type?.toUpperCase():'NEDEFINIT'}
           onChange={(e)=>handleChange('type', e.target.value)}>
@@ -144,7 +144,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
         </select>
       )}
 
-      {id!==item.buyer_ein&&(
+      {id!==editFile?.result?.buyer_ein&&(
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
           text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type?.toUpperCase():'NEDEFINIT'}
           onChange={(e)=>handleChange('type', e.target.value)}>
