@@ -21,23 +21,27 @@ export class DataExtractionService {
         **Instructions**:
 
         1. **Determine Invoice Direction and Parties (Buyer/Vendor):**
-        - Always determine the buyer and vendor using explicit labels or keywords in the document.
+        - First try to determine the buyer and vendor using explicit labels or keywords in the document.
         - For Romanian documents, use:
           - Vendor/Seller: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
           - Buyer: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
-        - Never use the position (left/right) of the fields to determine buyer or vendor.
-        - If explicit labels are missing, use the CUI/EIN to match against CURRENT_COMPANY_EIN:
-          - If CURRENT_COMPANY_EIN matches vendor_ein, it's an outgoing invoice.
-          - If CURRENT_COMPANY_EIN matches buyer_ein, it's an incoming invoice.
-        - In case of ambiguity, always prioritize explicit labels over CUI/EIN matching.
-        - In the "reason_invoice" field, clearly explain which labels or EINs were matched to determine the direction.
+        - If explicit labels are missing:
+          - IMPORTANT: Use the document layout position as a fallback - companies on the LEFT side are typically VENDORS/SELLERS, and companies on the RIGHT side are typically BUYERS.
+          - Then verify using CUI/EIN to match against CURRENT_COMPANY_EIN:
+            - If CURRENT_COMPANY_EIN matches vendor_ein, it's an outgoing invoice.
+            - If CURRENT_COMPANY_EIN matches buyer_ein, it's an incoming invoice.
+        - In case of conflicting information between explicit labels, positions, and EIN matching, prioritize in this order: 
+          1. Explicit labels 
+          2. EIN matching 
+          3. Position information
+        - In the "reason_invoice" field, clearly explain which method was used to determine the direction (labels, position, or EIN matching).
 
 
         2. **Extract Document Details**:
            - Extract the following fields when available:
              - document_type: "Invoice" or "Receipt" (set to null if neither).
              - invoice_type: "Incoming" or "Outgoing".
-             - reason_invoice: The reason why the invoice is Incoming or Outgoing, including which EINs were compared.
+             - reason_invoice: The reason why the invoice is Incoming or Outgoing, including which EINs were compared or which positional information was used.
              - vendor: Name of the vendor or service provider.
              - vendor_ein: Vendor's unique identifier (number only, remove "RO" prefix).
              - buyer: Name of the buyer.
@@ -290,7 +294,6 @@ export class DataExtractionService {
         } else {
           data.line_items = [];
         }
-      
       
         return data;
       }
