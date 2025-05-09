@@ -29,6 +29,7 @@ export class DataExtractionService {
                - Extract the following fields when available:
                  - document_type: "Invoice" or "Receipt" (set to null if neither).
                  - invoice_type: Incoming or Outgoing.
+                 - reason_invoice: The reason why the invoice is Incoming or Outgoing.
                  - vendor: Name of the vendor or service provider.
                  - vendor_ein: Vendor's unique identifier (number only, remove "RO" prefix).
                  - buyer: Name of the buyer.
@@ -86,6 +87,7 @@ export class DataExtractionService {
             {
               "document_type": "Invoice",
               "invoice_type": "Incoming",
+              "reason_invoice": "Because I compared the buyer_ein(87654321) with the CURRENT_COMPANY_EIN (23423423) and they were not equal",
               "vendor": "Vendor SRL",
               "vendor_ein": "12345678",
               "buyer": "Buyer SRL",

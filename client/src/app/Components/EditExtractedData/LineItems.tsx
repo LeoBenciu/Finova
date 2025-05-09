@@ -143,7 +143,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
 
       {id!==item.buyer_ein&&(
         <select className="bg-[var(--foreground)] min-w-35 max-w-35 text-center py-2 rounded-2xl pl-1
-          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type:'MARFURI'}
+          text-[var(--text1)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]" defaultValue={item? item.type.toUpperCase():'NEDEFINIT'}
           onChange={(e)=>handleChange('type', e.target.value)}>
           <option value="NEDEFINIT">Nedefinit</option>
           <option value="MARFURI">Marfuri</option>
