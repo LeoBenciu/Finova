@@ -58,7 +58,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
   console.log('current ein:',id);
-  console.log('buyer ein:',item?.buyer_ein);
+  console.log('buyer ein:',editFile?.result?.buyer_ein);
 
   return (
     <div className="bg-[var(--background)] rounded-3xl min-h-max min-w-full flex-1 grid grid-cols-2 mt-10">
