@@ -20,15 +20,18 @@ export class DataExtractionService {
 
         **Instructions**:
 
-        1. **Determine Invoice Direction**:
-           - First, identify the buyer and vendor correctly from the document. Look for explicit labels like "Buyer", "Customer", "Purchaser", "Beneficiary" vs "Vendor", "Supplier", "Seller", etc.
-           - In Romanian documents, look for terms like "Cumpărător", "Client", "Beneficiar" vs "Furnizor", "Vânzător", etc.
-           - Do not rely solely on position (left/right) as this can vary by document format.
-           - An incoming invoice is when your company is the buyer (i.e., CURRENT_COMPANY_EIN matches the buyer_ein)
-           - An outgoing invoice is when your company is the vendor (i.e., CURRENT_COMPANY_EIN matches the vendor_ein)
-           - If the document appears to be formatted in an unusual way, prioritize explicit labels over assumed positions.
-           - IMPORTANT: CURRENT_COMPANY_EIN is {{CURRENT_COMPANY_EIN}} - keep this in mind when determining direction.
-           - After determining the direction, explain your reasoning in the "reason_invoice" field.
+        1. **Determine Invoice Direction and Parties (Buyer/Vendor):**
+        - Always determine the buyer and vendor using explicit labels or keywords in the document.
+        - For Romanian documents, use:
+          - Vendor/Seller: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
+          - Buyer: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
+        - Never use the position (left/right) of the fields to determine buyer or vendor.
+        - If explicit labels are missing, use the CUI/EIN to match against CURRENT_COMPANY_EIN:
+          - If CURRENT_COMPANY_EIN matches vendor_ein, it's an outgoing invoice.
+          - If CURRENT_COMPANY_EIN matches buyer_ein, it's an incoming invoice.
+        - In case of ambiguity, always prioritize explicit labels over CUI/EIN matching.
+        - In the "reason_invoice" field, clearly explain which labels or EINs were matched to determine the direction.
+
 
         2. **Extract Document Details**:
            - Extract the following fields when available:
@@ -92,7 +95,7 @@ export class DataExtractionService {
         {
           "document_type": "Invoice",
           "invoice_type": "Incoming",
-          "reason_invoice": "The buyer_ein (87654321) matches CURRENT_COMPANY_EIN (87654321), making this an incoming invoice",
+          "reason_invoice": "Identified 'Furnizor' as NEXT CORP S.R.L. (CUI: 47935139) and 'Cumpărător' as S.C. FLANCO RETAIL S.A. (CUI: 27698631) based on explicit labels in the document. CURRENT_COMPANY_EIN matches vendor_ein, so this is an outgoing invoice.",
           "vendor": "Vendor SRL",
           "vendor_ein": "12345678",
           "buyer": "Buyer SRL",
