@@ -31,9 +31,8 @@ export class FilesController {
     @Put('')
     updateFiles(@Body() dto:UpdateFileDto, @Req() req:Request & {user:User})
     {
-        const processedData = JSON.parse(dto.processedData);
         const user = req.user as User;
-        return this.fileMangementService.updateFiles(processedData, dto.clientCompanyEin, user, dto.docId);
+        return this.fileMangementService.updateFiles(dto.processedData, dto.clientCompanyEin, user, dto.docId);
     }
 
     @Delete('')

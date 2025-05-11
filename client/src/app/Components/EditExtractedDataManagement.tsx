@@ -59,45 +59,45 @@ const EditExtractedDataManagement = ({ setProcessedFiles,processedFiles, setIsMo
     const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
     const handleUpdateButton = useCallback(async () => {
-        try {
-          const updatedFile = await updateFile({ 
-            clientCompanyEin: currentClientCompanyEin, 
-            processedData: currentFile.processedData[0].extractedFields,
-            docId: currentFile.processedData[0].documentId
-          }).unwrap();
-          console.log('Updated File', updatedFile);
-          setProcessedFiles(prevFiles => {
-            if (!prevFiles || !prevFiles.documents) {
-              return prevFiles;
-            }
-            
-            return {
-              ...prevFiles,
-              documents: prevFiles.documents.map((file:any) => {
-                if (file.processedData[0].documentId === currentFile.processedData[0].documentId) {
-                  return {
-                    ...file,
-                    processedData: [{
-                      ...file.processedData[0],
-                      extractedFields: {
-                        ...file.processedData[0].extractedFields,
-                        result: updatedFile.updatedProcessedData.extractedFields.result
-                      }
-                    }, ...file.processedData.slice(1)]
-                  };
-                }
-                return file;
-              })
-            };
-          });
-          setSavedUpdates(true)
-          setTimeout(()=>{
-            setSavedUpdates(false)
-          },2000)
-        } catch (e) {
-          console.error('Failed to update the document and the data:', e);
-        }
-      }, [updateFile, currentClientCompanyEin,currentFile,currentFile]);
+      try {
+        const updatedFile = await updateFile({ 
+          clientCompanyEin: currentClientCompanyEin, 
+          processedData: currentFile.processedData[0].extractedFields,
+          docId: currentFile.id 
+        }).unwrap();
+        
+        console.log('Updated File', updatedFile);
+        
+        setProcessedFiles(prevFiles => {
+          if (!prevFiles || !prevFiles.documents) {
+            return prevFiles;
+          }
+          
+          return {
+            ...prevFiles,
+            documents: prevFiles.documents.map((file:any) => {
+              if (file.id === currentFile.id) {
+                return {
+                  ...file,
+                  processedData: [{
+                    ...file.processedData[0],
+                    extractedFields: updatedFile.updatedProcessedData.extractedFields
+                  }, ...file.processedData.slice(1)]
+                };
+              }
+              return file;
+            })
+          };
+        });
+        
+        setSavedUpdates(true);
+        setTimeout(() => {
+          setSavedUpdates(false);
+        }, 2000);
+      } catch (e) {
+        console.error('Failed to update the document and the data:', e);
+      }
+    }, [updateFile, currentClientCompanyEin, currentFile]);
 
     const toggleLineItems = useCallback(() => {
       setLineItems((prev) => !prev);

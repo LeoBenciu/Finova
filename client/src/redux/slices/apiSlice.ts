@@ -77,24 +77,18 @@ export const finovaApi = createApi({
         }),
 
         updateFileAndExtractedData: build.mutation({
-            query:({processedData,clientCompanyEin,docId})=>{
-                const formData: FormData = new FormData();
-                formData.append('clientCompanyEin', clientCompanyEin);
-                formData.append('processedData',JSON.stringify(processedData));
-                formData.append('documentId',docId);
-
-                return{
-                    url:`/files`,
-                    method:'PUT',
-                    body: {
-                        clientCompanyEin,
-                        processedData: JSON.stringify(processedData),
-                        docId
-                    },
-                    formData: true
+            query: ({ processedData, clientCompanyEin, docId }) => {
+              return {
+                url: `/files`,
+                method: 'PUT',
+                body: {
+                  clientCompanyEin,
+                  processedData,
+                  docId
                 }
+              };
             }
-        }),
+          }),
 
         deleteFileAndExtractedData: build.mutation({
             query:({docId, clientCompanyEin})=>({
