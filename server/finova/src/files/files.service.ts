@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { User } from '@prisma/client';
+import { ArticleType, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import * as AWS from 'aws-sdk';
 
@@ -131,13 +131,37 @@ export class FilesService {
 
             processedData.result.line_items.forEach(async(item)=>{
                 if(item.isNew && item.type !== "Nedefinit"){
+                    const typeMapping = {
+                        'Marfuri': ArticleType.MARFURI,
+                        'Produse finite': ArticleType.PRODUSE_FINITE,
+                        'Ambalaje': ArticleType.AMBALAJE,
+                        'Semifabricate': ArticleType.SEMIFABRICATE,
+                        'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
+                        'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
+                        'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
+                        'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
+                        'Servicii vandute': ArticleType.SERVICII_VANDUTE,
+                        'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
+                        'Taxa verde': ArticleType.TAXA_VERDE,
+                        'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
+                        'Materii prime': ArticleType.MATERII_PRIME,
+                        'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
+                        'Combustibili': ArticleType.COMBUSTIBILI,
+                        'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
+                        'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
+                        'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
+                        'Amenajarii provizorii': ArticleType.AMENAJARI_PROVIZORII,
+                        'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
+                        'Mat. in pastrare/consig': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
+                    };
+
                     await this.prisma.article.create({
                         data:{
                             code: item.articleCode,
                             name: item.name,
                             vat: item.vat,
                             unitOfMeasure: item.um,
-                            type: item.type,
+                            type: typeMapping[item.type],
                             clientCompanyId: clientCompany.id
                         }
                     })
