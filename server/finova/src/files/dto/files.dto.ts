@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString, Matches } from "class-validator"
+import { IsNotEmpty, IsNumber, IsObject, IsString, Matches } from "class-validator"
 
 export class PostFileDto{
     @IsString()
@@ -17,9 +17,9 @@ export class UpdateFileDto{
     @Matches(/^\d{2,10}$/, { message: 'Invalid Romanian CIF. It must be 2-10 digits long without the "RO" prefix.' })
     clientCompanyEin: string
 
-    @IsString()
+    @IsObject()
     @IsNotEmpty()
-    processedData: string
+    processedData: Record<string, any>
 
     @IsNumber()
     @IsNotEmpty()
