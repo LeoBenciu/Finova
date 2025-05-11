@@ -20,7 +20,7 @@ export class DataExtractionService {
 
         **Instructions**:
 
-        1. **Determine Invoice Direction and Parties (Buyer/Vendor) - THIS IS CRITICAL:**
+        1. **Determine Invoice Parties (Buyer/Vendor) - THIS IS CRITICAL:**
         - IMPORTANT: DO NOT fabricate or hallucinate any labels like "Furnizor" or "Cumpărător" if they are not explicitly present in the document.
         - First, check if the document has explicit labels or keywords:
           - Vendor/Seller labels: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
@@ -37,8 +37,6 @@ export class DataExtractionService {
        2. **Extract Document Details**:
            - Extract the following fields when available:
              - document_type: "Invoice" or "Receipt" (set to null if neither).
-             - invoice_type: "Incoming" or "Outgoing".
-             - reason_invoice: The reason why the invoice is Incoming or Outgoing, including which EINs were compared or which positional information was used.
              - vendor: Name of the vendor or service provider.
              - vendor_ein: Vendor's unique identifier (number only, remove "RO" prefix).
              - buyer: Name of the buyer.
@@ -95,8 +93,6 @@ export class DataExtractionService {
         **Example Output**:
         {
           "document_type": "Invoice",
-          "invoice_type": "Incoming",
-          "reason_invoice": "Identified 'Furnizor' as NEXT CORP S.R.L. (CUI: 47935139) and 'Cumpărător' as S.C. FLANCO RETAIL S.A. (CUI: 27698631) based on explicit labels in the document. CURRENT_COMPANY_EIN matches vendor_ein, so this is an outgoing invoice.",
           "vendor": "Vendor SRL",
           "vendor_ein": "12345678",
           "buyer": "Buyer SRL",
@@ -257,19 +253,6 @@ export class DataExtractionService {
       ) {
         if (!data || typeof data !== 'object') {
           throw new Error('Invalid extracted data format');
-        }
-      
-        if (!data.invoice_type || !data.reason_invoice) {
-          if (data.buyer_ein === clientCompanyEin) {
-            data.invoice_type = "Incoming";
-            data.reason_invoice = `The buyer_ein (${data.buyer_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an incoming invoice (fallback, no explicit label found)`;
-          } else if (data.vendor_ein === clientCompanyEin) {
-            data.invoice_type = "Outgoing";
-            data.reason_invoice = `The vendor_ein (${data.vendor_ein}) matches CURRENT_COMPANY_EIN (${clientCompanyEin}), making this an outgoing invoice (fallback, no explicit label found)`;
-          } else {
-            data.invoice_type = null;
-            data.reason_invoice = "Could not determine invoice direction: no explicit label or matching EIN found.";
-          }
         }
       
         if (Array.isArray(data.line_items)) {
