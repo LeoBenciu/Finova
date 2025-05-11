@@ -25,10 +25,16 @@ export class DataExtractionService {
         - First, check if the document has explicit labels or keywords:
           - Vendor/Seller labels: "Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"
           - Buyer labels: "Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"
-        - If labels are missing, use the following fallbacks IN THIS ORDER:
-          - Fallback: The company that has bank details (IBAN/account numbers) is most likely the VENDOR/SELLER. Look for IBAN numbers, bank names, or account details.
+        - If explicit labels are missing, use this hierarchy of indicators to identify parties:
+          - **Company with fiscal identification**: Entity with "CIF/CUI:" or "Reg. Com./J" numbers plus bank details is almost certainly the vendor
+          - **Bank details**: Company with IBAN/account numbers is typically the vendor (they need to receive payment)
+          - **Header position**: In standard invoice layouts, vendor typically appears at top/left while buyer appears below/right
+          - **Invoice number prefix**: Company near "Factura Nr." or "Nr. Fact." fields is likely the vendor
+          - **Logo/letterhead**: Company whose logo/letterhead appears on document is typically the vendor
+          - **Contact details**: Entity with full address, phone, email is likely the vendor
+          - **Additional clues**: Vendor typically issues/signs invoice, calculates VAT, and has more detailed information
 
-        2. **Extract Document Details**:
+       2. **Extract Document Details**:
            - Extract the following fields when available:
              - document_type: "Invoice" or "Receipt" (set to null if neither).
              - invoice_type: "Incoming" or "Outgoing".
