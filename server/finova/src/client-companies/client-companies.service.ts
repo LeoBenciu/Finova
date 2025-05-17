@@ -286,9 +286,12 @@ export class ClientCompaniesService {
 
             if (!user) throw new NotFoundException('User not found in the database!');
         
+            this.logger.log('Calling ANAF service...');
             const companyData = await this.anaf.getCompanyDetails(ein.ein);
+            this.logger.log('ANAF service responded');
             if (!companyData) throw new NotFoundException("Company doesn't exist");
         
+            this.logger.log('Starting DB transaction...');
             const result = await this.prisma.$transaction(async (prisma) => {
 
               const newCompany = await prisma.clientCompany.upsert({
@@ -299,7 +302,7 @@ export class ClientCompaniesService {
                   ein: String(companyData.date_generale.cui),
                 },
               });
-        
+              
               const existingLink = await prisma.accountingClients.findFirst({
                 where: {
                   accountingCompanyId: user.accountingCompanyId,
@@ -346,6 +349,7 @@ export class ClientCompaniesService {
                 managementCount: managementResult.count,
               };
             });
+            this.logger.log('DB transaction finished');
         
             this.logger.log(`Created company with EIN ${ein.ein}, ${result.articleCount} articles, ${result.managementCount} management records`);
         
