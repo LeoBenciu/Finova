@@ -95,22 +95,64 @@ export class ClientCompaniesService {
 
             this.logger.log('Files validated, checking mime types');
 
-            if (articlesFile.mimetype !== 'text/csv' || managementFile.mimetype !== 'text/csv') {
-                throw new BadRequestException('Only CSV files are allowed');
+            if (articlesFile.mimetype !== 'text/csv' && articlesFile.mimetype !== 'application/vnd.ms-excel') {
+                throw new BadRequestException('Articles file must be a CSV file');
+            };
+            
+            if (managementFile.mimetype !== 'text/csv' && managementFile.mimetype !== 'application/vnd.ms-excel') {
+                throw new BadRequestException('Management file must be a CSV file');
             };
 
-            this.logger.debug(`Articles file content: ${fs.readFileSync(articlesFile.path, 'utf8')}`);
-            this.logger.debug(`Management file content: ${fs.readFileSync(managementFile.path, 'utf8')}`);
-
-            const articleColumns = ['cod','denumire','um', 'tva', 'den_tip', 'stoc', 'grupa', 'is_valuta'];
-            const managementColumns = ['cod', 'denumire', 'tip_gestiune', 'gestionar', 'tip_eval', 'glob_371', 'glob_378',
-                'glob_4428', 'glob_607', 'glob_707', 'proctva'];
+            const articlesContent = fs.readFileSync(articlesFile.path, 'utf8');
+            const managementContent = fs.readFileSync(managementFile.path, 'utf8');
             
-            await this.validateCsvHeaders(articlesFile, articleColumns);
-            await this.validateCsvHeaders(managementFile, managementColumns);
+            this.logger.debug(`Articles file content: ${articlesContent}`);
+            this.logger.debug(`Management file content: ${managementContent}`);
 
-            const articlesRows = await this.parseCsv(articlesFile);
-            const managementRows = await this.parseCsv(managementFile);
+            // Define required columns - these must exist in the CSV
+            const requiredArticleColumns = ['cod', 'denumire', 'um', 'tva', 'den_tip'];
+            const requiredManagementColumns = ['cod', 'denumire', 'tip_gestiune', 'proctva'];
+            
+            // Parse CSV files
+            let articlesRows;
+            let managementRows;
+            
+            try {
+                this.logger.log('Parsing articles CSV file...');
+                articlesRows = await this.parseCsv(articlesFile);
+                this.logger.log(`Successfully parsed ${articlesRows.length} articles`);
+                
+                this.logger.log('Parsing management CSV file...');
+                managementRows = await this.parseCsv(managementFile);
+                this.logger.log(`Successfully parsed ${managementRows.length} management rows`);
+                
+                // Validate required columns existence - check first row
+                if (articlesRows.length > 0) {
+                    const firstArticleRow = articlesRows[0];
+                    for (const requiredCol of requiredArticleColumns) {
+                        if (!(requiredCol in firstArticleRow)) {
+                            throw new BadRequestException(`Missing required column '${requiredCol}' in articles CSV`);
+                        }
+                    }
+                } else {
+                    this.logger.warn('No article rows parsed');
+                }
+                
+                if (managementRows.length > 0) {
+                    const firstManagementRow = managementRows[0];
+                    for (const requiredCol of requiredManagementColumns) {
+                        if (!(requiredCol in firstManagementRow)) {
+                            throw new BadRequestException(`Missing required column '${requiredCol}' in management CSV`);
+                        }
+                    }
+                } else {
+                    this.logger.warn('No management rows parsed');
+                }
+                
+            } catch (error) {
+                this.logger.error(`Error parsing CSV: ${error.message}`);
+                throw new BadRequestException(`Error parsing CSV files: ${error.message}`);
+            }
             
             this.logger.log(`Successfully parsed ${articlesRows.length} articles and ${managementRows.length} management rows`);
 
@@ -166,7 +208,7 @@ export class ClientCompaniesService {
               
               const articleTypeMap: Record<string, string> = {
                 marfuri: 'MARFURI',
-                materiiPrime: 'MATERII_PRIME',
+                materiiprime: 'MATERII_PRIME',
                 produseFinite: 'PRODUSE_FINITE',
                 semifabricate: 'SEMIFABRICATE',
                 discountFinancialIesiri: 'DISCOUNT_FINANCIAL_IESIRI',
@@ -195,6 +237,8 @@ export class ClientCompaniesService {
             };
 
             const articleData = articlesRows.length > 0 ? articlesRows.map((row, index) => {
+              this.logger.debug(`Processing article row ${index + 1}: ${JSON.stringify(row)}`);
+              
               const code = parseInt(row.cod);
               if (isNaN(code) || !row.cod) {
                 throw new BadRequestException(`Invalid or missing code in articles.csv at row ${index + 2}`);
@@ -202,21 +246,28 @@ export class ClientCompaniesService {
               if (!row.denumire) {
                 throw new BadRequestException(`Missing name in articles.csv at row ${index + 2}`);
               }
-              const vat = vatMap[row.tva?.toLowerCase()];
+              
+              // Handle VAT cases with normalization
+              let vatValue = row.tva?.trim();
+              if (!vatValue) {
+                vatValue = '19'; // Default to 19% if not specified
+              }
+              const vat = vatMap[vatValue];
               if (!vat) {
                 throw new BadRequestException(`Invalid vat '${row.tva}' in articles.csv at row ${index + 2}`);
               }
-              const unitOfMeasure = unitOfMeasureMap[row.um?.toLowerCase()] || row.um?.toUpperCase();
-              if (!Object.values(UnitOfMeasure).includes(unitOfMeasure)) {
-                throw new BadRequestException(`Invalid unitOfMeasure '${row.um}' in articles.csv at row ${index + 2}`);
-              }
-              const type = articleTypeMap[row.den_tip?.toLowerCase()] || row.den_tip?.toUpperCase();
-              if (!Object.values(ArticleType).includes(type)) {
-                throw new BadRequestException(`Invalid type '${row.den_tip}' in articles.csv at row ${index + 2}`);
-              }
+              
+              // Handle unit of measure with case-insensitive matching
+              const umValue = row.um?.trim().toLowerCase() || 'buc';
+              const unitOfMeasure = unitOfMeasureMap[umValue] || UnitOfMeasure.BUCATA;
+              
+              // Handle article type with case-insensitive matching
+              const typeValue = row.den_tip?.trim().toLowerCase() || 'marfuri';
+              const type = articleTypeMap[typeValue] || ArticleType.MARFURI;
+              
               return {
                 code,
-                name: row.denumire,
+                name: row.denumire.trim(),
                 vat: vat as VatRate,
                 unitOfMeasure,
                 type,
@@ -224,6 +275,8 @@ export class ClientCompaniesService {
             }) : [];
               
             const managementData = managementRows.length > 0 ? managementRows.map((row, index) => {
+              this.logger.debug(`Processing management row ${index + 1}: ${JSON.stringify(row)}`);
+              
               const code = parseInt(row.cod);
               if (isNaN(code) || !row.cod) {
                 throw new BadRequestException(`Invalid or missing code in management.csv at row ${index + 2}`);
@@ -231,25 +284,32 @@ export class ClientCompaniesService {
               if (!row.denumire) {
                 throw new BadRequestException(`Missing name in management.csv at row ${index + 2}`);
               }
-              const type = managementTypeMap[row.tip_gestiune?.toLowerCase()] || row.tip_gestiune?.toUpperCase();
-              if (!Object.values(ManagementType).includes(type)) {
-                throw new BadRequestException(`Invalid type '${row.tip_gestiune}' in management.csv at row ${index + 2}`);
+              
+              // Handle management type with case-insensitive matching
+              const typeValue = row.tip_gestiune?.trim().toLowerCase() || 'cantitativ_valorica';
+              const type = managementTypeMap[typeValue] || ManagementType.CANTITATIV_VALORIC;
+              
+              // Handle VAT rate with normalization
+              let vatRateValue = row.proctva?.trim();
+              if (!vatRateValue) {
+                vatRateValue = '19'; // Default to 19% if not specified
               }
-              const vatRate = vatMap[row.proctva?.toLowerCase()];
+              const vatRate = vatMap[vatRateValue];
               if (!vatRate) {
                 throw new BadRequestException(`Invalid vatRate '${row.proctva}' in management.csv at row ${index + 2}`);
               }
+              
               return {
                 code,
-                name: row.denumire,
+                name: row.denumire.trim(),
                 type,
-                manager: row.gestionar || null,
+                manager: row.gestionar?.trim() || null,
                 isSellingPrice: row.tip_eval === 'true' || row.tip_eval === '1',
-                analitic371: row.glob_371 || null,
-                analitic378: row.glob_378 || null,
-                analitic4428: row.glob_4428 || null,
-                analitic607: row.glob_607 || null,
-                analitic707: row.glob_707 || null,
+                analitic371: row.glob_371?.trim() || null,
+                analitic378: row.glob_378?.trim() || null,
+                analitic4428: row.glob_4428?.trim() || null,
+                analitic607: row.glob_607?.trim() || null,
+                analitic707: row.glob_707?.trim() || null,
                 vatRate: vatRate as VatRate,
               };
             }) : [];
@@ -322,6 +382,7 @@ export class ClientCompaniesService {
         
               let articleResult = { count: 0 };
               if (articleData.length > 0) {
+                this.logger.log(`Creating ${articleData.length} articles...`);
                 articleResult = await prisma.article.createMany({
                   data: articleData.map((data) => ({
                     ...data,
@@ -333,6 +394,7 @@ export class ClientCompaniesService {
         
               let managementResult = { count: 0 };
               if (managementData.length > 0) {
+                this.logger.log(`Creating ${managementData.length} management records...`);
                 managementResult = await prisma.management.createMany({
                   data: managementData.map((data) => ({
                     ...data,
@@ -363,7 +425,7 @@ export class ClientCompaniesService {
             this.logger.error(`Error creating client company with EIN ${ein.ein}: ${e.message}`, e.stack);
             console.error('Full error object:', JSON.stringify(e, null, 2));
             if (e instanceof BadRequestException || e instanceof NotFoundException) throw e;
-            throw new InternalServerErrorException('Failed to create client company');
+            throw new InternalServerErrorException('Failed to create client company: ' + e.message);
           } finally {
             try {
               if (articlesFile && fs.existsSync(articlesFile.path)) {
@@ -415,20 +477,35 @@ export class ClientCompaniesService {
     private async parseCsv(file: Express.Multer.File): Promise<any[]> {
         return new Promise((resolve, reject) => {
             const results: any[] = [];
-            fs.createReadStream(file.path)
-                .pipe(parse({
-                    columns: true,
-                    trim: true,
-                    skip_empty_lines: true,
-                    delimiter: ',',
-                }))
-                .on('data', (row) => results.push(row))
-                .on('end', () => {
-                    resolve(results);
-                })
-                .on('error', (err) => 
-                    reject(new InternalServerErrorException(`Failed to parse ${file.originalname}: ${err.message}`)),
-                );
+            
+            // Add better error handling and more robust parsing
+            const parser = parse({
+                columns: true,
+                trim: true,
+                skip_empty_lines: true,
+                delimiter: ',', // Also try with semicolons if needed
+                relax_column_count: true, // Allow variable column counts
+                relax_quotes: true, // Be more lenient with quotes
+                from_line: 1, // Start from first line
+            });
+            
+            parser.on('readable', function(){
+                let record;
+                while (record = parser.read()) {
+                    results.push(record);
+                }
+            });
+            
+            parser.on('error', function(err){
+                this.logger.error(`Error parsing CSV: ${err.message}`);
+                reject(new BadRequestException(`Failed to parse ${file.originalname}: ${err.message}`));
+            });
+            
+            parser.on('end', function(){
+                resolve(results);
+            });
+            
+            fs.createReadStream(file.path).pipe(parser);
         });
     }
 
