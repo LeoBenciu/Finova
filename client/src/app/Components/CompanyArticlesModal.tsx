@@ -1,4 +1,4 @@
-import { useGetArticlesQuery, useGetManagementQuery, useSaveNewManagementMutation } from "@/redux/slices/apiSlice";
+import { useDeleteManagementMutation, useGetArticlesQuery, useGetManagementQuery, useSaveNewManagementMutation } from "@/redux/slices/apiSlice";
 import { Check, X } from "lucide-react";
 import { Management } from "./EditExtractedData/LineItems";
 import { useEffect, useState } from "react";
@@ -28,7 +28,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
     const {data: articleList} = useGetArticlesQuery(ein);
 
     //Management
-
+      const [ deleteManagement ] = useDeleteManagementMutation();
       const { data: managementList, refetch: refetchManagementList } = useGetManagementQuery(ein);
       const [ isNewManagement,setIsNewManagement ] = useState<boolean>(false);
       const [ saveNewManagement] = useSaveNewManagementMutation();
@@ -75,6 +75,12 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
         refetchManagementList();
       };
     
+    const handleDeleteManagement = async(managementId:number) =>{
+        const response = await deleteManagement({managementId}).unwrap();
+        console.log('Deleted management:', response);
+        refetchManagementList();
+    };
+
   return (
       <div className="fixed inset-0 bg-black/70
             flex justify-center items-center">
@@ -122,7 +128,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                     {!isArticleSelected&&(
                     <div className="min-w-full min-h-max overflow-y-scroll px-10">
                         <div className="min-w-full bg-black/10 min-h-14 mt-3 rounded-xl grid
-                        grid-cols-6 items-center">
+                        grid-cols-7 items-center">
                             <h3 className="text-black font-bold">Cod</h3>
                             <h3 className="text-black font-bold">Nume</h3>
                             <h3 className="text-black font-bold">Tip</h3>
@@ -132,7 +138,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                         </div>
 
                         {managementList?.map((management: Management)=>(
-                            <div className="min-h-14 mt-3 rounded-xl grid grid-cols-6 items-center">
+                            <div className="min-h-14 mt-3 rounded-xl grid grid-cols-7 items-center">
                                     <h3 className="text-black">{management.code}</h3>
                                     <h3 className="text-black">{management.name}</h3>
                                     <h3 className="text-black">{management.type}</h3>
@@ -143,6 +149,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                                     </div>
                                     <h3 className="text-black">{management.vatRate === 'NINETEEN'? '19':
                                         management.vatRate === 'NINE' ? '9' : management.vatRate === 'FIVE' ? '5':'0'}</h3>
+                                    <X size={15} className="text-red-500 hover:text-black" onClick={()=>handleDeleteManagement(management.id||0)}></X>
                             </div>
                             ))}
 

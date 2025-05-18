@@ -546,6 +546,24 @@ export class ClientCompaniesService {
             return e;
         }
     }
+    
+    async deleteManagement(managementId: number)
+    {
+      try {
+        const deletedManagement = await  this.prisma.management.delete({
+          where:{
+            id: managementId
+          }
+        });
+
+        if(!deletedManagement) throw new InternalServerErrorException('Failed to delete management from the database!');
+
+        return deletedManagement;
+      } catch (e) {
+        console.error('Error deleting management:', e );
+        return e;
+      }
+    }
 
     async saveNewManagement(dto: NewManagementDto)
     {

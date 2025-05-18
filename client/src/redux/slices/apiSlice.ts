@@ -236,6 +236,16 @@ export const finovaApi = createApi({
             })
         }),
 
+        deleteManagement: build.mutation({
+            query: ({managementId}) => ({
+                url: 'client-companies/delete-management',
+                method: 'POST',
+                body: {
+                    managementId
+                }
+            })
+        }),
+
         getCompanyData: build.query({
             query: ({currentCompanyEin, year})=>({
                 url:'client-companies/data',
@@ -259,4 +269,4 @@ useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
 useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
 useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
-useGetCompanyDataQuery} = finovaApi;
+useGetCompanyDataQuery, useDeleteManagementMutation} = finovaApi;

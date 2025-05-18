@@ -86,4 +86,10 @@ export class ClientCompaniesController {
       return this.clientCompaniesService.getCompanyData(body.currentCompanyEin, user, body.year);
     }
 
+    @Post('delete-management')
+    deleteManagement(@Body() body:{managementId:number})
+    {
+      return this.clientCompaniesService.deleteManagement(body.managementId);
+    }
+
 }
