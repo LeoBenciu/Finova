@@ -109,11 +109,9 @@ export class ClientCompaniesService {
             this.logger.debug(`Articles file content: ${articlesContent}`);
             this.logger.debug(`Management file content: ${managementContent}`);
 
-            // Define required columns - these must exist in the CSV
             const requiredArticleColumns = ['cod', 'denumire', 'um', 'tva', 'den_tip'];
             const requiredManagementColumns = ['cod', 'denumire', 'tip_gestiune', 'proctva'];
             
-            // Parse CSV files
             let articlesRows;
             let managementRows;
             
@@ -126,7 +124,6 @@ export class ClientCompaniesService {
                 managementRows = await this.parseCsv(managementFile);
                 this.logger.log(`Successfully parsed ${managementRows.length} management rows`);
                 
-                // Validate required columns existence - check first row
                 if (articlesRows.length > 0) {
                     const firstArticleRow = articlesRows[0];
                     for (const requiredCol of requiredArticleColumns) {
@@ -236,6 +233,22 @@ export class ClientCompaniesService {
               'global_valorica': ManagementType.GLOBAL_VALORIC,
             };
 
+            const normalizeVatValue = (vatValue: string): string => {
+              if (!vatValue) return '19';
+              
+              vatValue = String(vatValue).trim();
+              
+              try {
+                const numValue = parseFloat(vatValue);
+                if (!isNaN(numValue)) {
+                  return Math.floor(numValue).toString();
+                }
+              } catch (e) {
+              }
+              
+              return vatValue;
+            };
+
             const articleData = articlesRows.length > 0 ? articlesRows.map((row, index) => {
               this.logger.debug(`Processing article row ${index + 1}: ${JSON.stringify(row)}`);
               
@@ -247,21 +260,15 @@ export class ClientCompaniesService {
                 throw new BadRequestException(`Missing name in articles.csv at row ${index + 2}`);
               }
               
-              // Handle VAT cases with normalization
-              let vatValue = row.tva?.trim();
-              if (!vatValue) {
-                vatValue = '19'; // Default to 19% if not specified
-              }
+              const vatValue = normalizeVatValue(row.tva);
               const vat = vatMap[vatValue];
               if (!vat) {
                 throw new BadRequestException(`Invalid vat '${row.tva}' in articles.csv at row ${index + 2}`);
               }
               
-              // Handle unit of measure with case-insensitive matching
               const umValue = row.um?.trim().toLowerCase() || 'buc';
               const unitOfMeasure = unitOfMeasureMap[umValue] || UnitOfMeasure.BUCATA;
               
-              // Handle article type with case-insensitive matching
               const typeValue = row.den_tip?.trim().toLowerCase() || 'marfuri';
               const type = articleTypeMap[typeValue] || ArticleType.MARFURI;
               
@@ -285,15 +292,10 @@ export class ClientCompaniesService {
                 throw new BadRequestException(`Missing name in management.csv at row ${index + 2}`);
               }
               
-              // Handle management type with case-insensitive matching
               const typeValue = row.tip_gestiune?.trim().toLowerCase() || 'cantitativ_valorica';
               const type = managementTypeMap[typeValue] || ManagementType.CANTITATIV_VALORIC;
               
-              // Handle VAT rate with normalization
-              let vatRateValue = row.proctva?.trim();
-              if (!vatRateValue) {
-                vatRateValue = '19'; // Default to 19% if not specified
-              }
+              const vatRateValue = normalizeVatValue(row.proctva);
               const vatRate = vatMap[vatRateValue];
               if (!vatRate) {
                 throw new BadRequestException(`Invalid vatRate '${row.proctva}' in management.csv at row ${index + 2}`);
@@ -478,15 +480,14 @@ export class ClientCompaniesService {
         return new Promise((resolve, reject) => {
             const results: any[] = [];
             
-            // Add better error handling and more robust parsing
             const parser = parse({
                 columns: true,
                 trim: true,
                 skip_empty_lines: true,
-                delimiter: ',', // Also try with semicolons if needed
-                relax_column_count: true, // Allow variable column counts
-                relax_quotes: true, // Be more lenient with quotes
-                from_line: 1, // Start from first line
+                delimiter: ',',
+                relax_column_count: true,
+                relax_quotes: true,
+                from_line: 1,
             });
             
             parser.on('readable', function(){
