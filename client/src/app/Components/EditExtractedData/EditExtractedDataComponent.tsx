@@ -171,9 +171,13 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                   Save
                 </button>)}
                 
-                {isSaving&&(<div className='min-h-8 max-h-8 max-w-28 min-w-28'>
-                  <LoadingComponent></LoadingComponent>
-                </div>)}
+                {isSaving && (
+                  <div className='fixed inset-0 bg-black/50 flex justify-center items-center z-50'>
+                    <div className='bg-white p-6 rounded-xl shadow-lg'>
+                      <LoadingComponent></LoadingComponent>
+                    </div>
+                  </div>
+                )}
 
               </div>
 
