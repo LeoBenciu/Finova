@@ -1,5 +1,5 @@
 import { useDeleteManagementMutation, useGetArticlesQuery, useGetManagementQuery, useSaveNewManagementMutation } from "@/redux/slices/apiSlice";
-import { Check, X } from "lucide-react";
+import { Check, Trash, X } from "lucide-react";
 import { Management } from "./EditExtractedData/LineItems";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
@@ -149,7 +149,8 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                                     </div>
                                     <h3 className="text-black">{management.vatRate === 'NINETEEN'? '19':
                                         management.vatRate === 'NINE' ? '9' : management.vatRate === 'FIVE' ? '5':'0'}</h3>
-                                    <X size={15} className="text-red-500 hover:text-black" onClick={()=>handleDeleteManagement(management.id||0)}></X>
+                                    <Trash size={25} className="text-red-500 hover:text-black
+                                    mx-auto cursor-pointer" onClick={()=>handleDeleteManagement(management.id||0)}></Trash>
                             </div>
                             ))}
 

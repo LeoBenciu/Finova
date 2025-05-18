@@ -577,21 +577,29 @@ export class ClientCompaniesService {
         switch(dto.type){
           case 'GLOBAL_VALORIC':
             type = ManagementType.GLOBAL_VALORIC;
+            break;
           case 'CANTITATIV_VALORIC':
+          default:
             type = ManagementType.CANTITATIV_VALORIC;
+            break;
         };
 
         let vatRate: VatRate;
         switch(dto.vatRate){
           case 'ZERO':
             vatRate = VatRate.ZERO;
+            break;
           case 'FIVE':
             vatRate = VatRate.FIVE;
+            break; 
           case 'NINE':
             vatRate = VatRate.NINE;
+            break; 
           case 'NINETEEN':
+          default:
             vatRate = VatRate.NINETEEN;
-        };
+            break;
+        }
 
         const newManagement = await this.prisma.management.create({
           data:{
