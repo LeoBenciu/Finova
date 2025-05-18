@@ -111,7 +111,7 @@ model Management {
   id              Int            @id @default(autoincrement())
   clientCompanyId Int
   clientCompany   ClientCompany  @relation(fields: [clientCompanyId], references: [id])
-  code            Int            @unique
+  code            Int
   name            String
   type            ManagementType
   manager         String?
@@ -123,6 +123,7 @@ model Management {
   analitic707     String?
   vatRate         VatRate
 
+  @@unique([code, clientCompanyId])
   @@index([clientCompanyId])
 }
 
