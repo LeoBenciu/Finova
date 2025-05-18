@@ -52,7 +52,7 @@ const containerVariants = {
 
 const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFiles, editFile, setEditFile, setIsModalOpen, isOpen, currentFile, setCurrentProcessingFile }: EditExtractedDataProps) => {
   
-  const [saveFileAndData] = useSaveFileAndExtractedDataMutation();
+  const [saveFileAndData, {isLoading:isSaving}] = useSaveFileAndExtractedDataMutation();
   const [lineItems, setLineItems] = useState<boolean>(false);
   const [closeModal, setCloseModal] = useState<boolean>(false);
   const [internalLoading, setInternalLoading] = useState(isLoading);
@@ -162,13 +162,19 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
               <div className="flex flex-row justify-between items-center p-5 pb-0">
                 <h3 className="text-left font-bold text-3xl
                 text-[var(--text1)]">{language==='ro'?'Date extrase':'Extracted data'}</h3>
-                <button
+                
+                {!isSaving&&(<button
                   className="bg-[var(--primary)] max-h-8 p-2 px-4 flex justify-center items-center gap-2 hover:text-[var(--primary)] hover:bg-[var(--primary)]/20"
                   onClick={handleSaveButton}
                 >
                   <Save size={15} />
                   Save
-                </button>
+                </button>)}
+                
+                {isSaving&&(<div className='min-h-8 max-h-8 max-w-28 min-w-28'>
+                  <LoadingComponent></LoadingComponent>
+                </div>)}
+
               </div>
 
               <div className="p-4 flex justify-center items-center min-h-[790px] flex-col">
