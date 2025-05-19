@@ -102,7 +102,7 @@ model Article {
   unitOfMeasure   UnitOfMeasure
   type            ArticleType
   clientCompanyId Int
-  clientCompany   ClientCompany @relation(fields: [clientCompanyId], references: [id])
+  clientCompany   ClientCompany @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
 
   @@index([clientCompanyId])
 }
@@ -110,7 +110,7 @@ model Article {
 model Management {
   id              Int            @id @default(autoincrement())
   clientCompanyId Int
-  clientCompany   ClientCompany  @relation(fields: [clientCompanyId], references: [id])
+  clientCompany   ClientCompany  @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
   code            Int
   name            String
   type            ManagementType
