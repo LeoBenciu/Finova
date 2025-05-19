@@ -33,7 +33,7 @@ model Document {
   contentType        String
   fileSize           Int?
   accountingClientId Int
-  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
   processedData      ProcessedData?
   rpaActions         RpaAction[]
 }
@@ -52,7 +52,7 @@ model RpaAction {
   documentId         Int
   document           Document          @relation(fields: [documentId], references: [id])
   accountingClientId Int
-  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id])
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
   actionType         RpaActionType
   status             RpaActionStatus   @default(PENDING)
   result             Json? // For storing error messages, success details, etc.

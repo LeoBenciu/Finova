@@ -525,7 +525,7 @@ export class ClientCompaniesService {
                 }
             });
             if(!clientCompany) throw new NotFoundException(`We could't find the company with ${dto.ein} in the database`);
-    
+
             const deletedLink  = await this.prisma.accountingClients.deleteMany({
                 where:{
                     accountingCompanyId: user.accountingCompanyId,
