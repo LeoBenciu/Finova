@@ -41,7 +41,7 @@ model Document {
 model ProcessedData {
   id              Int      @id @default(autoincrement())
   documentId      Int      @unique
-  document        Document @relation(fields: [documentId], references: [id])
+  document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   extractedFields Json
 }
 
