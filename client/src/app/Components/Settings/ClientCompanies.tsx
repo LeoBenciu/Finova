@@ -149,7 +149,9 @@ const ClientCompanies = () => {
                 justify-center">
                     <Trash2 size={20} 
                     className="text-red-500 hover:text-red-300 cursor-pointer"
-                    onClick={()=>deleteClientCompany(company.ein)}></Trash2>
+                    onClick={(e)=>{e.preventDefault();
+                      e.stopPropagation();
+                    deleteClientCompany(company.ein)}}></Trash2>
                 </div>
             </div>
         )))}
