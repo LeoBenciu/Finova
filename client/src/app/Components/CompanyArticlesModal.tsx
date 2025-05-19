@@ -1,4 +1,4 @@
-import { useDeleteManagementMutation, useGetArticlesQuery, useGetManagementQuery, useSaveNewManagementMutation } from "@/redux/slices/apiSlice";
+import { useDeleteArticleMutation, useDeleteManagementMutation, useGetArticlesQuery, useGetManagementQuery, useSaveNewManagementMutation } from "@/redux/slices/apiSlice";
 import { Check, Trash, X } from "lucide-react";
 import { Management } from "./EditExtractedData/LineItems";
 import { useEffect, useState } from "react";
@@ -25,10 +25,11 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
     const ein = currentClientCompanyEin;
 
     //Articles
-    const {data: articleList} = useGetArticlesQuery(ein);
+    const {data: articleList, refetch: refetchArticleList} = useGetArticlesQuery(ein);
 
     //Management
       const [ deleteManagement ] = useDeleteManagementMutation();
+      const [ deleteArticle ] = useDeleteArticleMutation();
       const { data: managementList, refetch: refetchManagementList } = useGetManagementQuery(ein);
       const [ isNewManagement,setIsNewManagement ] = useState<boolean>(false);
       const [ saveNewManagement] = useSaveNewManagementMutation();
@@ -81,6 +82,12 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
         refetchManagementList();
     };
 
+    const handleDeleteArticle = async(articleId:number) =>{
+        const response = await deleteArticle({articleId}).unwrap();
+        console.log('Deleted article:', response);
+        refetchArticleList();
+    };
+
   return (
       <div className="fixed inset-0 bg-black/70
             flex justify-center items-center">
@@ -105,7 +112,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                     
                     <div className="min-w-full min-h-max overflow-y-scroll px-10">
                         <div className="min-w-full bg-black/10 min-h-14 mt-3 rounded-xl grid
-                        grid-cols-5 items-center">
+                        grid-cols-6 items-center">
                             <h3 className="text-black font-bold">Cod</h3>
                             <h3 className="text-black font-bold">Nume</h3>
                             <h3 className="text-black font-bold">TVA</h3>
@@ -114,13 +121,18 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                         </div>
 
                             {articleList?.map((article: Article)=>(
-                                <div className=" min-h-14 mt-3 rounded-xl grid grid-cols-5 items-center">
+                                <div className=" min-h-14 mt-3 rounded-xl grid grid-cols-6 items-center">
                                     <h3 className="text-black">{article.code}</h3>
                                     <h3 className="text-black">{article.name}</h3>
                                     <h3 className="text-black">{article.vat ==="NINETEEN"? '19':
                                         article.vat ==="NINE"? '9': article.vat === "FIVE"? '5': '0'}</h3>
                                     <h3 className="text-black">{article.unitOfMeasure}</h3>
                                     <h3 className="text-black">{article.type}</h3>
+                                    <Trash size={25} className="text-red-500 hover:text-black
+                                    mx-auto cursor-pointer" onClick={(e)=>{
+                                        e.stopPropagation();
+                                        handleDeleteArticle(article.id||0);
+                                    }}></Trash>
                                 </div>
                             ))}
                     </div>)}

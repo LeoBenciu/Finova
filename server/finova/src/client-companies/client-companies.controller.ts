@@ -91,5 +91,10 @@ export class ClientCompaniesController {
     {
       return this.clientCompaniesService.deleteManagement(body.managementId);
     }
-
+    
+    @Delete('delete-article')
+    deleteArticle(@Body() body:{articleId:number})
+    {
+      return this.clientCompaniesService.deleteArticle(body.articleId);
+    }
 }

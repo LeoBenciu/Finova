@@ -546,6 +546,24 @@ export class ClientCompaniesService {
             return e;
         }
     }
+
+    async deleteArticle(articleId:number)
+    {
+      try {
+        const deletedArticle = await  this.prisma.article.delete({
+          where:{
+            id: articleId
+          }
+        });
+
+        if(!deletedArticle) throw new InternalServerErrorException('Failed to delete article from the database!');
+
+        return deletedArticle;
+      } catch (e) {
+        console.error('Error deleting article:', e );
+        return e;
+      }
+    }
     
     async deleteManagement(managementId: number)
     {
