@@ -16,6 +16,11 @@ export class UipathController {
         const userId:number = req.user.id;
         return this.UipathService.postClientInvoice(documentId, userId, body.currentClientCompanyEin);
     }
+    @Get('/status/:id')
+    getJobStatus(@Param('id') id:string){
+        const documentId:number = Number(id.slice(1));
+        return this.UipathService.getJobStatus(documentId);
+    }
 
     @Get('/management/:ein')
     getManagement(@Param('ein') ein: string)

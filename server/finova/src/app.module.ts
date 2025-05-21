@@ -10,12 +10,14 @@ import { ClientCompaniesModule } from './client-companies/client-companies.modul
 import { AccountingCompaniesModule } from './accounting-companies/accounting-companies.module';
 import { AnafModule } from './anaf/anaf.module';
 import { UipathModule } from './uipath/uipath.module';
+import {ScheduleModule} from '@nestjs/schedule';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
     }),
+    ScheduleModule.forRoot(),
     AuthModule,
     UserModule,
     FilesModule,

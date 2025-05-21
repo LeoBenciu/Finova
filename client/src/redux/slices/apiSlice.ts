@@ -206,6 +206,10 @@ export const finovaApi = createApi({
             })
         }),
 
+        getJobStatus: build.query({
+            query: (id) => `uipath/status/:${id}`
+        }),
+
         getManagement: build.query({
             query: (ein) => ({
                 url: `uipath/management/${ein}`,
@@ -279,4 +283,5 @@ useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
 useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
 useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
-useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation} = finovaApi;
+useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
+useGetJobStatusQuery} = finovaApi;

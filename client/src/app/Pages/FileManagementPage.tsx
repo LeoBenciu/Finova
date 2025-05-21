@@ -1,6 +1,6 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
-import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation } from '@/redux/slices/apiSlice';
-import { Bot, Eye } from 'lucide-react';
+import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery } from '@/redux/slices/apiSlice';
+import { Bot, Eye, RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import EditExtractedDataManagement from '../Components/EditExtractedDataManagement';
@@ -28,8 +28,9 @@ const FileManagementPage = () => {
   const [filteredFiles, setFilteredFiles] = useState<Record<string,any>>({});
   const [currentFile, setCurrentFile] = useState<Record<string,any>>({});
   const [isSureModal, setIsSureModal] = useState<boolean>(false);
+  const [processingDocId, setProcessingDocId] = useState<number | null>(null);
+  const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
 
-  //State for filters
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
   const [intervalDateFilter, setIntervalDateFilter] = useState<{
@@ -87,6 +88,68 @@ const FileManagementPage = () => {
   const [ processAutomation ] = useInsertClientInvoiceMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
   const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name);
+  
+  const { data: jobStatus, refetch: refetchJobStatus } = useGetJobStatusQuery(
+    processingDocId || 0, 
+    { skip: !processingDocId }
+  );
+
+  const startStatusPolling = (docId: number) => {
+    if (statusPolling) {
+      clearInterval(statusPolling);
+    }
+    
+    setProcessingDocId(docId);
+    
+    const interval = setInterval(() => {
+      refetchJobStatus();
+    }, 5000);
+    
+    setStatusPolling(interval);
+  };
+
+  useEffect(() => {
+    if (jobStatus && jobStatus.status !== 'PENDING' && statusPolling) {
+      clearInterval(statusPolling);
+      setStatusPolling(null);
+      
+      if (files.documents) {
+        interface Document {
+          id: number;
+          rpa?: Array<{ status: string }>;
+          [key: string]: any;
+        }
+
+        interface JobStatus {
+          status: string;
+          [key: string]: any; 
+        }
+
+                const updatedDocs: Document[] = files.documents.map((doc: Document) => {
+                  if (doc.id === processingDocId) {
+                    return {
+                      ...doc,
+                      rpa: [{ status: (jobStatus as JobStatus).status }]
+                    };
+                  }
+                  return doc;
+                });
+        
+        setFiles(prev => ({...prev, documents: updatedDocs}));
+        setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+      }
+      
+      setProcessingDocId(null);
+    }
+  }, [jobStatus, statusPolling]);
+
+  useEffect(() => {
+    return () => {
+      if (statusPolling) {
+        clearInterval(statusPolling);
+      }
+    };
+  }, [statusPolling]);
 
   const handleDeleteFileButton = async(docId:number)=>{
     try {
@@ -103,11 +166,31 @@ const FileManagementPage = () => {
     try {
       const result = await processAutomation({id, currentClientCompanyEin: clientCompanyEin}).unwrap();
       console.log('UiPath automation',result);
+      
+      startStatusPolling(id);
+      
+      const updatedDocs = files.documents.map((doc: { id: number; rpa?: Array<{ status: string }>; [key: string]: any }) => {
+        if (doc.id === id) {
+          return {
+            ...doc,
+            rpa: [{ status: 'PENDING' }]
+          };
+        }
+        return doc;
+      });
+      
+      setFiles(prev => ({...prev, documents: updatedDocs}));
+      setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+      
     } catch (e) {
       console.error('Failed to process the automation in the accounting software', e)
     }
-  }
+  };
 
+  const handleCheckStatus = async(id:number) => {
+    setProcessingDocId(id);
+    await refetchJobStatus();
+  };
 
   useEffect(()=>{
     setFiles(filesData);
@@ -119,6 +202,33 @@ const FileManagementPage = () => {
     return str;
   }, []);
 
+  const getStatusDisplay = (file: any) => {
+    if (file.id === processingDocId) {
+      return language === 'ro' ? 'Se proceseaza...' : 'Processing...';
+    }
+    
+    if (file.rpa && file.rpa.length > 0) {
+      const status = file.rpa[0].status;
+      if (status === 'COMPLETED') {
+        return language === 'ro' ? 'Completat' : 'Completed';
+      } else if (status === 'FAILED') {
+        return language === 'ro' ? 'Eșuat' : 'Failed';
+      } else if (status === 'PENDING') {
+        return language === 'ro' ? 'În așteptare' : 'Pending';
+      }
+    }
+    
+    return language === 'ro' ? 'În așteptare' : 'Pending';
+  };
+
+  const getStatusColor = (file: any) => {
+    if (file.rpa && file.rpa.length > 0) {
+      const status = file.rpa[0].status;
+      if (status === 'COMPLETED') return 'text-green-500';
+      if (status === 'FAILED') return 'text-red-500';
+    }
+    return 'text-yellow-500';
+  };
 
   return (
     <div>
@@ -168,7 +278,6 @@ const FileManagementPage = () => {
           </div>
 
           {filteredFiles?.documents?.map((file:any)=>{
-            console.log(file);
             return (
              <div key={file.name} className='min-w-full min-h-12 max-h-12 grid
              grid-cols-6'>
@@ -202,19 +311,35 @@ const FileManagementPage = () => {
                  </div>
 
                  <div className='flex items-center justify-center'>
-                      <p className='text-[var(--text1)]'>{
-                    file.rpa.length===0?(language==='ro'?'In asteptare':'Pending'):''}</p> 
+                    <p className={`${getStatusColor(file)}`}>
+                      {getStatusDisplay(file)}
+                    </p>
+                    {file.id === processingDocId && (
+                      <RefreshCw size={16} className="ml-2 animate-spin text-blue-500" />
+                    )}
+                    {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'PENDING' && file.id !== processingDocId && (
+                      <RefreshCw 
+                        size={16} 
+                        className="ml-2 cursor-pointer text-blue-500 hover:text-blue-700" 
+                        onClick={() => handleCheckStatus(file.id)}
+                      />
+                    )}
                   </div>
 
                  <div className='flex items-center justify-center gap-5'>
                    <MyTooltip content={language==='ro'?'Proceseaza date':'Submit data'} trigger={
-                   <Bot size={24} className='hover:text-[var(--primary)]/70
-                   text-[var(--primary)]
-                   cursor-pointer' onClick={()=>handleProcessAutomation(file.id)}></Bot>
+                   <Bot size={24} 
+                     className={`${file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED' ? 'text-gray-400 cursor-not-allowed' : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer'}`}
+                     onClick={() => {
+                       if (!(file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED')) {
+                         handleProcessAutomation(file.id);
+                       }
+                     }}
+                   />
                    }/>
                    <MyTooltip content={language==='ro'?'Sterge Fisiere si date':'Delete File and Data'} trigger={
-                   <Trash2 size={20} className='text-red-500
-                   cursor-pointer' onClick={()=>{setIsSureModal(true);
+                   <Trash2 size={20} className="text-red-500
+                   cursor-pointer" onClick={()=>{setIsSureModal(true);
                      setCurrentFile(file);
                    }}></Trash2>
                  }/>

@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import * as qs from 'qs';
+import {Cron} from '@nestjs/schedule';
 
 interface lineItem {
     type: string,
@@ -122,6 +123,7 @@ export class UipathService {
                 }
               ).toPromise();
 
+            const jobKey = uiPathResponse.data?.value?.[0]?.Key;
             
             const rpaAction = await this.prisma.rpaAction.create({
                 data:{
@@ -129,7 +131,10 @@ export class UipathService {
                     accountingClientId: document.accountingClientId,
                     actionType: RpaActionType.DATA_ENTRY,
                     status: uiPathResponse.status === 200? RpaActionStatus.COMPLETED : RpaActionStatus.FAILED,
-                    result: uiPathResponse.data,
+                    result: { 
+                        ...uiPathResponse.data,
+                        jobKey: jobKey
+                    },
                     triggeredById: userId,
 
                 }
@@ -171,6 +176,145 @@ export class UipathService {
         }
     }
 
+    async checkJobStatus(jobKey: string): Promise<string>{
+        try {
+            const accessToken = await this.getAccessToken();
+
+            const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs(${jobKey})`;
+
+            const response = await this.httpService.get(
+                orchestratorUrl,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json',
+                        'X-UIPATH-FolderPath': "Shared",
+                    },
+                }
+            ).toPromise();
+
+            return response.data.State;
+
+        } catch (e) {
+            console.error('Failed to check UiPath job status:', e);
+            throw new InternalServerErrorException('Failed to check UiPath job status');
+        }
+    }
+
+    async getJobStatus(documentId: number): Promise<any> {
+        try {
+            const rpaAction = await this.prisma.rpaAction.findFirst({
+                where: {
+                    documentId: documentId,
+                    actionType: RpaActionType.DATA_ENTRY
+                },
+                orderBy: {
+                    createdAt: 'desc'
+                }
+            });
+
+            if (!rpaAction) {
+                throw new NotFoundException('No UiPath job found for this document');
+            }
+
+            if (rpaAction.status !== RpaActionStatus.PENDING) {
+                return {
+                    documentId,
+                    status: rpaAction.status,
+                    details: rpaAction.result
+                };
+            }
+
+            const jobKey = (rpaAction.result as { jobKey: string })?.jobKey;
+            if (!jobKey) {
+                throw new NotFoundException('Job key not found in RPA action');
+            }
+
+            const jobStatus = await this.checkJobStatus(jobKey);
+            let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
+
+            if (jobStatus === 'Successful') {
+                updatedStatus = RpaActionStatus.COMPLETED;
+            } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
+                updatedStatus = RpaActionStatus.FAILED;
+            }
+
+            if (updatedStatus !== RpaActionStatus.PENDING) {
+                await this.prisma.rpaAction.update({
+                    where: { id: rpaAction.id },
+                    data: {
+                        status: updatedStatus,
+                        result: {
+                            ...(rpaAction.result as object || {}),
+                            finalStatus: jobStatus
+                        }
+                    }
+                });
+            }
+
+            return {
+                documentId,
+                status: updatedStatus,
+                    details: {
+                    ...(rpaAction.result as object || {}),
+                    uiPathStatus: jobStatus
+                }
+            };
+        } catch (error) {
+            console.error('Failed to get job status:', error);
+            throw new InternalServerErrorException('Failed to get UiPath job status');
+        }
+    }
+
+    @Cron('0 */5 * * * *') // Run every 5 minutes
+    async updatePendingJobStatuses() {
+        try {
+            console.log('Running scheduled UiPath job status update');
+            
+            const pendingActions = await this.prisma.rpaAction.findMany({
+                where: {
+                    status: RpaActionStatus.PENDING,
+                    actionType: RpaActionType.DATA_ENTRY
+                }
+            });
+
+            for (const action of pendingActions) {
+                try {
+                    const jobKey = (action.result as { jobKey: string })?.jobKey;
+                    if (!jobKey) continue;
+
+                    const jobStatus = await this.checkJobStatus(jobKey);
+                    let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
+
+                    if (jobStatus === 'Successful') {
+                        updatedStatus = RpaActionStatus.COMPLETED;
+                    } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
+                        updatedStatus = RpaActionStatus.FAILED;
+                    }
+
+                    if (updatedStatus !== RpaActionStatus.PENDING) {
+                        await this.prisma.rpaAction.update({
+                            where: { id: action.id },
+                            data: {
+                                status: updatedStatus,
+                                result: {
+                                    ...(action.result as object || {}),
+                                    finalStatus: jobStatus
+                                }
+                            }
+                        });
+                        console.log(`Updated job status for action ${action.id} to ${updatedStatus}`);
+                    }
+                } catch (error) {
+                    console.error(`Failed to update status for action ${action.id}:`, error);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to run scheduled job status update:', error);
+        }
+    }
+
+
     async getAccessToken(): Promise<string> {
         const clientId = this.configService.get('UIPATH_CLIENT_ID');
         const clientSecret = this.configService.get('UIPATH_CLIENT_SECRET');
@@ -179,7 +323,7 @@ export class UipathService {
             grant_type: 'client_credentials',
             client_id: clientId,
             client_secret: clientSecret,
-            scope: 'OR.Jobs.Write',
+            scope: 'OR.Jobs.Write OR.Jobs.Read',
         });
     
         const headers = {
