@@ -45,8 +45,6 @@ export class UipathService {
                 throw new NotFoundException('Document to process not found in the database');
             }
 
-            console.log(`[UiPath] Document found: ${JSON.stringify(document)}`);
-
             const processedData = await this.prisma.processedData.findUnique({
                 where:{
                     documentId: documentId
@@ -58,22 +56,14 @@ export class UipathService {
                 throw new NotFoundException('Document not processed yet!');   
             }
 
-            console.log(`[UiPath] Processed data found for documentId: ${documentId}`);
-            
             const lineItems:lineItem[] = (processedData.extractedFields as any).result.line_items;
             const buyerData = processedData.extractedFields as { result: { buyer_ein: string } };
-
-            console.log(`[UiPath] Line items count: ${lineItems?.length || 0}`);
-            console.log(`[UiPath] Buyer EIN: ${buyerData.result.buyer_ein}`);
-            console.log(`[UiPath] Current client EIN: ${currentClientCompanyEin}`);
 
             let extractedData;
             let dataToSend:uiPathData;
             let releaseKey;
             
             if(currentClientCompanyEin === buyerData.result.buyer_ein) {
-                console.log(`[UiPath] Processing as INTRARI (Furnizori) - client is buyer`);
-                //Intrari - Furnizori
                 extractedData = processedData.extractedFields as { result: { 
                     document_date: string,
                     due_date: string,
@@ -90,10 +80,7 @@ export class UipathService {
                 };
 
                 releaseKey = this.configService.get('UIPATH_RELEASE_KEY_FACTURI_INTRARI');
-                console.log(`[UiPath] Using INTRARI release key: ${releaseKey ? 'SET' : 'NOT SET'}`);
             } else {
-                console.log(`[UiPath] Processing as IESIRI (Clienti) - client is seller`);
-                //Iesiri - Clienti
                 extractedData = processedData.extractedFields as { result: { 
                     document_date: string,
                     due_date: string,
@@ -110,13 +97,9 @@ export class UipathService {
                 };
 
                 releaseKey = this.configService.get('UIPATH_RELEASE_KEY');
-                console.log(`[UiPath] Using IESIRI release key: ${releaseKey ? 'SET' : 'NOT SET'}`);
             }
 
-            console.log(`[UiPath] Data to send to UiPath:`, JSON.stringify(dataToSend, null, 2));
-
             const accessToken = await this.getAccessToken();
-            console.log(`[UiPath] Access token obtained: ${accessToken ? 'SUCCESS' : 'FAILED'}`);
             
             const inputArguments = JSON.stringify({ in_JsonInput:dataToSend });
             const payload = {
@@ -128,12 +111,8 @@ export class UipathService {
                 },
             }
 
-            console.log(`[UiPath] Payload to UiPath:`, JSON.stringify(payload, null, 2));
-
             const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs/UiPath.Server.Configuration.OData.StartJobs`;
             
-            console.log(`[UiPath] Making request to: ${orchestratorUrl}`);
-
             const uiPathResponse = await this.httpService.post(
                 orchestratorUrl,
                 payload,
@@ -147,7 +126,6 @@ export class UipathService {
               ).toPromise();
 
             console.log(`[UiPath] UiPath Response Status: ${uiPathResponse.status}`);
-            console.log(`[UiPath] UiPath Response Data:`, JSON.stringify(uiPathResponse.data, null, 2));
 
             const jobKey = uiPathResponse.data?.value?.[0]?.Key;
             console.log(`[UiPath] Job Key extracted: ${jobKey}`);
@@ -159,7 +137,6 @@ export class UipathService {
                 console.log(`[UiPath] Job started successfully with key: ${jobKey}`);
             } else {
                 console.log(`[UiPath ERROR] No job key received, marking as FAILED`);
-                console.log(`[UiPath ERROR] Response structure:`, JSON.stringify(uiPathResponse.data, null, 2));
             }
             
             const rpaAction = await this.prisma.rpaAction.create({
@@ -188,13 +165,6 @@ export class UipathService {
 
         } catch (e) {
             console.error(`[UiPath ERROR] Failed to trigger UiPath automation:`, e);
-            console.error(`[UiPath ERROR] Error details:`, {
-                message: e.message,
-                status: e.response?.status,
-                statusText: e.response?.statusText,
-                data: e.response?.data,
-                headers: e.response?.headers
-            });
             
             const document = await this.prisma.document.findUnique({
                 where:{
@@ -235,8 +205,6 @@ export class UipathService {
 
             const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs(${jobKey})`;
 
-            console.log(`[UiPath] Status check URL: ${orchestratorUrl}`);
-
             const response = await this.httpService.get(
                 orchestratorUrl,
                 {
@@ -248,21 +216,14 @@ export class UipathService {
                 }
             ).toPromise();
 
-            console.log(`[UiPath] Job status response:`, JSON.stringify(response.data, null, 2));
             console.log(`[UiPath] Job current state: ${response.data.State}`);
-
             return response.data.State;
 
         } catch (e) {
             console.error(`[UiPath ERROR] Failed to check UiPath job status for key ${jobKey}:`, e);
-            console.error(`[UiPath ERROR] Status check error details:`, {
-                message: e.message,
-                status: e.response?.status,
-                data: e.response?.data
-            });
 
             if (e.response?.status === 404) {
-                console.log(`[UiPath] Job ${jobKey} not found (404), assuming it was cleaned up and completed`);
+                console.log(`[UiPath] Job ${jobKey} not found (404), returning NotFound status`);
                 return 'NotFound';
             }
 
@@ -285,7 +246,7 @@ export class UipathService {
             });
 
             if (!rpaAction) {
-                console.log(`[UiPath ERROR] No RPA action found for documentId: ${documentId}`);
+                console.log(`[UiPath] No RPA action found for documentId: ${documentId}`);
                 return {
                     documentId,
                     status: 'PENDING',
@@ -315,15 +276,53 @@ export class UipathService {
             }
 
             console.log(`[UiPath] Checking UiPath status for job key: ${jobKey}`);
-            let jobStatus: string;
             
-            try {
-                jobStatus = await this.checkJobStatus(jobKey);
-                console.log(`[UiPath] UiPath job status: ${jobStatus}`);
-            } catch (statusError) {
-                console.error(`[UiPath ERROR] Error checking job status: ${statusError.message}`);
-                jobStatus = 'CheckFailed';
+            const createdAt = new Date(rpaAction.createdAt);
+            const now = new Date();
+            const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+            
+            console.log(`[UiPath] Job created ${minutesElapsed.toFixed(2)} minutes ago`);
+            
+            if (minutesElapsed < 0.5) {
+                console.log(`[UiPath] Job too recent, keeping PENDING status`);
+                return {
+                    documentId,
+                    status: 'PENDING',
+                    details: { 
+                        message: 'Job recently created, waiting before status check',
+                        minutesElapsed: minutesElapsed.toFixed(2)
+                    }
+                };
             }
+
+            let jobStatus: string;
+            let statusCheckAttempts = 0;
+            const maxStatusCheckAttempts = 3;
+            
+            while (statusCheckAttempts < maxStatusCheckAttempts) {
+                try {
+                    statusCheckAttempts++;
+                    console.log(`[UiPath] Status check attempt ${statusCheckAttempts} for job ${jobKey}`);
+                    
+                    jobStatus = await this.checkJobStatus(jobKey);
+                    
+                    if (jobStatus !== 'NotFound') {
+                        break;
+                    }
+                    
+                    if (statusCheckAttempts < maxStatusCheckAttempts) {
+                        console.log(`[UiPath] Job not found, waiting 2 seconds before retry...`);
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    }
+                } catch (statusError) {
+                    console.error(`[UiPath ERROR] Status check attempt ${statusCheckAttempts} failed:`, statusError.message);
+                    if (statusCheckAttempts >= maxStatusCheckAttempts) {
+                        jobStatus = 'CheckFailed';
+                    }
+                }
+            }
+            
+            console.log(`[UiPath] Final job status after ${statusCheckAttempts} attempts: ${jobStatus}`);
             
             let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
 
@@ -334,18 +333,15 @@ export class UipathService {
             } else if (jobStatus === 'Running' || jobStatus === 'Pending') {
                 updatedStatus = RpaActionStatus.PENDING;
             } else if (jobStatus === 'NotFound' || jobStatus === 'CheckFailed') {
-                const createdAt = new Date(rpaAction.createdAt);
-                const now = new Date();
-                const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
-                
-                console.log(`[UiPath] Job not found, created ${minutesElapsed} minutes ago`);
-                
-                if (minutesElapsed > 30) { 
+                if (minutesElapsed > 15) {
                     updatedStatus = RpaActionStatus.COMPLETED;
-                    console.log(`[UiPath] Job older than 30 minutes and not found, assuming completed`);
+                    console.log(`[UiPath] Job older than 15 minutes and not found, assuming completed`);
+                } else if (minutesElapsed > 5) {
+                    updatedStatus = RpaActionStatus.COMPLETED;
+                    console.log(`[UiPath] Job between 5-15 minutes old and not found, assuming completed`);
                 } else {
-                    updatedStatus = RpaActionStatus.FAILED;
-                    console.log(`[UiPath] Job not found and less than 30 minutes old, marking as failed`);
+                    updatedStatus = RpaActionStatus.PENDING;
+                    console.log(`[UiPath] Job less than 5 minutes old and not found, keeping pending`);
                 }
             }
 
@@ -361,7 +357,8 @@ export class UipathService {
                             ...(rpaAction.result as object || {}),
                             finalStatus: jobStatus,
                             lastUpdated: new Date().toISOString(),
-                            statusCheckResult: jobStatus === 'NotFound' ? 'Job not found in UiPath, possibly cleaned up' : 'Status checked successfully'
+                            statusCheckAttempts: statusCheckAttempts,
+                            minutesElapsed: minutesElapsed.toFixed(2)
                         }
                     }
                 });
@@ -372,7 +369,8 @@ export class UipathService {
                 status: updatedStatus,
                 details: {
                     ...(rpaAction.result as object || {}),
-                    uiPathStatus: jobStatus
+                    uiPathStatus: jobStatus,
+                    minutesElapsed: minutesElapsed.toFixed(2)
                 }
             };
 
@@ -393,11 +391,14 @@ export class UipathService {
         }
     }
 
-    @Cron('0 */5 * * * *')
+    @Cron('0 */2 * * * *') 
     async updatePendingJobStatuses() {
         console.log('[UiPath CRON] Running scheduled UiPath job status update');
         
         try {
+            const oneMinuteAgo = new Date();
+            oneMinuteAgo.setMinutes(oneMinuteAgo.getMinutes() - 1);
+            
             const twoHoursAgo = new Date();
             twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
 
@@ -406,12 +407,13 @@ export class UipathService {
                     status: RpaActionStatus.PENDING,
                     actionType: RpaActionType.DATA_ENTRY,
                     createdAt: {
-                        gte: twoHoursAgo
+                        gte: twoHoursAgo,
+                        lte: oneMinuteAgo 
                     }
                 }
             });
 
-            console.log(`[UiPath CRON] Found ${pendingActions.length} pending actions to check (created within last 2 hours)`);
+            console.log(`[UiPath CRON] Found ${pendingActions.length} pending actions to check`);
 
             for (const action of pendingActions) {
                 try {
@@ -434,17 +436,17 @@ export class UipathService {
                         continue;
                     }
 
+                    const createdAt = new Date(action.createdAt);
+                    const now = new Date();
+                    const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+
                     let jobStatus: string;
                     try {
                         jobStatus = await this.checkJobStatus(jobKey);
                     } catch (statusError) {
-                        console.log(`[UiPath CRON] Failed to check status for action ${action.id}, checking age`);
+                        console.log(`[UiPath CRON] Failed to check status for action ${action.id}`);
                         
-                        const createdAt = new Date(action.createdAt);
-                        const now = new Date();
-                        const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
-                        
-                        if (minutesElapsed > 60) {
+                        if (minutesElapsed > 30) {
                             jobStatus = 'AssumedCompleted';
                         } else {
                             continue;
@@ -458,14 +460,10 @@ export class UipathService {
                     } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
                         updatedStatus = RpaActionStatus.FAILED;
                     } else if (jobStatus === 'NotFound') {
-                        const createdAt = new Date(action.createdAt);
-                        const now = new Date();
-                        const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
-                        
-                        if (minutesElapsed > 30) {
+                        if (minutesElapsed > 15) {
                             updatedStatus = RpaActionStatus.COMPLETED;
-                        } else {
-                            updatedStatus = RpaActionStatus.FAILED;
+                        } else if (minutesElapsed > 10) {
+                            updatedStatus = RpaActionStatus.COMPLETED;
                         }
                     }
 
@@ -477,13 +475,12 @@ export class UipathService {
                                 result: {
                                     ...(action.result as object || {}),
                                     finalStatus: jobStatus,
-                                    cronUpdated: new Date().toISOString()
+                                    cronUpdated: new Date().toISOString(),
+                                    cronMinutesElapsed: minutesElapsed.toFixed(2)
                                 }
                             }
                         });
                         console.log(`[UiPath CRON] Updated job status for action ${action.id} to ${updatedStatus}`);
-                    } else {
-                        console.log(`[UiPath CRON] Action ${action.id} still pending with status: ${jobStatus}`);
                     }
                 } catch (error) {
                     console.error(`[UiPath CRON ERROR] Failed to update status for action ${action.id}:`, error);
@@ -504,16 +501,16 @@ export class UipathService {
             });
 
             if (veryOldPendingActions.length > 0) {
-                console.log(`[UiPath CRON] Found ${veryOldPendingActions.length} very old pending actions, marking as timeout`);
+                console.log(`[UiPath CRON] Found ${veryOldPendingActions.length} very old pending actions, marking as completed (assumed successful)`);
                 
                 for (const oldAction of veryOldPendingActions) {
                     await this.prisma.rpaAction.update({
                         where: { id: oldAction.id },
                         data: {
-                            status: RpaActionStatus.FAILED,
+                            status: RpaActionStatus.COMPLETED,
                             result: {
                                 ...(oldAction.result as object || {}),
-                                timeoutReason: 'Job pending for more than 24 hours',
+                                completionReason: 'Assumed completed after 24+ hours',
                                 cronTimeout: new Date().toISOString()
                             }
                         }
@@ -527,13 +524,8 @@ export class UipathService {
     }
 
     async getAccessToken(): Promise<string> {
-        console.log('[UiPath] Getting access token');
-        
         const clientId = this.configService.get('UIPATH_CLIENT_ID');
         const clientSecret = this.configService.get('UIPATH_CLIENT_SECRET');
-    
-        console.log(`[UiPath] Client ID: ${clientId ? 'SET' : 'NOT SET'}`);
-        console.log(`[UiPath] Client Secret: ${clientSecret ? 'SET' : 'NOT SET'}`);
 
         const data = qs.stringify({
             grant_type: 'client_credentials',
@@ -553,14 +545,9 @@ export class UipathService {
                 { headers }
             ).toPromise();
 
-            console.log('[UiPath] Access token obtained successfully');
             return response.data.access_token;
         } catch (error) {
             console.error('[UiPath ERROR] Failed to get access token:', error);
-            console.error('[UiPath ERROR] Token error details:', {
-                status: error.response?.status,
-                data: error.response?.data
-            });
             throw error;
         }
     }

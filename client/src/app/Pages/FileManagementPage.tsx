@@ -32,8 +32,8 @@ const FileManagementPage = () => {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
-  if(false){
-    console.log(pollingAttempts);
+  if (false){
+    console.log(pollingAttempts)
   }
 
   const[nameSearch, setNameSearch] = useState<string>('');
@@ -131,28 +131,30 @@ const FileManagementPage = () => {
     setProcessingDocId(docId);
     setPollingAttempts(0);
     
-    const interval = setInterval(() => {
-      setPollingAttempts(prev => {
-        const newAttempts = prev + 1;
-        console.log(`[Frontend] Polling attempt ${newAttempts} for document ${docId}`);
-        
-        if (newAttempts >= maxPollingAttempts) {
-          console.log(`[Frontend] Max polling attempts reached for document ${docId}`);
-          clearInterval(interval);
-          setStatusPolling(null);
-          setProcessingDocId(null);
+    setTimeout(() => {
+      const interval = setInterval(() => {
+        setPollingAttempts(prev => {
+          const newAttempts = prev + 1;
+          console.log(`[Frontend] Polling attempt ${newAttempts} for document ${docId}`);
           
-          updateDocumentStatus(docId, 'TIMEOUT');
+          if (newAttempts >= maxPollingAttempts) {
+            console.log(`[Frontend] Max polling attempts reached for document ${docId}`);
+            clearInterval(interval);
+            setStatusPolling(null);
+            setProcessingDocId(null);
+            
+            updateDocumentStatus(docId, 'TIMEOUT');
+            
+            return newAttempts;
+          }
           
+          refetchJobStatus();
           return newAttempts;
-        }
-        
-        refetchJobStatus();
-        return newAttempts;
-      });
-    }, 3000);
-    
-    setStatusPolling(interval);
+        });
+      }, 5000); 
+      
+      setStatusPolling(interval);
+    }, 45000);
   };
 
   useEffect(() => {
