@@ -130,13 +130,12 @@ export class UipathService {
                     documentId: document.id,
                     accountingClientId: document.accountingClientId,
                     actionType: RpaActionType.DATA_ENTRY,
-                    status: uiPathResponse.status === 200? RpaActionStatus.COMPLETED : RpaActionStatus.FAILED,
+                    status: uiPathResponse.status === 200 ? RpaActionStatus.PENDING : RpaActionStatus.FAILED,
                     result: { 
                         ...uiPathResponse.data,
                         jobKey: jobKey
                     },
                     triggeredById: userId,
-
                 }
             });
 
@@ -145,22 +144,20 @@ export class UipathService {
                 rpaAction
             };
 
-
         } catch (e) {
             console.error('Failed to trigger UiPath automation:', e);
-            if (e.response) {
+            
+            const document = await this.prisma.document.findUnique({
+                where:{
+                    id: documentId
+                },
+                select:{
+                    accountingClientId: true,
+                }
+            });
 
-                const document = await this.prisma.document.findUnique({
-                    where:{
-                        id: documentId
-                    },
-                    select:{
-                        accountingClientId: true,
-                    }
-                });
-
-                if(document)
-                    {await this.prisma.rpaAction.create({
+            if(document) {
+                await this.prisma.rpaAction.create({
                     data: {
                       documentId: documentId,
                       accountingClientId: document.accountingClientId,
@@ -169,10 +166,10 @@ export class UipathService {
                       result: { error: e.message, details: e.response?.data || null },
                       triggeredById: userId
                     }
-                })}
-              }
+                });
+            }
               
-              throw new InternalServerErrorException('Failed to process invoice with UiPath');
+            throw new InternalServerErrorException('Failed to process invoice with UiPath');
         }
     }
 
@@ -255,7 +252,7 @@ export class UipathService {
             return {
                 documentId,
                 status: updatedStatus,
-                    details: {
+                details: {
                     ...(rpaAction.result as object || {}),
                     uiPathStatus: jobStatus
                 }
@@ -266,7 +263,7 @@ export class UipathService {
         }
     }
 
-    @Cron('0 */5 * * * *') // Run every 5 minutes
+    @Cron('0 */5 * * * *')
     async updatePendingJobStatuses() {
         try {
             console.log('Running scheduled UiPath job status update');
@@ -314,7 +311,6 @@ export class UipathService {
         }
     }
 
-
     async getAccessToken(): Promise<string> {
         const clientId = this.configService.get('UIPATH_CLIENT_ID');
         const clientSecret = this.configService.get('UIPATH_CLIENT_SECRET');
@@ -338,7 +334,6 @@ export class UipathService {
     
         return response.data.access_token;
     }
-    
 
     async getManagement(ein){
         try {
