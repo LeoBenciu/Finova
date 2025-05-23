@@ -32,7 +32,9 @@ const FileManagementPage = () => {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
-  pollingAttempts;
+  if(false){
+    console.log(pollingAttempts);
+  }
 
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
@@ -53,6 +55,8 @@ const FileManagementPage = () => {
   },[filteredFiles])
 
   useEffect(()=>{
+    if(!files?.documents) return;
+    
     let newFilteredFiles = files.documents;
     if(nameSearch.length>0){
        newFilteredFiles = newFilteredFiles.filter((file:any)=>(
@@ -110,7 +114,7 @@ const FileManagementPage = () => {
       });
     };
 
-    if (files.documents) {
+    if (files?.documents) {
       const updatedDocs = updateDocs(files.documents);
       setFiles(prev => ({...prev, documents: updatedDocs}));
       setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
@@ -194,8 +198,11 @@ const FileManagementPage = () => {
   const handleDeleteFileButton = async(docId:number)=>{
     try {
       await deleteFile({clientCompanyEin,docId}).unwrap();
-      const updatedDocuments = files.documents.filter((file:any) => file.id !== docId);
-      setFilteredFiles({...files, documents: updatedDocuments});
+      if(files?.documents) {
+        const updatedDocuments = files.documents.filter((file:any) => file.id !== docId);
+        setFiles(prev => ({...prev, documents: updatedDocuments}));
+        setFilteredFiles(prev => ({...prev, documents: updatedDocuments}));
+      }
       setCurrentFile({});
     } catch (e) {
       console.error('Failed to delete the file and data from the database', e)
@@ -247,13 +254,14 @@ const FileManagementPage = () => {
     } catch (error) {
       console.error(`[Frontend ERROR] Manual status check failed:`, error);
       setProcessingDocId(null);
-      
     }
   };
 
   useEffect(()=>{
-    setFiles(filesData);
-    setFilteredFiles(filesData);
+    if(filesData) {
+      setFiles(filesData);
+      setFilteredFiles(filesData);
+    }
   },[filesData, deleteFile])
   
   const handleTooLongString = useCallback((str: string): string => {
@@ -477,7 +485,7 @@ const FileManagementPage = () => {
       />)}
 
       {isSureModal&&(
-        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData[0].documentId)} confirmButton={language==='ro'?'Șterge':'Delete'}
+        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData?.[0]?.documentId || currentFile?.id)} confirmButton={language==='ro'?'Șterge':'Delete'}
         text={language==='ro'?"Ești sigur/ă că vrei să ȘTERGI permanent fișierul și datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and it's data?"}/>
       )}
 
