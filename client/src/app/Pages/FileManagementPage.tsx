@@ -32,7 +32,7 @@ const FileManagementPage = () => {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
-  console.log(pollingAttempts)
+  pollingAttempts;
 
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
@@ -46,7 +46,7 @@ const FileManagementPage = () => {
 
   useEffect(()=>{
     console.log('files:',files);
-  },[])
+  },[files])
 
   useEffect(()=>{
     console.log('IntervalDateFitler:', filteredFiles);
@@ -83,7 +83,7 @@ const FileManagementPage = () => {
       documents: newFilteredFiles
     })
   },[typeFilter, setTypeFilter,nameSearch, 
-    setNameSearch,intervalDateFilter,setIntervalDateFilter]);
+    setNameSearch,intervalDateFilter,setIntervalDateFilter, files]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
   const { data: filesData } = useGetFilesQuery({company:clientCompanyEin});
@@ -96,6 +96,26 @@ const FileManagementPage = () => {
     processingDocId || 0, 
     { skip: !processingDocId }
   );
+
+  const updateDocumentStatus = (docId: number, status: string) => {
+    const updateDocs = (docs: any[]) => {
+      return docs.map((doc: any) => {
+        if (doc.id === docId) {
+          return {
+            ...doc,
+            rpa: [{ status: status }]
+          };
+        }
+        return doc;
+      });
+    };
+
+    if (files.documents) {
+      const updatedDocs = updateDocs(files.documents);
+      setFiles(prev => ({...prev, documents: updatedDocs}));
+      setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+    }
+  };
 
   const startStatusPolling = (docId: number) => {
     console.log(`[Frontend] Starting status polling for document ${docId}`);
@@ -118,20 +138,7 @@ const FileManagementPage = () => {
           setStatusPolling(null);
           setProcessingDocId(null);
           
-          if (files.documents) {
-            const updatedDocs = files.documents.map((doc: any) => {
-              if (doc.id === docId) {
-                return {
-                  ...doc,
-                  rpa: [{ status: 'TIMEOUT' }]
-                };
-              }
-              return doc;
-            });
-            
-            setFiles(prev => ({...prev, documents: updatedDocs}));
-            setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
-          }
+          updateDocumentStatus(docId, 'TIMEOUT');
           
           return newAttempts;
         }
@@ -147,29 +154,27 @@ const FileManagementPage = () => {
   useEffect(() => {
     if (jobStatusError) {
       console.error(`[Frontend ERROR] Job status error:`, jobStatusError);
+      
+      if (statusPolling && processingDocId) {
+        clearInterval(statusPolling);
+        setStatusPolling(null);
+        
+        console.log(`[Frontend] Error checking job status, but continuing to poll`);
+      }
     }
     
     if (jobStatus) {
       console.log(`[Frontend] Received job status:`, jobStatus);
       
-      if (jobStatus.status !== 'PENDING' && statusPolling) {
-        console.log(`[Frontend] Job completed with status: ${jobStatus.status}`);
+      const currentStatus = jobStatus.status;
+      
+      if (currentStatus !== 'PENDING' && statusPolling) {
+        console.log(`[Frontend] Job completed with status: ${currentStatus}`);
         clearInterval(statusPolling);
         setStatusPolling(null);
         
-        if (files.documents) {
-          const updatedDocs = files.documents.map((doc: any) => {
-            if (doc.id === processingDocId) {
-              return {
-                ...doc,
-                rpa: [{ status: jobStatus.status }]
-              };
-            }
-            return doc;
-          });
-          
-          setFiles(prev => ({...prev, documents: updatedDocs}));
-          setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+        if (processingDocId !== null) {
+          updateDocumentStatus(processingDocId, currentStatus);
         }
         
         setProcessingDocId(null);
@@ -201,18 +206,7 @@ const FileManagementPage = () => {
     console.log(`[Frontend] Starting automation process for document ${id}`);
     
     try {
-      const updatedDocs = files.documents.map((doc: any) => {
-        if (doc.id === id) {
-          return {
-            ...doc,
-            rpa: [{ status: 'PENDING' }]
-          };
-        }
-        return doc;
-      });
-      
-      setFiles(prev => ({...prev, documents: updatedDocs}));
-      setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+      updateDocumentStatus(id, 'PENDING');
       
       startStatusPolling(id);
       
@@ -230,28 +224,30 @@ const FileManagementPage = () => {
       setProcessingDocId(null);
       setPollingAttempts(0);
       
-      const updatedDocs = files.documents.map((doc: any) => {
-        if (doc.id === id) {
-          return {
-            ...doc,
-            rpa: [{ status: 'FAILED' }]
-          };
-        }
-        return doc;
-      });
+      updateDocumentStatus(id, 'FAILED');
       
-      setFiles(prev => ({...prev, documents: updatedDocs}));
-      setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+      console.log(`[Frontend] Process automation failed - user should be notified`);
     }
   };
 
   const handleCheckStatus = async(id: number) => {
     console.log(`[Frontend] Manual status check for document ${id}`);
     setProcessingDocId(id);
+    
     try {
-      await refetchJobStatus();
+      const statusResult = await refetchJobStatus();
+      console.log(`[Frontend] Manual status check result:`, statusResult);
+      
+      setTimeout(() => {
+        if (processingDocId === id) {
+          setProcessingDocId(null);
+        }
+      }, 2000);
+      
     } catch (error) {
       console.error(`[Frontend ERROR] Manual status check failed:`, error);
+      setProcessingDocId(null);
+      
     }
   };
 
@@ -267,23 +263,26 @@ const FileManagementPage = () => {
 
   const getStatusDisplay = (file: any) => {
     if (file.id === processingDocId) {
-      return language === 'ro' ? 'Se procesează...' : 'Processing...';
+      return language === 'ro' ? 'Se verifică...' : 'Checking...';
     }
     
     if (file.rpa && file.rpa.length > 0) {
       const status = file.rpa[0].status;
-      if (status === 'COMPLETED') {
-        return language === 'ro' ? 'Completat' : 'Completed';
-      } else if (status === 'FAILED') {
-        return language === 'ro' ? 'Eșuat' : 'Failed';
-      } else if (status === 'PENDING') {
-        return language === 'ro' ? 'În așteptare' : 'Pending';
-      } else if (status === 'TIMEOUT') {
-        return language === 'ro' ? 'Timeout' : 'Timeout';
+      switch (status) {
+        case 'COMPLETED':
+          return language === 'ro' ? 'Completat' : 'Completed';
+        case 'FAILED':
+          return language === 'ro' ? 'Eșuat' : 'Failed';
+        case 'PENDING':
+          return language === 'ro' ? 'În procesare' : 'Processing';
+        case 'TIMEOUT':
+          return language === 'ro' ? 'Timeout' : 'Timeout';
+        default:
+          return language === 'ro' ? 'Necunoscut' : 'Unknown';
       }
     }
     
-    return language === 'ro' ? 'În așteptare' : 'Pending';
+    return language === 'ro' ? 'În așteptare' : 'Ready';
   };
 
   const getStatusColor = (file: any) => {
@@ -293,12 +292,39 @@ const FileManagementPage = () => {
     
     if (file.rpa && file.rpa.length > 0) {
       const status = file.rpa[0].status;
-      if (status === 'COMPLETED') return 'text-green-500';
-      if (status === 'FAILED') return 'text-red-500';
-      if (status === 'PENDING') return 'text-yellow-500';
-      if (status === 'TIMEOUT') return 'text-orange-500';
+      switch (status) {
+        case 'COMPLETED':
+          return 'text-green-500';
+        case 'FAILED':
+          return 'text-red-500';
+        case 'PENDING':
+          return 'text-yellow-500';
+        case 'TIMEOUT':
+          return 'text-orange-500';
+        default:
+          return 'text-gray-500';
+      }
     }
-    return 'text-yellow-500';
+    return 'text-gray-400';
+  };
+
+  const isBotButtonDisabled = (file: any) => {
+    if (file.id === processingDocId) return true;
+    if (file.rpa && file.rpa.length > 0) {
+      const status = file.rpa[0].status;
+      return status === 'COMPLETED' || status === 'PENDING';
+    }
+    return false;
+  };
+
+  const getBotButtonTooltip = (file: any) => {
+    if (file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED') {
+      return language === 'ro' ? 'Deja procesat' : 'Already processed';
+    }
+    if (file.id === processingDocId || (file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'PENDING')) {
+      return language === 'ro' ? 'Se procesează...' : 'Processing...';
+    }
+    return language === 'ro' ? 'Procesează date' : 'Submit data';
   };
 
   return (
@@ -361,7 +387,6 @@ const FileManagementPage = () => {
                  }/>
                  </div>
 
-
                  <div className='flex items-center justify-center'>
                      <p className='text-[var(--text1)]'>{language==='ro'?(file.type==='Invoice'?'Factura':'Chitanta'):file.type}</p>
                  </div>
@@ -382,38 +407,59 @@ const FileManagementPage = () => {
                  </div>
 
                  <div className='flex items-center justify-center'>
-                    <p className={`${getStatusColor(file)}`}>
+                    <p className={`${getStatusColor(file)} font-medium`}>
                       {getStatusDisplay(file)}
                     </p>
                     {file.id === processingDocId && (
                       <RefreshCw size={16} className="ml-2 animate-spin text-blue-500" />
                     )}
                     {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'PENDING' && file.id !== processingDocId && (
-                      <RefreshCw 
-                        size={16} 
-                        className="ml-2 cursor-pointer text-blue-500 hover:text-blue-700" 
-                        onClick={() => handleCheckStatus(file.id)}
-                      />
+                      <MyTooltip content={language === 'ro' ? 'Verifică status' : 'Check status'} trigger={
+                        <RefreshCw 
+                          size={16} 
+                          className="ml-2 cursor-pointer text-blue-500 hover:text-blue-700 transition-colors" 
+                          onClick={() => handleCheckStatus(file.id)}
+                        />
+                      }/>
+                    )}
+                    {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'FAILED' && (
+                      <span 
+                        className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded cursor-pointer hover:bg-red-200 transition-colors"
+                        onClick={() => handleProcessAutomation(file.id)}
+                        title={language === 'ro' ? 'Încearcă din nou' : 'Retry'}
+                      >
+                        {language === 'ro' ? 'Retry' : 'Retry'}
+                      </span>
                     )}
                   </div>
 
                  <div className='flex items-center justify-center gap-5'>
-                   <MyTooltip content={language==='ro'?'Procesează date':'Submit data'} trigger={
-                   <Bot size={24} 
-                     className={`${file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED' ? 'text-gray-400 cursor-not-allowed' : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer'}`}
-                     onClick={() => {
-                       if (!(file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED')) {
-                         handleProcessAutomation(file.id);
-                       }
-                     }}
-                   />
+                   <MyTooltip content={getBotButtonTooltip(file)} trigger={
+                     <Bot 
+                       size={24} 
+                       className={`${
+                         isBotButtonDisabled(file) 
+                           ? 'text-gray-400 cursor-not-allowed' 
+                           : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer'
+                       }`}
+                       onClick={() => {
+                         if (!isBotButtonDisabled(file)) {
+                           handleProcessAutomation(file.id);
+                         }
+                       }}
+                     />
                    }/>
+                   
                    <MyTooltip content={language==='ro'?'Șterge Fișiere și date':'Delete File and Data'} trigger={
-                   <Trash2 size={20} className="text-red-500
-                   cursor-pointer" onClick={()=>{setIsSureModal(true);
-                     setCurrentFile(file);
-                   }}></Trash2>
-                 }/>
+                     <Trash2 
+                       size={20} 
+                       className="text-red-500 cursor-pointer hover:text-red-700 transition-colors" 
+                       onClick={()=>{
+                         setIsSureModal(true);
+                         setCurrentFile(file);
+                       }}
+                     />
+                   }/>
                  </div>
              </div>
           )})}

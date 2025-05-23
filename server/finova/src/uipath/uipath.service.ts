@@ -30,8 +30,7 @@ export interface uiPathData{
 export class UipathService {
     constructor(private prisma: PrismaService, private httpService: HttpService , private configService: ConfigService){}
 
-    async postClientInvoice(documentId:number, userId: number, currentClientCompanyEin: string)
-    {
+    async postClientInvoice(documentId:number, userId: number, currentClientCompanyEin: string) {
         console.log(`[UiPath] Starting postClientInvoice for documentId: ${documentId}, userId: ${userId}, ein: ${currentClientCompanyEin}`);
         
         try {
@@ -72,8 +71,7 @@ export class UipathService {
             let dataToSend:uiPathData;
             let releaseKey;
             
-            if(currentClientCompanyEin === buyerData.result.buyer_ein)
-            {
+            if(currentClientCompanyEin === buyerData.result.buyer_ein) {
                 console.log(`[UiPath] Processing as INTRARI (Furnizori) - client is buyer`);
                 //Intrari - Furnizori
                 extractedData = processedData.extractedFields as { result: { 
@@ -93,9 +91,7 @@ export class UipathService {
 
                 releaseKey = this.configService.get('UIPATH_RELEASE_KEY_FACTURI_INTRARI');
                 console.log(`[UiPath] Using INTRARI release key: ${releaseKey ? 'SET' : 'NOT SET'}`);
-            }
-            else
-            {
+            } else {
                 console.log(`[UiPath] Processing as IESIRI (Clienti) - client is seller`);
                 //Iesiri - Clienti
                 extractedData = processedData.extractedFields as { result: { 
@@ -137,11 +133,6 @@ export class UipathService {
             const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs/UiPath.Server.Configuration.OData.StartJobs`;
             
             console.log(`[UiPath] Making request to: ${orchestratorUrl}`);
-            console.log(`[UiPath] Request headers:`, {
-                'Authorization': `Bearer ${accessToken?.substring(0, 20)}...`,
-                'Content-Type': 'application/json',
-                'X-UIPATH-FolderPath': "Shared",
-            });
 
             const uiPathResponse = await this.httpService.post(
                 orchestratorUrl,
@@ -156,7 +147,6 @@ export class UipathService {
               ).toPromise();
 
             console.log(`[UiPath] UiPath Response Status: ${uiPathResponse.status}`);
-            console.log(`[UiPath] UiPath Response Headers:`, JSON.stringify(uiPathResponse.headers, null, 2));
             console.log(`[UiPath] UiPath Response Data:`, JSON.stringify(uiPathResponse.data, null, 2));
 
             const jobKey = uiPathResponse.data?.value?.[0]?.Key;
@@ -237,7 +227,7 @@ export class UipathService {
         }
     }
 
-    async checkJobStatus(jobKey: string): Promise<string>{
+    async checkJobStatus(jobKey: string): Promise<string> {
         console.log(`[UiPath] Checking job status for key: ${jobKey}`);
         
         try {
@@ -270,6 +260,12 @@ export class UipathService {
                 status: e.response?.status,
                 data: e.response?.data
             });
+
+            if (e.response?.status === 404) {
+                console.log(`[UiPath] Job ${jobKey} not found (404), assuming it was cleaned up and completed`);
+                return 'NotFound';
+            }
+
             throw new InternalServerErrorException('Failed to check UiPath job status');
         }
     }
@@ -290,7 +286,11 @@ export class UipathService {
 
             if (!rpaAction) {
                 console.log(`[UiPath ERROR] No RPA action found for documentId: ${documentId}`);
-                throw new NotFoundException('No UiPath job found for this document');
+                return {
+                    documentId,
+                    status: 'PENDING',
+                    details: { message: 'No automation started yet' }
+                };
             }
 
             console.log(`[UiPath] Found RPA action with status: ${rpaAction.status}`);
@@ -307,15 +307,25 @@ export class UipathService {
             const jobKey = (rpaAction.result as { jobKey: string })?.jobKey;
             if (!jobKey) {
                 console.log(`[UiPath ERROR] No job key found in RPA action for documentId: ${documentId}`);
-                throw new NotFoundException('Job key not found in RPA action');
+                return {
+                    documentId,
+                    status: 'FAILED',
+                    details: { error: 'Job key not found in RPA action' }
+                };
             }
 
             console.log(`[UiPath] Checking UiPath status for job key: ${jobKey}`);
-            const jobStatus = await this.checkJobStatus(jobKey);
+            let jobStatus: string;
+            
+            try {
+                jobStatus = await this.checkJobStatus(jobKey);
+                console.log(`[UiPath] UiPath job status: ${jobStatus}`);
+            } catch (statusError) {
+                console.error(`[UiPath ERROR] Error checking job status: ${statusError.message}`);
+                jobStatus = 'CheckFailed';
+            }
             
             let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
-
-            console.log(`[UiPath] UiPath job status: ${jobStatus}`);
 
             if (jobStatus === 'Successful') {
                 updatedStatus = RpaActionStatus.COMPLETED;
@@ -323,6 +333,20 @@ export class UipathService {
                 updatedStatus = RpaActionStatus.FAILED;
             } else if (jobStatus === 'Running' || jobStatus === 'Pending') {
                 updatedStatus = RpaActionStatus.PENDING;
+            } else if (jobStatus === 'NotFound' || jobStatus === 'CheckFailed') {
+                const createdAt = new Date(rpaAction.createdAt);
+                const now = new Date();
+                const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+                
+                console.log(`[UiPath] Job not found, created ${minutesElapsed} minutes ago`);
+                
+                if (minutesElapsed > 30) { 
+                    updatedStatus = RpaActionStatus.COMPLETED;
+                    console.log(`[UiPath] Job older than 30 minutes and not found, assuming completed`);
+                } else {
+                    updatedStatus = RpaActionStatus.FAILED;
+                    console.log(`[UiPath] Job not found and less than 30 minutes old, marking as failed`);
+                }
             }
 
             console.log(`[UiPath] Mapped status: ${updatedStatus} (from UiPath status: ${jobStatus})`);
@@ -336,7 +360,8 @@ export class UipathService {
                         result: {
                             ...(rpaAction.result as object || {}),
                             finalStatus: jobStatus,
-                            lastUpdated: new Date().toISOString()
+                            lastUpdated: new Date().toISOString(),
+                            statusCheckResult: jobStatus === 'NotFound' ? 'Job not found in UiPath, possibly cleaned up' : 'Status checked successfully'
                         }
                     }
                 });
@@ -356,7 +381,15 @@ export class UipathService {
             
         } catch (error) {
             console.error(`[UiPath ERROR] Failed to get job status for documentId ${documentId}:`, error);
-            throw new InternalServerErrorException('Failed to get UiPath job status');
+            
+            return {
+                documentId,
+                status: 'FAILED',
+                details: { 
+                    error: 'Failed to check job status',
+                    message: error.message 
+                }
+            };
         }
     }
 
@@ -365,14 +398,20 @@ export class UipathService {
         console.log('[UiPath CRON] Running scheduled UiPath job status update');
         
         try {
+            const twoHoursAgo = new Date();
+            twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+
             const pendingActions = await this.prisma.rpaAction.findMany({
                 where: {
                     status: RpaActionStatus.PENDING,
-                    actionType: RpaActionType.DATA_ENTRY
+                    actionType: RpaActionType.DATA_ENTRY,
+                    createdAt: {
+                        gte: twoHoursAgo
+                    }
                 }
             });
 
-            console.log(`[UiPath CRON] Found ${pendingActions.length} pending actions to check`);
+            console.log(`[UiPath CRON] Found ${pendingActions.length} pending actions to check (created within last 2 hours)`);
 
             for (const action of pendingActions) {
                 try {
@@ -380,17 +419,54 @@ export class UipathService {
                     
                     const jobKey = (action.result as { jobKey: string })?.jobKey;
                     if (!jobKey) {
-                        console.log(`[UiPath CRON] No job key for action ID: ${action.id}, skipping`);
+                        console.log(`[UiPath CRON] No job key for action ID: ${action.id}, marking as failed`);
+                        await this.prisma.rpaAction.update({
+                            where: { id: action.id },
+                            data: {
+                                status: RpaActionStatus.FAILED,
+                                result: {
+                                    ...(action.result as object || {}),
+                                    cronError: 'No job key found',
+                                    cronUpdated: new Date().toISOString()
+                                }
+                            }
+                        });
                         continue;
                     }
 
-                    const jobStatus = await this.checkJobStatus(jobKey);
+                    let jobStatus: string;
+                    try {
+                        jobStatus = await this.checkJobStatus(jobKey);
+                    } catch (statusError) {
+                        console.log(`[UiPath CRON] Failed to check status for action ${action.id}, checking age`);
+                        
+                        const createdAt = new Date(action.createdAt);
+                        const now = new Date();
+                        const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+                        
+                        if (minutesElapsed > 60) {
+                            jobStatus = 'AssumedCompleted';
+                        } else {
+                            continue;
+                        }
+                    }
+
                     let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
 
-                    if (jobStatus === 'Successful') {
+                    if (jobStatus === 'Successful' || jobStatus === 'AssumedCompleted') {
                         updatedStatus = RpaActionStatus.COMPLETED;
                     } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
                         updatedStatus = RpaActionStatus.FAILED;
+                    } else if (jobStatus === 'NotFound') {
+                        const createdAt = new Date(action.createdAt);
+                        const now = new Date();
+                        const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
+                        
+                        if (minutesElapsed > 30) {
+                            updatedStatus = RpaActionStatus.COMPLETED;
+                        } else {
+                            updatedStatus = RpaActionStatus.FAILED;
+                        }
                     }
 
                     if (updatedStatus !== RpaActionStatus.PENDING) {
@@ -413,6 +489,38 @@ export class UipathService {
                     console.error(`[UiPath CRON ERROR] Failed to update status for action ${action.id}:`, error);
                 }
             }
+
+            const oneDayAgo = new Date();
+            oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+
+            const veryOldPendingActions = await this.prisma.rpaAction.findMany({
+                where: {
+                    status: RpaActionStatus.PENDING,
+                    actionType: RpaActionType.DATA_ENTRY,
+                    createdAt: {
+                        lt: oneDayAgo
+                    }
+                }
+            });
+
+            if (veryOldPendingActions.length > 0) {
+                console.log(`[UiPath CRON] Found ${veryOldPendingActions.length} very old pending actions, marking as timeout`);
+                
+                for (const oldAction of veryOldPendingActions) {
+                    await this.prisma.rpaAction.update({
+                        where: { id: oldAction.id },
+                        data: {
+                            status: RpaActionStatus.FAILED,
+                            result: {
+                                ...(oldAction.result as object || {}),
+                                timeoutReason: 'Job pending for more than 24 hours',
+                                cronTimeout: new Date().toISOString()
+                            }
+                        }
+                    });
+                }
+            }
+
         } catch (error) {
             console.error('[UiPath CRON ERROR] Failed to run scheduled job status update:', error);
         }
@@ -457,7 +565,7 @@ export class UipathService {
         }
     }
 
-    async getManagement(ein){
+    async getManagement(ein) {
         try {
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where:{
@@ -485,7 +593,7 @@ export class UipathService {
         }
     }
 
-    async getArticles(ein){
+    async getArticles(ein) {
         try {
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where:{

@@ -86,6 +86,14 @@ export class FilesService {
 
     async postFile(clientEin:string,processedData:any,file:Express.Multer.File, user: User)
     {
+        let uploadResult;
+        let fileKey;
+        const s3 = new AWS.S3({
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            region: process.env.AWS_REGION
+        });
+
         try{
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where:{
@@ -102,88 +110,96 @@ export class FilesService {
             });
             if(!accountingClientRelation || accountingClientRelation.length===0) throw new NotFoundException('You don\'t have access to this client company');
 
-            const s3 = new AWS.S3({
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-                region: process.env.AWS_REGION
-            });
+            fileKey = `${user.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
 
-            const fileKey = `${user.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
-
-            const uploadResult = await s3.upload({
+            uploadResult = await s3.upload({
                 Bucket: process.env.AWS_S3_BUCKET_NAME,
                 Key: fileKey,
                 Body: file.buffer,
                 ContentType: file.mimetype
             }).promise();
 
-            const document = await this.prisma.document.create({
-                data:{
-                    name: file.originalname ,
-                    type:  processedData.result.document_type,
-                    path: uploadResult.Location,
-                    s3Key: fileKey,
-                    contentType: file.mimetype,
-                    fileSize: file.size,
-                    accountingClientId: accountingClientRelation[0].id
-                }
+            const result = await this.prisma.$transaction(async (prisma) => {
+                const document = await prisma.document.create({
+                    data:{
+                        name: file.originalname,
+                        type: processedData.result.document_type,
+                        path: uploadResult.Location,
+                        s3Key: fileKey,
+                        contentType: file.mimetype,
+                        fileSize: file.size,
+                        accountingClientId: accountingClientRelation[0].id
+                    }
+                });
+
+                const processedDataDb = await prisma.processedData.create({
+                    data:{
+                        documentId: document.id,
+                        extractedFields: processedData
+                    }
+                });
+
+                const articlePromises = processedData.result.line_items
+                    .filter(item => item.isNew && item.type !== "Nedefinit")
+                    .map(async (item) => {
+                        const typeMapping = {
+                            'Marfuri': ArticleType.MARFURI,
+                            'Produse finite': ArticleType.PRODUSE_FINITE,
+                            'Ambalaje': ArticleType.AMBALAJE,
+                            'Semifabricate': ArticleType.SEMIFABRICATE,
+                            'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
+                            'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
+                            'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
+                            'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
+                            'Servicii vandute': ArticleType.SERVICII_VANDUTE,
+                            'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
+                            'Taxa verde': ArticleType.TAXA_VERDE,
+                            'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
+                            'Materii prime': ArticleType.MATERII_PRIME,
+                            'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
+                            'Combustibili': ArticleType.COMBUSTIBILI,
+                            'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
+                            'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
+                            'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
+                            'Amenajarii provizorii': ArticleType.AMENAJARI_PROVIZORII,
+                            'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
+                            'Mat. in pastrare/consig': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
+                        };
+
+                        return prisma.article.create({
+                            data:{
+                                code: item.articleCode,
+                                name: item.name,
+                                vat: item.vat,
+                                unitOfMeasure: item.um,
+                                type: typeMapping[item.type],
+                                clientCompanyId: clientCompany.id
+                            }
+                        });
+                    });
+
+                await Promise.all(articlePromises);
+
+                return { savedDocument: document, savedProcessedData: processedDataDb };
             });
 
-            processedData.result.line_items.forEach(async(item)=>{
-                if(item.isNew && item.type !== "Nedefinit"){
-                    const typeMapping = {
-                        'Marfuri': ArticleType.MARFURI,
-                        'Produse finite': ArticleType.PRODUSE_FINITE,
-                        'Ambalaje': ArticleType.AMBALAJE,
-                        'Semifabricate': ArticleType.SEMIFABRICATE,
-                        'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
-                        'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
-                        'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
-                        'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
-                        'Servicii vandute': ArticleType.SERVICII_VANDUTE,
-                        'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
-                        'Taxa verde': ArticleType.TAXA_VERDE,
-                        'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
-                        'Materii prime': ArticleType.MATERII_PRIME,
-                        'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
-                        'Combustibili': ArticleType.COMBUSTIBILI,
-                        'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
-                        'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
-                        'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
-                        'Amenajarii provizorii': ArticleType.AMENAJARI_PROVIZORII,
-                        'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
-                        'Mat. in pastrare/consig': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
-                    };
-
-                    await this.prisma.article.create({
-                        data:{
-                            code: item.articleCode,
-                            name: item.name,
-                            vat: item.vat,
-                            unitOfMeasure: item.um,
-                            type: typeMapping[item.type],
-                            clientCompanyId: clientCompany.id
-                        }
-                    })
-                }
-            });
-
-            const processedDataDb = await this.prisma.processedData.create({
-                data:{
-                    documentId: document.id,
-                    extractedFields: processedData
-                }
-            });
-
-
-            
-            return {savedDocument:document, savedProcessedData: processedDataDb}
+            return result;
         }
         catch(e){
+            if (uploadResult && fileKey) {
+                try {
+                    await s3.deleteObject({
+                        Bucket: process.env.AWS_S3_BUCKET_NAME,
+                        Key: fileKey
+                    }).promise();
+                } catch (s3Error) {
+                    console.error('Failed to cleanup S3 file after database error:', s3Error);
+                }
+            }
+            
             if (e instanceof NotFoundException) throw e;
             throw new InternalServerErrorException("Failed to save document and processed data in the database!");
         }
-
     }
 
     async updateFiles(processedData:any, clientCompanyEin:string, user:User, docId:number )
