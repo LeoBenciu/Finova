@@ -30,6 +30,8 @@ const FileManagementPage = () => {
   const [isSureModal, setIsSureModal] = useState<boolean>(false);
   const [processingDocId, setProcessingDocId] = useState<number | null>(null);
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
+  const [pollingAttempts, setPollingAttempts] = useState<number>(0);
+  const [maxPollingAttempts] = useState<number>(100);
 
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
@@ -89,59 +91,91 @@ const FileManagementPage = () => {
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
   const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name);
   
-  const { data: jobStatus, refetch: refetchJobStatus } = useGetJobStatusQuery(
+  const { data: jobStatus, error: jobStatusError, refetch: refetchJobStatus } = useGetJobStatusQuery(
     processingDocId || 0, 
     { skip: !processingDocId }
   );
 
   const startStatusPolling = (docId: number) => {
+    console.log(`[Frontend] Starting status polling for document ${docId}`);
+    
     if (statusPolling) {
       clearInterval(statusPolling);
     }
     
     setProcessingDocId(docId);
+    setPollingAttempts(0);
     
     const interval = setInterval(() => {
-      refetchJobStatus();
-    }, 3000); 
+      setPollingAttempts(prev => {
+        const newAttempts = prev + 1;
+        console.log(`[Frontend] Polling attempt ${newAttempts} for document ${docId}`);
+        
+        if (newAttempts >= maxPollingAttempts) {
+          console.log(`[Frontend] Max polling attempts reached for document ${docId}`);
+          clearInterval(interval);
+          setStatusPolling(null);
+          setProcessingDocId(null);
+          
+          if (files.documents) {
+            const updatedDocs = files.documents.map((doc: any) => {
+              if (doc.id === docId) {
+                return {
+                  ...doc,
+                  rpa: [{ status: 'TIMEOUT' }]
+                };
+              }
+              return doc;
+            });
+            
+            setFiles(prev => ({...prev, documents: updatedDocs}));
+            setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+          }
+          
+          return newAttempts;
+        }
+        
+        refetchJobStatus();
+        return newAttempts;
+      });
+    }, 3000);
     
     setStatusPolling(interval);
   };
 
   useEffect(() => {
-    if (jobStatus && jobStatus.status !== 'PENDING' && statusPolling) {
-      clearInterval(statusPolling);
-      setStatusPolling(null);
-      
-      if (files.documents) {
-        interface Document {
-          id: number;
-          rpa?: Array<{ status: string }>;
-          [key: string]: any;
-        }
-
-        interface JobStatus {
-          status: string;
-          [key: string]: any; 
-        }
-
-        const updatedDocs: Document[] = files.documents.map((doc: Document) => {
-          if (doc.id === processingDocId) {
-            return {
-              ...doc,
-              rpa: [{ status: (jobStatus as JobStatus).status }]
-            };
-          }
-          return doc;
-        });
-        
-        setFiles(prev => ({...prev, documents: updatedDocs}));
-        setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
-      }
-      
-      setProcessingDocId(null);
+    if (jobStatusError) {
+      console.error(`[Frontend ERROR] Job status error:`, jobStatusError);
     }
-  }, [jobStatus, statusPolling]);
+    
+    if (jobStatus) {
+      console.log(`[Frontend] Received job status:`, jobStatus);
+      
+      if (jobStatus.status !== 'PENDING' && statusPolling) {
+        console.log(`[Frontend] Job completed with status: ${jobStatus.status}`);
+        clearInterval(statusPolling);
+        setStatusPolling(null);
+        
+        if (files.documents) {
+          const updatedDocs = files.documents.map((doc: any) => {
+            if (doc.id === processingDocId) {
+              return {
+                ...doc,
+                rpa: [{ status: jobStatus.status }]
+              };
+            }
+            return doc;
+          });
+          
+          setFiles(prev => ({...prev, documents: updatedDocs}));
+          setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+        }
+        
+        setProcessingDocId(null);
+        setPollingAttempts(0);
+      }
+    }
+  }, [jobStatus, jobStatusError, statusPolling, processingDocId]);
 
   useEffect(() => {
     return () => {
@@ -162,9 +196,11 @@ const FileManagementPage = () => {
     }
   };
 
-  const handleProcessAutomation = async(id:number)=>{
+  const handleProcessAutomation = async(id: number) => {
+    console.log(`[Frontend] Starting automation process for document ${id}`);
+    
     try {
-      const updatedDocs = files.documents.map((doc: { id: number; rpa?: Array<{ status: string }>; [key: string]: any }) => {
+      const updatedDocs = files.documents.map((doc: any) => {
         if (doc.id === id) {
           return {
             ...doc,
@@ -179,14 +215,21 @@ const FileManagementPage = () => {
       
       startStatusPolling(id);
       
+      console.log(`[Frontend] Calling processAutomation API for document ${id}`);
       const result = await processAutomation({id, currentClientCompanyEin: clientCompanyEin}).unwrap();
-      console.log('UiPath automation started:', result);
-      
+      console.log(`[Frontend] UiPath automation API response:`, result);
       
     } catch (e) {
-      console.error('Failed to process the automation in the accounting software', e);
+      console.error(`[Frontend ERROR] Failed to process automation for document ${id}:`, e);
       
-      const updatedDocs = files.documents.map((doc: { id: number; rpa?: Array<{ status: string }>; [key: string]: any }) => {
+      if (statusPolling) {
+        clearInterval(statusPolling);
+        setStatusPolling(null);
+      }
+      setProcessingDocId(null);
+      setPollingAttempts(0);
+      
+      const updatedDocs = files.documents.map((doc: any) => {
         if (doc.id === id) {
           return {
             ...doc,
@@ -198,18 +241,17 @@ const FileManagementPage = () => {
       
       setFiles(prev => ({...prev, documents: updatedDocs}));
       setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
-      
-      if (statusPolling) {
-        clearInterval(statusPolling);
-        setStatusPolling(null);
-      }
-      setProcessingDocId(null);
     }
   };
 
-  const handleCheckStatus = async(id:number) => {
+  const handleCheckStatus = async(id: number) => {
+    console.log(`[Frontend] Manual status check for document ${id}`);
     setProcessingDocId(id);
-    await refetchJobStatus();
+    try {
+      await refetchJobStatus();
+    } catch (error) {
+      console.error(`[Frontend ERROR] Manual status check failed:`, error);
+    }
   };
 
   useEffect(()=>{
@@ -235,6 +277,8 @@ const FileManagementPage = () => {
         return language === 'ro' ? 'Eșuat' : 'Failed';
       } else if (status === 'PENDING') {
         return language === 'ro' ? 'În așteptare' : 'Pending';
+      } else if (status === 'TIMEOUT') {
+        return language === 'ro' ? 'Timeout' : 'Timeout';
       }
     }
     
@@ -251,6 +295,7 @@ const FileManagementPage = () => {
       if (status === 'COMPLETED') return 'text-green-500';
       if (status === 'FAILED') return 'text-red-500';
       if (status === 'PENDING') return 'text-yellow-500';
+      if (status === 'TIMEOUT') return 'text-orange-500';
     }
     return 'text-yellow-500';
   };
