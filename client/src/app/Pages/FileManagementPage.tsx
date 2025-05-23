@@ -103,7 +103,7 @@ const FileManagementPage = () => {
     
     const interval = setInterval(() => {
       refetchJobStatus();
-    }, 5000);
+    }, 3000); 
     
     setStatusPolling(interval);
   };
@@ -125,15 +125,15 @@ const FileManagementPage = () => {
           [key: string]: any; 
         }
 
-                const updatedDocs: Document[] = files.documents.map((doc: Document) => {
-                  if (doc.id === processingDocId) {
-                    return {
-                      ...doc,
-                      rpa: [{ status: (jobStatus as JobStatus).status }]
-                    };
-                  }
-                  return doc;
-                });
+        const updatedDocs: Document[] = files.documents.map((doc: Document) => {
+          if (doc.id === processingDocId) {
+            return {
+              ...doc,
+              rpa: [{ status: (jobStatus as JobStatus).status }]
+            };
+          }
+          return doc;
+        });
         
         setFiles(prev => ({...prev, documents: updatedDocs}));
         setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
@@ -164,11 +164,6 @@ const FileManagementPage = () => {
 
   const handleProcessAutomation = async(id:number)=>{
     try {
-      const result = await processAutomation({id, currentClientCompanyEin: clientCompanyEin}).unwrap();
-      console.log('UiPath automation',result);
-      
-      startStatusPolling(id);
-      
       const updatedDocs = files.documents.map((doc: { id: number; rpa?: Array<{ status: string }>; [key: string]: any }) => {
         if (doc.id === id) {
           return {
@@ -182,8 +177,33 @@ const FileManagementPage = () => {
       setFiles(prev => ({...prev, documents: updatedDocs}));
       setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
       
+      startStatusPolling(id);
+      
+      const result = await processAutomation({id, currentClientCompanyEin: clientCompanyEin}).unwrap();
+      console.log('UiPath automation started:', result);
+      
+      
     } catch (e) {
-      console.error('Failed to process the automation in the accounting software', e)
+      console.error('Failed to process the automation in the accounting software', e);
+      
+      const updatedDocs = files.documents.map((doc: { id: number; rpa?: Array<{ status: string }>; [key: string]: any }) => {
+        if (doc.id === id) {
+          return {
+            ...doc,
+            rpa: [{ status: 'FAILED' }]
+          };
+        }
+        return doc;
+      });
+      
+      setFiles(prev => ({...prev, documents: updatedDocs}));
+      setFilteredFiles(prev => ({...prev, documents: updatedDocs}));
+      
+      if (statusPolling) {
+        clearInterval(statusPolling);
+        setStatusPolling(null);
+      }
+      setProcessingDocId(null);
     }
   };
 
@@ -204,7 +224,7 @@ const FileManagementPage = () => {
 
   const getStatusDisplay = (file: any) => {
     if (file.id === processingDocId) {
-      return language === 'ro' ? 'Se proceseaza...' : 'Processing...';
+      return language === 'ro' ? 'Se procesează...' : 'Processing...';
     }
     
     if (file.rpa && file.rpa.length > 0) {
@@ -222,10 +242,15 @@ const FileManagementPage = () => {
   };
 
   const getStatusColor = (file: any) => {
+    if (file.id === processingDocId) {
+      return 'text-blue-500';
+    }
+    
     if (file.rpa && file.rpa.length > 0) {
       const status = file.rpa[0].status;
       if (status === 'COMPLETED') return 'text-green-500';
       if (status === 'FAILED') return 'text-red-500';
+      if (status === 'PENDING') return 'text-yellow-500';
     }
     return 'text-yellow-500';
   };
@@ -327,7 +352,7 @@ const FileManagementPage = () => {
                   </div>
 
                  <div className='flex items-center justify-center gap-5'>
-                   <MyTooltip content={language==='ro'?'Proceseaza date':'Submit data'} trigger={
+                   <MyTooltip content={language==='ro'?'Procesează date':'Submit data'} trigger={
                    <Bot size={24} 
                      className={`${file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'COMPLETED' ? 'text-gray-400 cursor-not-allowed' : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer'}`}
                      onClick={() => {
@@ -337,7 +362,7 @@ const FileManagementPage = () => {
                      }}
                    />
                    }/>
-                   <MyTooltip content={language==='ro'?'Sterge Fisiere si date':'Delete File and Data'} trigger={
+                   <MyTooltip content={language==='ro'?'Șterge Fișiere și date':'Delete File and Data'} trigger={
                    <Trash2 size={20} className="text-red-500
                    cursor-pointer" onClick={()=>{setIsSureModal(true);
                      setCurrentFile(file);
@@ -347,9 +372,6 @@ const FileManagementPage = () => {
              </div>
           )})}
         </div>
-
-
-
 
       </div>  
 
@@ -363,8 +385,8 @@ const FileManagementPage = () => {
       />)}
 
       {isSureModal&&(
-        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData[0].documentId)} confirmButton={language==='ro'?'Sterge':'Delete'}
-        text={language==='ro'?"Esti sigur/a ca vrei sa STERGI permanent fisierul si datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and it's data?"}/>
+        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData[0].documentId)} confirmButton={language==='ro'?'Șterge':'Delete'}
+        text={language==='ro'?"Ești sigur/ă că vrei să ȘTERGI permanent fișierul și datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and it's data?"}/>
       )}
 
       {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
