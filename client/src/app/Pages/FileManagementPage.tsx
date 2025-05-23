@@ -32,6 +32,7 @@ const FileManagementPage = () => {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
+  console.log(pollingAttempts)
 
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
