@@ -48,18 +48,39 @@ export class DataExtractionService {
              - vat_amount: Total VAT (sum of vat_amount from all line items, numeric).
              - receipt_of: Invoice number for which the receipt was made (null if not applicable).
 
-        3. **Extract Line Items**:
+        3. **DETERMINE INVOICE DIRECTION - CRITICAL STEP:**
+           Before extracting line items, you MUST determine the invoice direction:
+           
+           **CURRENT COMPANY EIN: {{CURRENT_COMPANY_EIN}}**
+           
+           **DIRECTION RULES:**
+           - IF buyer_ein = "{{CURRENT_COMPANY_EIN}}" → This is an INCOMING INVOICE (we are buying)
+           - IF vendor_ein = "{{CURRENT_COMPANY_EIN}}" → This is an OUTGOING INVOICE (we are selling)
+           
+           **EXAMPLE:**
+           - Current Company EIN: 47935139
+           - If buyer_ein = "47935139" and vendor_ein = "372041333" → INCOMING INVOICE
+           - If vendor_ein = "47935139" and buyer_ein = "123456789" → OUTGOING INVOICE
+
+        4. **Extract Line Items**:
            - Extract an array of line items (if present). For each item:
              - quantity: Number of units (numeric).
              - unit_price: Price per unit (numeric).
              - vat_amount: VAT per unit (numeric, e.g., 19% VAT for one unit).
              - total: Total amount for the line item (quantity * unit_price + VAT, numeric).
-             - type: Article type (choose based on invoice direction):
-               - FOR INCOMING INVOICES (from suppliers): ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"]
-               - FOR OUTGOING INVOICES (to customers): ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"]
-               **IMPORTANT**: Compare the buyer_ein and vendor_ein with {{CURRENT_COMPANY_EIN}} to determine direction:
-                - If buyer_ein matches {{CURRENT_COMPANY_EIN}}, this is an INCOMING invoice → use incoming types
-                - If vendor_ein matches {{CURRENT_COMPANY_EIN}}, this is an OUTGOING invoice → use outgoing types
+             - type: Article type - **CHOOSE BASED ON INVOICE DIRECTION DETERMINED IN STEP 3:**
+             
+               **FOR INCOMING INVOICES (buyer_ein = {{CURRENT_COMPANY_EIN}}):**
+               Choose from: ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"]
+               
+               **FOR OUTGOING INVOICES (vendor_ein = {{CURRENT_COMPANY_EIN}}):**
+               Choose from: ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"]
+               
+               **IMPORTANT NOTES:**
+               - "Servicii vandute" should ONLY be used for OUTGOING invoices (when we are selling services)
+               - "Materii prime", "Materiale auxiliare", "Alte mat. consumabile" are for INCOMING invoices (when we are buying)
+               - For services in INCOMING invoices, use "Nedefinit" or "Alte mat. consumabile"
+               
              - articleCode: Numeric code for the article. If the article exists in the provided EXISTING_ARTICLES, use its articleCode. If the article is new (isNew: true), assign the next available numeric value as follows:
                - If EXISTING_ARTICLES is empty, start with articleCode: 1 for the first new article, incrementing by 1 for each subsequent new article (e.g., 1, 2, 3, ...).
                - If EXISTING_ARTICLES is not empty, use the highest existing articleCode + 1 for the first new article, incrementing by 1 for each subsequent new article.
@@ -70,36 +91,36 @@ export class DataExtractionService {
              - management: Name of the management as string from the provided management list (select the most relevant). If type is "Nedefinit", this field should be null.
              - isNew: Boolean (true if the article is new, false if it matches an existing article).
 
-        4. **Special Handling for "Nedefinit" Type**:
+        5. **Special Handling for "Nedefinit" Type**:
            - When type is "Nedefinit":
              - Set management to null
-             - Suggest an appropriate account_code based on the item description (e.g., transportation services → "624")
+             - Suggest an appropriate account_code based on the item description (e.g., transportation services → "624", software services → "623")
 
-        5. **Article Comparison**:
+        6. **Article Comparison**:
            - Compare each extracted article (based on description or articleCode) with the provided list of existing articles.
            - If a match is found (by name or articleCode, case-insensitive), set isNew: false and use the existing article's details (type, articleCode, name, vat, um).
            - If no match is found, set isNew: true and infer type, articleCode, name, vat, um from the document or context (use reasonable defaults if missing).
 
-        6. **Management Selection**:
+        7. **Management Selection**:
            - For each line item (except those with type "Nedefinit"), select a management record from the provided management list that is most relevant (e.g., based on name or type).
 
-        7. **Provided Data**:
+        8. **Provided Data**:
            - Current Company EIN: {{CURRENT_COMPANY_EIN}}
            - Existing Articles: {{EXISTING_ARTICLES}}
            - Management Records: {{MANAGEMENT_RECORDS}}
 
-        8. **Output**:
+        9. **Output**:
            - Return only a valid JSON object with the specified fields.
            - Set missing or inapplicable fields to null.
            - Do not include commentary or extra text.
 
-        **Example Output**:
+        **Example Output for INCOMING Invoice:**
         {
           "document_type": "Invoice",
-          "vendor": "Vendor SRL",
+          "vendor": "External Supplier SRL",
           "vendor_ein": "12345678",
-          "buyer": "Buyer SRL",
-          "buyer_ein": "87654321",
+          "buyer": "My Company SRL",
+          "buyer_ein": "47935139",
           "document_number": "INV001",
           "document_date": "01-01-2025",
           "due_date": "15-01-2025",
@@ -114,7 +135,7 @@ export class DataExtractionService {
               "total": 1190,
               "type": "Marfuri",
               "articleCode": 1001,
-              "name": "Widget-A",
+              "name": "Product Name",
               "vat": "NINETEEN",
               "um": "BUCATA",
               "account_code": null,
@@ -128,12 +149,43 @@ export class DataExtractionService {
               "total": 59.5,
               "type": "Nedefinit",
               "articleCode": 1002,
-              "name": "Transport marfa",
+              "name": "Software Service",
               "vat": "NINETEEN",
-              "um": "SERVICIU",
-              "account_code": "624",
+              "um": "UNITATE_DE_SERVICE",
+              "account_code": "623",
               "management": null,
               "isNew": true
+            }
+          ]
+        }
+        
+        **Example Output for OUTGOING Invoice:**
+        {
+          "document_type": "Invoice",
+          "vendor": "My Company SRL",
+          "vendor_ein": "47935139",
+          "buyer": "Customer Company SRL",
+          "buyer_ein": "87654321",
+          "document_number": "OUT001",
+          "document_date": "01-01-2025",
+          "due_date": "15-01-2025",
+          "total_amount": 500,
+          "vat_amount": 80,
+          "receipt_of": null,
+          "line_items": [
+            {
+              "quantity": 1,
+              "unit_price": 420,
+              "vat_amount": 80,
+              "total": 500,
+              "type": "Servicii vandute",
+              "articleCode": 2001,
+              "name": "Consulting Service",
+              "vat": "NINETEEN",
+              "um": "UNITATE_DE_SERVICE",
+              "account_code": null,
+              "management": "Servicii",
+              "isNew": false
             }
           ]
         }
@@ -190,6 +242,7 @@ export class DataExtractionService {
             ]);
 
             const rawResponse = result.response.text();
+            this.logger.debug(`Raw AI response: ${rawResponse}`);
 
             let jsonStr = rawResponse.trim();
             
@@ -208,6 +261,7 @@ export class DataExtractionService {
             
             const extractedJsonData = JSON.parse(jsonStr);
 
+            this.validateInvoiceDirection(extractedJsonData, clientCompanyEin);
             this.validateExtractedData(extractedJsonData, articles, management, clientCompanyEin);
             
             return extractedJsonData;
@@ -215,6 +269,39 @@ export class DataExtractionService {
         catch (e) {
             this.logger.error(`Error extracting data for EIN ${clientCompanyEin}: ${e.message}`, e.stack);
             throw new Error(`Failed to extract data from document: ${e.message}`);
+        }
+    }
+
+    private validateInvoiceDirection(data: any, clientCompanyEin: string) {
+        if (!data.buyer_ein || !data.vendor_ein) {
+            this.logger.warn('Missing buyer_ein or vendor_ein in extracted data');
+            return;
+        }
+
+        const isIncoming = data.buyer_ein === clientCompanyEin;
+        const isOutgoing = data.vendor_ein === clientCompanyEin;
+
+        if (!isIncoming && !isOutgoing) {
+            this.logger.warn(`Neither buyer nor vendor matches client company EIN: ${clientCompanyEin}`);
+            return;
+        }
+
+        if (Array.isArray(data.line_items)) {
+            const incomingTypes = ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"];
+            const outgoingTypes = ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"];
+
+            data.line_items.forEach((item: any, index: number) => {
+                if (isIncoming && !incomingTypes.includes(item.type)) {
+                    this.logger.warn(`Line item ${index} has outgoing type "${item.type}" but this is an incoming invoice. Converting to "Nedefinit".`);
+                    item.type = "Nedefinit";
+                    item.management = null;
+                }
+                if (isOutgoing && !outgoingTypes.includes(item.type)) {
+                    this.logger.warn(`Line item ${index} has incoming type "${item.type}" but this is an outgoing invoice. Converting to "Nedefinit".`);
+                    item.type = "Nedefinit";
+                    item.management = null;
+                }
+            });
         }
     }
 
@@ -280,5 +367,4 @@ export class DataExtractionService {
       
         return data;
       }
-      
 }
