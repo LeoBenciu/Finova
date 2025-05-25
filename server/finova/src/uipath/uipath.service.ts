@@ -23,6 +23,8 @@ export interface uiPathData{
     documentNumber: number,
     sellerEin?: number,
     buyerEin?: number,
+    buyer?: string,
+    seller?: string,
     lineItems: lineItem[]
 };
 
@@ -68,7 +70,8 @@ export class UipathService {
                     document_date: string,
                     due_date: string,
                     document_number: number,
-                    vendor_ein: number
+                    vendor_ein: number,
+                    vendor: string
                 }};
 
                 dataToSend = {
@@ -76,6 +79,7 @@ export class UipathService {
                     dueDate: extractedData.result.due_date || '',
                     documentNumber: extractedData.result.document_number,
                     sellerEin: extractedData.result.vendor_ein,
+                    seller: extractedData.result.vendor,
                     lineItems: lineItems
                 };
 
@@ -85,7 +89,8 @@ export class UipathService {
                     document_date: string,
                     due_date: string,
                     document_number: number,
-                    buyer_ein: number
+                    buyer_ein: number,
+                    buyer: string
                 }};
 
                 dataToSend = {
@@ -93,6 +98,7 @@ export class UipathService {
                     dueDate: extractedData.result.due_date || '',
                     documentNumber: extractedData.result.document_number,
                     buyerEin: extractedData.result.buyer_ein,
+                    buyer: extractedData.result.buyer,
                     lineItems: lineItems
                 };
 
