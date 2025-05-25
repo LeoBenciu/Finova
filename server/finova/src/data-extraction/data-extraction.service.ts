@@ -57,6 +57,9 @@ export class DataExtractionService {
              - type: Article type (choose based on invoice direction):
                - FOR INCOMING INVOICES (from suppliers): ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"]
                - FOR OUTGOING INVOICES (to customers): ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"]
+               **IMPORTANT**: Compare the buyer_ein and vendor_ein with {{CURRENT_COMPANY_EIN}} to determine direction:
+                - If buyer_ein matches {{CURRENT_COMPANY_EIN}}, this is an INCOMING invoice → use incoming types
+                - If vendor_ein matches {{CURRENT_COMPANY_EIN}}, this is an OUTGOING invoice → use outgoing types
              - articleCode: Numeric code for the article. If the article exists in the provided EXISTING_ARTICLES, use its articleCode. If the article is new (isNew: true), assign the next available numeric value as follows:
                - If EXISTING_ARTICLES is empty, start with articleCode: 1 for the first new article, incrementing by 1 for each subsequent new article (e.g., 1, 2, 3, ...).
                - If EXISTING_ARTICLES is not empty, use the highest existing articleCode + 1 for the first new article, incrementing by 1 for each subsequent new article.
