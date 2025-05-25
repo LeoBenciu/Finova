@@ -203,7 +203,7 @@ export class UipathService {
         }
     }
 
-    async checkJobStatus(jobKey: string): Promise<string> {
+    async checkJobStatus(jobKey: string): Promise<{ status: string, details: any }> {
         console.log(`[UiPath] Checking job status for key: ${jobKey}`);
         
         try {
@@ -222,15 +222,30 @@ export class UipathService {
                 }
             ).toPromise();
 
-            console.log(`[UiPath] Job current state: ${response.data.State}`);
-            return response.data.State;
+            const jobData = response.data;
+            console.log(`[UiPath] Job State: ${jobData.State}, StartTime: ${jobData.StartTime}, EndTime: ${jobData.EndTime}`);
+            
+            return {
+                status: jobData.State,
+                details: {
+                    startTime: jobData.StartTime,
+                    endTime: jobData.EndTime,
+                    state: jobData.State,
+                    jobError: jobData.JobError,
+                    info: jobData.Info,
+                    outputArguments: jobData.OutputArguments
+                }
+            };
 
         } catch (e) {
             console.error(`[UiPath ERROR] Failed to check UiPath job status for key ${jobKey}:`, e);
 
             if (e.response?.status === 404) {
-                console.log(`[UiPath] Job ${jobKey} not found (404), returning NotFound status`);
-                return 'NotFound';
+                console.log(`[UiPath] Job ${jobKey} not found (404)`);
+                return {
+                    status: 'NotFound',
+                    details: { error: 'Job not found in UiPath' }
+                };
             }
 
             throw new InternalServerErrorException('Failed to check UiPath job status');
@@ -281,8 +296,6 @@ export class UipathService {
                 };
             }
 
-            console.log(`[UiPath] Checking UiPath status for job key: ${jobKey}`);
-            
             const createdAt = new Date(rpaAction.createdAt);
             const now = new Date();
             const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
@@ -301,59 +314,67 @@ export class UipathService {
                 };
             }
 
-            let jobStatus: string;
-            let statusCheckAttempts = 0;
-            const maxStatusCheckAttempts = 3;
+            let jobStatusResult: { status: string, details: any };
             
-            while (statusCheckAttempts < maxStatusCheckAttempts) {
-                try {
-                    statusCheckAttempts++;
-                    console.log(`[UiPath] Status check attempt ${statusCheckAttempts} for job ${jobKey}`);
-                    
-                    jobStatus = await this.checkJobStatus(jobKey);
-                    
-                    if (jobStatus !== 'NotFound') {
-                        break;
-                    }
-                    
-                    if (statusCheckAttempts < maxStatusCheckAttempts) {
-                        console.log(`[UiPath] Job not found, waiting 2 seconds before retry...`);
-                        await new Promise(resolve => setTimeout(resolve, 2000));
-                    }
-                } catch (statusError) {
-                    console.error(`[UiPath ERROR] Status check attempt ${statusCheckAttempts} failed:`, statusError.message);
-                    if (statusCheckAttempts >= maxStatusCheckAttempts) {
-                        jobStatus = 'CheckFailed';
-                    }
+            try {
+                jobStatusResult = await this.checkJobStatus(jobKey);
+                console.log(`[UiPath] UiPath job status result:`, jobStatusResult);
+            } catch (statusError) {
+                console.error(`[UiPath ERROR] Status check failed:`, statusError.message);
+                
+                if (minutesElapsed > 20) {
+                    jobStatusResult = {
+                        status: 'AssumedCompleted',
+                        details: { reason: 'Status check failed but job is old, assuming completed' }
+                    };
+                } else {
+                    return {
+                        documentId,
+                        status: 'PENDING',
+                        details: { 
+                            error: 'Status check failed, will retry later',
+                            minutesElapsed: minutesElapsed.toFixed(2)
+                        }
+                    };
                 }
             }
-            
-            console.log(`[UiPath] Final job status after ${statusCheckAttempts} attempts: ${jobStatus}`);
-            
-            let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
 
-            if (jobStatus === 'Successful') {
+            let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
+            let shouldUpdate = false;
+
+            if (jobStatusResult.status === 'Successful') {
                 updatedStatus = RpaActionStatus.COMPLETED;
-            } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
+                shouldUpdate = true;
+            } else if (jobStatusResult.status === 'Faulted' || jobStatusResult.status === 'Stopped') {
                 updatedStatus = RpaActionStatus.FAILED;
-            } else if (jobStatus === 'Running' || jobStatus === 'Pending') {
+                shouldUpdate = true;
+            } else if (jobStatusResult.status === 'Running') {
                 updatedStatus = RpaActionStatus.PENDING;
-            } else if (jobStatus === 'NotFound' || jobStatus === 'CheckFailed') {
-                if (minutesElapsed > 15) {
-                    updatedStatus = RpaActionStatus.COMPLETED;
-                    console.log(`[UiPath] Job older than 15 minutes and not found, assuming completed`);
-                } else if (minutesElapsed > 5) {
-                    updatedStatus = RpaActionStatus.COMPLETED;
-                    console.log(`[UiPath] Job between 5-15 minutes old and not found, assuming completed`);
+            } else if (jobStatusResult.status === 'Pending') {
+                if (minutesElapsed > 15 && !jobStatusResult.details.startTime) {
+                    console.log(`[UiPath] Job stuck in Pending state for ${minutesElapsed.toFixed(2)} minutes without starting`);
+                    updatedStatus = RpaActionStatus.FAILED;
+                    shouldUpdate = true;
                 } else {
                     updatedStatus = RpaActionStatus.PENDING;
-                    console.log(`[UiPath] Job less than 5 minutes old and not found, keeping pending`);
                 }
+            } else if (jobStatusResult.status === 'NotFound') {
+                if (minutesElapsed > 10) {
+                    console.log(`[UiPath] Job not found and older than 10 minutes, assuming completed`);
+                    updatedStatus = RpaActionStatus.COMPLETED;
+                    shouldUpdate = true;
+                } else {
+                    console.log(`[UiPath] Job not found but too recent, keeping pending`);
+                    updatedStatus = RpaActionStatus.PENDING;
+                }
+            } else if (jobStatusResult.status === 'AssumedCompleted') {
+                updatedStatus = RpaActionStatus.COMPLETED;
+                shouldUpdate = true;
             }
 
-            console.log(`[UiPath] Mapped status: ${updatedStatus} (from UiPath status: ${jobStatus})`);
+            console.log(`[UiPath] Mapped status: ${updatedStatus} (from UiPath status: ${jobStatusResult.status}), shouldUpdate: ${shouldUpdate}`);
 
-            if (updatedStatus !== RpaActionStatus.PENDING) {
+            if (shouldUpdate) {
                 console.log(`[UiPath] Updating database status to: ${updatedStatus}`);
                 await this.prisma.rpaAction.update({
                     where: { id: rpaAction.id },
@@ -361,9 +382,9 @@ export class UipathService {
                         status: updatedStatus,
                         result: {
                             ...(rpaAction.result as object || {}),
-                            finalStatus: jobStatus,
+                            finalStatus: jobStatusResult.status,
+                            finalDetails: jobStatusResult.details,
                             lastUpdated: new Date().toISOString(),
-                            statusCheckAttempts: statusCheckAttempts,
                             minutesElapsed: minutesElapsed.toFixed(2)
                         }
                     }
@@ -375,12 +396,13 @@ export class UipathService {
                 status: updatedStatus,
                 details: {
                     ...(rpaAction.result as object || {}),
-                    uiPathStatus: jobStatus,
+                    uiPathStatus: jobStatusResult.status,
+                    uiPathDetails: jobStatusResult.details,
                     minutesElapsed: minutesElapsed.toFixed(2)
                 }
             };
 
-            console.log(`[UiPath] Returning status result:`, JSON.stringify(result, null, 2));
+            console.log(`[UiPath] Returning status result: documentId=${documentId}, status=${updatedStatus}`);
             return result;
             
         } catch (error) {
@@ -397,7 +419,7 @@ export class UipathService {
         }
     }
 
-    @Cron('0 */2 * * * *') 
+    @Cron('0 */3 * * * *')
     async updatePendingJobStatuses() {
         console.log('[UiPath CRON] Running scheduled UiPath job status update');
         
@@ -405,15 +427,15 @@ export class UipathService {
             const oneMinuteAgo = new Date();
             oneMinuteAgo.setMinutes(oneMinuteAgo.getMinutes() - 1);
             
-            const twoHoursAgo = new Date();
-            twoHoursAgo.setHours(twoHoursAgo.getHours() - 2);
+            const fourHoursAgo = new Date();
+            fourHoursAgo.setHours(fourHoursAgo.getHours() - 4);
 
             const pendingActions = await this.prisma.rpaAction.findMany({
                 where: {
                     status: RpaActionStatus.PENDING,
                     actionType: RpaActionType.DATA_ENTRY,
                     createdAt: {
-                        gte: twoHoursAgo,
+                        gte: fourHoursAgo,
                         lte: oneMinuteAgo 
                     }
                 }
@@ -446,29 +468,35 @@ export class UipathService {
                     const now = new Date();
                     const minutesElapsed = (now.getTime() - createdAt.getTime()) / (1000 * 60);
 
-                    let jobStatus: string;
+                    let jobStatusResult: { status: string, details: any };
+                    
                     try {
-                        jobStatus = await this.checkJobStatus(jobKey);
+                        jobStatusResult = await this.checkJobStatus(jobKey);
                     } catch (statusError) {
-                        console.log(`[UiPath CRON] Failed to check status for action ${action.id}`);
+                        console.log(`[UiPath CRON] Failed to check status for action ${action.id}, minutes elapsed: ${minutesElapsed.toFixed(2)}`);
                         
-                        if (minutesElapsed > 30) {
-                            jobStatus = 'AssumedCompleted';
+                        if (minutesElapsed > 60) {
+                            jobStatusResult = {
+                                status: 'AssumedCompleted',
+                                details: { reason: 'Status check failed, assuming completed due to age' }
+                            };
                         } else {
-                            continue;
+                            continue; 
                         }
                     }
 
                     let updatedStatus: RpaActionStatus = RpaActionStatus.PENDING;
 
-                    if (jobStatus === 'Successful' || jobStatus === 'AssumedCompleted') {
+                    if (jobStatusResult.status === 'Successful' || jobStatusResult.status === 'AssumedCompleted') {
                         updatedStatus = RpaActionStatus.COMPLETED;
-                    } else if (jobStatus === 'Faulted' || jobStatus === 'Stopped') {
+                    } else if (jobStatusResult.status === 'Faulted' || jobStatusResult.status === 'Stopped') {
                         updatedStatus = RpaActionStatus.FAILED;
-                    } else if (jobStatus === 'NotFound') {
+                    } else if (jobStatusResult.status === 'Pending') {
+                        if (minutesElapsed > 30 && !jobStatusResult.details.startTime) {
+                            updatedStatus = RpaActionStatus.FAILED;
+                        }
+                    } else if (jobStatusResult.status === 'NotFound') {
                         if (minutesElapsed > 15) {
-                            updatedStatus = RpaActionStatus.COMPLETED;
-                        } else if (minutesElapsed > 10) {
                             updatedStatus = RpaActionStatus.COMPLETED;
                         }
                     }
@@ -480,13 +508,16 @@ export class UipathService {
                                 status: updatedStatus,
                                 result: {
                                     ...(action.result as object || {}),
-                                    finalStatus: jobStatus,
+                                    finalStatus: jobStatusResult.status,
+                                    finalDetails: jobStatusResult.details,
                                     cronUpdated: new Date().toISOString(),
                                     cronMinutesElapsed: minutesElapsed.toFixed(2)
                                 }
                             }
                         });
                         console.log(`[UiPath CRON] Updated job status for action ${action.id} to ${updatedStatus}`);
+                    } else {
+                        console.log(`[UiPath CRON] Action ${action.id} still pending, will check again later`);
                     }
                 } catch (error) {
                     console.error(`[UiPath CRON ERROR] Failed to update status for action ${action.id}:`, error);
@@ -507,7 +538,7 @@ export class UipathService {
             });
 
             if (veryOldPendingActions.length > 0) {
-                console.log(`[UiPath CRON] Found ${veryOldPendingActions.length} very old pending actions, marking as completed (assumed successful)`);
+                console.log(`[UiPath CRON] Found ${veryOldPendingActions.length} very old pending actions, marking as completed`);
                 
                 for (const oldAction of veryOldPendingActions) {
                     await this.prisma.rpaAction.update({
