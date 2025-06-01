@@ -9,6 +9,9 @@ import SettingsPage from './app/Pages/SettingsPage';
 import ReportsPage from './app/Pages/ReportsPage';
 import ResetPasswordPage from './app/Pages/ResetPasswordPage';
 import TermsOfServicePage from './app/Pages/TermsOfServicePage';
+import CookiesPolicyPage from './app/Pages/CookiesPolicyPage';
+import PrivacyPolicyPage from './app/Pages/PrivacyPolicyPage';
+import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage';
 
 function App() {
   return (
@@ -17,9 +20,9 @@ function App() {
       <Routes>
         <Route path='/authentication' element={<AuthenticationPage/>}/>
         <Route path='/terms-of-service' element={<TermsOfServicePage/>}/>
-        <Route path='/data-processing-agreement' element={<TermsOfServicePage/>}/>
-        <Route path='/cookies-policy' element={<TermsOfServicePage/>}/>
-        <Route path='/privacy-policy' element={<TermsOfServicePage/>}/>
+        <Route path='/data-processing-agreement' element={<DataProcessingAgreementPage/>}/>
+        <Route path='/cookies-policy' element={<CookiesPolicyPage/>}/>
+        <Route path='/privacy-policy' element={<PrivacyPolicyPage/>}/>
         <Route path='/reset-password' element={<ResetPasswordPage/>}/>
         <Route path='/' element={<MainPage/>}>
           <Route path='/home' element={<HomePage/>}></Route>
