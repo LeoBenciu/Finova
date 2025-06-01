@@ -285,7 +285,7 @@ const CookiesPolicyPage = () => {
                 comuna Pâncești, jud. Bacău, România
               </span>
             </p>
-            <p className="flex items-center gap-2">
+            <p className="flex items-center gap-2 text-black">
               <span className="text-black">👤</span>
               <strong>DPO:</strong> Benciu Leonardo-Constantin
             </p>

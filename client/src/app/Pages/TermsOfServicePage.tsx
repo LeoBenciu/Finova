@@ -20,13 +20,13 @@ const TermsOfServicePage = () => {
         <div className="mb-6">
           <h3 className="text-xl font-medium text-gray-800 mb-3">1.1 Operatorul Serviciului</h3>
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <p><strong>SC Next Corp SRL</strong></p>
-            <p>Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
-            <p><strong>CUI:</strong> 47935139</p>
-            <p><strong>Nr. Înregistrare:</strong> J04/577/2023</p>
-            <p><strong>Telefon:</strong> +40725176707</p>
-            <p><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
-            <p><strong>Reprezentant legal:</strong> Benciu Leonardo-Constantin</p>
+            <p className="text-black"><strong>SC Next Corp SRL</strong></p>
+            <p className="text-black">Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
+            <p className="text-black"><strong>CUI:</strong> 47935139</p>
+            <p className="text-black"><strong>Nr. Înregistrare:</strong> J04/577/2023</p>
+            <p className="text-black"><strong>Telefon:</strong> +40725176707</p>
+            <p className="text-black"><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
+            <p className="text-black"><strong>Reprezentant legal:</strong> Benciu Leonardo-Constantin</p>
           </div>
         </div>
 
@@ -456,10 +456,10 @@ const TermsOfServicePage = () => {
           <h3 className="text-xl font-medium text-gray-800 mb-3">12.1 Informații Contact</h3>
           <p className="text-gray-700 mb-3">Pentru întrebări, reclamații sau suport tehnic:</p>
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-            <p><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
-            <p><strong>Telefon:</strong> +40725176707</p>
-            <p><strong>Program:</strong> Luni-Vineri, 08:00-17:00 (ora București)</p>
-            <p><strong>Adresă:</strong> Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
+            <p className="text-black"><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
+            <p className="text-black"><strong>Telefon:</strong> +40725176707</p>
+            <p className="text-black"><strong>Program:</strong> Luni-Vineri, 08:00-17:00 (ora București)</p>
+            <p className="text-black"><strong>Adresă:</strong> Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
           </div>
         </div>
 
