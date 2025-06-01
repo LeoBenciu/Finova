@@ -1,7 +1,7 @@
 
 const TermsOfServicePage = () => {
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white overflow-y-scroll">
+    <div className="max-w-4xl mx-auto p-6 bg-white overflow-y-scroll max-h-screen">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
