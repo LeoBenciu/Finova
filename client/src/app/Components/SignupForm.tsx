@@ -23,7 +23,6 @@ export function SignupForm({
   const [username, setUsername] = useState<string>("");
   const [success, setSuccess] = useState<boolean>(false);
 
-  // Legal agreements state
   const [agreements, setAgreements] = useState({
     terms: false,
     privacy: false,
@@ -42,7 +41,6 @@ export function SignupForm({
       [key]: !prev[key]
     }));
     
-    // Clear error when user checks the box
     if (agreementErrors[key]) {
       setAgreementErrors(prev => ({
         ...prev,
@@ -54,7 +52,6 @@ export function SignupForm({
   const validateAgreements = () => {
     const newErrors: {[key: string]: boolean} = {};
     
-    // Required checkboxes
     if (!agreements.terms) newErrors.terms = true;
     if (!agreements.privacy) newErrors.privacy = true;
     if (!agreements.dpa) newErrors.dpa = true;
@@ -67,7 +64,6 @@ export function SignupForm({
   const handleSignupButton = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    // Validate agreements first
     if (!validateAgreements()) {
       return;
     }
@@ -79,7 +75,7 @@ export function SignupForm({
         phoneNumber,
         ein,
         username,
-        agreements // Include agreements in the signup data
+        agreements
       }).unwrap();
       console.log(response);
       setSuccess(true);
@@ -181,7 +177,7 @@ export function SignupForm({
         )}
       </div>
 
-      <div className="grid gap-6">
+      <div className="grid gap-6 overflow-y-scroll max-h-[500px] px-[10px]">
         <div className="grid gap-2">
           <Label htmlFor="email" className="text-left text-[var(--text1)]">Email</Label>
           <Input 
@@ -273,7 +269,7 @@ export function SignupForm({
               <span className="font-medium">
                 {language === 'ro' ? 'Accept ' : 'I accept '}
               </span>
-              <a href="/terms" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
+              <a href="/terms-of-service" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
                 {language === 'ro' 
                   ? 'Termenii și Condițiile de Utilizare'
                   : 'Terms and Conditions of Use'}
@@ -292,7 +288,7 @@ export function SignupForm({
               <span className="font-medium">
                 {language === 'ro' ? 'Accept ' : 'I accept '}
               </span>
-              <a href="/privacy" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
+              <a href="/privacy-policy" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
                 {language === 'ro' 
                   ? 'Politica de Confidențialitate'
                   : 'Privacy Policy'}
@@ -311,7 +307,7 @@ export function SignupForm({
               <span className="font-medium">
                 {language === 'ro' ? 'Accept ' : 'I accept '}
               </span>
-              <a href="/dpa" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
+              <a href="/data-processing-agreement" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
                 {language === 'ro' 
                   ? 'Acordul de Prelucrare a Datelor (DPA)'
                   : 'Data Processing Agreement (DPA)'}
@@ -330,7 +326,7 @@ export function SignupForm({
               <span className="font-medium">
                 {language === 'ro' ? 'Accept ' : 'I accept '}
               </span>
-              <a href="/cookies" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
+              <a href="/cookies-policy" target="_blank" className="text-[var(--primary)] hover:underline font-medium">
                 {language === 'ro' 
                   ? 'Politica de Cookie-uri'
                   : 'Cookies Policy'}

@@ -1,6 +1,7 @@
-import { ForbiddenException, HttpException, HttpStatus, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { PrismaService } from "src/prisma/prisma.service";
 import { LoginDto, SignupDto } from "./dto";
+import { Request } from 'express';
 import * as argon from 'argon2';
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { AccountingCompany, User } from "@prisma/client";
@@ -35,56 +36,89 @@ export class AuthService{
         return this.signToken(user.id, user.email);
     }
 
-    async signup(dto: SignupDto){
+    async signup(dto: SignupDto, req?: Request) {
+        if (!dto.agreements.terms || !dto.agreements.privacy || !dto.agreements.dpa || !dto.agreements.cookies) {
+          throw new BadRequestException('All required legal agreements must be accepted');
+        }
+      
         const hash = await argon.hash(dto.password);
-
-        try{
-            let company: AccountingCompany|null = await this.prisma.accountingCompany.findUnique({
-                where: {
-                    ein: dto.ein
-                }
+      
+        try {
+          let company: AccountingCompany | null = await this.prisma.accountingCompany.findUnique({
+            where: {
+              ein: dto.ein
+            }
+          });
+      
+          if (!company) {
+            const companyData = await this.anaf.getCompanyDetails(dto.ein);
+      
+            if (!companyData) throw new NotFoundException('Company doesn\'t exist');
+      
+            company = await this.prisma.accountingCompany.create({
+              data: {
+                name: companyData.date_generale.denumire,
+                ein: dto.ein
+              }
             });
-
-            if(!company) {
-                const companyData = await this.anaf.getCompanyDetails(dto.ein);
-
-                if(!companyData) throw new NotFoundException('Company dosen\'t exist');
-
-                company = await this.prisma.accountingCompany.create({
-                    data:{
-                        name: companyData.date_generale.denumire,
-                        ein: dto.ein
-                    }
-                });
-            };
-
-            const user = await this.prisma.user.create({
-               data:{ 
+          }
+      
+          const result = await this.prisma.$transaction(async (prisma) => {
+            const user = await prisma.user.create({
+              data: {
                 email: dto.email,
                 hashPassword: hash,
                 name: dto.username,
                 phoneNumber: dto.phoneNumber,
                 accountingCompany: {
-                    connect: {
-                        ein: company.ein
-                    }
+                  connect: {
+                    ein: company.ein
+                  }
                 }
-            }
+              }
             });
+      
+            const agreementTypes = [
+              { type: 'terms', accepted: dto.agreements.terms },
+              { type: 'privacy', accepted: dto.agreements.privacy },
+              { type: 'dpa', accepted: dto.agreements.dpa },
+              { type: 'cookies', accepted: dto.agreements.cookies },
+              { type: 'marketing', accepted: dto.agreements.marketing }
+            ];
+      
+            const ipAddress = req?.ip || req?.connection?.remoteAddress || null;
+            const userAgent = req?.headers['user-agent'] || null;
+      
+            const legalAgreements = await Promise.all(
+              agreementTypes.map(agreement =>
+                prisma.legalAgreement.create({
+                  data: {
+                    userId: user.id,
+                    agreementType: agreement.type,
+                    accepted: agreement.accepted,
+                    ipAddress,
+                    userAgent,
+                    version: '1.0'
+                  }
+                })
+              )
+            );
+      
             delete user.hashPassword;
-
-            return {user, company};
-        } 
-        catch(err){
-            if(err instanceof PrismaClientKnownRequestError){
-                if(err.code === 'P2002'){
-                    throw new ForbiddenException('Account already created with this email!');
-                }
+            return { user, company, legalAgreements };
+          });
+      
+          return result;
+        } catch (err) {
+          if (err instanceof PrismaClientKnownRequestError) {
+            if (err.code === 'P2002') {
+              throw new ForbiddenException('Account already created with this email!');
             }
-            console.error(err);
-            throw err;
-        };
-    }
+          }
+          console.error(err);
+          throw err;
+        }
+      }
 
     async signToken(userId:number, email:string):Promise<{access_token:string}>{
         const payload = {

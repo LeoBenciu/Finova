@@ -20,6 +20,22 @@ model User {
   accountingCompanyId Int
   accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
   rpaActionsTriggered RpaAction[]       @relation("TriggeredByUser")
+  legalAgreements     LegalAgreement[]
+}
+
+model LegalAgreement {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agreementType String
+  accepted      Boolean  @default(false)
+  acceptedAt    DateTime @default(now())
+  ipAddress     String?
+  userAgent     String?
+  version       String?
+
+  @@unique([userId, agreementType])
+  @@index([userId])
 }
 
 model Document {
