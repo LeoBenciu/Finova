@@ -269,7 +269,7 @@ const CookiesPolicyPage = () => {
           <p className="text-gray-700 mb-4">
             Pentru întrebări despre cookie-uri sau pentru exercitarea drepturilor:
           </p>
-          <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+          <div className="bg-gray-50 rounded-lg p-4 space-y-2 px-auto">
             <p className="flex items-center gap-2">
               <span>📧</span>
               <strong className="text-black">Email:</strong> 
