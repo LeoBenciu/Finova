@@ -19,10 +19,10 @@ const PrivacyPolicyPage = () => {
         <section className="mb-8">
           <h2 className="text-2xl font-semibold text-gray-800 mb-4">1. Operator de date</h2>
           <div className="bg-gray-50 rounded-lg p-4">
-            <p><strong>SC Next Corp SRL</strong></p>
-            <p>Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
-            <p><strong>E-mail:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
-            <p><strong>Administrator și responsabil cu protecția datelor (DPO):</strong> Benciu Leonardo-Constantin</p>
+            <p className="text-black"><strong>SC Next Corp SRL</strong></p>
+            <p className="text-black">Strada Principală nr. 223, sat Pâncești, comuna Pâncești, jud. Bacău, România</p>
+            <p className="text-black"><strong>E-mail:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
+            <p className="text-black"><strong>Administrator și responsabil cu protecția datelor (DPO):</strong> Benciu Leonardo-Constantin</p>
           </div>
         </section>
   
@@ -286,13 +286,13 @@ const PrivacyPolicyPage = () => {
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="grid md:grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p><strong>DPO:</strong> Leonardo-Constantin Benciu</p>
-                  <p><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
-                  <p><strong>Autoritatea:</strong> <a href="mailto:anspdcp@dataprotection.ro" className="text-blue-600 hover:underline">anspdcp@dataprotection.ro</a></p>
+                  <p className="text-black"><strong>DPO:</strong> Leonardo-Constantin Benciu</p>
+                  <p className="text-black"><strong>Email:</strong> <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">nextcorpromania@gmail.com</a></p>
+                  <p className="text-black"><strong>Autoritatea:</strong> <a href="mailto:anspdcp@dataprotection.ro" className="text-blue-600 hover:underline">anspdcp@dataprotection.ro</a></p>
                 </div>
                 <div>
-                  <p><strong>Furnizori:</strong></p>
-                  <p>Render Support, AWS Support</p>
+                  <p className="text-black"><strong>Furnizori:</strong></p>
+                  <p className="text-black">Render Support, AWS Support</p>
                 </div>
               </div>
             </div>
