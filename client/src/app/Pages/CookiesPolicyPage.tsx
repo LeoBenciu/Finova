@@ -38,26 +38,26 @@ const CookiesPolicyPage = () => {
               <table className="min-w-full border border-gray-300 rounded-lg">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Cookie</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Scop</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Durata</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Cookie</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Scop</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Durata</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">session_id</td>
-                    <td className="border border-gray-300 px-4 py-2">Menținerea sesiunii utilizatorului autentificat</td>
-                    <td className="border border-gray-300 px-4 py-2">Sesiune</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">session_id</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Menținerea sesiunii utilizatorului autentificat</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Sesiune</td>
                   </tr>
                   <tr className="bg-gray-50">
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">csrf_token</td>
-                    <td className="border border-gray-300 px-4 py-2">Protecție împotriva atacurilor CSRF</td>
-                    <td className="border border-gray-300 px-4 py-2">Sesiune</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">csrf_token</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Protecție împotriva atacurilor CSRF</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Sesiune</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">app_auth</td>
-                    <td className="border border-gray-300 px-4 py-2">Stocarea stării de autentificare</td>
-                    <td className="border border-gray-300 px-4 py-2">30 zile</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">app_auth</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Stocarea stării de autentificare</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">30 zile</td>
                   </tr>
                 </tbody>
               </table>
@@ -77,21 +77,21 @@ const CookiesPolicyPage = () => {
               <table className="min-w-full border border-gray-300 rounded-lg">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Cookie</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Scop</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Durata</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Cookie</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Scop</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Durata</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">analytics_session</td>
-                    <td className="border border-gray-300 px-4 py-2">Măsurarea utilizării aplicației</td>
-                    <td className="border border-gray-300 px-4 py-2">24 ore</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">analytics_session</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Măsurarea utilizării aplicației</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">24 ore</td>
                   </tr>
                   <tr className="bg-gray-50">
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">error_tracking</td>
-                    <td className="border border-gray-300 px-4 py-2">Detectarea și raportarea erorilor</td>
-                    <td className="border border-gray-300 px-4 py-2">7 zile</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">error_tracking</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Detectarea și raportarea erorilor</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">7 zile</td>
                   </tr>
                 </tbody>
               </table>
@@ -111,26 +111,26 @@ const CookiesPolicyPage = () => {
               <table className="min-w-full border border-gray-300 rounded-lg">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Cookie</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Scop</th>
-                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold">Durata</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Cookie</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Scop</th>
+                    <th className="border border-gray-300 px-4 py-2 text-left font-semibold text-black">Durata</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">user_preferences</td>
-                    <td className="border border-gray-300 px-4 py-2">Stocarea setărilor personalizate</td>
-                    <td className="border border-gray-300 px-4 py-2">1 an</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">user_preferences</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Stocarea setărilor personalizate</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">1 an</td>
                   </tr>
                   <tr className="bg-gray-50">
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">language_pref</td>
-                    <td className="border border-gray-300 px-4 py-2">Reținerea limbii selectate</td>
-                    <td className="border border-gray-300 px-4 py-2">1 an</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">language_pref</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Reținerea limbii selectate</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">1 an</td>
                   </tr>
                   <tr>
-                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm">theme_mode</td>
-                    <td className="border border-gray-300 px-4 py-2">Reținerea temei (dark/light mode)</td>
-                    <td className="border border-gray-300 px-4 py-2">1 an</td>
+                    <td className="border border-gray-300 px-4 py-2 font-mono text-sm text-red-700">theme_mode</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">Reținerea temei (dark/light mode)</td>
+                    <td className="border border-gray-300 px-4 py-2 text-black">1 an</td>
                   </tr>
                 </tbody>
               </table>
@@ -272,21 +272,21 @@ const CookiesPolicyPage = () => {
           <div className="bg-gray-50 rounded-lg p-4 space-y-2">
             <p className="flex items-center gap-2">
               <span>📧</span>
-              <strong>Email:</strong> 
+              <strong className="text-black">Email:</strong> 
               <a href="mailto:nextcorpromania@gmail.com" className="text-blue-600 hover:underline">
                 nextcorpromania@gmail.com
               </a>
             </p>
             <p className="flex items-start gap-2">
               <span>🏢</span>
-              <span>
+              <span className="text-black">
                 <strong>SC Next Corp SRL</strong><br />
                 Strada Principală nr. 223, sat Pâncești,<br />
                 comuna Pâncești, jud. Bacău, România
               </span>
             </p>
             <p className="flex items-center gap-2">
-              <span>👤</span>
+              <span className="text-black">👤</span>
               <strong>DPO:</strong> Benciu Leonardo-Constantin
             </p>
           </div>
