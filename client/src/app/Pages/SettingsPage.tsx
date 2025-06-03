@@ -58,7 +58,7 @@ const SettingsPage = () => {
       <Company/>
       )}
 
-      {section===Section.CLIENTCOMPANIES&&(
+      {section===Section.PRIVACY&&(
         <Privacy/>
       )}
     </div>
