@@ -267,27 +267,28 @@ export class UserService {
     }
 
     
-async deleteMyAccount(user: User, req?: Request) {
-    try {
-        const userToDelete = await this.prisma.user.findUnique({
-            where: { id: user.id },
-            include: {
-                accountingCompany: {
-                    include: {
-                        users: true,
-                        accountingClients: {
-                            include: {
-                                documents: true,
-                                rpaActions: true,
-                                clientCompany: {
-                                    include: {
-                                        accountingClients: {
-                                            where: {
-                                                accountingCompanyId: { not: user.accountingCompanyId }
-                                            },
-                                            include: {
-                                                accountingCompany: {
-                                                    select: { name: true, ein: true }
+    async deleteMyAccount(user: User, req?: Request) {
+        try {
+            const userToDelete = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                include: {
+                    accountingCompany: {
+                        include: {
+                            users: true,
+                            accountingClients: {
+                                include: {
+                                    documents: true,
+                                    rpaActions: true,
+                                    clientCompany: {
+                                        include: {
+                                            accountingClients: {
+                                                where: {
+                                                    accountingCompanyId: { not: user.accountingCompanyId }
+                                                },
+                                                include: {
+                                                    accountingCompany: {
+                                                        select: { name: true, ein: true }
+                                                    }
                                                 }
                                             }
                                         }
@@ -295,167 +296,175 @@ async deleteMyAccount(user: User, req?: Request) {
                                 }
                             }
                         }
-                    }
-                },
-                legalAgreements: true,
-                rpaActionsTriggered: true
+                    },
+                    legalAgreements: true,
+                    rpaActionsTriggered: true
+                }
+            });
+    
+            if (!userToDelete) {
+                throw new NotFoundException('User doesn\'t exist');
             }
-        });
-
-        if (!userToDelete) {
-            throw new NotFoundException('User doesn\'t exist');
-        }
-
-        const isOnlyUserInCompany = userToDelete.accountingCompany.users.length === 1;
-        
-        console.log(`User ${user.id} deletion analysis:`);
-        console.log(`- Accounting Company: ${userToDelete.accountingCompany.name} (ID: ${user.accountingCompanyId})`);
-        console.log(`- Users in company: ${userToDelete.accountingCompany.users.length}`);
-        console.log(`- Is only user: ${isOnlyUserInCompany}`);
-        console.log(`- Will delete S3 files: ${isOnlyUserInCompany}`);
-
-        let s3DeletionResult = { deletedFiles: 0, errors: [] };
-        
-        if (isOnlyUserInCompany) {
-            console.log('Starting S3 files deletion - user is the last in company');
-            s3DeletionResult = await this.deleteUserFilesFromS3(user);
+    
+            const isOnlyUserInCompany = userToDelete.accountingCompany.users.length === 1;
             
-            console.log(`S3 Deletion Summary: ${s3DeletionResult.deletedFiles} files deleted`);
-            if (s3DeletionResult.errors.length > 0) {
-                console.warn(`S3 Deletion Warnings:`, s3DeletionResult.errors);
+            console.log(`User ${user.id} deletion analysis:`);
+            console.log(`- Accounting Company: ${userToDelete.accountingCompany.name} (ID: ${userToDelete.accountingCompanyId})`);
+            console.log(`- Users in company: ${userToDelete.accountingCompany.users.length}`);
+            console.log(`- Is only user: ${isOnlyUserInCompany}`);
+            console.log(`- Will delete S3 files: ${isOnlyUserInCompany}`);
+    
+            let s3DeletionResult = { deletedFiles: 0, errors: [] };
+            
+            if (isOnlyUserInCompany) {
+                console.log('Starting S3 files deletion - user is the last in company');
+                s3DeletionResult = await this.deleteUserFilesFromS3(user);
+                
+                console.log(`S3 Deletion Summary: ${s3DeletionResult.deletedFiles} files deleted`);
+                if (s3DeletionResult.errors.length > 0) {
+                    console.warn(`S3 Deletion Warnings:`, s3DeletionResult.errors);
+                }
+            } else {
+                console.log('Skipping S3 deletion - other users exist in the company');
+                console.log(`${userToDelete.accountingCompany.accountingClients.reduce((total, client) => total + client.documents.length, 0)} documents will be preserved for remaining users`);
             }
-        } else {
-            console.log('Skipping S3 deletion - other users exist in the company');
-            console.log(`${userToDelete.accountingCompany.accountingClients.reduce((total, client) => total + client.documents.length, 0)} documents will be preserved for remaining users`);
-        }
-
-        const auditLog = {
-            userId: user.id,
-            email: userToDelete.email,
-            accountingCompanyId: user.accountingCompanyId,
-            deletedAt: new Date(),
-            ipAddress: req?.ip || 'unknown',
-            userAgent: req?.headers['user-agent'] || 'unknown',
-            reason: 'USER_INITIATED_DELETION',
-            isOnlyUserInCompany,
-            s3FilesDeleted: s3DeletionResult.deletedFiles,
-            s3DeletionSkipped: !isOnlyUserInCompany
-        };
-
-        const result = await this.prisma.$transaction(async (prisma) => {
-            const deletionSummary = {
+    
+            const auditLog = {
                 userId: user.id,
                 email: userToDelete.email,
-                accountingCompanyId: user.accountingCompanyId,
+                accountingCompanyId: userToDelete.accountingCompanyId,
+                deletedAt: new Date(),
+                ipAddress: req?.ip || 'unknown',
+                userAgent: req?.headers['user-agent'] || 'unknown',
+                reason: 'USER_INITIATED_DELETION',
                 isOnlyUserInCompany,
-                deletedData: {
-                    legalAgreements: 0,
-                    rpaActions: 0,
-                    documents: 0,
-                    s3Files: s3DeletionResult.deletedFiles,
-                    accountingCompanyDeleted: false,
-                    clientRelationshipsAffected: 0
-                },
-                preservedData: {
-                    documentsPreserved: 0,
-                    usersRemaining: 0
-                }
+                s3FilesDeleted: s3DeletionResult.deletedFiles,
+                s3DeletionSkipped: !isOnlyUserInCompany
             };
-
-            const deletedAgreements = await prisma.legalAgreement.deleteMany({
-                where: { userId: user.id }
-            });
-            deletionSummary.deletedData.legalAgreements = deletedAgreements.count;
-
-            const deletedRpaActions = await prisma.rpaAction.deleteMany({
-                where: { triggeredById: user.id }
-            });
-            deletionSummary.deletedData.rpaActions = deletedRpaActions.count;
-
-            if (isOnlyUserInCompany) {
-                console.log('Deleting all company data - last user');
-                
-                const accountingClientIds = userToDelete.accountingCompany.accountingClients.map(ac => ac.id);
-                
-                if (accountingClientIds.length > 0) {
-                    await prisma.processedData.deleteMany({
-                        where: {
-                            document: {
-                                accountingClientId: { in: accountingClientIds }
-                            }
-                        }
-                    });
+    
+            const result = await this.prisma.$transaction(async (prisma) => {
+                const deletionSummary = {
+                    userId: user.id,
+                    email: userToDelete.email,
+                    accountingCompanyId: userToDelete.accountingCompanyId,
+                    isOnlyUserInCompany,
+                    deletedData: {
+                        legalAgreements: 0,
+                        rpaActions: 0,
+                        documents: 0,
+                        s3Files: s3DeletionResult.deletedFiles,
+                        accountingCompanyDeleted: false,
+                        clientRelationshipsAffected: 0
+                    },
+                    preservedData: {
+                        documentsPreserved: 0,
+                        usersRemaining: 0
+                    }
+                };
+    
+    
+                const deletedAgreements = await prisma.legalAgreement.deleteMany({
+                    where: { userId: user.id }
+                });
+                deletionSummary.deletedData.legalAgreements = deletedAgreements.count;
+    
+                const deletedRpaActions = await prisma.rpaAction.deleteMany({
+                    where: { triggeredById: user.id }
+                });
+                deletionSummary.deletedData.rpaActions = deletedRpaActions.count;
+    
+                if (isOnlyUserInCompany) {
+                    console.log('Deleting all company data - last user');
                     
-                    const deletedDocs = await prisma.document.deleteMany({
-                        where: { accountingClientId: { in: accountingClientIds } }
+                    const accountingClientIds = userToDelete.accountingCompany.accountingClients.map(ac => ac.id);
+                    
+                    if (accountingClientIds.length > 0) {
+                        await prisma.processedData.deleteMany({
+                            where: {
+                                document: {
+                                    accountingClientId: { in: accountingClientIds }
+                                }
+                            }
+                        });
+                        
+                        const deletedDocs = await prisma.document.deleteMany({
+                            where: { accountingClientId: { in: accountingClientIds } }
+                        });
+                        deletionSummary.deletedData.documents = deletedDocs.count;
+    
+                        await prisma.rpaAction.deleteMany({
+                            where: { accountingClientId: { in: accountingClientIds } }
+                        });
+    
+                        const deletedRelations = await prisma.accountingClients.deleteMany({
+                            where: { accountingCompanyId: userToDelete.accountingCompanyId }
+                        });
+                        deletionSummary.deletedData.clientRelationshipsAffected = deletedRelations.count;
+                    }
+    
+                    const deletedUser = await prisma.user.delete({
+                        where: { id: user.id }
                     });
-                    deletionSummary.deletedData.documents = deletedDocs.count;
-
-                    await prisma.rpaAction.deleteMany({
-                        where: { accountingClientId: { in: accountingClientIds } }
-                    });
-
-                    const deletedRelations = await prisma.accountingClients.deleteMany({
-                        where: { accountingCompanyId: userToDelete.accountingCompanyId }
-                    });
-                    deletionSummary.deletedData.clientRelationshipsAffected = deletedRelations.count;
-
+    
                     await prisma.accountingCompany.delete({
                         where: { id: userToDelete.accountingCompanyId }
                     });
-
+    
                     deletionSummary.deletedData.accountingCompanyDeleted = true;
+                    delete deletedUser.hashPassword;
+                    
+                    return { deletedUser, deletionSummary, auditLog };
+    
+                } else {
+                    console.log('Preserving company data - other users exist');
+                    
+                    const totalDocuments = userToDelete.accountingCompany.accountingClients
+                        .reduce((total, client) => total + client.documents.length, 0);
+                    
+                    deletionSummary.preservedData.documentsPreserved = totalDocuments;
+                    deletionSummary.preservedData.usersRemaining = userToDelete.accountingCompany.users.length - 1;
+                    
+                    console.log(`Preserving ${totalDocuments} documents for ${deletionSummary.preservedData.usersRemaining} remaining users`);
+    
+                    const deletedUser = await prisma.user.delete({
+                        where: { id: user.id }
+                    });
+    
+                    delete deletedUser.hashPassword;
+                    
+                    return { deletedUser, deletionSummary, auditLog };
                 }
-            } else {
-                console.log('Preserving company data - other users exist');
-                
-                const totalDocuments = userToDelete.accountingCompany.accountingClients
-                    .reduce((total, client) => total + client.documents.length, 0);
-                
-                deletionSummary.preservedData.documentsPreserved = totalDocuments;
-                deletionSummary.preservedData.usersRemaining = userToDelete.accountingCompany.users.length - 1;
-                
-                console.log(`Preserving ${totalDocuments} documents for ${deletionSummary.preservedData.usersRemaining} remaining users`);
-            }
-
-            const deletedUser = await prisma.user.delete({
-                where: { id: user.id }
             });
-
-            delete deletedUser.hashPassword;
-            
-            return { deletedUser, deletionSummary, auditLog };
-        });
-
-        console.log('GDPR Account Deletion Completed:', {
-            userId: result.deletionSummary.userId,
-            email: result.deletionSummary.email,
-            companyDeleted: result.deletionSummary.deletedData.accountingCompanyDeleted,
-            documentsDeleted: result.deletionSummary.deletedData.documents,
-            documentsPreserved: result.deletionSummary.preservedData.documentsPreserved,
-            s3FilesDeleted: result.deletionSummary.deletedData.s3Files,
-            usersRemaining: result.deletionSummary.preservedData.usersRemaining
-        });
-
-        return {
-            message: isOnlyUserInCompany 
-                ? 'Account and all company data deleted successfully'
-                : 'Personal account deleted successfully. Company data preserved for remaining users.',
-            deletionSummary: result.deletionSummary,
-            s3DeletionSummary: {
-                filesDeleted: s3DeletionResult.deletedFiles,
-                errors: s3DeletionResult.errors,
-                skipped: !isOnlyUserInCompany,
-                reason: !isOnlyUserInCompany ? 'Other users exist in company' : null
-            }
-        };
-
-    } catch (e) {
-        if (e instanceof NotFoundException) throw e;
-        console.error('GDPR Account deletion failed:', e);
-        throw new InternalServerErrorException("Failed to delete user account and associated data!");
+    
+            console.log('GDPR Account Deletion Completed:', {
+                userId: result.deletionSummary.userId,
+                email: result.deletionSummary.email,
+                companyDeleted: result.deletionSummary.deletedData.accountingCompanyDeleted,
+                documentsDeleted: result.deletionSummary.deletedData.documents,
+                documentsPreserved: result.deletionSummary.preservedData.documentsPreserved,
+                s3FilesDeleted: result.deletionSummary.deletedData.s3Files,
+                usersRemaining: result.deletionSummary.preservedData.usersRemaining
+            });
+    
+            return {
+                message: isOnlyUserInCompany 
+                    ? 'Account and all company data deleted successfully'
+                    : 'Personal account deleted successfully. Company data preserved for remaining users.',
+                deletionSummary: result.deletionSummary,
+                s3DeletionSummary: {
+                    filesDeleted: s3DeletionResult.deletedFiles,
+                    errors: s3DeletionResult.errors,
+                    skipped: !isOnlyUserInCompany,
+                    reason: !isOnlyUserInCompany ? 'Other users exist in company' : null
+                }
+            };
+    
+        } catch (e) {
+            if (e instanceof NotFoundException) throw e;
+            console.error('GDPR Account deletion failed:', e);
+            throw new InternalServerErrorException("Failed to delete user account and associated data!");
+        }
     }
-}
 
 
     async getUserAgreements(user: User) {
