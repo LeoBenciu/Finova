@@ -1,5 +1,5 @@
 import { Role } from "@prisma/client"
-import { IsEmail, IsNotEmpty, IsPhoneNumber, IsString, Matches } from "class-validator"
+import { IsEmail, IsNotEmpty, IsPhoneNumber, IsString, Matches, IsIn, IsBoolean } from "class-validator"
 export class User {
     id: 1
     createdAt: Date
@@ -28,4 +28,13 @@ export class UpdateUserDto{
     @IsPhoneNumber(undefined, { message: 'Please provide a valid phone number' })
     @IsString({ message: 'Phone number must be a string' })
     phoneNumber: string
+}
+
+export class UpdateConsentDto {
+    @IsString()
+    @IsIn(['terms', 'privacy', 'dpa', 'cookies', 'marketing'])
+    agreementType: string;
+
+    @IsBoolean()
+    accepted: boolean;
 }
