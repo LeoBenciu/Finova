@@ -38,4 +38,20 @@ export class UserController {
         return this.userService.deleteMyAccount(user);
     }
 
+    @Get('/me/agreements')
+    getUserAgreements(@Req() req: Request) {
+        const user = req.user as User;
+        return this.userService.getUserAgreements(user);
+    }
+    
+    @Put('/me/consent')
+    updateUserConsent(
+        @Req() req: Request, 
+        @Body() body: { agreementType: string; accepted: boolean }
+    ) {
+        const user = req.user as User;
+        const { agreementType, accepted } = body;
+        return this.userService.updateUserConsent(user, agreementType, accepted, req);
+    }
+
 }

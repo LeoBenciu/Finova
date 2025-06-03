@@ -26,6 +26,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
+    tagTypes: ['UserAgreements'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -271,6 +272,26 @@ export const finovaApi = createApi({
             })
         }),
 
+        getUserAgreements: build.query({
+            query: () => ({
+                url: '/users/me/agreements',
+                method: 'GET',
+            }),
+            providesTags: ['UserAgreements']
+        }),
+        
+        updateUserConsent: build.mutation({
+            query: ({ agreementType, accepted }) => ({
+                url: '/users/me/consent',
+                method: 'PUT',
+                body: {
+                    agreementType,
+                    accepted
+                }
+            }),
+            invalidatesTags: ['UserAgreements']
+        }),
+
     })
 })
 
@@ -284,4 +305,4 @@ useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
 useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
-useGetJobStatusQuery} = finovaApi;
+useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation} = finovaApi;
