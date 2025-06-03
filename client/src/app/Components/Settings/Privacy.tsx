@@ -3,7 +3,7 @@ import { Shield, CircleCheckBig, Share, Clock } from "lucide-react"
 const Privacy = () => {
     return (
       <div className="bg-white rounded-md border-[1px] border-neutral-400 mt-10 mx-10 min-w-96 
-    min-h-96 px-10 flex flex-col items-start col-start-1 p-[15px]">
+    min-h-96 px-10 flex flex-col items-start col-start-1 p-[15px] shadow-sm">
         <div className="flex flex-row gap-1">
             <Shield size={25}></Shield>
             <h3>Confidențialitate și Date Personale</h3>
@@ -11,16 +11,18 @@ const Privacy = () => {
         <h4>Gestionați-vă datele personale și drepturile de confidențialitate</h4>
 
             <div className="my-[15px] min-w-full min-h-16 max-h-16 flex flex-row justify-between
-            bg-white rounded-md border-neutral-400 shadow-sm">
-                <div className="flex flex-row gap-1">
+            bg-white rounded-md border-neutral-400 shadow-sm px-[10px]">
+                <div className="flex flex-row gap-1 items-center">
                     <CircleCheckBig size={20} className="text-green-500"/>
                     <p className="text-black">Termeni si Conditii</p>
-                    <div className="rounded-md bg-black"><p>Acceptat</p></div>
+                    <div className="rounded-md bg-black flex flex-row items-center shadow-sm max-h-max p-[5px]
+                    justify-center"><p>Acceptat</p></div>
                 </div>
 
-                <div className="flex flex-row gap-1">
+                <div className="flex flex-row gap-1 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
-                    <div className="p-[2px] rounded-md borderd-[1px] border-neutral-600 shadow-sm">
+                    <div className="flex flex-row items-center rounded-md borderd-[1px] justify-center
+                     border-neutral-600 shadow-sm p-[5px] max-h-max">
                         <Share size={10}></Share>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -28,16 +30,18 @@ const Privacy = () => {
             </div>
 
             <div className="my-[15px] min-w-full min-h-16 max-h-16 flex flex-row justify-between
-            bg-white rounded-md border-neutral-400 shadow-sm">
-                <div className="flex flex-row gap-1">
+            bg-white rounded-md border-neutral-400 shadow-sm px-[10px]">
+                <div className="flex flex-row gap-1 items-center">
                     <CircleCheckBig size={20} className="text-green-500"/>
                     <p className="text-black">Politica de confidentialitate</p>
-                    <div className="rounded-md bg-black"><p>Acceptat</p></div>
+                    <div className="rounded-md bg-black flex flex-row items-center shadow-sm max-h-max p-[5px]
+                    justify-center"><p>Acceptat</p></div>
                 </div>
 
-                <div className="flex flex-row gap-1">
+                <div className="flex flex-row gap-1 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
-                    <div className="p-[2px] rounded-md borderd-[1px] border-neutral-600 shadow-sm">
+                    <div className="flex flex-row items-center rounded-md borderd-[1px] justify-center
+                     border-neutral-600 shadow-sm p-[5px] max-h-max">
                         <Share size={10}></Share>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -45,33 +49,37 @@ const Privacy = () => {
             </div>
 
             <div className="my-[15px] min-w-full min-h-16 max-h-16 flex flex-row justify-between
-            bg-white rounded-md border-neutral-400 shadow-sm">
-                <div className="flex flex-row gap-1">
+            bg-white rounded-md border-neutral-400 shadow-sm px-[10px]">
+                <div className="flex flex-row gap-1 items-center">
                     <CircleCheckBig size={20} className="text-green-500"/>
                     <p className="text-black">Acord Prelucrare Date</p>
-                    <div className="rounded-md bg-black"><p>Acceptat</p></div>
+                    <div className="rounded-md bg-black flex flex-row items-center shadow-sm max-h-max p-[5px]
+                    justify-center"><p>Acceptat</p></div>
                 </div>
 
-                <div className="flex flex-row gap-1">
+                <div className="flex flex-row gap-1 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
-                    <div className="p-[2px] rounded-md borderd-[1px] border-neutral-600 shadow-sm">
-                        <Share size={10}></Share>
+                    <div className="flex flex-row items-center rounded-md borderd-[1px] justify-center
+                     border-neutral-600 shadow-sm p-[5px] max-h-max">
+                        <Share size={10} className="text-black"></Share>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
                 </div>
             </div>
 
             <div className="my-[15px] min-w-full min-h-16 max-h-16 flex flex-row justify-between
-            bg-white rounded-md border-neutral-400 shadow-sm">
-                <div className="flex flex-row gap-1">
+            bg-white rounded-md border-neutral-400 shadow-sm px-[10px]">
+                <div className="flex flex-row gap-1 items-center">
                     <CircleCheckBig size={20} className="text-green-500"/>
                     <p className="text-black">Politica de Cookie-uri</p>
-                    <div className="rounded-md bg-black"><p>Acceptat</p></div>
+                    <div className="rounded-md bg-black flex flex-row items-center shadow-sm max-h-max p-[5px]
+                    justify-center"><p>Acceptat</p></div>
                 </div>
 
-                <div className="flex flex-row gap-1">
+                <div className="flex flex-row gap-1 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
-                    <div className="p-[2px] rounded-md borderd-[1px] border-neutral-600 shadow-sm">
+                    <div className="flex flex-row items-center rounded-md borderd-[1px] justify-center
+                     border-neutral-600 shadow-sm p-[5px] max-h-max">
                         <Share size={10}></Share>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -79,16 +87,18 @@ const Privacy = () => {
             </div>
 
             <div className="my-[15px] min-w-full min-h-16 max-h-16 flex flex-row justify-between
-            bg-white rounded-md border-neutral-400 shadow-sm">
-                <div className="flex flex-row gap-1">
-                    <Clock size={20} className="text-neutral-500"/>
+            bg-white rounded-md border-neutral-400 shadow-sm px-[10px]">
+                <div className="flex flex-row gap-1 items-center">
+                    <Clock size={20} className="text-neutral-500 "/>
                     <p className="text-black">Comunicări Marketing</p>
-                    <div className="rounded-md bg-neutral-300 text-black"><p>Refuzat</p></div>
+                    <div className="rounded-md flex flex-row items-center shadow-sm max-h-max p-[5px]
+                    justify-center bg-neutral-300 text-black"><p>Refuzat</p></div>
                 </div>
 
-                <div className="flex flex-row gap-1">
+                <div className="flex flex-row gap-1 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
-                    <div className="p-[2px] rounded-md borderd-[1px] border-neutral-600 shadow-sm">
+                    <div className="flex flex-row items-center rounded-md borderd-[1px] justify-center
+                     border-neutral-600 shadow-sm p-[5px] max-h-max">
                         <Share size={10}></Share>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
