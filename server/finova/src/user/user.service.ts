@@ -2,6 +2,7 @@ import { ConflictException, Injectable, InternalServerErrorException, NotFoundEx
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateUserDto, User } from './dto';
 import * as argon from 'argon2';
+import * as AWS from 'aws-sdk';
 import { Request } from 'express';
 
 @Injectable()
@@ -51,7 +52,6 @@ export class UserService {
               }
               
               console.error('User update failed:', e);
-              
               throw new InternalServerErrorException('Failed to update user details');
             
         }
@@ -78,27 +78,342 @@ export class UserService {
         }
     }
 
-    async deleteMyAccount(user: User)
-    {
-        try 
-        {
-            const deletedUser = await this.prisma.user.delete({
-                where:{
-                    id: user.id 
+    private async deleteUserFilesFromS3(user: User): Promise<{ deletedFiles: number; errors: string[] }> {
+        const s3 = new AWS.S3({
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            region: process.env.AWS_REGION
+        });
+
+        let deletedFiles = 0;
+        const errors: string[] = [];
+
+        try {
+            const userSpecificDocuments = await this.prisma.document.findMany({
+                where: {
+                    accountingClient: {
+                        accountingCompanyId: user.accountingCompanyId
+                    }
+                },
+                select: {
+                    id: true,
+                    s3Key: true,
+                    name: true,
+                    accountingClient: {
+                        select: {
+                            id: true,
+                            accountingCompanyId: true,
+                            clientCompany: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    ein: true
+                                }
+                            }
+                        }
+                    }
                 }
             });
 
-            if(!deletedUser) throw new NotFoundException('User doesn\'t exists');
+            if (userSpecificDocuments.length === 0) {
+                console.log(`No documents found for accounting company ${user.accountingCompanyId} to delete from S3`);
+                return { deletedFiles: 0, errors: [] };
+            }
 
-            delete deletedUser.hashPassword;
-            return deletedUser;
-        } 
-        catch (e) 
-        {
-            if(e instanceof NotFoundException) throw e;
-            throw new InternalServerErrorException("Failed to delete user account!");
+            console.log(`Found ${userSpecificDocuments.length} documents to delete from S3 for accounting company ${user.accountingCompanyId}`);
+            
+            userSpecificDocuments.forEach(doc => {
+                console.log(`Will delete: ${doc.name} (S3: ${doc.s3Key}) - Client: ${doc.accountingClient.clientCompany.name}`);
+            });
+
+            const clientIds = [...new Set(userSpecificDocuments.map(doc => doc.accountingClient.clientCompany.id))];
+            
+            for (const clientId of clientIds) {
+                const otherAccountingCompanies = await this.prisma.accountingClients.findMany({
+                    where: {
+                        clientCompanyId: clientId,
+                        accountingCompanyId: { not: user.accountingCompanyId }
+                    },
+                    include: {
+                        accountingCompany: {
+                            select: { name: true, ein: true }
+                        },
+                        clientCompany: {
+                            select: { name: true, ein: true }
+                        }
+                    }
+                });
+
+                if (otherAccountingCompanies.length > 0) {
+                    console.log(`Client ${clientId} also has relationships with ${otherAccountingCompanies.length} other accounting companies:`);
+                    otherAccountingCompanies.forEach(relation => {
+                        console.log(`  - ${relation.accountingCompany.name} (${relation.accountingCompany.ein})`);
+                    });
+                    console.log(`Their documents will NOT be affected by this deletion`);
+                }
+            }
+
+            const BATCH_SIZE = 10;
+            const batches = [];
+            
+            for (let i = 0; i < userSpecificDocuments.length; i += BATCH_SIZE) {
+                batches.push(userSpecificDocuments.slice(i, i + BATCH_SIZE));
+            }
+
+            for (const batch of batches) {
+                const deletePromises = batch.map(async (doc) => {
+                    try {
+                        await s3.deleteObject({
+                            Bucket: process.env.AWS_S3_BUCKET_NAME,
+                            Key: doc.s3Key
+                        }).promise();
+                        
+                        deletedFiles++;
+                        console.log(`Deleted S3 file: ${doc.s3Key}`);
+                        console.log(`   Document: ${doc.name}`);
+                        console.log(`   Client: ${doc.accountingClient.clientCompany.name} (${doc.accountingClient.clientCompany.ein})`);
+                        console.log(`   Accounting Company: ${user.accountingCompanyId}`);
+                        
+                    } catch (error) {
+                        const errorMsg = `Failed to delete S3 file ${doc.s3Key}: ${error.message}`;
+                        errors.push(errorMsg);
+                        console.error(errorMsg);
+                    }
+                });
+
+                await Promise.allSettled(deletePromises);
+                
+                if (batches.indexOf(batch) < batches.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+
+            await this.cleanupSpecificOrphanedFiles(user.accountingCompanyId, userSpecificDocuments, s3);
+
+            return { deletedFiles, errors };
+
+        } catch (error) {
+            const errorMsg = `Critical error in S3 deletion process: ${error.message}`;
+            errors.push(errorMsg);
+            console.error(errorMsg);
+            return { deletedFiles, errors };
         }
     }
+
+    private async cleanupSpecificOrphanedFiles(
+        accountingCompanyId: number, 
+        deletedDocuments: any[], 
+        s3: AWS.S3
+    ): Promise<void> {
+        try {
+            const expectedS3Keys = new Set(deletedDocuments.map(doc => doc.s3Key));
+            
+            const prefix = `${accountingCompanyId}/`;
+            
+            const listParams = {
+                Bucket: process.env.AWS_S3_BUCKET_NAME,
+                Prefix: prefix
+            };
+
+            const listedObjects = await s3.listObjectsV2(listParams).promise();
+            
+            if (!listedObjects.Contents || listedObjects.Contents.length === 0) {
+                console.log(`No files found with prefix ${prefix} for cleanup`);
+                return;
+            }
+
+            const orphanedKeys: string[] = [];
+            
+            for (const s3Object of listedObjects.Contents) {
+                if (s3Object.Key && !expectedS3Keys.has(s3Object.Key)) {
+                    const existsInDb = await this.prisma.document.findFirst({
+                        where: { s3Key: s3Object.Key }
+                    });
+                    
+                    if (!existsInDb) {
+                        orphanedKeys.push(s3Object.Key);
+                    }
+                }
+            }
+
+            if (orphanedKeys.length === 0) {
+                console.log(`No orphaned files found for accounting company ${accountingCompanyId}`);
+                return;
+            }
+
+            const deleteParams = {
+                Bucket: process.env.AWS_S3_BUCKET_NAME,
+                Delete: {
+                    Objects: orphanedKeys.map(key => ({ Key: key }))
+                }
+            };
+
+            const deleteResult = await s3.deleteObjects(deleteParams).promise();
+            
+            if (deleteResult.Deleted && deleteResult.Deleted.length > 0) {
+                console.log(`Cleaned up ${deleteResult.Deleted.length} orphaned files for accounting company ${accountingCompanyId}`);
+                deleteResult.Deleted.forEach(deleted => {
+                    console.log(`   Orphaned file: ${deleted.Key}`);
+                });
+            }
+            
+            if (deleteResult.Errors && deleteResult.Errors.length > 0) {
+                console.error(`Errors during cleanup:`, deleteResult.Errors);
+            }
+
+        } catch (error) {
+            console.error(`Failed to cleanup orphaned S3 files for company ${accountingCompanyId}: ${error.message}`);
+        }
+    }
+
+    async deleteMyAccount(user: User, req?: Request) {
+        try {
+            const userToDelete = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                include: {
+                    accountingCompany: {
+                        include: {
+                            users: true,
+                            accountingClients: {
+                                include: {
+                                    documents: true,
+                                    rpaActions: true,
+                                    clientCompany: {
+                                        include: {
+                                            accountingClients: {
+                                                where: {
+                                                    accountingCompanyId: { not: user.accountingCompanyId }
+                                                },
+                                                include: {
+                                                    accountingCompany: {
+                                                        select: { name: true, ein: true }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    legalAgreements: true,
+                    rpaActionsTriggered: true
+                }
+            });
+
+            if (!userToDelete) {
+                throw new NotFoundException('User doesn\'t exist');
+            }
+
+            console.log('Starting S3 files deletion for accounting company:', user.accountingCompanyId);
+            const s3DeletionResult = await this.deleteUserFilesFromS3(user);
+            
+            console.log(`S3 Deletion Summary: ${s3DeletionResult.deletedFiles} files deleted`);
+            if (s3DeletionResult.errors.length > 0) {
+                console.warn(`S3 Deletion Warnings:`, s3DeletionResult.errors);
+            }
+
+            const auditLog = {
+                userId: user.id,
+                email: userToDelete.email,
+                accountingCompanyId: user.accountingCompanyId,
+                deletedAt: new Date(),
+                ipAddress: req?.ip || 'unknown',
+                userAgent: req?.headers['user-agent'] || 'unknown',
+                reason: 'USER_INITIATED_DELETION',
+                s3FilesDeleted: s3DeletionResult.deletedFiles,
+            };
+
+            const result = await this.prisma.$transaction(async (prisma) => {
+                const deletionSummary = {
+                    userId: user.id,
+                    email: userToDelete.email,
+                    accountingCompanyId: user.accountingCompanyId,
+                    deletedData: {
+                        legalAgreements: 0,
+                        rpaActions: 0,
+                        documents: 0,
+                        s3Files: s3DeletionResult.deletedFiles,
+                        accountingCompanyDeleted: false,
+                        clientRelationshipsAffected: 0
+                    }
+                };
+
+                const deletedAgreements = await prisma.legalAgreement.deleteMany({
+                    where: { userId: user.id }
+                });
+                deletionSummary.deletedData.legalAgreements = deletedAgreements.count;
+
+                const deletedRpaActions = await prisma.rpaAction.deleteMany({
+                    where: { triggeredById: user.id }
+                });
+                deletionSummary.deletedData.rpaActions = deletedRpaActions.count;
+
+                const isOnlyUserInCompany = userToDelete.accountingCompany.users.length === 1;
+                
+                if (isOnlyUserInCompany) {
+                    const accountingClientIds = userToDelete.accountingCompany.accountingClients.map(ac => ac.id);
+                    
+                    if (accountingClientIds.length > 0) {
+                        await prisma.processedData.deleteMany({
+                            where: {
+                                document: {
+                                    accountingClientId: { in: accountingClientIds }
+                                }
+                            }
+                        });
+                        
+                        const deletedDocs = await prisma.document.deleteMany({
+                            where: { accountingClientId: { in: accountingClientIds } }
+                        });
+                        deletionSummary.deletedData.documents = deletedDocs.count;
+
+                        await prisma.rpaAction.deleteMany({
+                            where: { accountingClientId: { in: accountingClientIds } }
+                        });
+
+                        const deletedRelations = await prisma.accountingClients.deleteMany({
+                            where: { accountingCompanyId: userToDelete.accountingCompanyId }
+                        });
+                        deletionSummary.deletedData.clientRelationshipsAffected = deletedRelations.count;
+
+                        await prisma.accountingCompany.delete({
+                            where: { id: userToDelete.accountingCompanyId }
+                        });
+
+                        deletionSummary.deletedData.accountingCompanyDeleted = true;
+                    }
+                } else {
+                    console.log(`Company ${userToDelete.accountingCompany.name} has other users, keeping company data`);
+                }
+
+                const deletedUser = await prisma.user.delete({
+                    where: { id: user.id }
+                });
+
+                delete deletedUser.hashPassword;
+                
+                return { deletedUser, deletionSummary, auditLog };
+            });
+
+            console.log('GDPR Account Deletion Completed:', result.deletionSummary);
+
+            return {
+                message: 'Account and all personal data deleted successfully',
+                deletionSummary: result.deletionSummary,
+                s3DeletionSummary: {
+                    filesDeleted: s3DeletionResult.deletedFiles,
+                    errors: s3DeletionResult.errors
+                }
+            };
+
+        } catch (e) {
+            if (e instanceof NotFoundException) throw e;
+            console.error('GDPR Account deletion failed:', e);
+            throw new InternalServerErrorException("Failed to delete user account and associated data!");
+        }
+    }
+
 
     async getUserAgreements(user: User) {
         try {
@@ -107,7 +422,6 @@ export class UserService {
                 orderBy: { acceptedAt: 'desc' }
             });
     
-            // Transform data pentru frontend
             const agreementMap = agreements.reduce((acc, agreement) => {
                 acc[agreement.agreementType] = {
                     accepted: agreement.accepted,
@@ -117,7 +431,6 @@ export class UserService {
                 return acc;
             }, {});
     
-            // Ensure all agreement types are present
             const allAgreements = {
                 terms: agreementMap['terms'] || { accepted: false, acceptedAt: null, version: null },
                 privacy: agreementMap['privacy'] || { accepted: false, acceptedAt: null, version: null },

@@ -35,7 +35,7 @@ export class UserController {
     deleteMyAccount(@Req() req: Request)
     {
         const user = req.user as User;
-        return this.userService.deleteMyAccount(user);
+        return this.userService.deleteMyAccount(user, req);
     }
 
     @Get('/me/agreements')
@@ -43,7 +43,7 @@ export class UserController {
         const user = req.user as User;
         return this.userService.getUserAgreements(user);
     }
-    
+
     @Put('/me/consent')
     updateUserConsent(
         @Req() req: Request, 
