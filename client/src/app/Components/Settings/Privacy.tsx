@@ -1,4 +1,4 @@
-import { Shield, File, CircleCheckBig, Share, Clock } from "lucide-react"
+import { Shield, CircleCheckBig, Share, Clock } from "lucide-react"
 
 const Privacy = () => {
     return (
