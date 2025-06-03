@@ -1,8 +1,6 @@
 import { Shield, CircleCheckBig, Clock, ExternalLink } from "lucide-react"
-import { useNavigate } from "react-router";
 
 const Privacy = () => {
-    const navigate = useNavigate();
 
     const openInNewTab = (url: string) => {
         window.open(url, '_blank', 'noopener,noreferrer');
@@ -13,7 +11,7 @@ const Privacy = () => {
     min-h-96 px-10 flex flex-col items-start col-start-1 p-[15px] shadow-md">
         <div className="flex flex-row gap-1">
             <Shield size={25} className="text-[var(--primary)]"></Shield>
-            <h3 className="text-black font-bold text-lg">Confidențialitate și Date Personale</h3>
+            <h3 className="text-black font-bold text-xl">Confidențialitate și Date Personale</h3>
         </div>
         <h4 className="text-neutral-700 text-sm mb-5">Gestionați-vă datele personale și drepturile de confidențialitate</h4>
 
@@ -29,7 +27,7 @@ const Privacy = () => {
                 <div className="flex flex-row gap-2 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
                     <div className="flex flex-row items-center rounded-md border-[1px] justify-center
-                     border-neutral-600 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
+                     border-neutral-300 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
                      gap-1" onClick={()=>openInNewTab('/terms-of-service')}>
                         <ExternalLink size={15} className="text-black"></ExternalLink>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
@@ -49,8 +47,8 @@ const Privacy = () => {
                 <div className="flex flex-row gap-2 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
                     <div className="flex flex-row items-center rounded-md border-[1px] justify-center
-                     border-neutral-600 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
-                     gap-1" onClick={()=>navigate('/terms-of-service')}>
+                     border-neutral-300 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
+                     gap-1" onClick={()=>openInNewTab('/terms-of-service')}>
                         <ExternalLink size={15} className="text-black"></ExternalLink>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -69,8 +67,8 @@ const Privacy = () => {
                 <div className="flex flex-row gap-2 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
                     <div className="flex flex-row items-center rounded-md border-[1px] justify-center
-                     border-neutral-600 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
-                     gap-1" onClick={()=>navigate('/terms-of-service')}>
+                     border-neutral-300 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
+                     gap-1" onClick={()=>openInNewTab('/terms-of-service')}>
                         <ExternalLink size={15} className="text-black"></ExternalLink>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -89,8 +87,8 @@ const Privacy = () => {
                 <div className="flex flex-row gap-2 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
                     <div className="flex flex-row items-center rounded-md border-[1px] justify-center
-                     border-neutral-600 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
-                     gap-1" onClick={()=>navigate('/terms-of-service')}>
+                     border-neutral-300 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
+                     gap-1" onClick={()=>openInNewTab('/terms-of-service')}>
                         <ExternalLink size={15} className="text-black"></ExternalLink>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
@@ -109,8 +107,8 @@ const Privacy = () => {
                 <div className="flex flex-row gap-2 items-center">
                     <p className="text-neutral-600">17/10/1090</p>
                     <div className="flex flex-row items-center rounded-md justify-center
-                     border-neutral-600 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
-                     gap-1 border-[1px]" onClick={()=>navigate('/terms-of-service')}>
+                     border-neutral-300 shadow-sm p-[5px] max-h-max cursor-pointer hover:bg-neutral-300
+                     gap-1 border-[1px]" onClick={()=>openInNewTab('/terms-of-service')}>
                         <ExternalLink size={15} className="text-black"></ExternalLink>
                         <p className="font-bold text-black text-base">Vezi Documentul</p>
                     </div>
