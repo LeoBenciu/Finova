@@ -365,22 +365,19 @@ export class ClientCompaniesService {
                 },
               });
               
-              const existingLink = await prisma.accountingClients.findFirst({
+              const link = await prisma.accountingClients.upsert({
                 where: {
-                  accountingCompanyId: user.accountingCompanyId,
-                  clientCompanyId: newCompany.id,
+                    accountingCompanyId_clientCompanyId: {
+                        accountingCompanyId: user.accountingCompanyId,
+                        clientCompanyId: newCompany.id,
+                    }
                 },
-              });
-        
-              let link;
-              if (!existingLink) {
-                link = await prisma.accountingClients.create({
-                  data: {
+                update: {},
+                create: {
                     accountingCompanyId: user.accountingCompanyId,
                     clientCompanyId: newCompany.id,
-                  },
-                });
-              }
+                },
+            });
         
               let articleResult = { count: 0 };
               if (articleData.length > 0) {
