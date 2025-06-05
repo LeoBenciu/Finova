@@ -386,6 +386,7 @@ export class ClientCompaniesService {
                   data: articleData.map((data) => ({
                     ...data,
                     clientCompanyId: newCompany.id,
+                    accountingClientId: link.id,
                   })),
                   skipDuplicates: true,
                 });
@@ -398,6 +399,7 @@ export class ClientCompaniesService {
                   data: managementData.map((data) => ({
                     ...data,
                     clientCompanyId: newCompany.id,
+                    accountingClientId: link.id,
                   })),
                   skipDuplicates: true,
                 });
@@ -544,99 +546,183 @@ export class ClientCompaniesService {
         }
     }
 
-    async deleteArticle(articleId:number)
-    {
+    async deleteArticle(articleId: number, reqUser: User) {
       try {
-        const deletedArticle = await  this.prisma.article.delete({
-          where:{
-            id: articleId
+          const article = await this.prisma.article.findUnique({
+              where: { id: articleId },
+              include: {
+                  accountingClient: {
+                      include: {
+                          accountingCompany: true
+                      }
+                  }
+              }
+          });
+  
+          if (!article) {
+              throw new NotFoundException('Article not found in the database!');
           }
-        });
-
-        if(!deletedArticle) throw new InternalServerErrorException('Failed to delete article from the database!');
-
-        return deletedArticle;
+  
+          const user = await this.prisma.user.findUnique({
+              where: { id: reqUser.id },
+              select: { accountingCompanyId: true }
+          });
+  
+          if (!user) {
+              throw new NotFoundException('User not found in the database');
+          }
+  
+          if (article.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+              console.error(`[SECURITY] User ${reqUser.id} attempted to delete article ${articleId} without authorization`);
+              throw new UnauthorizedException('You do not have access to delete this article!');
+          }
+  
+          const deletedArticle = await this.prisma.article.delete({
+              where: { id: articleId }
+          });
+  
+          return deletedArticle;
+  
       } catch (e) {
-        console.error('Error deleting article:', e );
-        return e;
+          if (e instanceof NotFoundException || e instanceof UnauthorizedException) {
+              throw e;
+          }
+          console.error('Error deleting article:', e);
+          throw new InternalServerErrorException('Failed to delete article from the database!');
       }
-    }
+  }
     
-    async deleteManagement(managementId: number)
-    {
-      try {
-        const deletedManagement = await  this.prisma.management.delete({
-          where:{
-            id: managementId
-          }
+  async deleteManagement(managementId: number, reqUser: User) { 
+    try {
+        const management = await this.prisma.management.findUnique({
+            where: { id: managementId },
+            include: {
+                accountingClient: {
+                    include: {
+                        accountingCompany: true
+                    }
+                }
+            }
         });
 
-        if(!deletedManagement) throw new InternalServerErrorException('Failed to delete management from the database!');
-
-        return deletedManagement;
-      } catch (e) {
-        console.error('Error deleting management:', e );
-        return e;
-      }
-    }
-
-    async saveNewManagement(dto: NewManagementDto)
-    {
-      try {
-        const clientCompany = await this.prisma.clientCompany.findUnique({
-          where:{
-            ein: dto.currentClientCompanyEin
-          }
-        });
-        let type:ManagementType;
-        switch(dto.type){
-          case 'GLOBAL_VALORIC':
-            type = ManagementType.GLOBAL_VALORIC;
-            break;
-          case 'CANTITATIV_VALORIC':
-          default:
-            type = ManagementType.CANTITATIV_VALORIC;
-            break;
-        };
-
-        let vatRate: VatRate;
-        switch(dto.vatRate){
-          case 'ZERO':
-            vatRate = VatRate.ZERO;
-            break;
-          case 'FIVE':
-            vatRate = VatRate.FIVE;
-            break; 
-          case 'NINE':
-            vatRate = VatRate.NINE;
-            break; 
-          case 'NINETEEN':
-          default:
-            vatRate = VatRate.NINETEEN;
-            break;
+        if (!management) {
+            throw new NotFoundException('Management record not found in the database!');
         }
 
-        const newManagement = await this.prisma.management.create({
-          data:{
-            clientCompanyId: clientCompany.id,
-            code: dto.code,
-            name: dto.name,
-            type: type,
-            manager: dto.manager,
-            isSellingPrice: dto.isSellingPrice,
-            vatRate: vatRate
-          }
+        const user = await this.prisma.user.findUnique({
+            where: { id: reqUser.id },
+            select: { accountingCompanyId: true }
         });
 
-        if( !newManagement ) throw new InternalServerErrorException('Failed to create new management, please try again later!');
+        if (!user) {
+            throw new NotFoundException('User not found in the database');
+        }
 
-        return newManagement;
+        if (management.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+            console.error(`[SECURITY] User ${reqUser.id} attempted to delete management ${managementId} without authorization`);
+            throw new UnauthorizedException('You do not have access to delete this management record!');
+        }
 
-      } catch (e) {
-        console.error('Error creating a new management:', e );
-        return e;
-      }
+        const deletedManagement = await this.prisma.management.delete({
+            where: { id: managementId }
+        });
+
+        return deletedManagement;
+
+    } catch (e) {
+        if (e instanceof NotFoundException || e instanceof UnauthorizedException) {
+            throw e;
+        }
+        console.error('Error deleting management:', e);
+        throw new InternalServerErrorException('Failed to delete management from the database!');
     }
+}
+
+async saveNewManagement(dto: NewManagementDto, reqUser: User) {
+  try {
+      const user = await this.prisma.user.findUnique({
+          where: { id: reqUser.id },
+          select: { accountingCompanyId: true }
+      });
+
+      if (!user) {
+          throw new NotFoundException('User not found in the database');
+      }
+
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+          where: { ein: dto.currentClientCompanyEin }
+      });
+
+      if (!clientCompany) {
+          throw new NotFoundException('Client company not found in the database');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+          where: {
+              accountingCompanyId: user.accountingCompanyId,
+              clientCompanyId: clientCompany.id
+          }
+      });
+
+      if (!accountingClientRelation) {
+          throw new UnauthorizedException('You do not have access to create management records for this client!');
+      }
+
+      let type: ManagementType;
+      switch (dto.type) {
+          case 'GLOBAL_VALORIC':
+              type = ManagementType.GLOBAL_VALORIC;
+              break;
+          case 'CANTITATIV_VALORIC':
+          default:
+              type = ManagementType.CANTITATIV_VALORIC;
+              break;
+      }
+
+      let vatRate: VatRate;
+      switch (dto.vatRate) {
+          case 'ZERO':
+              vatRate = VatRate.ZERO;
+              break;
+          case 'FIVE':
+              vatRate = VatRate.FIVE;
+              break;
+          case 'NINE':
+              vatRate = VatRate.NINE;
+              break;
+          case 'NINETEEN':
+          default:
+              vatRate = VatRate.NINETEEN;
+              break;
+      }
+
+      const newManagement = await this.prisma.management.create({
+          data: {
+              accountingClientId: accountingClientRelation.id, 
+              clientCompanyId: clientCompany.id,          
+              code: dto.code,
+              name: dto.name,
+              type: type,
+              manager: dto.manager,
+              isSellingPrice: dto.isSellingPrice,
+              vatRate: vatRate
+          }
+      });
+
+      if (!newManagement) {
+          throw new InternalServerErrorException('Failed to create new management, please try again later!');
+      }
+
+      return newManagement;
+
+  } catch (e) {
+      if (e instanceof NotFoundException || e instanceof UnauthorizedException) {
+          throw e;
+      }
+      console.error('Error creating a new management:', e);
+      throw new InternalServerErrorException('Failed to create management record');
+  }
+}
 
     async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
       try {

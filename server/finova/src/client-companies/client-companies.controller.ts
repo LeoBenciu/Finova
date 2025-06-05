@@ -7,6 +7,7 @@ import { DeleteClientCompanyDto, NewManagementDto } from './dto';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { FilesInterceptor, FileFieldsInterceptor } from '@nestjs/platform-express';
+import {GetUser} from '../auth/decorator';
 
 @UseGuards(JwtGuard)
 @Controller('client-companies')
@@ -72,12 +73,6 @@ export class ClientCompaniesController {
         const user = req.user as User;
         return this.clientCompaniesService.deleteClientCompany(dto, user);
     }
-
-    @Post('management')
-    saveNew(@Body() dto:NewManagementDto)
-    {
-      return this.clientCompaniesService.saveNewManagement(dto);
-    }
     
     @Post('data')
     getCompanyData(@Body() body:{currentCompanyEin:string, year:string}, @Req() req:Request)
@@ -86,15 +81,30 @@ export class ClientCompaniesController {
       return this.clientCompaniesService.getCompanyData(body.currentCompanyEin, user, body.year);
     }
 
-    @Post('delete-management')
-    deleteManagement(@Body() body:{managementId:number})
-    {
-      return this.clientCompaniesService.deleteManagement(body.managementId);
+    @Delete('delete-management')
+    @UseGuards(JwtGuard)
+    async deleteManagement(
+        @Body() dto: { managementId: number },
+        @GetUser() user: User 
+    ) {
+        return this.clientCompaniesService.deleteManagement(dto.managementId, user);
     }
-    
-    @Delete('delete-article')
-    deleteArticle(@Body() body:{articleId:number})
-    {
-      return this.clientCompaniesService.deleteArticle(body.articleId);
+
+    @Delete('delete-article')  
+    @UseGuards(JwtGuard)
+    async deleteArticle(
+        @Body() dto: { articleId: number },
+        @GetUser() user: User 
+    ) {
+        return this.clientCompaniesService.deleteArticle(dto.articleId, user);
     }
+
+    @Post('management')
+    @UseGuards(JwtGuard)
+    async saveNewManagement(
+        @Body() dto: NewManagementDto,
+        @GetUser() user: User
+    ) {
+        return this.clientCompaniesService.saveNewManagement(dto, user);
+}
 }
