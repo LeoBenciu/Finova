@@ -724,124 +724,175 @@ async saveNewManagement(dto: NewManagementDto, reqUser: User) {
   }
 }
 
-    async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
-      try {
-        const clientCompany = await this.prisma.clientCompany.findUnique({
+async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
+  try {
+      console.log(`[COMPANY_DATA] Starting for EIN: ${currentCompanyEin}, Year: ${year}`);
+      
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+          where: { ein: currentCompanyEin }
+      });
+
+      if (!clientCompany) throw new NotFoundException('Client company not found in the database');
+
+      const user = await this.prisma.user.findUnique({
+          where: { id: reqUser.id }
+      });
+
+      if (!user) throw new NotFoundException('Not found user in the database');
+
+      const accountingClient = await this.prisma.accountingClients.findMany({
           where: {
-            ein: currentCompanyEin
+              accountingCompanyId: user.accountingCompanyId,
+              clientCompanyId: clientCompany.id
           }
-        });
-    
-        if (!clientCompany) throw new NotFoundException('Client company not found in the database');
-    
-        const user = await this.prisma.user.findUnique({
+      });
+
+      if (accountingClient.length === 0) throw new UnauthorizedException("Sorry! You don't have access to this data");
+
+      const documents = await this.prisma.document.findMany({
           where: {
-            id: reqUser.id
+              accountingClientId: accountingClient[0].id
           }
-        });
-    
-        if (!user) throw new NotFoundException('Not found user in the database');
-    
-        const accountingClient = await this.prisma.accountingClients.findMany({
+      });
+
+      if (documents.length === 0) throw new NotFoundException('There are no documents processed for this company so there is no data in the database');
+
+      const processedData = await this.prisma.processedData.findMany({
           where: {
-            accountingCompanyId: user.accountingCompanyId,
-            clientCompanyId: clientCompany.id
+              documentId: {
+                  in: documents.map(doc => doc.id)
+              }
           }
-        });
-    
-        if (accountingClient.length === 0) throw new UnauthorizedException("Sorry! You don't have access to this data");
-    
-        const documents = await this.prisma.document.findMany({
-          where: {
-            accountingClientId: accountingClient[0].id
-          }
-        });
-    
-        if (documents.length === 0) throw new NotFoundException('There are no documents processed for this company so there is no data in the database');
-    
-        const processedData = await this.prisma.processedData.findMany({
-          where: {
-            documentId: {
-              in: documents.map(doc => doc.id)
-            }
-          }
-        });
-    
-        let incomeLastMonth: number = 0;
-        let expensesLastMonth: number = 0;
-        let incomeCurrentMonth: number = 0;
-        let expensesCurrentMonth: number = 0;
-        let now = new Date();
-        let currentMonth = now.toLocaleDateString('en-GB').split('/').join('-').slice(3, 5);
-        let currentYear = now.toLocaleDateString('en-GB').split('/').join('-').slice(6);
-    
-        const monthlyData = Array(12).fill(0).map((_, i) => ({
+      });
+
+      console.log(`[COMPANY_DATA] Found ${processedData.length} processed documents`);
+      console.log(`[COMPANY_DATA] Current company EIN: ${currentCompanyEin}`);
+
+      let incomeLastMonth: number = 0;
+      let expensesLastMonth: number = 0;
+      let incomeCurrentMonth: number = 0;
+      let expensesCurrentMonth: number = 0;
+      let now = new Date();
+      let currentMonth = now.toLocaleDateString('en-GB').split('/').join('-').slice(3, 5);
+      let currentYear = now.toLocaleDateString('en-GB').split('/').join('-').slice(6);
+
+      const monthlyData = Array(12).fill(0).map((_, i) => ({
           month: i + 1,
           monthName: new Date(2000, i, 1).toLocaleString('en-US', { month: 'short' }),
           income: 0,
           expenses: 0
-        }));
-    
-        processedData.forEach((docData) => {
+      }));
+
+      const transactionLog = [];
+
+      processedData.forEach((docData) => {
           const extractedData = docData.extractedFields as {
-            result: {
-              buyerEin: string,
-              total_amount: number,
-              vat_amount: number,
-              document_date: string
-            }
+              result: {
+                  buyerEin: string,
+                  buyer: string,
+                  vendorEin?: string,
+                  vendor: string,
+                  total_amount: number,
+                  vat_amount: number,
+                  document_date: string,
+                  document_number?: string,
+                  document_type?: string
+              }
           };
-    
+
           const docYear = extractedData.result.document_date.split('/')[2] ||
-            extractedData.result.document_date.slice(6);
-    
+              extractedData.result.document_date.slice(6);
+
           if (year && docYear !== year) {
-            return;
+              return;
           }
-    
+
           const docMonth = extractedData.result.document_date.split('/')[1] ||
-            extractedData.result.document_date.slice(3, 5);
-          
+              extractedData.result.document_date.slice(3, 5);
+
           const docMonthIndex = Number(docMonth) - 1;
-          
           const amountWithoutVat = extractedData.result.total_amount - extractedData.result.vat_amount;
-    
-          if (extractedData.result.buyerEin === currentCompanyEin) {
-            if (Number(docMonth) === Number(currentMonth) - 1) {
-              expensesLastMonth += amountWithoutVat;
-            } else if (Number(docMonth) === Number(currentMonth)) {
-              expensesCurrentMonth += amountWithoutVat;
-            }
-            
-            if (docMonthIndex >= 0 && docMonthIndex < 12) {
-              monthlyData[docMonthIndex].expenses += amountWithoutVat;
-            }
+
+          const isClientBuyer = extractedData.result.buyerEin === currentCompanyEin;
+          const transactionType = isClientBuyer ? 'EXPENSE' : 'INCOME';
+          
+          console.log(`[COMPANY_DATA] Processing transaction:`);
+          console.log(`  - Document Type: ${extractedData.result.document_type || 'Unknown'}`);
+          console.log(`  - Document Number: ${extractedData.result.document_number || 'Unknown'}`);
+          console.log(`  - Date: ${extractedData.result.document_date}`);
+          console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyerEin})`);
+          console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendorEin || 'Unknown'})`);
+          console.log(`  - Amount (without VAT): ${amountWithoutVat}`);
+          console.log(`  - Current Company EIN: ${currentCompanyEin}`);
+          console.log(`  - Is Client Buyer: ${isClientBuyer}`);
+          console.log(`  - Transaction Type: ${transactionType}`);
+          console.log(`  ---`);
+
+          transactionLog.push({
+              documentType: extractedData.result.document_type,
+              documentNumber: extractedData.result.document_number,
+              date: extractedData.result.document_date,
+              buyer: extractedData.result.buyer,
+              buyerEin: extractedData.result.buyerEin,
+              vendor: extractedData.result.vendor,
+              vendorEin: extractedData.result.vendorEin,
+              amount: amountWithoutVat,
+              isClientBuyer,
+              transactionType,
+              month: docMonth,
+              year: docYear
+          });
+
+          if (isClientBuyer) {
+              if (Number(docMonth) === Number(currentMonth) - 1) {
+                  expensesLastMonth += amountWithoutVat;
+              } else if (Number(docMonth) === Number(currentMonth)) {
+                  expensesCurrentMonth += amountWithoutVat;
+              }
+
+              if (docMonthIndex >= 0 && docMonthIndex < 12) {
+                  monthlyData[docMonthIndex].expenses += amountWithoutVat;
+              }
           } else {
-            if (Number(docMonth) === Number(currentMonth) - 1) {
-              incomeLastMonth += amountWithoutVat;
-            } else if (Number(docMonth) === Number(currentMonth)) {
-              incomeCurrentMonth += amountWithoutVat;
-            }
-            
-            if (docMonthIndex >= 0 && docMonthIndex < 12) {
-              monthlyData[docMonthIndex].income += amountWithoutVat;
-            }
+              if (Number(docMonth) === Number(currentMonth) - 1) {
+                  incomeLastMonth += amountWithoutVat;
+              } else if (Number(docMonth) === Number(currentMonth)) {
+                  incomeCurrentMonth += amountWithoutVat;
+              }
+
+              if (docMonthIndex >= 0 && docMonthIndex < 12) {
+                  monthlyData[docMonthIndex].income += amountWithoutVat;
+              }
           }
-        });
-    
-        return {
+      });
+
+      console.log(`[COMPANY_DATA] Transaction Summary:`);
+      console.log(`  - Total Transactions: ${transactionLog.length}`);
+      console.log(`  - Expenses: ${transactionLog.filter(t => t.transactionType === 'EXPENSE').length}`);
+      console.log(`  - Income: ${transactionLog.filter(t => t.transactionType === 'INCOME').length}`);
+
+      return {
           incomeLastMonth,
           expensesLastMonth,
           incomeCurrentMonth,
           expensesCurrentMonth,
           graphData: {
-            monthlyData
+              monthlyData
           },
-          rpaProcesses: 'here'
-        }
-      } catch (e) {
-        console.error('Not found company data in the database:', e);
-        return e;
-      }
-    }
+          rpaProcesses: 'here',
+          debug: {
+              currentCompanyEin,
+              transactionLog: transactionLog.slice(0, 10),
+              summary: {
+                  totalTransactions: transactionLog.length,
+                  expenseTransactions: transactionLog.filter(t => t.transactionType === 'EXPENSE').length,
+                  incomeTransactions: transactionLog.filter(t => t.transactionType === 'INCOME').length
+              }
+          }
+      };
+  } catch (e) {
+      console.error('Not found company data in the database:', e);
+      throw e;
+  }
+}
 }
