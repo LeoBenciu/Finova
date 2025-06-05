@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { Prisma, RpaActionStatus, RpaActionType } from '@prisma/client';
+import { Prisma, RpaActionStatus, RpaActionType, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -589,64 +589,94 @@ export class UipathService {
         }
     }
 
-    async getManagement(ein) {
+    async getManagement(ein: string, user: User) {
         try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where:{
-                    ein: ein
-                },
-                select:{
-                    id: true
-                }
+            const currentUser = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                select: { accountingCompanyId: true }
             });
-
-            if(!clientCompany) throw new NotFoundException('Failed to find the client company in the database!');
-
+    
+            if (!currentUser) {
+                throw new NotFoundException('User not found in the database!');
+            }
+    
             const managementList = await this.prisma.management.findMany({
-                where:{
-                    clientCompanyId: clientCompany.id
-                }
-            });
-
-            if(managementList.length ===0) throw new NotFoundException('Management list not found in the database!');
-
-            return managementList;
-
-        } catch (e) {
-            console.error("Failed to fetch the management list:", e);
-        }
-    }
-
-    async getArticles(ein) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where:{
-                    ein: ein
-                }
-            });
-
-            if(!clientCompany) throw new NotFoundException('Failed to find the client company in the database!');
-
-            const articlesList = await this.prisma.article.findMany({
-                where:{
-                    clientCompanyId: clientCompany.id
+                where: {
+                    accountingClient: {
+                        accountingCompanyId: currentUser.accountingCompanyId,
+                        clientCompany: {
+                            ein: ein
+                        }
+                    }
                 },
-                select:{
-                        id:true,
-                        code:true,
-                        name:true,           
-                        vat: true,           
-                        unitOfMeasure: true,   
-                        type: true         
+                include: {
+                    clientCompany: {
+                        select: { name: true, ein: true }
+                    }
                 }
             });
-
-            if(articlesList.length === 0) throw new NotFoundException('Articles list not found in the database!');
-
-            return articlesList;
-
+    
+            if (managementList.length === 0) {
+                throw new NotFoundException('Management list not found or you don\'t have access to this client!');
+            }
+    
+            return managementList;
+    
         } catch (e) {
-            console.error('Failed to fetch the articles list:', e);
+            if (e instanceof NotFoundException) throw e;
+            console.error("Failed to fetch the management list:", e);
+            throw new InternalServerErrorException('Failed to fetch management data');
         }
     }
+    
+
+    async getArticles(ein: string, user: User) {
+        try {
+            const currentUser = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                select: { accountingCompanyId: true }
+            });
+    
+            if (!currentUser) {
+                throw new NotFoundException('User not found in the database!');
+            }
+    
+            const articlesList = await this.prisma.article.findMany({
+                where: {
+                    accountingClient: {
+                        accountingCompanyId: currentUser.accountingCompanyId,
+                        clientCompany: {
+                            ein: ein
+                        }
+                    }
+                },
+                select: {
+                    id: true,
+                    code: true,
+                    name: true,
+                    vat: true,
+                    unitOfMeasure: true,
+                    type: true,
+                    clientCompany: {
+                        select: {
+                            name: true,
+                            ein: true
+                        }
+                    }
+                }
+            });
+    
+            if (articlesList.length === 0) {
+                throw new NotFoundException('Articles list not found or you don\'t have access to this client!');
+            }
+    
+            return articlesList;
+    
+        } catch (e) {
+            if (e instanceof NotFoundException) throw e;
+            console.error('Failed to fetch the articles list:', e);
+            throw new InternalServerErrorException('Failed to fetch articles data');
+        }
+    }
+    
 }

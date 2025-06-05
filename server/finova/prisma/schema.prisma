@@ -106,40 +106,49 @@ model AccountingClients {
   createdAt           DateTime          @default(now())
   documents           Document[]
   rpaActions          RpaAction[]
+  articles            Article[]
+  managements         Management[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
 
 model Article {
-  id              Int           @id @default(autoincrement())
-  code            Int
-  name            String
-  vat             VatRate
-  unitOfMeasure   UnitOfMeasure
-  type            ArticleType
-  clientCompanyId Int
-  clientCompany   ClientCompany @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
+  id                 Int               @id @default(autoincrement())
+  code               Int
+  name               String
+  vat                VatRate
+  unitOfMeasure      UnitOfMeasure
+  type               ArticleType
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  clientCompanyId    Int
+  clientCompany      ClientCompany     @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
 
+  @@unique([code, accountingClientId])
+  @@index([accountingClientId])
   @@index([clientCompanyId])
 }
 
 model Management {
-  id              Int            @id @default(autoincrement())
-  clientCompanyId Int
-  clientCompany   ClientCompany  @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
-  code            Int
-  name            String
-  type            ManagementType
-  manager         String?
-  isSellingPrice  Boolean
-  analitic371     String?
-  analitic378     String?
-  analitic4428    String?
-  analitic607     String?
-  analitic707     String?
-  vatRate         VatRate
+  id                 Int               @id @default(autoincrement())
+  code               Int
+  name               String
+  type               ManagementType
+  manager            String?
+  isSellingPrice     Boolean
+  analitic371        String?
+  analitic378        String?
+  analitic4428       String?
+  analitic607        String?
+  analitic707        String?
+  vatRate            VatRate
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  clientCompanyId    Int
+  clientCompany      ClientCompany     @relation(fields: [clientCompanyId], references: [id], onDelete: Cascade)
 
-  @@unique([code, clientCompanyId])
+  @@unique([code, accountingClientId])
+  @@index([accountingClientId])
   @@index([clientCompanyId])
 }
 
