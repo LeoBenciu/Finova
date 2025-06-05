@@ -214,6 +214,57 @@ export class FilesService {
                     }
                 });
     
+                if (processedData.result.line_items && processedData.result.line_items.length > 0) {
+                    console.log(`[DEBUG] Creating articles from ${processedData.result.line_items.length} line items`);
+    
+                    const articlePromises = processedData.result.line_items
+                        .filter(item => item.isNew && item.type !== "Nedefinit")
+                        .map(async (item) => {
+                            const typeMapping = {
+                                'Marfuri': ArticleType.MARFURI,
+                                'Produse finite': ArticleType.PRODUSE_FINITE,
+                                'Ambalaje': ArticleType.AMBALAJE,
+                                'Semifabricate': ArticleType.SEMIFABRICATE,
+                                'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
+                                'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
+                                'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
+                                'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
+                                'Servicii vandute': ArticleType.SERVICII_VANDUTE,
+                                'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
+                                'Taxa verde': ArticleType.TAXA_VERDE,
+                                'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
+                                'Materii prime': ArticleType.MATERII_PRIME,
+                                'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
+                                'Combustibili': ArticleType.COMBUSTIBILI,
+                                'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
+                                'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
+                                'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
+                                'Amenajarii provizorii': ArticleType.AMENAJARI_PROVIZORII,
+                                'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
+                                'Mat. in pastrare/consig': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
+                            };
+    
+                            console.log(`[DEBUG] Creating article: ${item.name} (code: ${item.articleCode}) for accounting relationship ${accountingClientRelation.id}`);
+    
+                            return prisma.article.create({
+                                data: {
+                                    code: item.articleCode,
+                                    name: item.name,
+                                    vat: item.vat,
+                                    unitOfMeasure: item.um,
+                                    type: typeMapping[item.type] || ArticleType.MARFURI,
+                                    clientCompanyId: clientCompany.id,
+                                    accountingClientId: accountingClientRelation.id 
+                                }
+                            });
+                        });
+    
+                    const createdArticles = await Promise.all(articlePromises);
+                    console.log(`[DEBUG] Successfully created ${createdArticles.length} articles for accounting relationship ${accountingClientRelation.id}`);
+                } else {
+                    console.log(`[DEBUG] No line items found or no new articles to create`);
+                }
+    
                 console.log(`[AUDIT] Document ${document.id} created by user ${user.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
     
                 return { savedDocument: document, savedProcessedData: processedDataDb };
