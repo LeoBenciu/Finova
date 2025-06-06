@@ -81,7 +81,7 @@ const HomePage = () => {
 
           <div className="justify-between flex items-start flex-col ">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {companyData?.incomeCurrentMonth !== undefined ? companyData.incomeCurrentMonth.toFixed(2) : '0.00'}
+            <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData?.incomeCurrentMonth !== undefined ? companyData.incomeCurrentMonth.toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(incomePercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
@@ -97,7 +97,7 @@ const HomePage = () => {
 
           <div className="justify-between flex flex-col items-start">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {companyData?.expensesCurrentMonth !== undefined ? companyData.expensesCurrentMonth.toFixed(2) : '0.00'}
+            <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData?.expensesCurrentMonth !== undefined ? companyData.expensesCurrentMonth.toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(expensesPercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
@@ -113,7 +113,7 @@ const HomePage = () => {
 
           <div className="justify-between flex flex-col items-start">
           <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
-            $ {companyData ? ((companyData.incomeCurrentMonth || 0) - (companyData.expensesCurrentMonth || 0)).toFixed(2) : '0.00'}
+            <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData ? ((companyData.incomeCurrentMonth || 0) - (companyData.expensesCurrentMonth || 0)).toFixed(2) : '0.00'}
           </h2>
           <div className="flex items-end gap-1">
           <div className={`${Number(profitPercentageChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
