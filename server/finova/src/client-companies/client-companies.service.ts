@@ -788,9 +788,9 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
       processedData.forEach((docData) => {
           const extractedData = docData.extractedFields as {
               result: {
-                  buyerEin: string,
+                  buyer_ein: string,
                   buyer: string,
-                  vendorEin?: string,
+                  vendor_ein?: string,
                   vendor: string,
                   total_amount: number,
                   vat_amount: number,
@@ -813,15 +813,15 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
           const docMonthIndex = Number(docMonth) - 1;
           const amountWithoutVat = extractedData.result.total_amount - extractedData.result.vat_amount;
 
-          const isClientBuyer = extractedData.result.buyerEin === currentCompanyEin;
+          const isClientBuyer = extractedData.result.buyer_ein === currentCompanyEin;
           const transactionType = isClientBuyer ? 'EXPENSE' : 'INCOME';
           
           console.log(`[COMPANY_DATA] Processing transaction:`);
           console.log(`  - Document Type: ${extractedData.result.document_type || 'Unknown'}`);
           console.log(`  - Document Number: ${extractedData.result.document_number || 'Unknown'}`);
           console.log(`  - Date: ${extractedData.result.document_date}`);
-          console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyerEin})`);
-          console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendorEin || 'Unknown'})`);
+          console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyer_ein})`);
+          console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendor_ein || 'Unknown'})`);
           console.log(`  - Amount (without VAT): ${amountWithoutVat}`);
           console.log(`  - Current Company EIN: ${currentCompanyEin}`);
           console.log(`  - Is Client Buyer: ${isClientBuyer}`);
@@ -833,9 +833,9 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
               documentNumber: extractedData.result.document_number,
               date: extractedData.result.document_date,
               buyer: extractedData.result.buyer,
-              buyerEin: extractedData.result.buyerEin,
+              buyerEin: extractedData.result.buyer_ein,
               vendor: extractedData.result.vendor,
-              vendorEin: extractedData.result.vendorEin,
+              vendorEin: extractedData.result.vendor_ein,
               amount: amountWithoutVat,
               isClientBuyer,
               transactionType,
