@@ -32,7 +32,7 @@ export function ChartDashboard({ setDashboardYear, chartData }: { setDashboardYe
     return Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString());
   }, [currentYear]);
 
-  const [year, setYear] = React.useState('');
+  const [year, setYear] = React.useState(currentYear.toString());
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
   interface MonthlyDataItem {
