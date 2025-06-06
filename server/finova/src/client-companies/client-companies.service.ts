@@ -803,9 +803,10 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
           const docYear = extractedData.result.document_date.split('/')[2] ||
               extractedData.result.document_date.slice(6);
 
-          if (year && docYear !== year) {
-              return;
-          }
+            if (year && year !== 'all' && docYear !== year) {
+                console.log(`[YEAR_FILTER] Skipping transaction from year ${docYear} (filtering for ${year})`);
+                return;
+            }
 
           const docMonth = extractedData.result.document_date.split('/')[1] ||
               extractedData.result.document_date.slice(3, 5);
@@ -820,6 +821,7 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
           console.log(`  - Document Type: ${extractedData.result.document_type || 'Unknown'}`);
           console.log(`  - Document Number: ${extractedData.result.document_number || 'Unknown'}`);
           console.log(`  - Date: ${extractedData.result.document_date}`);
+          console.log(`  - Year: ${docYear}`);
           console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyer_ein})`);
           console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendor_ein || 'Unknown'})`);
           console.log(`  - Amount (without VAT): ${amountWithoutVat}`);
@@ -843,14 +845,16 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
               year: docYear
           });
 
+          const shouldCountInMonthly = !year || docYear === year;
+    
           if (isClientBuyer) {
               if (Number(docMonth) === Number(currentMonth) - 1) {
                   expensesLastMonth += amountWithoutVat;
               } else if (Number(docMonth) === Number(currentMonth)) {
                   expensesCurrentMonth += amountWithoutVat;
               }
-
-              if (docMonthIndex >= 0 && docMonthIndex < 12) {
+            
+              if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
                   monthlyData[docMonthIndex].expenses += amountWithoutVat;
               }
           } else {
@@ -859,12 +863,12 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
               } else if (Number(docMonth) === Number(currentMonth)) {
                   incomeCurrentMonth += amountWithoutVat;
               }
-
-              if (docMonthIndex >= 0 && docMonthIndex < 12) {
+            
+              if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
                   monthlyData[docMonthIndex].income += amountWithoutVat;
               }
           }
-      });
+});
 
       console.log(`[COMPANY_DATA] Transaction Summary:`);
       console.log(`  - Total Transactions: ${transactionLog.length}`);
