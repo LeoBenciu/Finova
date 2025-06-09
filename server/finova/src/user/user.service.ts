@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateUserDto, User } from './dto';
 import * as argon from 'argon2';
@@ -548,18 +548,28 @@ export class UserService {
         }
     }
 
-    async updateUipathSubfolder(user:User, subfolderName: string)
+    async updateUipathSubfolder(user:User, folderName: string)
     {
         try {
+            const userDetails = await this.prisma.user.findUnique({
+                where: {
+                    id: user.id
+                }
+            });
+    
+            if (!userDetails || !userDetails.accountingCompanyId) {
+                throw new BadRequestException('User does not have an accounting company associated');
+            }
+    
             const accountingCompany = await this.prisma.accountingCompany.update({
                 where: {
-                    id: user.accountingCompanyId
+                    id: userDetails.accountingCompanyId
                 },
                 data: {
-                    uipathSubfolder: subfolderName
+                    uipathSubfolder: folderName
                 }
-            })
-
+            });
+    
             return accountingCompany;
         } catch (e) {
             console.error('Failed to update subfolder:', e);
