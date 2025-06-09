@@ -181,10 +181,8 @@ const User = ({}:UserProps) => {
         {passwordChanged?(language==='ro'?'Parola schimbata cu succes':'Password Changed Succesfully'):(language==='ro'?'Salveaza Parola':'Save New Password')}
         {passwordChanged&&(<Check size={20}></Check>)}
       </button>
-      </div>
 
-      <div className="flex flex-col items-center">
-      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">{language==='ro'?'Nume folder RPA':'RPA folder name'}</h2>
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)] mt-15">{language==='ro'?'Nume folder RPA':'RPA folder name'}</h2>
       {isErrorUpdatingFolder&&(<p className="text-red-500 mt-3 text-left">{language==='ro'?'Schimbarea numelui folderului a esuat! Va rugam reincercati mai tarziu!':'Failed to change the folder name! Please try again later!'}</p>)}
 
       <label htmlFor="rpaFolder" className="mt-10 text-left text-[var(--text1)]

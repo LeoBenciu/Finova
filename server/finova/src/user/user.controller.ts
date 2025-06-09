@@ -55,10 +55,10 @@ export class UserController {
     }
 
     @Put('/me/uipath-subfolder')
-    updateUipathSubfolder(@Req() req: Request, @Body() body: { subfolderName: string })
+    updateUipathSubfolder(@Req() req: Request, @Body() body: { folderName: string })
     {
         const user = req.user as User;
-        return this.userService.updateUipathSubfolder(user,body.subfolderName);
+        return this.userService.updateUipathSubfolder(user,body.folderName);
     }
 
 }
