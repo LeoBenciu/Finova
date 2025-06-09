@@ -58,7 +58,8 @@ export class AuthService{
             company = await this.prisma.accountingCompany.create({
               data: {
                 name: companyData.date_generale.denumire,
-                ein: dto.ein
+                ein: dto.ein,
+                uipathSubfolder: ''
               }
             });
           }

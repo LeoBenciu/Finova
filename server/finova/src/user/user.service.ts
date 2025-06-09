@@ -16,11 +16,22 @@ export class UserService {
                     id: user.id
                 }
             })
-    
+
+            const accountingCompany = await this.prisma.accountingCompany.findUnique({
+                where: {
+                    id: userDetails.accountingCompanyId
+                }
+            })
+            
+            const uipathSubfolder = accountingCompany.uipathSubfolder;
+
             if(!userDetails) throw new NotFoundException('User not found in the database!');
     
             delete userDetails.hashPassword;
-            return userDetails;
+            return {
+                ...userDetails,
+                uipathSubfolder
+            };
         }catch(e)
         {
             if( e instanceof NotFoundException) throw e;
@@ -536,5 +547,23 @@ export class UserService {
             throw new InternalServerErrorException('Failed to update consent');
         }
     }
-    
+
+    async updateUipathSubfolder(user:User, subfolderName: string)
+    {
+        try {
+            const accountingCompany = await this.prisma.accountingCompany.update({
+                where: {
+                    id: user.accountingCompanyId
+                },
+                data: {
+                    uipathSubfolder: subfolderName
+                }
+            })
+
+            return accountingCompany;
+        } catch (e) {
+            console.error('Failed to update subfolder:', e);
+            throw new InternalServerErrorException('Failed to update subfolder');
+        }        
+    }
 }

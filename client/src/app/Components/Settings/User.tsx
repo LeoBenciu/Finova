@@ -1,5 +1,5 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useDeleteUserAccountMutation, useGetUserDataQuery, useModifyUserAccountMutation, useModifyUserPasswordMutation } from "@/redux/slices/apiSlice";
+import { useDeleteUserAccountMutation, useGetUserDataQuery, useModifyFolderNameMutation, useModifyUserAccountMutation, useModifyUserPasswordMutation } from "@/redux/slices/apiSlice";
 import { Check, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
@@ -17,16 +17,19 @@ const User = ({}:UserProps) => {
   const [email, setEmail] = useState<string>();
   const [name, setName] = useState<string>();
   const [password, setPassword] = useState<string>();
+  const [folderName, setFolderName] = useState<string>();
   const [phoneNumber, setPhoneNumber] = useState<string>();
   const [role, setRole] = useState<string>();
   const [isSureModal, setIsSureModal] = useState<boolean>(false);
   const [passwordChanged, setPasswordChanged] = useState<boolean>(false);
+  const [folderNameChanged, setFolderNameChanged] = useState<boolean>(false);
   const [accountChanged, setAccountChanged] = useState<boolean>(false);
   
   const { data: userData } = useGetUserDataQuery({});
   const [deleteAccount,{isError:isErrorDeleting}] = useDeleteUserAccountMutation();
   const [updateAccount,{isError:isErrorUpdating}] = useModifyUserAccountMutation();
   const [updateAccountPassword,{isError:isErrorUpdatingPassword}] = useModifyUserPasswordMutation();
+  const [updateFolderName, {isError: isErrorUpdatingFolder}] = useModifyFolderNameMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
 
@@ -67,7 +70,20 @@ const User = ({}:UserProps) => {
         setPasswordChanged(false);
       },2500)
     } catch (e) {
-      console.error(language==='ro'?'Schimbarea parolei a esuat':'Failed to change user password!')
+      console.error(language==='ro'?'Schimbarea parolei a esuat!':'Failed to change user password!')
+    }
+  }
+
+  const handleUpdateFolder = async() => {
+    try {
+      const result = await updateFolderName({folderName}).unwrap();
+      console.log(result);
+      setFolderNameChanged(true);
+      setTimeout(()=>{
+        setFolderNameChanged(false);
+      },2500)
+    } catch (e) {
+      console.error(language==='ro'?'Schimbarea numelui folderului a esuat!':'Failed to change folder name!')
     }
   }
 
@@ -164,6 +180,28 @@ const User = ({}:UserProps) => {
       onClick={handleUpdatePassword}>
         {passwordChanged?(language==='ro'?'Parola schimbata cu succes':'Password Changed Succesfully'):(language==='ro'?'Salveaza Parola':'Save New Password')}
         {passwordChanged&&(<Check size={20}></Check>)}
+      </button>
+      </div>
+
+      <div className="flex flex-col items-center">
+      <h2 className="font-bold text-4xl text-left text-[var(--text1)]">{language==='ro'?'Nume folder RPA':'RPA folder name'}</h2>
+      {isErrorUpdatingFolder&&(<p className="text-red-500 mt-3 text-left">{language==='ro'?'Schimbarea numelui folderului a esuat! Va rugam reincercati mai tarziu!':'Failed to change the folder name! Please try again later!'}</p>)}
+
+      <label htmlFor="rpaFolder" className="mt-10 text-left text-[var(--text1)]
+      min-w-96 px-5">{language==='ro'?'Nume folder RPA':'RPA folder name'}</label>
+      <input id='rpaFolder' 
+      className="bg-[var(--foreground)] mt-3 max-w-96 min-h-11 rounded-2xl p-2
+      focus:outline-none focus:ring-1 ring-[var(--primary)]
+      shadow-[0_0_10px_rgba(0,0,0,0.3)] text-[var(--text1)] min-w-96"
+      value={folderName} onChange={(e)=>setFolderName(e.target.value)}
+      type="text"></input>
+      <button 
+      className={`max-w-96 ${folderNameChanged?'bg-transparent':'bg-[var(--primary)]'} rounded-2xl font-bold text-md mt-15
+      hover:bg-[var(--primary)]/30 hover:text-[var(--primary)] flex justify-center
+      items-center gap-3 min-w-96`}
+      onClick={handleUpdateFolder}>
+        {folderNameChanged?(language==='ro'?'Folder salvat':'Saved'):(language==='ro'?'Salveaza Folder':'Save Folder')}
+        {folderNameChanged&&(<Check size={20}></Check>)}
       </button>
       </div>
 

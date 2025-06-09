@@ -118,6 +118,24 @@ export class UipathService {
             }
 
             const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs/UiPath.Server.Configuration.OData.StartJobs`;
+
+            const user = await this.prisma.user.findUnique({
+                where: {
+                    id: userId
+                }
+            });
+
+            const accountingCompanyId = user.accountingCompanyId;
+
+            const accountingCompany = await this.prisma.accountingCompany.findUnique({
+                where:{
+                    id: accountingCompanyId
+                }
+            });
+
+            const currentUipathSubfolder = accountingCompany.uipathSubfolder;
+
+            if (!currentUipathSubfolder || currentUipathSubfolder.length===0) throw new NotFoundException('Missing uipath subfolder');
             
             const uiPathResponse = await this.httpService.post(
                 orchestratorUrl,
@@ -126,7 +144,7 @@ export class UipathService {
                   headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
-                    'X-UIPATH-FolderPath': "Shared",
+                    'X-UIPATH-FolderPath': `Shared/${currentUipathSubfolder}`,
                   },
                 }
               ).toPromise();

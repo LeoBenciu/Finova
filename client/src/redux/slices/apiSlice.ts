@@ -171,6 +171,16 @@ export const finovaApi = createApi({
             })
         }),
 
+        modifyFolderName: build.mutation({
+            query:({folderName})=>({
+                url: '/users/me/uipath-subfolder',
+                method: 'PUT',
+                body: {
+                    folderName
+                }
+            })
+        }),
+
         getFiles: build.query({
             query:({company})=>({
                 url:`/files/${company}`,
@@ -305,4 +315,5 @@ useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
 useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
-useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation} = finovaApi;
+useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
+useModifyFolderNameMutation} = finovaApi;

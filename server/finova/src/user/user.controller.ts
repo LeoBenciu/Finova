@@ -54,4 +54,11 @@ export class UserController {
         return this.userService.updateUserConsent(user, agreementType, accepted, req);
     }
 
+    @Put('/me/uipath-subfolder')
+    updateUipathSubfolder(@Req() req: Request, @Body() body: { subfolderName: string })
+    {
+        const user = req.user as User;
+        return this.userService.updateUipathSubfolder(user,body.subfolderName);
+    }
+
 }

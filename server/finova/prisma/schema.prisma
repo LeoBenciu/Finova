@@ -93,6 +93,7 @@ model AccountingCompany {
   updatedAt         DateTime            @updatedAt
   name              String
   ein               String              @unique
+  uipathSubfolder   String
   users             User[]
   accountingClients AccountingClients[]
 }
