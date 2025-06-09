@@ -38,6 +38,7 @@ const User = ({}:UserProps) => {
     setName(userData?.name);
     setPhoneNumber(userData?.phoneNumber);
     setRole(userData?.role);
+    setFolderName(userData?.uipathSubfolder);
   },[userData])
   
   const handleDeleteAccount=async()=>{
