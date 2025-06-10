@@ -40,9 +40,9 @@ const RPA = () => {
       }
     
   return (
-    <div id='User' 
+    <div id='RPA' 
     className="mt-10 mx-10 min-w-96 
-    min-h-96 px-10 grid grid-cols-2 items-start col-start-1">
+    min-h-96 px-10 grid grid-cols-2 items-start col-start-1 pb-[50px]">
       
       <div className="flex flex-col items-center">
       <h2 className="font-bold text-4xl text-left text-[var(--text1)]">{language==='ro'?'Credentiale RPA':'RPA Credentials'}</h2>
