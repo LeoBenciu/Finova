@@ -59,7 +59,11 @@ export class AuthService{
               data: {
                 name: companyData.date_generale.denumire,
                 ein: dto.ein,
-                uipathSubfolder: ''
+                uipathSubfolder: '',
+                clientInvoiceRk: '',
+                supplierInvoiceRk: '',
+                clientReceiptRk: '',
+                supplierReceiptRk: ''
               }
             });
           }

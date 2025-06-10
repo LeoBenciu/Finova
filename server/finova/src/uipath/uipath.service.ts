@@ -59,6 +59,20 @@ export class UipathService {
                 throw new NotFoundException('Document not processed yet!');   
             }
 
+            const user = await this.prisma.user.findUnique({
+                where: {
+                    id: userId
+                }
+            });
+
+            const accountingCompanyId = user.accountingCompanyId;
+
+            const accountingCompany = await this.prisma.accountingCompany.findUnique({
+                where:{
+                    id: accountingCompanyId
+                }
+            });
+
             const lineItems:lineItem[] = (processedData.extractedFields as any).result.line_items;
             const buyerData = processedData.extractedFields as { result: { buyer_ein: string } };
 
@@ -84,7 +98,7 @@ export class UipathService {
                     lineItems: lineItems
                 };
 
-                releaseKey = this.configService.get('UIPATH_RELEASE_KEY_FACTURI_INTRARI');
+                releaseKey = accountingCompany.supplierInvoiceRk;
             } else {
                 extractedData = processedData.extractedFields as { result: { 
                     document_date: string,
@@ -103,7 +117,7 @@ export class UipathService {
                     lineItems: lineItems
                 };
 
-                releaseKey = this.configService.get('UIPATH_RELEASE_KEY');
+                releaseKey = accountingCompany.clientInvoiceRk;
             }
 
             const accessToken = await this.getAccessToken();
@@ -119,20 +133,6 @@ export class UipathService {
             }
 
             const orchestratorUrl = `https://cloud.uipath.com/${this.configService.get('UIPATH_ACCOUNT_LOGICAL_NAME')}/${this.configService.get('UIPATH_TENANT_NAME')}/orchestrator_/odata/Jobs/UiPath.Server.Configuration.OData.StartJobs`;
-
-            const user = await this.prisma.user.findUnique({
-                where: {
-                    id: userId
-                }
-            });
-
-            const accountingCompanyId = user.accountingCompanyId;
-
-            const accountingCompany = await this.prisma.accountingCompany.findUnique({
-                where:{
-                    id: accountingCompanyId
-                }
-            });
 
             const currentUipathSubfolder = accountingCompany.uipathSubfolder;
 
