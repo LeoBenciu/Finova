@@ -17,20 +17,11 @@ export class UserService {
                 }
             })
 
-            const accountingCompany = await this.prisma.accountingCompany.findUnique({
-                where: {
-                    id: userDetails.accountingCompanyId
-                }
-            })
-            
-            const uipathSubfolder = accountingCompany.uipathSubfolder;
-
             if(!userDetails) throw new NotFoundException('User not found in the database!');
     
             delete userDetails.hashPassword;
             return {
-                ...userDetails,
-                uipathSubfolder
+                ...userDetails
             };
         }catch(e)
         {

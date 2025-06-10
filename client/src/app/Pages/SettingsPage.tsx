@@ -3,13 +3,15 @@ import User from "../Components/Settings/User";
 import ClientCompanies from "../Components/Settings/ClientCompanies";
 import Company from "../Components/Settings/Company";
 import Privacy from "../Components/Settings/Privacy";
+import RPA from '../Components/Settings/RPA';
 import { useSelector } from "react-redux";
 
 enum Section{
   USER,
   COMPANY,
   CLIENTCOMPANIES,
-  PRIVACY
+  PRIVACY,
+  RPA
 }
 
 const SettingsPage = () => {
@@ -43,6 +45,12 @@ const SettingsPage = () => {
          onClick={()=>setSection(Section.PRIVACY)}>
           {language==='ro'?'Confidentialitate':'Privacy'}
         </button>
+
+        <button className={`${section===Section.RPA?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
+        text-lg m-2 rounded-xl bg-[var(--background)]`}
+         onClick={()=>setSection(Section.RPA)}>
+          {language==='ro'?'RPA':'RPA'}
+        </button>
         
       </div>
 
@@ -60,6 +68,10 @@ const SettingsPage = () => {
 
       {section===Section.PRIVACY&&(
         <Privacy/>
+      )}
+
+      {section===Section.RPA&&(
+        <RPA/>
       )}
     </div>
   )

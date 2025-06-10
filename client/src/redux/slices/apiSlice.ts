@@ -141,6 +141,13 @@ export const finovaApi = createApi({
             })
         }),
 
+        getRpaData: build.query({
+            query:()=>({
+                url: '/uipath/data',
+                method:'GET',
+            })
+        }),
+
         deleteUserAccount: build.mutation({
             query:()=>({
                 url:'/users/me',
@@ -171,12 +178,17 @@ export const finovaApi = createApi({
             })
         }),
 
-        modifyFolderName: build.mutation({
-            query:({folderName})=>({
-                url: '/users/me/uipath-subfolder',
+        modifyRpaCredentials: build.mutation({
+            query:({uipathSubfolder,clientInvoiceRk,supplierInvoiceRk,
+                clientReceiptRk,supplierReceiptRk})=>({
+                url: '/uipath/data',
                 method: 'PUT',
                 body: {
-                    folderName
+                    uipathSubfolder,
+                    clientInvoiceRk,
+                    supplierInvoiceRk,
+                    clientReceiptRk,
+                    supplierReceiptRk
                 }
             })
         }),
@@ -316,4 +328,4 @@ useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
 useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
-useModifyFolderNameMutation} = finovaApi;
+useModifyRpaCredentialsMutation, useGetRpaDataQuery} = finovaApi;

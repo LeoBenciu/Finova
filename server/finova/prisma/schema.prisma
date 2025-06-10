@@ -94,6 +94,10 @@ model AccountingCompany {
   name              String
   ein               String              @unique
   uipathSubfolder   String
+  clientInvoiceRk   String
+  supplierInvoiceRk String
+  clientReceiptRk   String
+  supplierReceiptRk String
   users             User[]
   accountingClients AccountingClients[]
 }

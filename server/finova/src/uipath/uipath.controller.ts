@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { GetUser } from '../auth/decorator';
 import { JwtGuard } from '../auth/guard';
 import { uiPathData, UipathService } from './uipath.service';
 import { User } from '@prisma/client';
+import { ModifyRpaDto } from './dto';
 
 
 @UseGuards(JwtGuard)
@@ -37,5 +38,18 @@ export class UipathController {
         @GetUser() user: User 
     ) {
         return this.UipathService.getArticles(ein, user);
+    }
+
+    @Get('/data')
+    getRpaData(@GetUser() user: User)
+    {
+        const User = user;
+        return this.UipathService.getRpaData(User);
+    }
+
+    @Put('/data')
+    modifyRpaData(@GetUser() user: User, @Body() dto:ModifyRpaDto)
+    {
+      return this.UipathService.modifyRpaData(user, dto);
     }
 }

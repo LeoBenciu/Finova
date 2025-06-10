@@ -1,10 +1,11 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma, RpaActionStatus, RpaActionType, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import * as qs from 'qs';
 import {Cron} from '@nestjs/schedule';
+import { ModifyRpaDto } from './dto';
 
 interface lineItem {
     type: string,
@@ -696,5 +697,76 @@ export class UipathService {
             throw new InternalServerErrorException('Failed to fetch articles data');
         }
     }
+
+    async getRpaData(User: User)
+    {
+        try {
+            const user = await this.prisma.user.findUnique({
+                where: {
+                    id: User.id
+                }
+            });
+            
+            if(!user) throw new UnauthorizedException('You are not authorized to get RPA data');
+
+            const accountingCompany = await this.prisma.accountingCompany.findUnique({
+                where: {
+                    id: user.accountingCompanyId
+                }
+            });
+
+            if(!accountingCompany) throw new NotFoundException('user is not attributed to any accounting company');
+
+            return {
+                uipathSubfolder: accountingCompany.uipathSubfolder,
+                clientInvoiceRk: accountingCompany.clientInvoiceRk,
+                supplierInvoiceRk: accountingCompany.supplierInvoiceRk,
+                clientReceiptRk: accountingCompany.clientReceiptRk,
+                supplierReceiptRk: accountingCompany.supplierReceiptRk
+            }
+
+        } catch (e) {
+            console.error('Failed to fetch the rpa data:', e);
+            throw new InternalServerErrorException('Failed to fetch rpa data');
+        }
+    }
     
+    async modifyRpaData(user:User, dto: ModifyRpaDto)
+    {
+        try {
+            const userDetails = await this.prisma.user.findUnique({
+                where: {
+                    id: user.id
+                }
+            });
+                if (!userDetails || !userDetails.accountingCompanyId) {
+                throw new BadRequestException('User does not have an accounting company associated');
+            }
+                const accountingCompany = await this.prisma.accountingCompany.update({
+                where: {
+                    id: userDetails.accountingCompanyId
+                },
+                data: {
+                    uipathSubfolder: dto.uipathSubfolder,
+                    clientInvoiceRk: dto.clientInvoiceRk,
+                    supplierInvoiceRk: dto.supplierInvoiceRk,
+                    clientReceiptRk: dto.clientReceiptRk,
+                    supplierReceiptRk: dto.supplierReceiptRk
+                }
+            });
+
+            const rpaDetails = {
+                uipathSubfolder: accountingCompany.uipathSubfolder,
+                clientInvoiceRk: accountingCompany.clientInvoiceRk,
+                supplierInvoiceRk: accountingCompany.supplierInvoiceRk,
+                clientReceiptRk: accountingCompany.clientReceiptRk,
+                supplierReceiptRk: accountingCompany.supplierReceiptRk
+            };
+
+            return rpaDetails;
+        } catch (e) {
+            console.error('Failed to modify the rpa data:', e);
+            throw new InternalServerErrorException('Failed to modify the rpa data');
+        }
+    }
 }
