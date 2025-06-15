@@ -77,50 +77,53 @@ const FileUploadPage = () => {
 
   return (
     <div className="min-w-[1000px] min-h-screen">
-      <div className="bg-[var(--foreground)] rounded-2xl flex flex-row justify-between">
+      <div className="flex flex-row justify-between items-center">
         <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">{language==='ro'?'Incarca Documente':'File Upload'}</h1>
-        <button className="text-white bg-[var(--primary)] rounded-md"
-        onClick={()=>setDropzoneVisible(true)}><Plus size={15}></Plus> {language==='ro'?'Incarca Documente':'File Upload'}</button>
+        <button className="text-white bg-[var(--primary)] rounded-xl flex flex-row gap-1 hover:bg-[var(--primary)]/70"
+        onClick={()=>setDropzoneVisible(true)}><Plus size={18}></Plus> {language==='ro'?'Incarca Documente':'File Upload'}</button>
       </div>
 
+      <div className="min-h-[1px] max-h-[1px] border-[1px] border-neutral-500 my-10 min-w-full max-w-full"></div>
 
-      {dropzoneVisible&&(<div className="bg-[var(--foreground)] min-h-[15rem] max-h-[15rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3
+      {dropzoneVisible&&(<div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3
       border-2 border-[var(--primary)]">
         <div className="flex flex-1 px-2 items-center py-1">
           <div className="rounded-2xl py-5 flex justify-center items-center
-          flex-col flex-1 min-h-[17rem] max-h-47">
+          flex-col flex-1 min-h-[12rem] max-h-47">
             <MyDropzone setDocuments={setDocuments} documents={documents} />
           </div>
         </div>
       </div>)}
 
       {documents && documents.length > 0 && (
-        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl p-5 flex flex-col">
-          <p className="text-left text-2xl font-bold mb-3 text-[var(--text1)]">
+        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl py-5 flex flex-col">
+          <p className="text-left text-2xl font-bold mb-3 text-[var(--text1)] px-5">
             {language === 'ro' ? 'Status Fisiere' : 'Status files'}
           </p>
 
-          <div className="min-w-full max-w-full border-2 border-[var(--text2)] rounded-2xl flex- max-h-fit">
-            <div className="bg-[var(--text2)] min-w-full max-w-full min-h-[40px] max-h-[40px] rounded-t-xl grid grid-cols-5">
+          <p className="text-left text-base text-[var(--text2)] mb-5 px-5">{language === 'ro' ? 'Aici poti vedea fisierele incarcate' : 'Here you can see your uploaded files'}</p>
+
+          <div className="min-w-full max-w-full flex- max-h-fit">
+            <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] rounded-t-xl grid grid-cols-5 border-t-[1px] border-b-[1px] border-[var(--text1)]">
               <div className="flex items-center justify-center">
-                <p className="font-bold">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
+                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-bold">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
+                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-bold">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
+                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-bold">Status</p>
+                <p className="font-semibold text-[var(--text1)]">Status</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-bold">{language === 'ro' ? 'Actiuni' : 'Actions'}</p>
+                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Actiuni' : 'Actions'}</p>
               </div>
             </div>
 
             {documents.map((doc) => (
-              <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5" key={doc.name}>
+              <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5 border-b-[1px] border-[var(--text3)]" key={doc.name}>
                 <div className="flex items-center justify-center">
                   <p className="font-normal text-[var(--text1)] ">{handleTooLongString(doc.name)}</p>
                 </div>

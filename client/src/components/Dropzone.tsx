@@ -32,7 +32,7 @@ function MyDropzone({setDocuments, documents}: MyDropzoneProps) {
                     {language==='ro'?'Trage fisier(e) pentru a le incarca':'Drag file(s) to upload'}
                 </p>
                 <p className="text-sm mb-2 text-[var(--text1)]">{language==='ro'?'sau':'or'}</p>
-                <button className="border-2 border-[var(--primary)] bg-transparent hover:bg-[var(--primary)] hover:text-white
+                <button className="bg-transparent hover:bg-[var(--primary)] hover:text-white
                 text-[var(--primary)] py-1 px-2 rounded-2xl font-semibold">{language==='ro'?'Cauta fisiere':'Browse files'}</button>
             </div>        
       }
