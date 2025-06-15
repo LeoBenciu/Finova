@@ -84,11 +84,11 @@ const FileUploadPage = () => {
         onClick={()=>setDropzoneVisible(true)}><Plus size={18}></Plus> {language==='ro'?'Incarca':'Upload'}</button>
       </div>
 
-      <div className="min-h-[1px] max-h-[1px] border-[0.5px] border-neutral-300 my-10 min-w-full max-w-full"></div>
+      <div className="min-h-[1px] max-h-[1px] border-[0.5px] border-neutral-300 my-8 min-w-full max-w-full"></div>
 
       {dropzoneVisible&&(
-        <div className="bg-[var(--primary)]/50 max-h-max min-h-max min-w-max max-w-max p-3 rounded-3xl">
-        <div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-3xl mb-28 px-3 flex-col flex gap-3
+        <div className="bg-[var(--primary)]/50 min-h-[13rem] max-h-[13rem] min-w-full max-w-full p-2 rounded-3xl mb-22">
+        <div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-3xl px-3 flex-col flex gap-3
         border-2 border-[var(--primary)]">
         <div className="flex flex-1 px-2 items-center py-1">
           <div className="rounded-2xl py-5 flex justify-center items-center
@@ -101,29 +101,30 @@ const FileUploadPage = () => {
 
       {documents && documents.length > 0 && (
         <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl py-5 flex flex-col
-        border-[1px] border-[var(--text3)] mb-[50px]">
-          <p className="text-left text-2xl font-bold mb-3 text-[var(--text1)] px-5">
+        border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
+          <p className="text-left text-2xl font-bold mb-2 text-[var(--text1)] px-5">
             {language === 'ro' ? 'Status Fisiere' : 'Status files'}
           </p>
 
           <p className="text-left text-base text-[var(--text2)] mb-5 px-5">{language === 'ro' ? 'Aici poti vedea fisierele incarcate' : 'Here you can see your uploaded files'}</p>
 
           <div className="min-w-full max-w-full flex- max-h-fit">
-            <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-5 border-t-[1px] border-b-[1px] border-[var(--text3)]">
+            <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-5 border-t-[1px] border-b-[1px] border-[var(--text3)]
+            shadow-md">
               <div className="flex items-center justify-center">
-                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
+                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
+                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
+                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-semibold text-[var(--text1)]">Status</p>
+                <p className="font-bold text-[var(--text1)]">Status</p>
               </div>
               <div className="flex items-center justify-center">
-                <p className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Actiuni' : 'Actions'}</p>
+                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Actiuni' : 'Actions'}</p>
               </div>
             </div>
 
