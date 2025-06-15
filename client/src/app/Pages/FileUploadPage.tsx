@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Cpu, Trash } from "lucide-react";
+import { Cpu, Plus, Trash } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
@@ -25,6 +25,7 @@ const FileUploadPage = () => {
   const [processedFiles, setProcessedFiles] = useState<Record<string, any>>({});
   const [editFile, setEditFile] = useState<{ result: Record<string, any> } | undefined>(undefined);
   const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
+  const [dropzoneVisible, setDropzoneVisible] = useState<boolean>(false);
 
   useEffect(()=>{
     console.log('Documents', documents)
@@ -76,17 +77,22 @@ const FileUploadPage = () => {
 
   return (
     <div className="min-w-[1000px] min-h-screen">
-      <div>
+      <div className="bg-[var(--foreground)] rounded-2xl flex flex-row justify-between">
         <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">{language==='ro'?'Incarca Documente':'File Upload'}</h1>
+        <button className="text-white bg-[var(--primary)] rounded-md"
+        onClick={()=>setDropzoneVisible(true)}><Plus size={15}></Plus> {language==='ro'?'Incarca Documente':'File Upload'}</button>
       </div>
-      <div className="bg-[var(--foreground)] min-h-[20rem] max-h-[20rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3">
+
+
+      {dropzoneVisible&&(<div className="bg-[var(--foreground)] min-h-[15rem] max-h-[15rem] min-w-full rounded-2xl mb-28 px-3 flex-col flex gap-3
+      border-2 border-[var(--primary)]">
         <div className="flex flex-1 px-2 items-center py-1">
-          <div className="border-2 border-dashed border-[var(--text4)] rounded-2xl py-5 flex justify-center items-center
+          <div className="rounded-2xl py-5 flex justify-center items-center
           flex-col flex-1 min-h-[17rem] max-h-47">
             <MyDropzone setDocuments={setDocuments} documents={documents} />
           </div>
         </div>
-      </div>
+      </div>)}
 
       {documents && documents.length > 0 && (
         <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl p-5 flex flex-col">

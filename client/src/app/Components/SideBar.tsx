@@ -15,7 +15,8 @@ const SideBar = () => {
   const navigate = useNavigate();
 
   return (
-    <div className='bg-[var(--primary-foreground)] min-w-[16rem] max-w-[16rem] min-h-screen p-4 relative'>
+    <div className='bg-[var(--primary-foreground)] min-w-[16rem] max-w-[16rem] min-h-screen m-3 p-4 relative
+    rounded-xl'>
       <img src={logo} alt="Finova logo" className='h-12'/>
       <div className='hover:text-[var(--primaryLow)] flex items-center
       justify-start px-2 text-xl mt-5 cursor-pointer
