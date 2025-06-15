@@ -101,17 +101,21 @@ const FileUploadPage = () => {
       </div>)}
 
       {!dropzoneVisible&&(
-        <div className="mx-auto my-auto min-h-80 min-w-80 max-h-80 max-w-80">
+        <div className="mx-auto my-auto min-h-96 min-w-96 max-h-96 max-w-96 mt-36">
           <img src={computer} className="min-w-full min-h-full max-h-full max-w-full"></img>
         </div>
       )}
 
       {documents && documents.length > 0 && (
-        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl py-5 flex flex-col
+        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl pt-5 flex flex-col
         border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
-          <p className="text-left text-2xl font-bold mb-2 text-[var(--text1)] px-5">
-            {language === 'ro' ? 'Status Fisiere' : 'Status files'}
-          </p>
+          <div className="flex flex-row items-center gap-2">
+            <p className="text-left text-2xl font-bold mb-2 text-[var(--text1)] px-5">
+              {language === 'ro' ? 'Status Fisiere' : 'Status files'}
+            </p>
+            <p className="text-[var(--primary)] bg-[var(--primary)]/30
+            text-xl font-bold rounded-2xl">{documents.length} {language==='ro'?'Fisiere':'Files'}</p>
+          </div>
 
           <p className="text-left text-base text-[var(--text2)] mb-5 px-5">{language === 'ro' ? 'Aici poti vedea fisierele incarcate' : 'Here you can see your uploaded files'}</p>
 

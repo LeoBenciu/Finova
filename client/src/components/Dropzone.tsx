@@ -27,7 +27,7 @@ function MyDropzone({setDocuments, documents}: MyDropzoneProps) {
                 </p>
             </div> :
             <div className="flex flex-col justify-center items-center" >
-                <CloudUpload size={30} className="text-[var(--primary)] mb-2 bg-[var(--primary)]/30 rounded-full p-3"/>
+                <CloudUpload size={40} className="text-[var(--primary)] mb-2 bg-[var(--primary)]/30 rounded-full p-1"/>
                 <p className="text-lg font-semibold mb-2 text-[var(--text1)]">
                     {language==='ro'?'Trage fisier(e) pentru a le incarca':'Drag file(s) to upload'}
                 </p>
