@@ -6,6 +6,7 @@ import { Cpu, Plus, Trash } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
+import computer from '@/assets/undraw_computer-files_7dj6.svg'
 
 const ExtractedDataEdit = lazy(() => import('../Components/EditExtractedData/EditExtractedDataComponent'));
 
@@ -99,6 +100,12 @@ const FileUploadPage = () => {
       </div>
       </div>)}
 
+      {!dropzoneVisible&&(
+        <div className="mx-auto my-auto min-h-80 min-w-80 max-h-80 max-w-80">
+          <img src={computer} className="min-w-full min-h-full max-h-full max-w-full"></img>
+        </div>
+      )}
+
       {documents && documents.length > 0 && (
         <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl py-5 flex flex-col
         border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
@@ -110,7 +117,7 @@ const FileUploadPage = () => {
 
           <div className="min-w-full max-w-full flex- max-h-fit">
             <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-5 border-t-[1px] border-b-[1px] border-[var(--text3)]
-            shadow-md">
+            shadow-sm">
               <div className="flex items-center justify-center">
                 <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
               </div>
