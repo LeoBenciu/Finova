@@ -21,8 +21,7 @@ const SideBar = () => {
       <div className='hover:text-[var(--primaryLow)] flex items-center
       justify-start px-2 text-xl mt-5 cursor-pointer
       text-left mb-5'
-      onClick={()=>{navigate('/home');
-        dispatch(setCurrentCompany({name:'',ein:''}));}}>
+      onClick={()=>{dispatch(setCurrentCompany({name:'',ein:''}));}}>
         <h2>{currentCompanyName}</h2>
         <div className='min-w-[20px]'>
         <ChevronDown size={20}></ChevronDown>

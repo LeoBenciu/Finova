@@ -108,13 +108,13 @@ const ClientsPage = () => {
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                         <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
-                            <Building size={24} className="text-white" />
+                            <Building size={35} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="text-4xl font-bold text-[var(--text1)] mb-2">
+                            <h1 className="text-4xl font-bold text-[var(--text1)] mb-2 text-left">
                                 {language === 'ro' ? 'Companii Clienti' : 'Client Companies'}
                             </h1>
-                            <p className="text-[var(--text2)] text-lg">
+                            <p className="text-[var(--text2)] text-lg text-left">
                                 {language === 'ro' 
                                     ? 'Gestionează companiile tale client și documentele lor' 
                                     : 'Manage your client companies and their documents'

@@ -128,7 +128,7 @@ const InitialClientCompanyModalSelect = () => {
                                 <LoadingComponent />
                             </div>
                         ) : (
-                            <div className="max-h-96 overflow-y-auto scrollbar-thin scrollbar-thumb-[var(--text4)] scrollbar-track-transparent">
+                            <div className="max-h-96 overflow-y-auto overflow-x-hidden p-[10px] scrollbar-thin scrollbar-thumb-[var(--text4)] scrollbar-track-transparent">
                                 <AnimatePresence>
                                     {filteredCompanies?.length === 0 ? (
                                         <motion.div
@@ -213,15 +213,10 @@ const InitialClientCompanyModalSelect = () => {
                     </div>
 
                     <div className="px-8 py-6 border-t border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
-                        <div className="flex items-center justify-between text-sm text-[var(--text3)]">
-                            <span className="flex items-center gap-2">
-                                <div className="w-2 h-2 bg-[var(--primary)] rounded-full animate-pulse"></div>
-                                {language === 'ro' ? 'Pregătit pentru lucru' : 'Ready to work'}
-                            </span>
-                            <button
-                                onClick={() => navigate('/clients')}
-                                className="text-[var(--primary)] hover:text-[var(--primary)]/80 transition-colors duration-200 font-medium"
-                            >
+                        <div className="flex items-center justify-center text-sm text-[var(--text3)]">
+                            <button onClick={() => navigate('/clients')}
+                            className="text-[var(--primary)] hover:text-white bg-[var(--primary)]/20  hover:bg-[var(--primary)]
+                            transition-colors duration-200 font-medium">
                                 {language === 'ro' ? 'Gestionează companii' : 'Manage companies'}
                             </button>
                         </div>
