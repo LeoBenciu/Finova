@@ -12,6 +12,7 @@ import TermsOfServicePage from './app/Pages/TermsOfServicePage';
 import CookiesPolicyPage from './app/Pages/CookiesPolicyPage';
 import PrivacyPolicyPage from './app/Pages/PrivacyPolicyPage';
 import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage';
+import ClientsPage from './app/Pages/ClientsPage';
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path='/file-management' element={<FileManagementPage/>}></Route>
           <Route path='/reports' element={<ReportsPage/>}></Route>
           <Route path='/settings' element={<SettingsPage/>}></Route>
+          <Route path='/clients' element={<ClientsPage/>}></Route>
         </Route>
       </Routes>
     </BrowserRouter>

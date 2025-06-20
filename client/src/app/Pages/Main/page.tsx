@@ -37,7 +37,7 @@ const Page = () => {
             
             <div className="relative flex items-center justify-center">
               <MessageCircle size={28} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <Sparkles size={12} className="absolute -top-1 -right-1 text-yellow-300 animate-pulse" />
+              <Sparkles size={12} className="absolute -top-1 -right-1 text-purple-700 animate-pulse" />
             </div>
             
             <div className="absolute right-full mr-4 px-4 py-3 bg-gray-900/95 backdrop-blur-sm text-white text-sm rounded-2xl 
