@@ -167,9 +167,6 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                     <h3 className="text-left font-bold text-2xl text-[var(--text1)] mb-1">
                       {language==='ro'?'Date extrase':'Extracted data'}
                     </h3>
-                    <p className="text-sm text-[var(--text3)]">
-                      {language==='ro'?'Verifică și editează informațiile extrase':'Review and edit extracted information'}
-                    </p>
                   </div>
                   
                   {!isSaving && (
@@ -204,9 +201,6 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                           <label className="text-sm font-semibold text-[var(--text1)] mb-2 block">
                             {language==='ro'?"Tipul Documentului":'Document Type'}
                           </label>
-                          <p className="text-xs text-[var(--text3)]">
-                            {language==='ro'?'Selectează tipul documentului':'Select the document type'}
-                          </p>
                         </div>
                         <div className="min-w-48">
                           <SelectDocType value={editFile?.result.document_type} 
