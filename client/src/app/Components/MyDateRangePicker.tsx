@@ -63,21 +63,23 @@ export function MyDateRangePicker({ dateRange, setDateRange }: MyDateRangePicker
   };
   
   return (
-    <div className="relative">
+    <div className="relative w-full">
       <button 
-        className="rounded-2xl bg-[var(--foreground)]
-        flex items-center gap-3 min-h-9 max-h-9 px-3
-        shadow-[0_0_15px_rgba(0,0,0,0.3)]
-        text-[var(--text1)]"
+        className="bg-[var(--background)] min-h-11 rounded-2xl w-full px-4 py-2
+        border-[1px] border-[var(--text4)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
+        text-[var(--text1)] transition-all duration-200 flex items-center justify-between gap-2
+        hover:border-[var(--primary)]/50"
         onClick={() => setIsCalendarOpen(!isCalendarOpen)}
       >
-        {displayText()}
-        <Cal size={20} />
+        <span className={`${range.from || range.to ? 'text-[var(--text1)]' : 'text-[var(--text3)]'}`}>
+          {displayText()}
+        </span>
+        <Cal size={16} className="text-[var(--text3)]" />
       </button>
       
       {isCalendarOpen && (
         <div 
-          className="absolute z-50 mt-1" 
+          className="absolute z-50 mt-2 right-0" 
           ref={calendarRef}
         >
           <DayPicker
@@ -85,7 +87,7 @@ export function MyDateRangePicker({ dateRange, setDateRange }: MyDateRangePicker
             selected={range}
             onSelect={handleRangeSelect}
             showOutsideDays={true}
-            className="p-3 rounded-md border shadow bg-[var(--foreground)]"
+            className="p-4 rounded-2xl border border-[var(--text4)] shadow-lg bg-[var(--foreground)]"
             classNames={{
               months: "flex flex-col sm:flex-row gap-2",
               month: "flex flex-col gap-4",
@@ -94,7 +96,7 @@ export function MyDateRangePicker({ dateRange, setDateRange }: MyDateRangePicker
               nav: "flex items-center gap-1",
               nav_button: cn(
                 buttonVariants({ variant: "outline" }),
-                "size-7 bg-transparent p-0 text-[var(--text3)] hover:text-[var(--text1)] hover:bg-[var(--background)]"
+                "size-7 bg-transparent p-0 text-[var(--text3)] hover:text-[var(--text1)] hover:bg-[var(--background)] border-[var(--text4)]"
               ),
               nav_button_previous: "absolute left-1",
               nav_button_next: "absolute right-1",
@@ -108,20 +110,20 @@ export function MyDateRangePicker({ dateRange, setDateRange }: MyDateRangePicker
               ),
               day: cn(
                 buttonVariants({ variant: "ghost" }),
-                "size-8 p-0 font-normal bg-[var(--background)] text-[var(--text1)] hover:bg-[var(--primaryLow)] hover:text-[var(--text1)] aria-selected:opacity-100"
+                "size-8 p-0 font-normal bg-[var(--background)] text-[var(--text1)] hover:bg-[var(--primary)]/10 hover:text-[var(--text1)] aria-selected:opacity-100"
               ),
               day_range_start:
-                "day-range-start aria-selected:bg-[var(--primary)] aria-selected:text-[var(--primaryText)]",
+                "day-range-start aria-selected:bg-[var(--primary)] aria-selected:text-white",
               day_range_end:
-                "day-range-end aria-selected:bg-[var(--primary)] aria-selected:text-[var(--primaryText)]",
+                "day-range-end aria-selected:bg-[var(--primary)] aria-selected:text-white",
               day_selected:
-                "bg-[var(--primary)] text-[var(--primaryText)] hover:bg-[var(--primary-foreground)] hover:text-[var(--primaryText)] focus:bg-[var(--primary)] focus:text-[var(--primaryText)]",
-              day_today: "bg-[var(--primaryLow)] text-[var(--text1)] font-bold",
+                "bg-[var(--primary)] text-white hover:bg-[var(--primary)]/80 hover:text-white focus:bg-[var(--primary)] focus:text-white",
+              day_today: "bg-[var(--primary)]/20 text-[var(--text1)] font-semibold",
               day_outside:
                 "day-outside text-[var(--text4)] bg-transparent aria-selected:text-[var(--text4)]",
               day_disabled: "text-[var(--text4)] opacity-50",
               day_range_middle:
-                "aria-selected:bg-[var(--primaryLow)] aria-selected:text-[var(--text1)]",
+                "aria-selected:bg-[var(--primary)]/20 aria-selected:text-[var(--text1)]",
               day_hidden: "invisible"
             }}
             components={{
