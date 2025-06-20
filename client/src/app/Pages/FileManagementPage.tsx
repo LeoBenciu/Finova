@@ -399,7 +399,7 @@ const FileManagementPage = () => {
           {filteredFiles?.documents?.map((file:any, index:number)=>{
             return (
              <div key={file.name} className={`min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-6 border-b-[1px] 
-              border-[var(--text4)] ${(filteredFiles?.documents?.length-1) === index ?'rounded-b-3xl':''}`}>
+              border-[var(--text5)] ${(filteredFiles?.documents?.length-1) === index ?'rounded-b-3xl':''}`}>
                  <div className="flex items-center justify-center">
                  <MyTooltip content={file.name} trigger={
                    <a href={file.signedUrl} target="_blank" rel="noopener noreferrer"

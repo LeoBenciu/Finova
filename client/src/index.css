@@ -167,6 +167,7 @@ textarea::-webkit-scrollbar-thumb {
     --text2: rgb(40, 40, 40);
     --text3: rgb(104, 104, 104);
     --text4: rgb(205, 205, 205);
+    --text5: rgb(230, 230, 230);
     --radius: 0.5rem;
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
