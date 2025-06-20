@@ -6,14 +6,12 @@ import {
   Search, 
   Filter, 
   Download, 
-  Upload, 
   CheckCircle, 
   AlertCircle, 
   Clock, 
   CreditCard,
   FileText,
   Receipt,
-  Calendar,
   ArrowRight,
   Link,
   Unlink,
@@ -59,6 +57,10 @@ const BankPage = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'reconciliation' | 'documents' | 'transactions'>('reconciliation');
+
+  if(false){
+    console.log(selectedAccount);
+  }
 
   // Mock data - replace with your actual data
   const bankAccounts: BankAccount[] = [
