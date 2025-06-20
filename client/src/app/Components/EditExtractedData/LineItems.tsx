@@ -74,9 +74,6 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
           <div className="flex items-center gap-3 flex-1">
             <div className="flex items-center gap-2">
               {isExpanded ? <ChevronUp size={20} className="text-[var(--text2)]" /> : <ChevronDown size={20} className="text-[var(--text2)]" />}
-              <span className="text-sm font-medium text-[var(--text2)]">
-                {language === 'ro' ? 'Articol' : 'Item'} #{index + 1}
-              </span>
               {item && item.isNew && (
                 <span className="bg-[var(--primary)] text-white text-xs px-2 py-1 rounded-full font-medium">
                   {language === 'ro' ? 'Nou' : 'New'}
@@ -101,7 +98,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
               e.stopPropagation();
               handleRemoveLineItem();
             }}
-            className="p-2 text-[var(--text3)] hover:text-red-500 hover:bg-red-50 rounded-xl transition-all duration-200 ml-2"
+            className="p-2 text-red-500 bg-red-50 hover:bg-red-500 hover:text-white rounded-xl transition-all duration-200 ml-2"
           >
             <Trash2 size={18} />
           </button>
@@ -222,7 +219,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
                   value={item ? item.articleCode : ''}
                   className="w-full h-11 px-3 bg-[var(--foreground)] border border-r-0 md:border-r border-[var(--text4)] 
                   focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent focus:z-10 relative
-                  text-[var(--text1)] text-sm md:rounded-r-xl"
+                  text-[var(--text1)] text-sm"
                   onChange={(e) => handleChange('articleCode', e.target.value)}
                   placeholder={language === 'ro' ? 'Cod...' : 'Code...'}
                 />

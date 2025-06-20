@@ -198,11 +198,11 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                     <div className="border-b border-[var(--text4)] p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <label className="text-sm font-semibold text-[var(--text1)] mb-2 block">
+                          <label className="text-base font-semibold text-[var(--text1)] mb-2 block">
                             {language==='ro'?"Tipul Documentului":'Document Type'}
                           </label>
                         </div>
-                        <div className="min-w-48">
+                        <div className="min-w-40 max-w-40">
                           <SelectDocType value={editFile?.result.document_type} 
                           editFile={editFile} setEditFile={setEditFile}/>
                         </div>
