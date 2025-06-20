@@ -19,7 +19,7 @@ interface SelectDocTypeProps{
     shadow?:boolean
 }
 
-export function SelectDocType({value, setEditFile, editFile,shadow}: SelectDocTypeProps) {
+export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps) {
 
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
