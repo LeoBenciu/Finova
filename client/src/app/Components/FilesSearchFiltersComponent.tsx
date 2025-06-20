@@ -43,34 +43,53 @@ const FilesSearchFiltersComponent = ({
   };
 
   return (
-    <div className="bg-[var(--foreground)] min-w-full max-w-full min-h-27 max-h-27
-    rounded-2xl mb-15 grid grid-cols-3 py-5 px-5">
-      <div className="flex flex-col items-center justify-center px-3">
-        <label htmlFor="Name Search" className="text-md font-bold 
-        text-left mb-2 text-[var(--text1)]">{language==='ro'?'Nume document':'Document name'}</label>
-        <input 
-          value={nameSearch} 
-          onChange={(e)=>setNameSearch(e.target.value)}
-          className="bg-[var(--foreground)] min-h-9 rounded-2xl min-w-full px-4
-          shadow-[0_0_15px_rgba(0,0,0,0.3)] focus:outline-0 focus:ring-1 focus:ring-[var(--primary)]
-          text-[var(--text1)]"
-          id="Name Search"
-        />
+    <div className="bg-[var(--foreground)] min-w-full max-w-full min-h-fit rounded-3xl mb-8 p-6 
+    border-[1px] border-[var(--text4)] shadow-md">
+      
+      <div className="flex flex-row items-center gap-2 mb-6">
+        <p className="text-left text-xl font-bold text-[var(--text1)]">
+          {language === 'ro' ? 'Filtrează Documente' : 'Filter Documents'}
+        </p>
       </div>
-    
-      <div className="flex items-center justify-center flex-col">
-        <p className="text-md font-bold 
-        text-left mb-2 text-[var(--text1)]">{language==='ro'?'Tipul documentului':'Document type'}</p>
-        <SelectDocType setEditFile={setTypeFilter} shadow={true} />
-      </div>
-
-      <div className="flex items-center justify-center flex-col relative">
-        <p className="text-md font-bold 
-        text-left mb-2 text-[var(--text1)]">{language==='ro'?'Interval de date':'Date range'}</p>
-        <MyDateRangePicker 
-          dateRange={dateRange}
-          setDateRange={handleDateRangeChange}
-        />
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <div className="flex flex-col space-y-3">
+          <label htmlFor="Name Search" className="text-sm font-semibold text-[var(--text1)]">
+            {language==='ro'?'Nume document':'Document name'}
+          </label>
+          <input
+            value={nameSearch}
+            onChange={(e)=>setNameSearch(e.target.value)}
+            className="bg-[var(--background)] min-h-11 rounded-2xl w-full px-4 py-2
+            border-[1px] border-[var(--text4)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
+            text-[var(--text1)] placeholder-[var(--text3)] transition-all duration-200"
+            placeholder={language==='ro'?'Căutați după nume...':'Search by name...'}
+            id="Name Search"
+          />
+        </div>
+            
+        <div className="flex flex-col space-y-3">
+          <label className="text-sm font-semibold text-[var(--text1)]">
+            {language==='ro'?'Tipul documentului':'Document type'}
+          </label>
+          <div className="min-h-11 flex items-center">
+            <SelectDocType setEditFile={setTypeFilter} shadow={false} />
+          </div>
+        </div>
+        
+        <div className="flex flex-col space-y-3">
+          <label className="text-sm font-semibold text-[var(--text1)]">
+            {language==='ro'?'Interval de date':'Date range'}
+          </label>
+          <div className="min-h-11 flex items-center">
+            <MyDateRangePicker
+              dateRange={dateRange}
+              setDateRange={handleDateRangeChange}
+            />
+          </div>
+        </div>
+        
       </div>
     </div>
   );

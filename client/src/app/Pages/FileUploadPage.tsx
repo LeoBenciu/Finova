@@ -88,7 +88,7 @@ const FileUploadPage = () => {
       <div className="min-h-[1px] max-h-[1px] border-[0.5px] border-neutral-300 my-8 min-w-full max-w-full"></div>
 
       {dropzoneVisible&&(
-        <div className="bg-[var(--primary)]/50 min-h-[13rem] max-h-[13rem] min-w-full max-w-full p-1 rounded-3xl mb-22">
+        <div className="bg-[var(--primary)]/50 min-h-[200px] max-h-[200px] min-w-full max-w-full p-1 rounded-3xl mb-22">
         <div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-3xl px-3 flex-col flex gap-3
         border-2 border-[var(--primary)]">
         <div className="flex flex-1 px-2 items-center py-1">
