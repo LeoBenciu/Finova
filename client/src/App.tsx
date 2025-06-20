@@ -13,6 +13,7 @@ import CookiesPolicyPage from './app/Pages/CookiesPolicyPage';
 import PrivacyPolicyPage from './app/Pages/PrivacyPolicyPage';
 import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage';
 import ClientsPage from './app/Pages/ClientsPage';
+import BankPage from './app/Pages/BankPage';
 
 function App() {
   return (
@@ -32,6 +33,7 @@ function App() {
           <Route path='/reports' element={<ReportsPage/>}></Route>
           <Route path='/settings' element={<SettingsPage/>}></Route>
           <Route path='/clients' element={<ClientsPage/>}></Route>
+          <Route path='/bank' element={<BankPage/>}></Route>
         </Route>
       </Routes>
     </BrowserRouter>

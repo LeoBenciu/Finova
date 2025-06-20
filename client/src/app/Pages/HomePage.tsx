@@ -1,9 +1,9 @@
 import { useSelector } from "react-redux"
 import { ChartDashboard } from "../Components/ChartDashboard";
-import InitialClientCopanyModalSelect from "../Components/InitialClientCompanyModalSelect";
 import { useGetCompanyDataQuery } from "@/redux/slices/apiSlice";
 import LoadingComponent from "../Components/LoadingComponent";
 import { useEffect, useState } from "react";
+import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
 
 type clientCompany = {
   clientCompany:{
@@ -155,7 +155,8 @@ const HomePage = () => {
           </div>
         </div>
       </div>
-      {clientCompanyName===''&&(<InitialClientCopanyModalSelect/>)}
+
+      {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
     </div>
   )
 }
