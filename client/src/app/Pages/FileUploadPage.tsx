@@ -88,7 +88,7 @@ const FileUploadPage = () => {
       <div className="min-h-[1px] max-h-[1px] border-[0.5px] border-neutral-300 my-8 min-w-full max-w-full"></div>
 
       {dropzoneVisible&&(
-        <div className="bg-[var(--primary)]/50 min-h-[13rem] max-h-[13rem] min-w-full max-w-full p-2 rounded-3xl mb-22">
+        <div className="bg-[var(--primary)]/50 min-h-[13rem] max-h-[13rem] min-w-full max-w-full p-1 rounded-3xl mb-22">
         <div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-3xl px-3 flex-col flex gap-3
         border-2 border-[var(--primary)]">
         <div className="flex flex-1 px-2 items-center py-1">
@@ -109,12 +109,12 @@ const FileUploadPage = () => {
       {documents && documents.length > 0 && (
         <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl pt-5 flex flex-col
         border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
-          <div className="flex flex-row items-center gap-2">
-            <p className="text-left text-2xl font-bold mb-2 text-[var(--text1)] px-5">
+          <div className="flex flex-row items-center gap-2 mb-2">
+            <p className="text-left text-2xl font-bold text-[var(--text1)] px-5">
               {language === 'ro' ? 'Status Fisiere' : 'Status files'}
             </p>
             <p className="text-[var(--primary)] bg-[var(--primary)]/30
-            text-xl font-bold rounded-2xl">{documents.length} {language==='ro'?'Fisiere':'Files'}</p>
+            text-base font-bold rounded-2xl px-2 py-1">{documents.length} {language==='ro'?'Fisiere':'Files'}</p>
           </div>
 
           <p className="text-left text-base text-[var(--text2)] mb-5 px-5">{language === 'ro' ? 'Aici poti vedea fisierele incarcate' : 'Here you can see your uploaded files'}</p>

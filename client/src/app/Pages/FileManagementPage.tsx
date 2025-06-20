@@ -351,73 +351,84 @@ const FileManagementPage = () => {
       intervalDate={intervalDateFilter}
       setIntervalDate={setIntervalDateFilter}/>
 
-      <div className="bg-[var(--foreground)] min-w-full  
-      min-h-max max-h-[1000px] rounded-2xl my-auto p-5">
+      <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[1000px] min-w-full rounded-3xl pt-5 flex flex-col
+      border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
         
-        <div className='border-[1px] rounded-2xl min-h-52
-        border-[var(--card)] '>
-          <div className='min-w-full min-h-10 max-h-10
-           rounded-t-2xl bg-[var(--text1)] grid
-           grid-cols-6 border-[1px] border-[var(--text1)]'>
-              <div className='flex items-center justify-center '>
-                <p>{language==='ro'?'Nume':'Name'}</p>
-              </div>
+        <div className="flex flex-row items-center gap-2 mb-2">
+          <p className="text-left text-2xl font-bold text-[var(--text1)] px-5">
+            {language === 'ro' ? 'Fisierele Tale' : 'Your Files'}
+          </p>
+          <p className="text-[var(--primary)] bg-[var(--primary)]/30
+          text-base font-bold rounded-2xl px-2 py-1">
+            {filteredFiles?.documents?.length || 0} {language==='ro'?'Fisiere':'Files'}
+          </p>
+        </div>
 
-              <div className='flex items-center justify-center'>
-                <p>{language==='ro'?'Tipul':'Type'}</p>
-              </div>
+        <p className="text-left text-base text-[var(--text2)] mb-5 px-5">
+          {language === 'ro' ? 'Aici poti gestiona toate fisierele tale' : 'Here you can manage all your files'}
+        </p>
 
-              <div className='flex items-center justify-center'>
-                <p>{language==='ro'?'Creat la data':'Created at'}</p> 
-              </div>
+        <div className="min-w-full max-w-full flex- max-h-fit">
+          <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-6 border-t-[1px] border-b-[1px] border-[var(--text3)]
+          shadow-sm">
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Nume':'Name'}</p>
+            </div>
 
-              <div className='flex items-center justify-center'>
-                <p>{language==='ro'?'Date extrase':'Extracted data'}</p>
-              </div>
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Tipul':'Type'}</p>
+            </div>
 
-              <div className='flex items-center justify-center'>
-                <p>Status</p> 
-              </div>
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Creat la data':'Created at'}</p> 
+            </div>
 
-              <div className='flex items-center justify-center '>
-                <p>{language==='ro'?'Actiuni':'Actions'}</p>
-              </div>
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Date extrase':'Extracted data'}</p>
+            </div>
+
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">Status</p> 
+            </div>
+
+            <div className="flex items-center justify-center">
+              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Actiuni':'Actions'}</p>
+            </div>
           </div>
 
           {filteredFiles?.documents?.map((file:any)=>{
             return (
-             <div key={file.name} className='min-w-full min-h-12 max-h-12 grid
-             grid-cols-6'>
-                 <div className='flex items-center justify-center '>
+             <div key={file.name} className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-6 border-b-[1px] border-[var(--text4)]">
+                 <div className="flex items-center justify-center">
                  <MyTooltip content={file.name} trigger={
                    <a href={file.signedUrl} target="_blank" rel="noopener noreferrer"
-                   className='cursor-pointer'>
+                   className="cursor-pointer font-normal text-[var(--text1)] hover:text-[var(--primary)] transition-colors">
                     { handleTooLongString(file.name)}
                    </a>
                  }/>
                  </div>
 
-                 <div className='flex items-center justify-center'>
-                     <p className='text-[var(--text1)]'>{language==='ro'?(file.type==='Invoice'?'Factura':'Chitanta'):file.type}</p>
+                 <div className="flex items-center justify-center">
+                     <p className="font-normal text-[var(--text1)]">{language==='ro'?(file.type==='Invoice'?'Factura':'Chitanta'):file.type}</p>
                  </div>
 
-                 <div className='flex items-center justify-center'>
-                     <p className='text-[var(--text1)]'>{format(file.createdAt,'dd-MM-yyyy')}</p> 
+                 <div className="flex items-center justify-center">
+                     <p className="font-normal text-[var(--text1)]">{format(file.createdAt,'dd-MM-yyyy')}</p> 
                  </div>
 
-                 <div className='flex items-center justify-center
+                 <div className="flex items-center justify-center
                  text-[var(--primary)] hover:cursor-pointer gap-1
-                 hover:text-[var(--primary)]/70 font-bold' onClick={()=>{
+                 hover:text-[var(--primary)]/70 font-normal transition-colors" onClick={()=>{
                    setIsModalOpen(true);
                    setCurrentFile(file)
                  }}>
-                   <Eye  size={20} 
-                   className='cursor-pointer'/>
+                   <Eye  size={16} 
+                   className="cursor-pointer"/>
                    {language==='ro'?'Vezi':'View'}
                  </div>
 
-                 <div className='flex items-center justify-center'>
-                    <p className={`${getStatusColor(file)} font-medium`}>
+                 <div className="flex items-center justify-center">
+                    <p className={`${getStatusColor(file)} font-normal`}>
                       {getStatusDisplay(file)}
                     </p>
                     {file.id === processingDocId && (
@@ -443,14 +454,14 @@ const FileManagementPage = () => {
                     )}
                   </div>
 
-                 <div className='flex items-center justify-center gap-5'>
+                 <div className="flex items-center justify-center gap-5">
                    <MyTooltip content={getBotButtonTooltip(file)} trigger={
                      <Bot 
-                       size={24} 
+                       size={18} 
                        className={`${
                          isBotButtonDisabled(file) 
                            ? 'text-gray-400 cursor-not-allowed' 
-                           : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer'
+                           : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer transition-colors'
                        }`}
                        onClick={() => {
                          if (!isBotButtonDisabled(file)) {
@@ -462,7 +473,7 @@ const FileManagementPage = () => {
                    
                    <MyTooltip content={language==='ro'?'Șterge Fișiere și date':'Delete File and Data'} trigger={
                      <Trash2 
-                       size={20} 
+                       size={18} 
                        className="text-red-500 cursor-pointer hover:text-red-700 transition-colors" 
                        onClick={()=>{
                          setIsSureModal(true);
