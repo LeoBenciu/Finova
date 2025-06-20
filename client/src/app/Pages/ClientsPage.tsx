@@ -103,11 +103,11 @@ const ClientsPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-[var(--background)] to-[var(--foreground)]/50 p-8">
+        <div className="min-h-screen p-8">
             <div className="mb-8">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+                        <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
                             <Building size={24} className="text-white" />
                         </div>
                         <div>
@@ -207,7 +207,7 @@ const ClientsPage = () => {
                                                             e.stopPropagation();
                                                             deleteClientCompany(company.ein);
                                                         }}
-                                                        className="p-2 text-[var(--text3)] hover:text-red-500 hover:bg-red-50 
+                                                        className="p-2 hover:text-white text-red-500 hover:bg-red-500 bg-red-50 
                                                         rounded-xl transition-all duration-200 opacity-0 group-hover:opacity-100"
                                                     >
                                                         <Trash2 size={18} />
@@ -273,7 +273,7 @@ const ClientsPage = () => {
                                             type="file"
                                             accept=".csv"
                                             onChange={(e) => setArticles(e.target.files?.[0])}
-                                            className="w-full px-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
+                                            className="w-full h-max px-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
                                             focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
                                             text-[var(--text1)] transition-all duration-300 file:mr-4 file:py-2 file:px-4
                                             file:rounded-lg file:border-0 file:text-sm file:font-semibold
@@ -294,7 +294,7 @@ const ClientsPage = () => {
                                             type="file"
                                             accept=".csv"
                                             onChange={(e) => setManagement(e.target.files?.[0])}
-                                            className="w-full px-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
+                                            className="w-full h-max px-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
                                             focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
                                             text-[var(--text1)] transition-all duration-300 file:mr-4 file:py-2 file:px-4
                                             file:rounded-lg file:border-0 file:text-sm file:font-semibold
