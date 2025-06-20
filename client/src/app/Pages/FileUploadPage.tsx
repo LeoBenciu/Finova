@@ -139,8 +139,9 @@ const FileUploadPage = () => {
               </div>
             </div>
 
-            {documents.map((doc) => (
-              <div className="min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5 border-b-[1px] border-[var(--text4)]" key={doc.name}>
+            {documents.map((doc, index:number) => (
+              <div className={`min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5 border-b-[1px] border-[var(--text4)] 
+              ${(documents?.length-1) === index ?'rounded-b-3xl':''}`} key={doc.name}>
                 <div className="flex items-center justify-center">
                   <p className="font-normal text-[var(--text1)] ">{handleTooLongString(doc.name)}</p>
                 </div>
