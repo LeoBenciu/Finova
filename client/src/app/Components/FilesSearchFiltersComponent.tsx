@@ -74,7 +74,7 @@ const FilesSearchFiltersComponent = ({
             {language==='ro'?'Tipul documentului':'Document type'}
           </label>
           <div className="min-h-11 flex items-center">
-            <SelectDocType setEditFile={setTypeFilter} shadow={false} />
+            <SelectDocType setEditFile={setTypeFilter} shadow={false} full={true}/>
           </div>
         </div>
         

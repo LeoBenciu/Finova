@@ -217,7 +217,7 @@ const LineItems = React.memo(({ editFile, setEditFile, item, index}: LineItemsPr
                 </label>
                 <input
                   value={item ? item.articleCode : ''}
-                  className="w-full h-11 px-3 bg-[var(--foreground)] border border-r-0 md:border-r border-[var(--text4)] 
+                  className="w-full h-11 px-3 bg-[var(--foreground)] border border-r-0 border-[var(--text4)] 
                   focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent focus:z-10 relative
                   text-[var(--text1)] text-sm"
                   onChange={(e) => handleChange('articleCode', e.target.value)}

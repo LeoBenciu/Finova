@@ -16,10 +16,11 @@ interface SelectDocTypeProps{
     editFile?: {
       result: Record<string, any>;
     } | undefined;
-    shadow?:boolean
+    shadow?:boolean;
+    full?:boolean
 }
 
-export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps) {
+export function SelectDocType({value, setEditFile, editFile,full}: SelectDocTypeProps) {
 
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
@@ -60,10 +61,10 @@ export function SelectDocType({value, setEditFile, editFile}: SelectDocTypeProps
 
   return (
 <Select value={selectorValue} onValueChange={(e)=>{value?handleSelect(e):handleSelect2(e)}}>
-  <SelectTrigger className="bg-[var(--background)] min-h-11 rounded-2xl px-4 py-2 w-fit min-w-40 max-w-40
+  <SelectTrigger className={`bg-[var(--background)] min-h-11 rounded-2xl px-4 py-2 w-fit ${full?'min-w-full max-w-full':'min-w-40 max-w-40'}
   border-[1px] border-[var(--text4)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
   text-[var(--text1)] transition-all duration-200 hover:border-[var(--primary)]/50
-  data-[placeholder]:text-[var(--text3)]">
+  data-[placeholder]:text-[var(--text3)]`}>
     <SelectValue placeholder={language==='ro'?'Tipul documentului':"Document Type"} />
   </SelectTrigger>
   <SelectContent className="bg-[var(--foreground)] border border-[var(--text4)] rounded-2xl shadow-lg
