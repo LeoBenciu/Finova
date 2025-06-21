@@ -218,7 +218,7 @@ const HomePage = () => {
                 <span className="text-[var(--text1)]">
                   {language === 'ro' ? 'Total' : 'Total'} {section.title}
                 </span>
-                <span className={`${section.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                <span className={`${section.total >= 0 ? 'text-[var(--primary)]' : 'text-[var(--text1)]'}`}>
                   {section.total >= 0 ? '+' : ''}{section.total.toLocaleString('ro-RO')} RON
                 </span>
               </div>
@@ -250,6 +250,12 @@ const HomePage = () => {
 
   return (
     <div className='min-h-full max-h-full min-w-full px-10 py-0'>
+      {clientCompanyName===''&&(
+          <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
+           <InitialClientCompanyModalSelect/>
+          </div>
+      )}
+
       <div>
         <h1 className="mb-10 text-4xl font-bold text-left text-[var(--text1)]">Dashboard</h1>
       </div>
@@ -438,15 +444,6 @@ const HomePage = () => {
       >
         {renderFinancialStatement()}
       </motion.div>
-
-      {clientCompanyName===''&&(
-        <>
-          {console.log('Rendering modal on HomePage')}
-          <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
-           <InitialClientCompanyModalSelect/>
-          </div>
-        </>
-      )}
     </div>
   )
 }
