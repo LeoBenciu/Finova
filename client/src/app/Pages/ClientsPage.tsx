@@ -7,13 +7,24 @@ import { useSelector } from "react-redux";
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import CompanyArticlesModal from "../Components/CompanyArticlesModal";
+import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
 
 type Company = {
     name: string,
     ein: string
 };
 
+type clientCompany = {
+  clientCompany:{
+    current:{
+      name:string,
+      ein:string
+    }
+  }
+}
+
 const ClientsPage = () => {
+    const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name);
     const [einNewCompany, setEinNewCompany] = useState<string>('');
     const [currentClientCompanyEin, setCurrentClientCompanyEin] = useState<string>('');
     const [companies, setCompanies] = useState<Company[]>();
@@ -104,6 +115,11 @@ const ClientsPage = () => {
 
     return (
         <div className="min-h-screen p-8">
+            {clientCompanyName===''&&(
+                  <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
+                   <InitialClientCompanyModalSelect/>
+                  </div>
+              )}
             <div className="mb-8">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">

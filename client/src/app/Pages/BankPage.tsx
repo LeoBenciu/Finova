@@ -18,6 +18,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import InitialClientCompanyModalSelect from '../Components/InitialClientCompanyModalSelect';
 
 interface BankAccount {
   id: string;
@@ -50,9 +51,19 @@ interface BankTransaction {
   matchedDocument?: string;
 }
 
+type clientCompany = {
+  clientCompany:{
+    current:{
+      name:string,
+      ein:string
+    }
+  }
+}
+
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   
+  const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name);
   const [selectedAccount, setSelectedAccount] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -147,7 +158,11 @@ const BankPage = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--background)] to-[var(--foreground)]/50 p-8">
-      {/* Header Section */}
+        {clientCompanyName===''&&(
+            <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
+             <InitialClientCompanyModalSelect/>
+            </div>
+        )}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
