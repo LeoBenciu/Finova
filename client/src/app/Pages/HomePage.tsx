@@ -33,10 +33,12 @@ const HomePage = () => {
   const [dashboardYear, setDashboardYear] =useState<string>();
   const [selectedStatement, setSelectedStatement] = useState<'cashflow' | 'pnl' | 'balance'>('cashflow');
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
-  
+
   const { data: companyData, isLoading: isCompanyDataLoading, isError: IsCompanyDataError } = useGetCompanyDataQuery({
-    currentCompanyEin:clientCompanyEin,
-    year: dashboardYear
+  currentCompanyEin: clientCompanyEin,
+  year: dashboardYear
+  }, {
+    skip: !clientCompanyEin || clientCompanyEin === '' // Skip query when no company
   });
 
   const incomePercentChange = companyData && companyData.incomeLastMonth !== 0 ? 
