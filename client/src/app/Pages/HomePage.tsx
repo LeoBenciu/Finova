@@ -51,7 +51,7 @@ const HomePage = () => {
   const mockFinancialData = {
     cashBalance: 525000,
     monthlyBurn: 62500,
-    runway: 11, // months
+    runway: 11, 
     bankAccounts: [
       { name: 'BCR Principal', balance: 325000 },
       { name: 'BRD Operațional', balance: 200000 }
@@ -208,7 +208,7 @@ const HomePage = () => {
                 {section.items.map((item, itemIndex) => (
                   <div key={itemIndex} className="flex justify-between items-center py-2">
                     <span className="text-[var(--text2)]">{item.name}</span>
-                    <span className={`font-semibold ${item.positive ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`font-semibold ${item.positive ? 'text-[var(--primary)]' : 'text-[var(--text1)]'}`}>
                       {item.positive ? '+' : ''}{item.amount.toLocaleString('ro-RO')} RON
                     </span>
                   </div>
@@ -308,8 +308,8 @@ const HomePage = () => {
             {language==='ro'?'Sold Disponibil Băncile':'Available Bank Balance'}
           </p>
           <div className="justify-between flex flex-col items-start">
-            <h2 className="font-semibold text-3xl mb-2 text-[var(--primary)]">
-              <span className="font-semibold text-xl text-[var(--primary)]">RON</span> {mockFinancialData.cashBalance.toLocaleString()}
+            <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
+              <span className="font-semibold text-xl text-[var(--text1))]">RON</span> {mockFinancialData.cashBalance.toLocaleString()}
             </h2>
             <p className="text-xs text-[var(--text3)]">
               {mockFinancialData.bankAccounts.length} {language==='ro'?'conturi conectate':'connected accounts'}
@@ -323,8 +323,8 @@ const HomePage = () => {
             {language==='ro'?'Net Burn Rate':'Net Burn Rate'}
           </p>
           <div className="justify-between flex flex-col items-start">
-            <h2 className="font-semibold text-3xl mb-2 text-red-600">
-              <span className="font-semibold text-xl text-red-600">RON</span> {mockFinancialData.monthlyBurn.toLocaleString()}
+            <h2 className="font-semibold text-3xl mb-2 text-[var(--text1)]">
+              <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {mockFinancialData.monthlyBurn.toLocaleString()}
             </h2>
             <p className="text-xs text-[var(--text3)]">
               {language==='ro'?'cheltuieli nete lunar':'net monthly expenses'}
@@ -439,7 +439,14 @@ const HomePage = () => {
         {renderFinancialStatement()}
       </motion.div>
 
-      {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
+      {clientCompanyName===''&&(
+        <>
+          {console.log('Rendering modal on HomePage')}
+          <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
+           <InitialClientCompanyModalSelect/>
+          </div>
+        </>
+      )}
     </div>
   )
 }
