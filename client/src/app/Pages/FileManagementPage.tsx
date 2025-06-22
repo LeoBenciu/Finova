@@ -510,7 +510,8 @@ const FileManagementPage = () => {
             {filteredFiles?.documents?.length > 0 && (
               <button
                 onClick={isAllSelected ? deselectAllFiles : selectAllFiles}
-                className="flex items-center gap-2 text-[var(--text2)] hover:text-[var(--primary)] transition-colors"
+                className="flex items-center gap-2 text-[var(--text2)] hover:text-[var(--primary)] transition-colors
+                bg-[var(--primary)]/20"
               >
                 {isAllSelected ? (
                   <CheckSquare size={20} className="text-[var(--primary)]" />
@@ -548,7 +549,7 @@ const FileManagementPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`bg-[var(--background)] rounded-2xl p-4 border transition-all duration-200 ${
+                    className={`bg-[var(--background)] rounded-2xl px-4 py-1 border transition-all duration-200 mb-2 ${
                       isSelected 
                         ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
                         : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
@@ -558,7 +559,7 @@ const FileManagementPage = () => {
                       {/* Selection Checkbox */}
                       <button
                         onClick={() => toggleFileSelection(file.id)}
-                        className="p-1 hover:bg-[var(--text4)]/20 rounded-lg transition-colors"
+                        className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
                       >
                         {isSelected ? (
                           <CheckSquare size={20} className="text-[var(--primary)]" />
@@ -579,7 +580,7 @@ const FileManagementPage = () => {
                               href={file.signedUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="font-semibold text-[var(--text1)] hover:text-[var(--primary)] transition-colors truncate block text-lg"
+                              className="font-semibold text-[var(--text1)] text-left hover:text-[var(--primary)] transition-colors truncate block text-lg"
                             >
                               {handleTooLongString(file.name)}
                             </a>
@@ -631,7 +632,7 @@ const FileManagementPage = () => {
                               setIsModalOpen(true);
                               setCurrentFile(file);
                             }}
-                            className="p-2 text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                            className="p-2 text-[var(--primary)] bg-[var(--primary)]/20 hover:text-white hover:bg-[var(--primary)] rounded-lg transition-colors"
                           >
                             <Eye size={18} />
                           </button>
@@ -647,8 +648,8 @@ const FileManagementPage = () => {
                             disabled={isBotButtonDisabled(file)}
                             className={`p-2 rounded-lg transition-colors ${
                               isBotButtonDisabled(file) 
-                                ? 'text-gray-400 cursor-not-allowed' 
-                                : 'text-[var(--primary)] hover:bg-[var(--primary)]/10'
+                                ? 'text-gray-400 cursor-not-allowed bg-white' 
+                                : 'text-emerald-600 hover:bg-emerald-500 bg-emerald-200 hover:text-white'
                             }`}
                           >
                             <Bot size={18} />
@@ -661,7 +662,7 @@ const FileManagementPage = () => {
                               setIsSureModal(true);
                               setCurrentFile(file);
                             }}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 text-red-500 bg-red-500/20 hover:text-white hover:bg-red-500 rounded-lg transition-colors"
                           >
                             <Trash2 size={18} />
                           </button>
