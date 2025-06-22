@@ -550,7 +550,7 @@ const FileManagementPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`bg-[var(--background)] rounded-2xl px-4 py-1 border transition-all duration-200 mb-2 ${
+                    className={`bg-[var(--background)] rounded-2xl px-4 py-0 border transition-all duration-200 mb-1 ${
                       isSelected 
                         ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
                         : 'border-[var(--text4)] hover:border-[var(--primary)]/50'

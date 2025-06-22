@@ -2,11 +2,12 @@ import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Cpu, Plus, Trash } from "lucide-react";
+import { Cpu, Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
-import computer from '@/assets/undraw_computer-files_7dj6.svg'
+import computer from '@/assets/undraw_computer-files_7dj6.svg';
+import { motion, AnimatePresence } from "framer-motion";
 
 const ExtractedDataEdit = lazy(() => import('../Components/EditExtractedData/EditExtractedDataComponent'));
 
@@ -38,7 +39,7 @@ const FileUploadPage = () => {
   const [process, {isLoading}] = useExtractDataMutation();
 
   const handleTooLongString = useCallback((str: string): string => {
-    if (str.length > 15) return str.slice(0, 15) + '..';
+    if (str.length > 25) return str.slice(0, 25) + '..';
     return str;
   }, []);
 
@@ -76,127 +77,251 @@ const FileUploadPage = () => {
     }
   }, [processedFiles]);
 
+  const getStatusIcon = (doc: any) => {
+    if (processedFiles[doc.name]?.saved) {
+      return <CheckCircle size={16} className="text-green-500" />;
+    } else if (processedFiles[doc.name]) {
+      return <AlertCircle size={16} className="text-yellow-500" />;
+    } else {
+      return <Clock size={16} className="text-gray-400" />;
+    }
+  };
+
+  const getStatusColor = (doc: any) => {
+    if (processedFiles[doc.name]?.saved) {
+      return 'text-green-600 bg-green-50 border-green-200';
+    } else if (processedFiles[doc.name]) {
+      return 'text-yellow-600 bg-yellow-50 border-yellow-200';
+    } else {
+      return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  const getStatusText = (doc: any) => {
+    if (processedFiles[doc.name]?.saved) {
+      return language === 'ro' ? 'Salvat' : 'Saved';
+    } else if (processedFiles[doc.name]) {
+      return language === 'ro' ? 'Procesat' : 'Processed';
+    } else {
+      return language === 'ro' ? 'Încărcat' : 'Uploaded';
+    }
+  };
+
   return (
-    <div className="min-w-[1000px] min-h-screen">
-      <div className="flex flex-row justify-between items-center mb-5">
-        <h1 className="text-4xl font-bold text-left text-[var(--text1)]">{language==='ro'?'Incarca Documente':'File Upload'}</h1>
-        <button className="text-white bg-[var(--primary)] rounded-3xl flex flex-row gap-1 hover:bg-[var(--primary)]/70
-        items-center justify-center"
-        onClick={()=>setDropzoneVisible(true)}><Plus size={18}></Plus> {language==='ro'?'Incarca':'Upload'}</button>
-      </div>
-
-      <div className="min-h-[1px] max-h-[1px] border-[0.5px] border-neutral-300 my-8 min-w-full max-w-full"></div>
-
-      {dropzoneVisible&&(
-        <div className="bg-[var(--primary)]/50 min-h-[200px] max-h-[200px] min-w-full max-w-full p-1 rounded-3xl mb-22">
-        <div className="bg-[var(--foreground)] min-h-[12rem] max-h-[12rem] min-w-full rounded-3xl px-3 flex-col flex gap-3
-        border-2 border-[var(--primary)]">
-        <div className="flex flex-1 px-2 items-center py-1">
-          <div className="rounded-2xl py-5 flex justify-center items-center
-          flex-col flex-1 min-h-[12rem] max-h-47">
-            <MyDropzone setDocuments={setDocuments} documents={documents} />
-          </div>
-        </div>
-      </div>
-      </div>)}
-
-      {!dropzoneVisible&&(
-        <div className="mx-auto my-auto min-h-96 min-w-96 max-h-96 max-w-96 mt-36">
-          <img src={computer} className="min-w-full min-h-full max-h-full max-w-full"></img>
-        </div>
-      )}
-
-      {documents && documents.length > 0 && (
-        <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[50rem] min-w-[850px] rounded-3xl pt-5 flex flex-col
-        border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
-          <div className="flex flex-row items-center gap-2 mb-2">
-            <p className="text-left text-2xl font-bold text-[var(--text1)] px-5">
-              {language === 'ro' ? 'Status Fisiere' : 'Status files'}
-            </p>
-            <p className="text-[var(--primary)] bg-[var(--primary)]/30
-            text-base font-bold rounded-2xl px-2 py-1">{documents.length} {language==='ro'?'Fisiere':'Files'}</p>
+    <div className="min-h-screen p-8">
+      {/* Header Section */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+              <Upload size={35} className="text-white" />
+            </div>
+            <div>
+              <h1 className="text-4xl font-bold text-[var(--text1)] mb-2 text-left">
+                {language==='ro'?'Încarcă Documente':'File Upload'}
+              </h1>
+              <p className="text-[var(--text2)] text-lg text-left">
+                {language === 'ro' 
+                  ? 'Încarcă și procesează documentele tale financiare' 
+                  : 'Upload and process your financial documents'
+                }
+              </p>
+            </div>
           </div>
 
-          <p className="text-left text-base text-[var(--text2)] mb-5 px-5">{language === 'ro' ? 'Aici poti vedea fisierele incarcate' : 'Here you can see your uploaded files'}</p>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setDropzoneVisible(!dropzoneVisible)}
+            className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-[var(--primary)] to-blue-500 
+            text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
+          >
+            {dropzoneVisible ? <X size={20} /> : <Plus size={20} />}
+            {dropzoneVisible 
+              ? (language==='ro' ? 'Închide' : 'Close')
+              : (language==='ro' ? 'Încarcă Fișiere' : 'Upload Files')
+            }
+          </motion.button>
+        </div>
+      </div>
 
-          <div className="min-w-full max-w-full flex- max-h-fit">
-            <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-5 border-t-[1px] border-b-[1px] border-[var(--text3)]
-            shadow-sm">
-              <div className="flex items-center justify-center">
-                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Nume fisier' : 'File name'}</p>
-              </div>
-              <div className="flex items-center justify-center">
-                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Tip fisier' : 'Type'}</p>
-              </div>
-              <div className="flex items-center justify-center">
-                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Data documentului' : 'Document Date'}</p>
-              </div>
-              <div className="flex items-center justify-center">
-                <p className="font-bold text-[var(--text1)]">Status</p>
-              </div>
-              <div className="flex items-center justify-center">
-                <p className="font-bold text-[var(--text1)]">{language === 'ro' ? 'Actiuni' : 'Actions'}</p>
+      {/* Upload Zone */}
+      <AnimatePresence>
+        {dropzoneVisible && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+            className="mb-8"
+          >
+            <div className="bg-gradient-to-br from-[var(--primary)]/5 to-blue-500/5 rounded-3xl p-6 border-2 border-dashed border-[var(--primary)]/30">
+              <div className="bg-[var(--foreground)] rounded-2xl p-8 border border-[var(--text4)]">
+                <MyDropzone setDocuments={setDocuments} documents={documents} />
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            {documents.map((doc, index:number) => (
-              <div className={`min-w-full max-w-full min-h-[40px] max-h-[40px] grid grid-cols-5 border-b-[1px] border-[var(--text5)] 
-              ${(documents?.length-1) === index ?'rounded-b-3xl':''}`} key={doc.name}>
-                <div className="flex items-center justify-center">
-                  <p className="font-normal text-[var(--text1)] ">{handleTooLongString(doc.name)}</p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <p className="font-normal text-[var(--text1)]">{processedFiles[doc.name]?.result.document_type || '-'}</p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <p className="font-normal text-[var(--text1)]">{processedFiles[doc.name]?.result.document_date || '-'}</p>
-                </div>
-                <div className="flex items-center justify-center">
-                  <p className="font-normal text-[var(--text1)]">
-                    {processedFiles[doc.name]?.saved ? (language === 'ro' ? 'Salvat' : 'Saved'):processedFiles[doc.name]
-                      ? (language === 'ro' ? 'Procesat' : 'Processed')
-                      : (language === 'ro' ? 'Incarcat (Nu este salvat)' : 'Uploaded (Not saved)')}
-                  </p>
-                </div>
-                <div className="flex items-center justify-center gap-5">
-
-                  {!processedFiles[doc.name]?.saved&&(<TooltipDemo
-                    trigger={
-                      <div className="relative">
-                        <Cpu
-                          size={18}
-                          className={`cursor-pointer ${
-                            currentProcessingFile?.name === doc.name && isLoading
-                              ? 'text-[var(--primary)] animate-pulse'
-                              : 'text-[var(--primary)]'
-                          }`}
-                          onClick={() => handleProcessFile(doc)}
-                        />
-                      </div>
-                    }
-                    tip={language==='ro'?'Proceseaza':'Process'}
-                  />)}
-
-                  <TooltipDemo
-                    trigger={
-                      <Trash
-                        size={18}
-                        className="cursor-pointer text-red-500"
-                        onClick={() => handleDeleteDocument(doc.name)}
-                      />
-                    }
-                    tip={language==='ro'?'Sterge':'Delete'}
-                  />
-                </div>
-              </div>
-            ))}
+      {/* Empty State */}
+      {!dropzoneVisible && documents.length === 0 && (
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-center py-20"
+        >
+          <div className="max-w-md mx-auto">
+            <img src={computer} className="w-full h-auto mb-8 opacity-80" alt="Upload files" />
+            <h3 className="text-2xl font-bold text-[var(--text1)] mb-4">
+              {language === 'ro' ? 'Niciun fișier încărcat' : 'No files uploaded'}
+            </h3>
+            <p className="text-[var(--text2)] mb-6">
+              {language === 'ro' 
+                ? 'Începe prin a încărca documentele tale financiare pentru procesare automată' 
+                : 'Start by uploading your financial documents for automatic processing'
+              }
+            </p>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setDropzoneVisible(true)}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[var(--primary)] to-blue-500 
+              text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
+            >
+              <Upload size={20} />
+              {language === 'ro' ? 'Începe să încarci' : 'Start uploading'}
+            </motion.button>
           </div>
-        </div>
+        </motion.div>
       )}
 
-      <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center bg-black/50">
-        <LoadingComponent />
-      </div>}>
+      {/* Files List */}
+      {documents && documents.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden"
+        >
+          {/* Header */}
+          <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-[var(--text1)]">
+                {language === 'ro' ? 'Fișierele Tale' : 'Your Files'}
+              </h2>
+              <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
+                {documents.length} {language==='ro'?'fișiere':'files'}
+              </span>
+            </div>
+            <p className="text-[var(--text2)] mt-2">
+              {language === 'ro' ? 'Aici poți vedea fișierele încărcate și statusul lor' : 'Here you can see your uploaded files and their status'}
+            </p>
+          </div>
+
+          {/* Files Grid */}
+          <div className="p-6">
+            <div className="space-y-3">
+              {documents.map((doc, index: number) => (
+                <motion.div
+                  key={doc.name}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-4">
+                    {/* File Icon & Info */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <FileText size={24} className="text-[var(--primary)]" />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-[var(--text1)] text-lg truncate" title={doc.name}>
+                          {handleTooLongString(doc.name)}
+                        </h3>
+                        <div className="flex items-center gap-4 mt-1">
+                          <span className="text-[var(--text2)] font-medium">
+                            {processedFiles[doc.name]?.result.document_type || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
+                          </span>
+                          <span className="text-[var(--text3)] text-sm">
+                            {processedFiles[doc.name]?.result.document_date || '-'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status */}
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border ${getStatusColor(doc)}`}>
+                        {getStatusIcon(doc)}
+                        {getStatusText(doc)}
+                      </span>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      {/* View/Process Button */}
+                      {processedFiles[doc.name] ? (
+                        <TooltipDemo
+                          trigger={
+                            <button
+                              onClick={() => handleProcessFile(doc)}
+                              className="p-2 text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                            >
+                              <Eye size={18} />
+                            </button>
+                          }
+                          tip={language==='ro'?'Vezi date':'View data'}
+                        />
+                      ) : (
+                        <TooltipDemo
+                          trigger={
+                            <button
+                              onClick={() => handleProcessFile(doc)}
+                              className={`p-2 rounded-lg transition-colors ${
+                                currentProcessingFile?.name === doc.name && isLoading
+                                  ? 'text-[var(--primary)] bg-[var(--primary)]/10 animate-pulse'
+                                  : 'text-[var(--primary)] hover:bg-[var(--primary)]/10'
+                              }`}
+                              disabled={currentProcessingFile?.name === doc.name && isLoading}
+                            >
+                              <Cpu size={18} />
+                            </button>
+                          }
+                          tip={language==='ro'?'Procesează':'Process'}
+                        />
+                      )}
+
+                      {/* Delete Button */}
+                      <TooltipDemo
+                        trigger={
+                          <button
+                            onClick={() => handleDeleteDocument(doc.name)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash size={18} />
+                          </button>
+                        }
+                        tip={language==='ro'?'Șterge':'Delete'}
+                      />
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Modal */}
+      <Suspense fallback={
+        <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
+          <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl">
+            <LoadingComponent />
+          </div>
+        </div>
+      }>
         <ExtractedDataEdit
           isLoading={isLoading && isModalOpen}
           editFile={editFile}
