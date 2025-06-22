@@ -166,8 +166,8 @@ const BankPage = () => {
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
-              <Landmark size={24} className="text-white" />
+            <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+              <Landmark size={35} className="text-white" />
             </div>
             <div>
               <h1 className="text-4xl font-bold text-[var(--text1)] mb-2">
@@ -253,7 +253,7 @@ const BankPage = () => {
               className={`px-6 py-2 rounded-xl font-medium transition-all duration-300 ${
                 activeTab === tab.key
                   ? 'bg-[var(--primary)] text-white shadow-md'
-                  : 'text-[var(--text2)] hover:text-[var(--primary)]'
+                  : 'bg-[var(--primary)]/20 text-[var(--primary)]'
               }`}
             >
               {tab.label}
@@ -450,7 +450,7 @@ const BankPage = () => {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <button className="text-[var(--primary)] hover:text-[var(--primary)]/80 text-sm font-medium">
+                        <button className="text-white hover:text-white/70 bg-[var(--primary)] text-sm font-medium">
                           {language === 'ro' ? 'Vezi detalii' : 'View details'}
                         </button>
                       </td>
@@ -519,7 +519,7 @@ const BankPage = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button className="text-[var(--primary)] hover:text-[var(--primary)]/80 text-sm font-medium">
+                      <button className="bg-[var(--primary )] text-white hover:text-white/70 text-sm font-medium">
                         {language === 'ro' ? 'Reconciliază' : 'Reconcile'}
                       </button>
                     </td>

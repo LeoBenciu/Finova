@@ -12,8 +12,8 @@ import TermsOfServicePage from './app/Pages/TermsOfServicePage';
 import CookiesPolicyPage from './app/Pages/CookiesPolicyPage';
 import PrivacyPolicyPage from './app/Pages/PrivacyPolicyPage';
 import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage';
-import ClientsPage from './app/Pages/ClientsPage';
 import BankPage from './app/Pages/BankPage';
+import ClientsPage from './app/Pages/ClientsPage';
 
 function App() {
   return (

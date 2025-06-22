@@ -1,6 +1,5 @@
 import { useState } from "react"
 import User from "../Components/Settings/User";
-import ClientCompanies from "../Components/Settings/ClientCompanies";
 import Company from "../Components/Settings/Company";
 import Privacy from "../Components/Settings/Privacy";
 import RPA from '../Components/Settings/RPA';
@@ -34,12 +33,6 @@ const SettingsPage = () => {
           {language==='ro'?'Companie':'Company'}
         </button>)}
 
-        <button className={`${section===Section.CLIENTCOMPANIES?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
-        text-lg m-2 rounded-xl bg-[var(--background)]`}
-         onClick={()=>setSection(Section.CLIENTCOMPANIES)}>
-          {language==='ro'?'Clienti':'Client Companies'}
-        </button>
-
         <button className={`${section===Section.PRIVACY?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
         text-lg m-2 rounded-xl bg-[var(--background)]`}
          onClick={()=>setSection(Section.PRIVACY)}>
@@ -56,10 +49,6 @@ const SettingsPage = () => {
 
       {section===Section.USER&&(
       <User/>
-      )}
-
-      {section===Section.CLIENTCOMPANIES&&(
-         <ClientCompanies/>
       )}
 
       {section===Section.CLIENTCOMPANIES&&(
