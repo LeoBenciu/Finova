@@ -270,7 +270,7 @@ const HomePage = () => {
               <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData?.incomeCurrentMonth !== undefined ? companyData.incomeCurrentMonth.toFixed(2) : '0.00'}
             </h2>
             <div className="flex items-end gap-1">
-              <div className={`${Number(incomePercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+              <div className={`${Number(incomePercentChange) >= 0 ? "bg-emerald-500/30 text-emerald-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
                 {Number(incomePercentChange) >= 0 ? `+${incomePercentChange}` : `${incomePercentChange}`}%
               </div>
               <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
@@ -285,7 +285,7 @@ const HomePage = () => {
               <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData?.expensesCurrentMonth !== undefined ? companyData.expensesCurrentMonth.toFixed(2) : '0.00'}
             </h2>
             <div className="flex items-end gap-1">
-              <div className={`${Number(expensesPercentChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+              <div className={`${Number(expensesPercentChange) >= 0 ? "bg-emerald-500/30 text-emerald-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
                 {Number(expensesPercentChange) >= 0 ? `+${expensesPercentChange}` : `${expensesPercentChange}`}%
               </div>
               <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
@@ -300,7 +300,7 @@ const HomePage = () => {
               <span className="font-semibold text-xl text-[var(--text1)]">RON</span> {companyData ? ((companyData.incomeCurrentMonth || 0) - (companyData.expensesCurrentMonth || 0)).toFixed(2) : '0.00'}
             </h2>
             <div className="flex items-end gap-1">
-              <div className={`${Number(profitPercentageChange) >= 0 ? "bg-green-500/30 text-green-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
+              <div className={`${Number(profitPercentageChange) >= 0 ? "bg-emerald-500/30 text-emerald-500" : "bg-red-500/30 text-red-500"} text-sm px-1 font-bold rounded-full`}>
                 {Number(profitPercentageChange) >= 0 ? `+${profitPercentageChange}` : `${profitPercentageChange}`}%
               </div>
               <p className="text-xs text-[var(--text1)]">{language==='ro'?'vs ultima lună':'vs last month'}</p>
