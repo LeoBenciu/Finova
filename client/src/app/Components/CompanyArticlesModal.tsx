@@ -219,7 +219,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                                                 <div className="flex justify-center">
                                                     <button
                                                         onClick={() => handleDeleteArticle(article.id || 0)}
-                                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                                        className="p-2 bg-red-500/20 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all duration-200"
                                                     >
                                                         <Trash size={18} />
                                                     </button>

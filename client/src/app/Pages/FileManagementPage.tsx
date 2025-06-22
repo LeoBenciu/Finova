@@ -1,14 +1,14 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery } from '@/redux/slices/apiSlice';
-import { Bot, Eye, RefreshCw } from 'lucide-react';
+import { Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, Calendar, Zap, X } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import EditExtractedDataManagement from '../Components/EditExtractedDataManagement';
-import { Trash2 } from 'lucide-react';
 import { MyTooltip } from '../Components/MyTooltip';
 import AreYouSureModalR from '../Components/AreYouSureModalR';
 import FilesSearchFiltersComponent from '../Components/FilesSearchFiltersComponent';
-import {format, parse, compareAsc, addDays} from 'date-fns'
+import { format, parse, compareAsc, addDays } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 
 type clientCompanyName = {
   clientCompany:{
@@ -32,6 +32,12 @@ const FileManagementPage = () => {
   const [statusPolling, setStatusPolling] = useState<NodeJS.Timeout | null>(null);
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
+
+  // Bulk selection state
+  const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
+  const [showBulkActions, setShowBulkActions] = useState<boolean>(false);
+  const [bulkAction, setBulkAction] = useState<'delete' | 'process' | null>(null);
+
   if (false){
     console.log(pollingAttempts)
   }
@@ -100,6 +106,71 @@ const FileManagementPage = () => {
     processingDocId || 0, 
     { skip: !processingDocId }
   );
+
+  // Bulk selection functions
+  const toggleFileSelection = (fileId: number) => {
+    const newSelected = new Set(selectedFiles);
+    if (newSelected.has(fileId)) {
+      newSelected.delete(fileId);
+    } else {
+      newSelected.add(fileId);
+    }
+    setSelectedFiles(newSelected);
+    setShowBulkActions(newSelected.size > 0);
+  };
+
+  const selectAllFiles = () => {
+    if (filteredFiles?.documents) {
+      const allIds = new Set<number>(filteredFiles.documents.map((file: any): number => file.id));
+      setSelectedFiles(allIds);
+      setShowBulkActions(allIds.size > 0);
+    }
+  };
+
+  const deselectAllFiles = () => {
+    setSelectedFiles(new Set());
+    setShowBulkActions(false);
+  };
+
+  const isAllSelected = filteredFiles?.documents && selectedFiles.size === filteredFiles.documents.length && filteredFiles.documents.length > 0;
+  const isPartiallySelected = selectedFiles.size > 0 && selectedFiles.size < (filteredFiles?.documents?.length || 0);
+
+  // Bulk actions
+  const handleBulkDelete = async () => {
+    setBulkAction('delete');
+    setIsSureModal(true);
+  };
+
+  const handleBulkProcess = async () => {
+    const filesToProcess = Array.from(selectedFiles);
+    
+    for (const fileId of filesToProcess) {
+      try {
+        await handleProcessAutomation(fileId);
+      } catch (error) {
+        console.error(`Failed to process file ${fileId}:`, error);
+      }
+    }
+    
+    setSelectedFiles(new Set());
+    setShowBulkActions(false);
+  };
+
+  const executeBulkDelete = async () => {
+    const filesToDelete = Array.from(selectedFiles);
+    
+    for (const fileId of filesToDelete) {
+      try {
+        await handleDeleteFileButton(fileId);
+      } catch (error) {
+        console.error(`Failed to delete file ${fileId}:`, error);
+      }
+    }
+    
+    setSelectedFiles(new Set());
+    setShowBulkActions(false);
+    setBulkAction(null);
+  };
 
   const updateDocumentStatus = (docId: number, status: string) => {
     const updateDocs = (docs: any[]) => {
@@ -267,7 +338,7 @@ const FileManagementPage = () => {
   },[filesData, deleteFile])
   
   const handleTooLongString = useCallback((str: string): string => {
-    if (str.length > 18) return str.slice(0, 18) + '..';
+    if (str.length > 25) return str.slice(0, 25) + '..';
     return str;
   }, []);
 
@@ -337,170 +408,285 @@ const FileManagementPage = () => {
     return language === 'ro' ? 'Procesează date' : 'Submit data';
   };
 
+  const getFileIcon = (fileType: string) => {
+    return fileType === 'Invoice' ? FileText : Receipt;
+  };
+
   return (
-    <div>
-      <div>
-        <h1 className="mb-10 text-4xl font-bold text-left
-        text-[var(--text1)]">{language==='ro'?'Management Documente':'File Management'}</h1>
+    <div className="p-8">
+      <div className="mb-8">
+        <h1 className="text-4xl font-bold text-[var(--text1)] mb-2">
+          {language==='ro'?'Management Documente':'File Management'}
+        </h1>
+        <p className="text-[var(--text2)] text-lg">
+          {language === 'ro' ? 'Gestionează și procesează documentele tale' : 'Manage and process your documents'}
+        </p>
       </div>
 
       <FilesSearchFiltersComponent 
-      nameSearch={nameSearch}
-      setNameSearch={setNameSearch}
-      setTypeFilter={setTypeFilter}
-      intervalDate={intervalDateFilter}
-      setIntervalDate={setIntervalDateFilter}/>
+        nameSearch={nameSearch}
+        setNameSearch={setNameSearch}
+        setTypeFilter={setTypeFilter}
+        intervalDate={intervalDateFilter}
+        setIntervalDate={setIntervalDateFilter}
+      />
 
-      <div className="bg-[var(--foreground)] min-h-fit h-fit max-h-[1000px] min-w-full rounded-3xl pt-5 flex flex-col
-      border-[1px] border-[var(--text4)] shadow-md mb-[50px]">
-        
-        <div className="flex flex-row items-center gap-2 mb-2">
-          <p className="text-left text-2xl font-bold text-[var(--text1)] px-5">
-            {language === 'ro' ? 'Fisierele Tale' : 'Your Files'}
-          </p>
-          <p className="text-[var(--primary)] bg-[var(--primary)]/30
-          text-base font-bold rounded-2xl px-2 py-1">
-            {filteredFiles?.documents?.length || 0} {language==='ro'?'Fisiere':'Files'}
-          </p>
-        </div>
-
-        <p className="text-left text-base text-[var(--text2)] mb-5 px-5">
-          {language === 'ro' ? 'Aici poti gestiona toate fisierele tale' : 'Here you can manage all your files'}
-        </p>
-
-        <div className="min-w-full max-w-full flex- max-h-fit">
-          <div className="min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-6 border-t-[1px] border-b-[1px] border-[var(--text3)]
-          shadow-sm">
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Nume':'Name'}</p>
+      {/* Bulk Actions Bar */}
+      <AnimatePresence>
+        {showBulkActions && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="bg-[var(--primary)] text-white rounded-2xl p-4 mb-6 shadow-lg"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <span className="font-semibold">
+                  {selectedFiles.size} {language === 'ro' ? 'fișiere selectate' : 'files selected'}
+                </span>
+                <button
+                  onClick={deselectAllFiles}
+                  className="text-white/80 hover:text-white transition-colors text-sm"
+                >
+                  {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleBulkProcess}
+                  className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors"
+                >
+                  <Zap size={16} />
+                  {language === 'ro' ? 'Procesează Toate' : 'Process All'}
+                </motion.button>
+                
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={handleBulkDelete}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-xl transition-colors"
+                >
+                  <Trash2 size={16} />
+                  {language === 'ro' ? 'Șterge Toate' : 'Delete All'}
+                </motion.button>
+                
+                <button
+                  onClick={() => setShowBulkActions(false)}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Tipul':'Type'}</p>
+      <div className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
+        {/* Header */}
+        <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-[var(--text1)]">
+                {language === 'ro' ? 'Fișierele Tale' : 'Your Files'}
+              </h2>
+              <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
+                {filteredFiles?.documents?.length || 0} {language==='ro'?'fișiere':'files'}
+              </span>
             </div>
-
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Creat la data':'Created at'}</p> 
-            </div>
-
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Date extrase':'Extracted data'}</p>
-            </div>
-
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">Status</p> 
-            </div>
-
-            <div className="flex items-center justify-center">
-              <p className="font-bold text-[var(--text1)]">{language==='ro'?'Actiuni':'Actions'}</p>
-            </div>
+            
+            {/* Select All Checkbox */}
+            {filteredFiles?.documents?.length > 0 && (
+              <button
+                onClick={isAllSelected ? deselectAllFiles : selectAllFiles}
+                className="flex items-center gap-2 text-[var(--text2)] hover:text-[var(--primary)] transition-colors"
+              >
+                {isAllSelected ? (
+                  <CheckSquare size={20} className="text-[var(--primary)]" />
+                ) : isPartiallySelected ? (
+                  <CheckSquare size={20} className="text-[var(--primary)] opacity-50" />
+                ) : (
+                  <Square size={20} />
+                )}
+                <span className="text-sm font-medium">
+                  {language === 'ro' ? 'Selectează toate' : 'Select all'}
+                </span>
+              </button>
+            )}
           </div>
-
-          {filteredFiles?.documents?.map((file:any, index:number)=>{
-            return (
-             <div key={file.name} className={`min-w-full max-w-full min-h-[50px] max-h-[50px] grid grid-cols-6 border-b-[1px] 
-              border-[var(--text5)] ${(filteredFiles?.documents?.length-1) === index ?'rounded-b-3xl':''}`}>
-                 <div className="flex items-center justify-center">
-                 <MyTooltip content={file.name} trigger={
-                   <a href={file.signedUrl} target="_blank" rel="noopener noreferrer"
-                   className="cursor-pointer font-normal text-[var(--text1)] hover:text-[var(--primary)] transition-colors">
-                    { handleTooLongString(file.name)}
-                   </a>
-                 }/>
-                 </div>
-
-                 <div className="flex items-center justify-center">
-                     <p className="font-normal text-[var(--text1)]">{language==='ro'?(file.type==='Invoice'?'Factura':'Chitanta'):file.type}</p>
-                 </div>
-
-                 <div className="flex items-center justify-center">
-                     <p className="font-normal text-[var(--text1)]">{format(file.createdAt,'dd-MM-yyyy')}</p> 
-                 </div>
-
-                 <div className="flex items-center justify-center
-                 text-[var(--primary)] hover:cursor-pointer gap-1
-                 hover:text-[var(--primary)]/70 font-normal transition-colors" onClick={()=>{
-                   setIsModalOpen(true);
-                   setCurrentFile(file)
-                 }}>
-                   <Eye  size={16} 
-                   className="cursor-pointer"/>
-                   {language==='ro'?'Vezi':'View'}
-                 </div>
-
-                 <div className="flex items-center justify-center">
-                    <p className={`${getStatusColor(file)} font-normal`}>
-                      {getStatusDisplay(file)}
-                    </p>
-                    {file.id === processingDocId && (
-                      <RefreshCw size={16} className="ml-2 animate-spin text-blue-500" />
-                    )}
-                    {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'PENDING' && file.id !== processingDocId && (
-                      <MyTooltip content={language === 'ro' ? 'Verifică status' : 'Check status'} trigger={
-                        <RefreshCw 
-                          size={16} 
-                          className="ml-2 cursor-pointer text-blue-500 hover:text-blue-700 transition-colors" 
-                          onClick={() => handleCheckStatus(file.id)}
-                        />
-                      }/>
-                    )}
-                    {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'FAILED' && (
-                      <span 
-                        className="ml-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded cursor-pointer hover:bg-red-200 transition-colors"
-                        onClick={() => handleProcessAutomation(file.id)}
-                        title={language === 'ro' ? 'Încearcă din nou' : 'Retry'}
-                      >
-                        {language === 'ro' ? 'Retry' : 'Retry'}
-                      </span>
-                    )}
-                  </div>
-
-                 <div className="flex items-center justify-center gap-5">
-                   <MyTooltip content={getBotButtonTooltip(file)} trigger={
-                     <Bot 
-                       size={18} 
-                       className={`${
-                         isBotButtonDisabled(file) 
-                           ? 'text-gray-400 cursor-not-allowed' 
-                           : 'hover:text-[var(--primary)]/70 text-[var(--primary)] cursor-pointer transition-colors'
-                       }`}
-                       onClick={() => {
-                         if (!isBotButtonDisabled(file)) {
-                           handleProcessAutomation(file.id);
-                         }
-                       }}
-                     />
-                   }/>
-                   
-                   <MyTooltip content={language==='ro'?'Șterge Fișiere și date':'Delete File and Data'} trigger={
-                     <Trash2 
-                       size={18} 
-                       className="text-red-500 cursor-pointer hover:text-red-700 transition-colors" 
-                       onClick={()=>{
-                         setIsSureModal(true);
-                         setCurrentFile(file);
-                       }}
-                     />
-                   }/>
-                 </div>
-             </div>
-          )})}
         </div>
 
-      </div>  
+        {/* Files List */}
+        <div className="p-6">
+          {filteredFiles?.documents?.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText size={48} className="mx-auto text-[var(--text3)] mb-4" />
+              <p className="text-[var(--text2)] text-lg">
+                {language === 'ro' ? 'Nu există fișiere' : 'No files found'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredFiles?.documents?.map((file: any, index: number) => {
+                const FileIcon = getFileIcon(file.type);
+                const isSelected = selectedFiles.has(file.id);
+                
+                return (
+                  <motion.div
+                    key={file.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className={`bg-[var(--background)] rounded-2xl p-4 border transition-all duration-200 ${
+                      isSelected 
+                        ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
+                        : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      {/* Selection Checkbox */}
+                      <button
+                        onClick={() => toggleFileSelection(file.id)}
+                        className="p-1 hover:bg-[var(--text4)]/20 rounded-lg transition-colors"
+                      >
+                        {isSelected ? (
+                          <CheckSquare size={20} className="text-[var(--primary)]" />
+                        ) : (
+                          <Square size={20} className="text-[var(--text3)]" />
+                        )}
+                      </button>
+
+                      {/* File Icon & Info */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <FileIcon size={20} className="text-[var(--primary)]" />
+                        </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <MyTooltip content={file.name} trigger={
+                            <a 
+                              href={file.signedUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="font-semibold text-[var(--text1)] hover:text-[var(--primary)] transition-colors truncate block"
+                            >
+                              {handleTooLongString(file.name)}
+                            </a>
+                          }/>
+                          <div className="flex items-center gap-4 mt-1 text-sm text-[var(--text3)]">
+                            <span>{language==='ro'?(file.type==='Invoice'?'Factură':'Chitanță'):file.type}</span>
+                            <div className="flex items-center gap-1">
+                              <Calendar size={12} />
+                              <span>{format(file.createdAt,'dd-MM-yyyy')}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="flex items-center gap-2">
+                        <span className={`text-sm font-medium ${getStatusColor(file)}`}>
+                          {getStatusDisplay(file)}
+                        </span>
+                        {file.id === processingDocId && (
+                          <RefreshCw size={16} className="animate-spin text-blue-500" />
+                        )}
+                        {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'PENDING' && file.id !== processingDocId && (
+                          <MyTooltip content={language === 'ro' ? 'Verifică status' : 'Check status'} trigger={
+                            <RefreshCw 
+                              size={16} 
+                              className="cursor-pointer text-blue-500 hover:text-blue-700 transition-colors" 
+                              onClick={() => handleCheckStatus(file.id)}
+                            />
+                          }/>
+                        )}
+                        {file.rpa && file.rpa.length > 0 && file.rpa[0].status === 'FAILED' && (
+                          <button 
+                            className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-lg hover:bg-red-200 transition-colors"
+                            onClick={() => handleProcessAutomation(file.id)}
+                          >
+                            {language === 'ro' ? 'Reîncearcă' : 'Retry'}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        <MyTooltip content={language==='ro'?'Vezi date':'View data'} trigger={
+                          <button
+                            onClick={() => {
+                              setIsModalOpen(true);
+                              setCurrentFile(file);
+                            }}
+                            className="p-2 text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                          >
+                            <Eye size={18} />
+                          </button>
+                        }/>
+                        
+                        <MyTooltip content={getBotButtonTooltip(file)} trigger={
+                          <button
+                            onClick={() => {
+                              if (!isBotButtonDisabled(file)) {
+                                handleProcessAutomation(file.id);
+                              }
+                            }}
+                            disabled={isBotButtonDisabled(file)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              isBotButtonDisabled(file) 
+                                ? 'text-gray-400 cursor-not-allowed' 
+                                : 'text-[var(--primary)] hover:bg-[var(--primary)]/10'
+                            }`}
+                          >
+                            <Bot size={18} />
+                          </button>
+                        }/>
+                        
+                        <MyTooltip content={language==='ro'?'Șterge':'Delete'} trigger={
+                          <button
+                            onClick={() => {
+                              setIsSureModal(true);
+                              setCurrentFile(file);
+                            }}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        }/>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
 
       {isModalOpen&&(<EditExtractedDataManagement
-      setIsModalOpen={setIsModalOpen}
-      isOpen={isModalOpen}
-      processedFiles={files}
-      setProcessedFiles={setFilteredFiles}
-      currentFile ={currentFile}
-      setCurrentFile={setCurrentFile}
+        setIsModalOpen={setIsModalOpen}
+        isOpen={isModalOpen}
+        processedFiles={files}
+        setProcessedFiles={setFilteredFiles}
+        currentFile={currentFile}
+        setCurrentFile={setCurrentFile}
       />)}
 
       {isSureModal&&(
-        <AreYouSureModalR setIsSureModal={setIsSureModal} setAction={()=>handleDeleteFileButton(currentFile?.processedData?.[0]?.documentId || currentFile?.id)} confirmButton={language==='ro'?'Șterge':'Delete'}
-        text={language==='ro'?"Ești sigur/ă că vrei să ȘTERGI permanent fișierul și datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and it's data?"}/>
+        <AreYouSureModalR 
+          setIsSureModal={setIsSureModal} 
+          setAction={bulkAction === 'delete' ? executeBulkDelete : () => handleDeleteFileButton(currentFile?.processedData?.[0]?.documentId || currentFile?.id)} 
+          confirmButton={language==='ro'?'Șterge':'Delete'}
+          text={
+            bulkAction === 'delete' 
+              ? (language==='ro'?`Ești sigur/ă că vrei să ȘTERGI permanent ${selectedFiles.size} fișiere și datele aferente?`:`Are you sure you want to permanently DELETE ${selectedFiles.size} files and their data?`)
+              : (language==='ro'?"Ești sigur/ă că vrei să ȘTERGI permanent fișierul și datele aferente acestuia?":"Are you sure you want to permanently DELETE the file and its data?")
+          }
+        />
       )}
 
       {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
