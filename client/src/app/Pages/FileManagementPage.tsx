@@ -121,7 +121,7 @@ const FileManagementPage = () => {
 
   const selectAllFiles = () => {
     if (filteredFiles?.documents) {
-      const allIds = new Set<number>(filteredFiles.documents.map((file: any): number => file.id));
+      const allIds = new Set<number>(filteredFiles.documents.map((file: any) => file.id));
       setSelectedFiles(allIds);
       setShowBulkActions(allIds.size > 0);
     }
@@ -415,12 +415,19 @@ const FileManagementPage = () => {
   return (
     <div className="p-8">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-[var(--text1)] mb-2">
-          {language==='ro'?'Management Documente':'File Management'}
-        </h1>
-        <p className="text-[var(--text2)] text-lg">
-          {language === 'ro' ? 'Gestionează și procesează documentele tale' : 'Manage and process your documents'}
-        </p>
+        <div className="flex items-center gap-4">
+          <div className="w-20 h-20 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+            <FileText size={35} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-4xl font-bold text-[var(--text1)] mb-2 text-left">
+              {language==='ro'?'Management Documente':'File Management'}
+            </h1>
+            <p className="text-[var(--text2)] text-lg text-left">
+              {language === 'ro' ? 'Gestionează și procesează documentele tale' : 'Manage and process your documents'}
+            </p>
+          </div>
+        </div>
       </div>
 
       <FilesSearchFiltersComponent 
@@ -438,16 +445,16 @@ const FileManagementPage = () => {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className="bg-[var(--primary)] text-white rounded-2xl p-4 mb-6 shadow-lg"
+            className="bg-[var(--foreground)] border border-[var(--primary)] text-[var(--text1)] rounded-2xl p-4 mb-6 shadow-lg"
           >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <span className="font-semibold">
+                <span className="font-semibold text-[var(--primary)]">
                   {selectedFiles.size} {language === 'ro' ? 'fișiere selectate' : 'files selected'}
                 </span>
                 <button
                   onClick={deselectAllFiles}
-                  className="text-white/80 hover:text-white transition-colors text-sm"
+                  className="text-[var(--text2)] hover:text-[var(--primary)] transition-colors text-sm"
                 >
                   {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
                 </button>
@@ -458,7 +465,7 @@ const FileManagementPage = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleBulkProcess}
-                  className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 rounded-xl transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 text-[var(--primary)] rounded-xl transition-colors"
                 >
                   <Zap size={16} />
                   {language === 'ro' ? 'Procesează Toate' : 'Process All'}
@@ -468,7 +475,7 @@ const FileManagementPage = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleBulkDelete}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-500/20 hover:bg-red-500/30 rounded-xl transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-colors"
                 >
                   <Trash2 size={16} />
                   {language === 'ro' ? 'Șterge Toate' : 'Delete All'}
@@ -476,7 +483,7 @@ const FileManagementPage = () => {
                 
                 <button
                   onClick={() => setShowBulkActions(false)}
-                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                  className="p-2 hover:bg-[var(--background)] text-[var(--text3)] rounded-lg transition-colors"
                 >
                   <X size={18} />
                 </button>
@@ -562,8 +569,8 @@ const FileManagementPage = () => {
 
                       {/* File Icon & Info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <FileIcon size={20} className="text-[var(--primary)]" />
+                        <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <FileIcon size={24} className="text-[var(--primary)]" />
                         </div>
                         
                         <div className="flex-1 min-w-0">
@@ -572,15 +579,17 @@ const FileManagementPage = () => {
                               href={file.signedUrl} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="font-semibold text-[var(--text1)] hover:text-[var(--primary)] transition-colors truncate block"
+                              className="font-semibold text-[var(--text1)] hover:text-[var(--primary)] transition-colors truncate block text-lg"
                             >
                               {handleTooLongString(file.name)}
                             </a>
                           }/>
-                          <div className="flex items-center gap-4 mt-1 text-sm text-[var(--text3)]">
-                            <span>{language==='ro'?(file.type==='Invoice'?'Factură':'Chitanță'):file.type}</span>
-                            <div className="flex items-center gap-1">
-                              <Calendar size={12} />
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-[var(--text2)] font-medium">
+                              {language==='ro'?(file.type==='Invoice'?'Factură':'Chitanță'):file.type}
+                            </span>
+                            <div className="flex items-center gap-1 text-[var(--text3)]">
+                              <Calendar size={14} />
                               <span>{format(file.createdAt,'dd-MM-yyyy')}</span>
                             </div>
                           </div>
