@@ -157,7 +157,7 @@ const BankPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[var(--background)] to-[var(--foreground)]/50 p-8">
+    <div className="min-h-screen p-8">
         {clientCompanyName===''&&(
             <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
              <InitialClientCompanyModalSelect/>
@@ -170,10 +170,10 @@ const BankPage = () => {
               <Landmark size={35} className="text-white" />
             </div>
             <div>
-              <h1 className="text-4xl font-bold text-[var(--text1)] mb-2">
+              <h1 className="text-4xl font-bold text-[var(--text1)] mb-2 text-left">
                 {language === 'ro' ? 'Reconciliere Bancară' : 'Bank Reconciliation'}
               </h1>
-              <p className="text-[var(--text2)] text-lg">
+              <p className="text-[var(--text2)] text-lg text-left">
                 {language === 'ro' 
                   ? 'Gestionează reconcilierea documentelor cu tranzacțiile bancare' 
                   : 'Manage document reconciliation with bank transactions'
@@ -519,7 +519,7 @@ const BankPage = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button className="bg-[var(--primary )] text-white hover:text-white/70 text-sm font-medium">
+                      <button className="bg-[var(--primary)] text-white hover:text-white/70 text-sm font-medium">
                         {language === 'ro' ? 'Reconciliază' : 'Reconcile'}
                       </button>
                     </td>

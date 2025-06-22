@@ -143,7 +143,8 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                         
                         <button 
                             onClick={() => setIsCompanyAccountingDetailsModal(false)}
-                            className="p-3 hover:bg-red-500/10 rounded-2xl transition-colors duration-200 text-[var(--text3)] hover:text-red-500"
+                            className="p-3 hover:bg-red-500/10 rounded-2xl transition-colors duration-200
+                             text-white hover:text-red-500 bg-red-500"
                         >
                             <X size={24} />
                         </button>
@@ -156,7 +157,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                                 isArticleSelected
                                     ? 'bg-[var(--primary)] text-white shadow-md'
-                                    : 'text-[var(--text2)] hover:text-[var(--primary)]'
+                                    : 'text-[var(--primary)] bg-[var(--primary)]/20'
                             }`}
                         >
                             <Package size={18} />
@@ -167,7 +168,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                             className={`flex items-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                                 !isArticleSelected
                                     ? 'bg-[var(--primary)] text-white shadow-md'
-                                    : 'text-[var(--text2)] hover:text-[var(--primary)]'
+                                    : 'text-[var(--primary)] bg-[var(--primary)]/20'
                             }`}
                         >
                             <Settings size={18} />
@@ -284,7 +285,7 @@ const CompanyArticlesModal = ({isArticleSelected, setIsArticleSelected, setIsCom
                                                 <div className="flex justify-center">
                                                     <button
                                                         onClick={() => handleDeleteManagement(management.id || 0)}
-                                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all duration-200"
+                                                        className="p-2 bg-red-500/20 text-red-500 hover:text-white hover:bg-red-500 rounded-lg transition-all duration-200"
                                                     >
                                                         <Trash size={18} />
                                                     </button>
