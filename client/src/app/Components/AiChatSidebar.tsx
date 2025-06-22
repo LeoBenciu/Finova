@@ -1,4 +1,4 @@
-import { X, Send, Bot, User, Sparkles, Zap } from 'lucide-react';
+import { X, Send, Bot, User, Zap, Cpu } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -108,7 +108,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
             <div className="flex items-center gap-4">
               <div className="relative">
                 <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/20">
-                  <Sparkles size={24} className="text-white drop-shadow-lg" />
+                  <Cpu size={24} className="text-white drop-shadow-lg" />
                 </div>
                 <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
               </div>

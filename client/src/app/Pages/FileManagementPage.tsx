@@ -375,7 +375,7 @@ const FileManagementPage = () => {
       const status = file.rpa[0].status;
       switch (status) {
         case 'COMPLETED':
-          return 'text-green-500';
+          return 'text-emerald-500';
         case 'FAILED':
           return 'text-red-500';
         case 'PENDING':
@@ -454,7 +454,8 @@ const FileManagementPage = () => {
                 </span>
                 <button
                   onClick={deselectAllFiles}
-                  className="text-[var(--text2)] hover:text-[var(--primary)] transition-colors text-sm"
+                  className="text-[var(--primary)] bg-[var(--primary)]/10 
+                  hover:bg-[var(--primary)]/20 transition-colors text-sm"
                 >
                   {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
                 </button>
@@ -465,7 +466,7 @@ const FileManagementPage = () => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleBulkProcess}
-                  className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 text-[var(--primary)] rounded-xl transition-colors"
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-xl transition-colors"
                 >
                   <Zap size={16} />
                   {language === 'ro' ? 'Procesează Toate' : 'Process All'}
@@ -483,7 +484,7 @@ const FileManagementPage = () => {
                 
                 <button
                   onClick={() => setShowBulkActions(false)}
-                  className="p-2 hover:bg-[var(--background)] text-[var(--text3)] rounded-lg transition-colors"
+                  className="p-2 bg-[var(--background)] text-[var(--text3)] hover:text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"
                 >
                   <X size={18} />
                 </button>
