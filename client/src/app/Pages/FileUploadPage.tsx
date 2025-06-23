@@ -227,7 +227,8 @@ const FileUploadPage = () => {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
+                  className="bg-[var(--background)] rounded-2xl px-4 py-0 mb-1 
+                  border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
                 >
                   <div className="flex items-center gap-4">
                     {/* File Icon & Info */}
@@ -237,7 +238,7 @@ const FileUploadPage = () => {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-semibold text-[var(--text1)] text-lg truncate" title={doc.name}>
+                        <h3 className="font-semibold text-[var(--text1)] text-lg truncate text-left" title={doc.name}>
                           {handleTooLongString(doc.name)}
                         </h3>
                         <div className="flex items-center gap-4 mt-1">
@@ -267,7 +268,8 @@ const FileUploadPage = () => {
                           trigger={
                             <button
                               onClick={() => handleProcessFile(doc)}
-                              className="p-2 text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                              className="p-2 text-emerald-500 bg-emerald-500/20 hover:text-white
+                               hover:bg-emerald-500 rounded-lg transition-colors"
                             >
                               <Eye size={18} />
                             </button>
@@ -281,8 +283,8 @@ const FileUploadPage = () => {
                               onClick={() => handleProcessFile(doc)}
                               className={`p-2 rounded-lg transition-colors ${
                                 currentProcessingFile?.name === doc.name && isLoading
-                                  ? 'text-[var(--primary)] bg-[var(--primary)]/10 animate-pulse'
-                                  : 'text-[var(--primary)] hover:bg-[var(--primary)]/10'
+                                  ? 'text-[var(--primary)] bg-[var(--primary)]/20 hover:bg-[var(--primary)] hover:text-white animate-pulse'
+                                  : 'text-[var(--primary)] bg-[var(--primary)]/20 hover:bg-[var(--primary)] hover:text-white'
                               }`}
                               disabled={currentProcessingFile?.name === doc.name && isLoading}
                             >
@@ -298,7 +300,7 @@ const FileUploadPage = () => {
                         trigger={
                           <button
                             onClick={() => handleDeleteDocument(doc.name)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
                           >
                             <Trash size={18} />
                           </button>
