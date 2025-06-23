@@ -213,8 +213,8 @@ const User = ({}:UserProps) => {
                   <SelectValue placeholder={language==='ro'?'Selectați rolul':'Select role'} />
                 </SelectTrigger>
                 <SelectContent className="bg-[var(--foreground)] border border-[var(--text4)] rounded-2xl shadow-lg">
-                  <SelectItem value="USER" className="cursor-pointer hover:bg-[var(--primary)]/10">User</SelectItem>
-                  <SelectItem value="ADMIN" className="cursor-pointer hover:bg-[var(--primary)]/10">Admin</SelectItem>
+                  <SelectItem value="USER" className="cursor-pointer hover:bg-[var(--primary)]/10 text-black">User</SelectItem>
+                  <SelectItem value="ADMIN" className="cursor-pointer hover:bg-[var(--primary)]/10 text-black">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>

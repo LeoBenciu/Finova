@@ -9,6 +9,7 @@ import AreYouSureModalR from '../Components/AreYouSureModalR';
 import FilesSearchFiltersComponent from '../Components/FilesSearchFiltersComponent';
 import { format, parse, compareAsc, addDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import LoadingComponent from '../Components/LoadingComponent';
 
 type clientCompanyName = {
   clientCompany:{
@@ -96,7 +97,7 @@ const FileManagementPage = () => {
     setNameSearch,intervalDateFilter,setIntervalDateFilter, files]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
-  const { data: filesData } = useGetFilesQuery({company:clientCompanyEin});
+  const { data: filesData, isLoading: isFilesLoading } = useGetFilesQuery({company:clientCompanyEin});
   const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
   const [ processAutomation ] = useInsertClientInvoiceMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
@@ -701,6 +702,12 @@ const FileManagementPage = () => {
       )}
 
       {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
+
+      {isFilesLoading&&(
+        <div className='inset-0 w-full h-full bg-[var(--background)]/20'>
+        <LoadingComponent/>
+        </div>
+        )}
     </div>
   )
 }
