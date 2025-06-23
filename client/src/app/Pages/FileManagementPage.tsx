@@ -704,8 +704,11 @@ const FileManagementPage = () => {
       {clientCompanyName===''&&(<InitialClientCompanyModalSelect/>)}
 
       {isFilesLoading&&(
-        <div className='inset-0 w-full h-full bg-[var(--background)]/20'>
-        <LoadingComponent/>
+        <div className='fixed inset-0 z-50 flex items-center justify-center
+         w-full h-full bg-[var(--background)]/60 backdrop-blur-sm'>
+          <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl border border-[var(--text4)]">
+            <LoadingComponent/>
+          </div>
         </div>
         )}
     </div>
