@@ -187,7 +187,6 @@ const HomePage = () => {
     console.log('LOG',companyData);
   },[companyData]);
 
-  if(isCompanyDataLoading) return <LoadingComponent></LoadingComponent>
   if(IsCompanyDataError) return <p>Error</p>
 
   const renderFinancialStatement = () => {
@@ -446,6 +445,16 @@ const HomePage = () => {
       >
         {renderFinancialStatement()}
       </motion.div>
+
+
+      {isCompanyDataLoading&&(
+      <div className='fixed inset-0 z-50 flex items-center justify-center
+       w-full h-full bg-[var(--background)]/60 backdrop-blur-sm'>
+        <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl border border-[var(--text4)]">
+          <LoadingComponent/>
+        </div>
+      </div>
+      )}
     </div>
   )
 }
