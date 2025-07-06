@@ -138,10 +138,17 @@ class FirstCrewFinova:
 
     @crew
     def crew(self) -> Crew:
-        """Creates the FirstCrewFinova crew with parallel processing"""
+        """Creates the FirstCrewFinova crew"""
+        process_type = Process.sequential  
+
+        if hasattr(Process, 'parallel'):
+            process_type = Process.parallel
+        elif hasattr(Process, 'hierarchical'):
+            process_type = Process.hierarchical
+            
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
-            process=Process.parallel,
+            process=process_type,
             verbose=True
         )

@@ -18,6 +18,9 @@ def get_existing_articles() -> Dict:
         script_dir = os.path.dirname(os.path.abspath(__file__))
         articles_path = os.path.join(script_dir, "articles.csv")
         
+        if not os.path.exists(articles_path):
+            articles_path = "articles.csv"
+        
         with open(articles_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -44,7 +47,6 @@ def save_temp_file(base64_data: str) -> str:
     except Exception as e:
         logging.error(f"Error saving temporary file: {str(e)}")
         raise
-
 
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
     """Process a single document and return extraction results."""
@@ -88,7 +90,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 os.remove(doc_path)
             except Exception as e:
                 logging.warning(f"Failed to remove temporary file: {str(e)}")
-            
+
 def read_base64_from_file(file_path: str) -> str:
     """Read base64 data from a file."""
     try:
