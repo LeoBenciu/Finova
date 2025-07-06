@@ -8,6 +8,8 @@ import logging
 from crew import FirstCrewFinova
 from typing import Dict, Any
 import tempfile
+from io import StringIO
+from contextlib import redirect_stdout, redirect_stderr
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
@@ -69,34 +71,52 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"],
             "existing_articles": existing_articles,
             "management_records": management_records,
-            "doc_type": "Unknown"
+            "doc_type": "Unknown"  
         }
         
-        result = crew.kickoff(inputs=inputs)
+        captured_output = StringIO()
+        
+        with redirect_stdout(captured_output), redirect_stderr(captured_output):
+            result = crew.kickoff(inputs=inputs)
         
         categorization = {}
         extracted_data = {}
         
-        if result.tasks_output and len(result.tasks_output) > 0:
+        if hasattr(result, 'tasks_output') and result.tasks_output and len(result.tasks_output) > 0:
             if result.tasks_output[0].raw:
                 try:
                     categorization = json.loads(result.tasks_output[0].raw)
                 except json.JSONDecodeError:
-                    logging.error(f"Failed to parse categorization: {result.tasks_output[0].raw}")
+                    raw_output = result.tasks_output[0].raw
+                    if isinstance(raw_output, str):
+                        import re
+                        json_match = re.search(r'\{[^}]+\}', raw_output)
+                        if json_match:
+                            try:
+                                categorization = json.loads(json_match.group())
+                            except:
+                                categorization = {"document_type": "Unknown", "error": "Failed to parse output"}
+                    else:
+                        categorization = {"document_type": "Unknown", "error": "Invalid output format"}
             
             if len(result.tasks_output) > 1 and result.tasks_output[1].raw:
                 try:
                     extracted_data = json.loads(result.tasks_output[1].raw)
                 except json.JSONDecodeError:
-                    logging.error(f"Failed to parse extracted data: {result.tasks_output[1].raw}")
+                    extracted_data = {"error": "Failed to parse extraction data"}
         
-        combined_data = {**categorization, **extracted_data} if categorization or extracted_data else {"error": "No data extracted"}
+        combined_data = {**categorization, **extracted_data} if categorization or extracted_data else {"error": "No data extracted", "crew_failed": True}
         
         return {
             "data": combined_data
         }
     except Exception as e:
         logging.error(f"Failed to process {doc_path}: {str(e)}", exc_info=True)
+        
+        error_message = str(e)
+        if "LLM" in error_message or "OpenAI" in error_message or "API" in error_message:
+            return {"error": "LLM configuration error. Please check OpenAI API key.", "details": error_message}
+        
         return {"error": f"Failed to process: {str(e)}"}
     finally:
         if os.path.exists(doc_path):
