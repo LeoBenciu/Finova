@@ -1,5 +1,7 @@
 crewai
 crewai-tools
+PyPDF2
+pydantic
 pytesseract
 pdf2image
 pillow
