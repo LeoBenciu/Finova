@@ -5,45 +5,165 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as os from 'os';
+import { randomBytes } from 'crypto';
+
 const execPromise = promisify(exec);
+const writeFilePromise = promisify(fs.writeFile);
+const unlinkPromise = promisify(fs.unlink);
 
 @Injectable()
 export class DataExtractionService {
     private readonly logger = new Logger(DataExtractionService.name);
-    private readonly pythonScriptPath = path.join(__dirname, '../../../../agents/first_crew_finova/src/first_crew_finova/main.py');
+    private readonly pythonScriptPath: string;
+    private readonly tempDir: string;
 
-    constructor(config: ConfigService, private readonly prisma: PrismaService) {}
+    constructor(
+        private readonly config: ConfigService, 
+        private readonly prisma: PrismaService
+    ) {
+        this.pythonScriptPath = this.config.get<string>('PYTHON_SCRIPT_PATH') || 
+            path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py');
+        
+        this.tempDir = path.join(os.tmpdir(), 'data-extraction');
+        if (!fs.existsSync(this.tempDir)) {
+            fs.mkdirSync(this.tempDir, { recursive: true });
+        }
+        
+        this.logger.log(`Python script path: ${this.pythonScriptPath}`);
+        this.logger.log(`Temp directory: ${this.tempDir}`);
+        
+        if (!fs.existsSync(this.pythonScriptPath)) {
+            this.logger.error(`Python script not found at: ${this.pythonScriptPath}`);
+        }
+    }
 
-    async extractData(fileBase64:string, clientCompanyEin: string) {
+    async extractData(fileBase64: string, clientCompanyEin: string) {
+        let tempBase64File: string | null = null;
+        
         try {
+            if (!fs.existsSync(this.pythonScriptPath)) {
+                throw new Error(`Python script not found at: ${this.pythonScriptPath}`);
+            }
+
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: clientCompanyEin },
             });
             if (!clientCompany) {
-                throw new Error(`Failed to find client company with EIN:${clientCompanyEin} in the database!`);
+                throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
             }
 
-            const { stdout, stderr } = await execPromise(`python ${this.pythonScriptPath} ${clientCompanyEin} ${fileBase64}`);
+            const tempFileName = `base64_${randomBytes(8).toString('hex')}.txt`;
+            tempBase64File = path.join(this.tempDir, tempFileName);
+            await writeFilePromise(tempBase64File, fileBase64);
+            
+            this.logger.debug(`Created temporary base64 file: ${tempBase64File}`);
+
+            const command = `python "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}"`;
+            
+            this.logger.debug(`Executing command: ${command.substring(0, 100)}...`);
+            
+            const { stdout, stderr } = await execPromise(command, {
+                maxBuffer: 1024 * 1024 * 10,
+                cwd: path.dirname(this.pythonScriptPath), 
+                env: {
+                    ...process.env,
+                    PYTHONPATH: path.dirname(this.pythonScriptPath)
+                }
+            });
+            
             if (stderr) {
-                this.logger.error(`Python error: ${stderr}`);
-                throw new Error(`Failed to process document: ${stderr}`);
+                this.logger.warn(`Python stderr output: ${stderr}`);
             }
 
-            const result = JSON.parse(stdout);
+            let result;
+            try {
+                const jsonOutput = this.extractJsonFromOutput(stdout);
+                result = JSON.parse(jsonOutput);
+            } catch (parseError) {
+                this.logger.error(`Failed to parse Python output. Raw output: ${stdout}`);
+                throw new Error(`Invalid JSON output from Python script: ${parseError.message}`);
+            }
+
             if (result.error) {
                 throw new Error(result.error);
             }
 
-            const extractedJsonData = result.data;
+            const extractedData = result.data || result;
 
-            this.validateInvoiceDirection(extractedJsonData, clientCompanyEin);
-            this.validateExtractedData(extractedJsonData, [], [], clientCompanyEin);
+            this.validateInvoiceDirection(extractedData, clientCompanyEin);
+            this.validateExtractedData(extractedData, [], [], clientCompanyEin);
 
-            return extractedJsonData;
-        } catch (e) {
-            this.logger.error(`Error extracting data for EIN ${clientCompanyEin}: ${e.message}`, e.stack);
-            throw new Error(`Failed to extract data from document: ${e.message}`);
+            return extractedData;
+            
+        } catch (error) {
+            this.logger.error(`Error extracting data for EIN ${clientCompanyEin}: ${error.message}`, error.stack);
+            throw new Error(`Failed to extract data from document: ${error.message}`);
+        } finally {
+            if (tempBase64File && fs.existsSync(tempBase64File)) {
+                try {
+                    await unlinkPromise(tempBase64File);
+                    this.logger.debug(`Cleaned up temporary file: ${tempBase64File}`);
+                } catch (cleanupError) {
+                    this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
+                }
+            }
         }
+    }
+
+    private extractJsonFromOutput(output: string): string {
+        const lines = output.split('\n');
+        
+        let jsonString = '';
+        let braceCount = 0;
+        let inJson = false;
+        
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            
+            if (!inJson && line.includes('}')) {
+                inJson = true;
+            }
+            
+            if (inJson) {
+                for (let j = line.length - 1; j >= 0; j--) {
+                    if (line[j] === '}') braceCount++;
+                    else if (line[j] === '{') braceCount--;
+                    
+                    if (braceCount === 0 && line[j] === '{') {
+                        jsonString = line.substring(j) + '\n' + jsonString;
+                        return jsonString.trim();
+                    }
+                }
+                
+                jsonString = line + '\n' + jsonString;
+            }
+        }
+        
+        const startIndex = output.lastIndexOf('{');
+        if (startIndex === -1) {
+            throw new Error('No JSON object found in output');
+        }
+        
+        let openBraces = 0;
+        let endIndex = -1;
+        
+        for (let i = startIndex; i < output.length; i++) {
+            if (output[i] === '{') openBraces++;
+            else if (output[i] === '}') {
+                openBraces--;
+                if (openBraces === 0) {
+                    endIndex = i + 1;
+                    break;
+                }
+            }
+        }
+        
+        if (endIndex !== -1) {
+            return output.substring(startIndex, endIndex);
+        }
+        
+        throw new Error('Incomplete JSON object in output');
     }
 
     private validateInvoiceDirection(data: any, clientCompanyEin: string) {
@@ -52,11 +172,15 @@ export class DataExtractionService {
             return;
         }
 
-        const isIncoming = data.buyer_ein === clientCompanyEin;
-        const isOutgoing = data.vendor_ein === clientCompanyEin;
+        const buyerEin = data.buyer_ein.replace(/^RO/i, '');
+        const vendorEin = data.vendor_ein.replace(/^RO/i, '');
+        const cleanClientEin = clientCompanyEin.replace(/^RO/i, '');
+
+        const isIncoming = buyerEin === cleanClientEin;
+        const isOutgoing = vendorEin === cleanClientEin;
 
         if (!isIncoming && !isOutgoing) {
-            this.logger.warn(`Neither buyer nor vendor matches client company EIN: ${clientCompanyEin}`);
+            this.logger.warn(`Neither buyer (${buyerEin}) nor vendor (${vendorEin}) matches client company EIN: ${cleanClientEin}`);
             return;
         }
 
@@ -79,47 +203,30 @@ export class DataExtractionService {
         }
     }
 
-    private extractJsonString(input: string): string {
-        try {
-            const startIndex = input.indexOf('{');
-            if (startIndex === -1) return input;
-            
-            let openBraces = 0;
-            let endIndex = -1;
-            
-            for (let i = startIndex; i < input.length; i++) {
-                if (input[i] === '{') openBraces++;
-                else if (input[i] === '}') {
-                    openBraces--;
-                    if (openBraces === 0) {
-                        endIndex = i + 1;
-                        break;
-                    }
-                }
-            }
-            
-            if (endIndex !== -1) {
-                return input.substring(startIndex, endIndex);
-            }
-            
-            return input;
-        } catch (error) {
-            this.logger.warn("Error extracting JSON string", error);
-            return input;
-        }
-    }
-
     private validateExtractedData(data: any, existingArticles: any[], managementRecords: any[], clientCompanyEin: string) {
         if (!data || typeof data !== 'object') {
             throw new Error('Invalid extracted data format');
         }
 
+        const numericFields = ['total_amount', 'vat_amount'];
+        numericFields.forEach(field => {
+            if (data[field] !== undefined && data[field] !== null) {
+                data[field] = Number(data[field]);
+            }
+        });
+
         if (Array.isArray(data.line_items)) {
             data.line_items = data.line_items.map((item: any) => {
-                if (item.quantity !== undefined) item.quantity = Number(item.quantity);
-                if (item.unit_price !== undefined) item.unit_price = Number(item.unit_price);
-                if (item.vat_amount !== undefined) item.vat_amount = Number(item.vat_amount);
-                if (item.total !== undefined) item.total = Number(item.total);
+                const itemNumericFields = ['quantity', 'unit_price', 'vat_amount', 'total'];
+                itemNumericFields.forEach(field => {
+                    if (item[field] !== undefined && item[field] !== null) {
+                        item[field] = Number(item[field]);
+                    }
+                });
+                
+                item.isNew = item.isNew !== undefined ? item.isNew : true;
+                item.management = item.management || null;
+                
                 return item;
             });
         } else {
