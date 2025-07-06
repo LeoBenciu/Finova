@@ -15,26 +15,59 @@ const unlinkPromise = promisify(fs.unlink);
 @Injectable()
 export class DataExtractionService {
     private readonly logger = new Logger(DataExtractionService.name);
-    private readonly pythonScriptPath: string;
+    private pythonScriptPath: string;
     private readonly tempDir: string;
 
     constructor(
         private readonly config: ConfigService, 
         private readonly prisma: PrismaService
     ) {
-        this.pythonScriptPath = this.config.get<string>('PYTHON_SCRIPT_PATH') || 
-            path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py');
+        const isProduction = process.env.NODE_ENV === 'production';
+        
+        if (isProduction || process.env.RENDER) {
+            this.pythonScriptPath = path.join(
+                process.cwd(),
+                '..',
+                '..',
+                'agents',
+                'first_crew_finova',
+                'src',
+                'first_crew_finova',
+                'main.py'
+            );
+        } else {
+            this.pythonScriptPath = this.config.get<string>('PYTHON_SCRIPT_PATH') || 
+                path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py');
+        }
         
         this.tempDir = path.join(os.tmpdir(), 'data-extraction');
         if (!fs.existsSync(this.tempDir)) {
             fs.mkdirSync(this.tempDir, { recursive: true });
         }
         
+        this.logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+        this.logger.log(`Current working directory: ${process.cwd()}`);
         this.logger.log(`Python script path: ${this.pythonScriptPath}`);
         this.logger.log(`Temp directory: ${this.tempDir}`);
         
-        if (!fs.existsSync(this.pythonScriptPath)) {
-            this.logger.error(`Python script not found at: ${this.pythonScriptPath}`);
+        try {
+            const scriptDir = path.dirname(this.pythonScriptPath);
+            if (fs.existsSync(scriptDir)) {
+                const files = fs.readdirSync(scriptDir);
+                this.logger.log(`Files in script directory: ${files.join(', ')}`);
+            } else {
+                this.logger.warn(`Script directory does not exist: ${scriptDir}`);
+                
+                const cwd = process.cwd();
+                this.logger.log(`Contents of ${cwd}: ${fs.readdirSync(cwd).join(', ')}`);
+                
+                const parent = path.join(cwd, '..');
+                if (fs.existsSync(parent)) {
+                    this.logger.log(`Contents of parent: ${fs.readdirSync(parent).join(', ')}`);
+                }
+            }
+        } catch (e) {
+            this.logger.error(`Error checking directories: ${e.message}`);
         }
     }
 
@@ -43,7 +76,27 @@ export class DataExtractionService {
         
         try {
             if (!fs.existsSync(this.pythonScriptPath)) {
-                throw new Error(`Python script not found at: ${this.pythonScriptPath}`);
+                const alternativePaths = [
+                    path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
+                    '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
+                    path.join(process.cwd(), 'agents/first_crew_finova/src/first_crew_finova/main.py'),
+                ];
+                
+                let foundPath = null;
+                for (const altPath of alternativePaths) {
+                    this.logger.debug(`Checking alternative path: ${altPath}`);
+                    if (fs.existsSync(altPath)) {
+                        foundPath = altPath;
+                        this.logger.log(`Found Python script at alternative path: ${altPath}`);
+                        break;
+                    }
+                }
+                
+                if (!foundPath) {
+                    throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
+                }
+                
+                this.pythonScriptPath = foundPath;
             }
 
             const clientCompany = await this.prisma.clientCompany.findUnique({
@@ -59,16 +112,24 @@ export class DataExtractionService {
             
             this.logger.debug(`Created temporary base64 file: ${tempBase64File}`);
 
-            const command = `python "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}"`;
+            try {
+                await execPromise('python3 -m pip install crewai crewai-tools pytesseract pdf2image pillow', {
+                    cwd: path.dirname(this.pythonScriptPath)
+                });
+            } catch (installError) {
+                this.logger.warn('Failed to install Python dependencies, they might already be installed');
+            }
+
+            const command = `python3 "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}"`;
             
             this.logger.debug(`Executing command: ${command.substring(0, 100)}...`);
             
             const { stdout, stderr } = await execPromise(command, {
-                maxBuffer: 1024 * 1024 * 10,
+                maxBuffer: 1024 * 1024 * 10, 
                 cwd: path.dirname(this.pythonScriptPath), 
                 env: {
                     ...process.env,
-                    PYTHONPATH: path.dirname(this.pythonScriptPath)
+                    PYTHONPATH: path.dirname(this.pythonScriptPath) 
                 }
             });
             
