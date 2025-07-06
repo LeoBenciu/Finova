@@ -1,17 +1,34 @@
-research_task:
+categorize_document_task:
   description: >
-    Conduct a thorough research about {topic}
-    Make sure you find any interesting and relevant information given
-    the current year is {current_year}.
+    Read the document at {document_path} and classify it as 'Invoice' or 'Receipt' (set to null if neither).
+    Determine the invoice direction using these rules:
+    - If buyer_ein = '{client_company_ein}', this is an INCOMING INVOICE.
+    - If vendor_ein = '{client_company_ein}', this is an OUTGOING INVOICE.
+    Use these labels to identify parties:
+    - Vendor labels: {vendor_labels}
+    - Buyer labels: {buyer_labels}
+    If labels are missing, use hierarchy: company with CUI/bank details (vendor), header position, invoice number prefix, logo, contact details.
+    Output a JSON string with 'document_type' and 'direction' (e.g., {'document_type': 'Invoice', 'direction': 'incoming'}).
   expected_output: >
-    A list with 10 bullet points of the most relevant information about {topic}
-  agent: researcher
+    A JSON string with document type and direction (for factură).
+  agent: document_categorizer
 
-reporting_task:
+extract_invoice_data_task:
   description: >
-    Review the context you got and expand each topic into a full section for a report.
-    Make sure the report is detailed and contains any and all relevant information.
+    For a document at {document_path} classified as 'Invoice', extract:
+    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY), due_date (DD-MM-YYYY, null if absent), total_amount (RON, numeric), vat_amount (numeric), receipt_of (null if absent).
+    Determine direction using: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
+    Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
+    Compare articles with {existing_articles}: match by name/code (case-insensitive), set isNew false if matched, assign next articleCode if new.
+    For 'Nedefinit' type, set management to null, suggest account_code (e.g., '623' for software).
+    Output as a JSON string.
   expected_output: >
-    A fully fledged report with the main topics, each with a full section of information.
-    Formatted as markdown without '```'
-  agent: reporting_analyst
+    A JSON string with invoice details and line_items.
+  agent: invoice_data_extractor
+
+extract_other_document_data_task:
+  description: >
+    For non-factură documents at {document_path} of type {doc_type}, extract relevant data (e.g., date and total for chitanță, account number for extras_de_cont). Use Romanian date (DD/MM/YYYY) and number formatting (e.g., 1.234,56 RON). Output as a JSON string.
+  expected_output: >
+    A JSON string with extracted receipt details.
+  agent: other_document_data_extractor
