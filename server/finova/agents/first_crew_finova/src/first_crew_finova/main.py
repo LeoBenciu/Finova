@@ -58,7 +58,21 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         logging.info(f"Processing document: {doc_path}")
         
-        result = crew.kickoff(inputs={"document_path": doc_path})
+        inputs = {
+            "document_path": doc_path,
+            "client_company_ein": client_company_ein,
+            "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
+            "buyer_labels": ["Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"],
+            "incoming_types": ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"],
+            "outgoing_types": ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"],
+            "vat_rates": ["NINETEEN", "NINE", "FIVE", "ZERO"],
+            "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"],
+            "existing_articles": existing_articles,
+            "management_records": management_records,
+            "doc_type": "Unknown"
+        }
+        
+        result = crew.kickoff(inputs=inputs)
         
         categorization = {}
         extracted_data = {}
