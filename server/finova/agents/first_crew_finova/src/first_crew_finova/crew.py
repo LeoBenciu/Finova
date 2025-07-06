@@ -1,10 +1,15 @@
-from crewai import Agent, Crew, Process, Task
+from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai.tools import BaseTool
 from typing import List, Dict, Type
 import os
 import json
 from pydantic import BaseModel, Field
+
+try:
+    from crewai import Process
+except ImportError:
+    from crewai.process import Process
 
 try:
     import pytesseract
@@ -139,16 +144,8 @@ class FirstCrewFinova:
     @crew
     def crew(self) -> Crew:
         """Creates the FirstCrewFinova crew"""
-        process_type = Process.sequential  
-
-        if hasattr(Process, 'parallel'):
-            process_type = Process.parallel
-        elif hasattr(Process, 'hierarchical'):
-            process_type = Process.hierarchical
-            
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
-            process=process_type,
             verbose=True
         )
