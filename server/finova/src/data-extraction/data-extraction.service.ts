@@ -10,7 +10,7 @@ const execPromise = promisify(exec);
 @Injectable()
 export class DataExtractionService {
     private readonly logger = new Logger(DataExtractionService.name);
-    private readonly pythonScriptPath = path.join(__dirname, '../../first_crew_finova/src/first_crew_finova/main.py');
+    private readonly pythonScriptPath = path.join(__dirname, '../../../../agents/first_crew_finova/src/first_crew_finova/main.py');
 
     constructor(config: ConfigService, private readonly prisma: PrismaService) {}
 
