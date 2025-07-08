@@ -1,6 +1,2 @@
 code,name,vat,unitOfMeasure,type
-ART001,Servicii consultanta,NINETEEN,ORA,Servicii vandute
-ART002,Marfuri generale,NINETEEN,BUCATA,Marfuri
-ART003,Materiale consumabile,NINETEEN,BUCATA,Alte mat. consumabile
-ART004,Transport marfa,NINETEEN,UNITATE_DE_SERVICE,Servicii vandute
-ART005,Combustibil,NINETEEN,LITRU,Combustibili
+ART001,Combustibil,NINETEEN,LITRU,Combustibili

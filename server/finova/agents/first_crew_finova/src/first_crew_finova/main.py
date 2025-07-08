@@ -14,6 +14,30 @@ from contextlib import redirect_stdout, redirect_stderr
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 
+def extract_json_from_text(text: str) -> dict:
+    """Extract JSON from text that might contain other content."""
+    if not text:
+        return {}
+    
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    
+    import re
+    
+    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
+    matches = re.findall(json_pattern, text)
+    
+    for match in matches:
+        try:
+            return json.loads(match)
+        except json.JSONDecodeError:
+            continue
+    
+    return {}
+
+
 def get_existing_articles() -> Dict:
     articles = {}
     try:
@@ -78,34 +102,43 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         with redirect_stdout(captured_output), redirect_stderr(captured_output):
             result = crew.kickoff(inputs=inputs)
-        
-        categorization = {}
-        extracted_data = {}
-        
+    
+        combined_data = {
+            "document_type": "Unknown",
+            "direction": None,
+            "line_items": []
+        }
+
         if hasattr(result, 'tasks_output') and result.tasks_output and len(result.tasks_output) > 0:
-            if result.tasks_output[0].raw:
-                try:
-                    categorization = json.loads(result.tasks_output[0].raw)
-                except json.JSONDecodeError:
-                    raw_output = result.tasks_output[0].raw
-                    if isinstance(raw_output, str):
-                        import re
-                        json_match = re.search(r'\{[^}]+\}', raw_output)
-                        if json_match:
-                            try:
-                                categorization = json.loads(json_match.group())
-                            except:
-                                categorization = {"document_type": "Unknown", "error": "Failed to parse output"}
-                    else:
-                        categorization = {"document_type": "Unknown", "error": "Invalid output format"}
+            if result.tasks_output[0] and hasattr(result.tasks_output[0], 'raw') and result.tasks_output[0].raw:
+                categorization_data = extract_json_from_text(result.tasks_output[0].raw)
+                if categorization_data:
+                    combined_data.update(categorization_data)
+                    logging.info(f"Document categorized as: {categorization_data.get('document_type', 'Unknown')}")
             
-            if len(result.tasks_output) > 1 and result.tasks_output[1].raw:
-                try:
-                    extracted_data = json.loads(result.tasks_output[1].raw)
-                except json.JSONDecodeError:
-                    extracted_data = {"error": "Failed to parse extraction data"}
+            if combined_data.get('document_type', '').lower() == 'invoice':
+                if len(result.tasks_output) > 1 and result.tasks_output[1] and hasattr(result.tasks_output[1], 'raw') and result.tasks_output[1].raw:
+                    extraction_data = extract_json_from_text(result.tasks_output[1].raw)
+                    if extraction_data:
+                        combined_data.update(extraction_data)
+                        logging.info("Invoice data extracted successfully")
+                    else:
+                        logging.error("Failed to extract invoice data")
+            
+            elif combined_data.get('document_type', '').lower() in ['receipt', 'chitanță']:
+                if len(result.tasks_output) > 2 and result.tasks_output[2] and hasattr(result.tasks_output[2], 'raw') and result.tasks_output[2].raw:
+                    receipt_data = extract_json_from_text(result.tasks_output[2].raw)
+                    if receipt_data:
+                        combined_data.update(receipt_data)
+                        logging.info("Receipt data extracted successfully")
+                    else:
+                        logging.info("Receipt identified but minimal data extracted")
         
-        combined_data = {**categorization, **extracted_data} if categorization or extracted_data else {"error": "No data extracted", "crew_failed": True}
+        if combined_data.get('document_type', '').lower() != 'invoice':
+            invoice_fields = ['vendor_ein', 'buyer_ein', 'direction', 'line_items', 'vat_amount']
+            for field in invoice_fields:
+                if field in combined_data and not combined_data.get(field):
+                    combined_data.pop(field, None)
         
         return {
             "data": combined_data
@@ -115,7 +148,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         error_message = str(e)
         if "LLM" in error_message or "OpenAI" in error_message or "API" in error_message:
-            return {"error": "LLM configuration error. Please check OpenAI API key.", "details": error_message}
+            return {"error": "LLM configuration error. Please check OpenAI API key or set TEST_MODE=true.", "details": error_message}
         
         return {"error": f"Failed to process: {str(e)}"}
     finally:
@@ -124,6 +157,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 os.remove(doc_path)
             except Exception as e:
                 logging.warning(f"Failed to remove temporary file: {str(e)}")
+        
 
 def read_base64_from_file(file_path: str) -> str:
     """Read base64 data from a file."""

@@ -1,6 +1,6 @@
 categorize_document_task:
   description: >
-    Read the document at {document_path} and classify it as 'Invoice' or 'Receipt' (set to null if neither).
+    Read the document at {document_path} and classify it as 'Invoice', 'Receipt', 'Contract', 'Bank Statement', 'Z Report' (set to null if neither).
     Determine the invoice direction using these rules:
     - If buyer_ein = '{client_company_ein}', this is an INCOMING INVOICE.
     - If vendor_ein = '{client_company_ein}', this is an OUTGOING INVOICE.
@@ -16,7 +16,7 @@ categorize_document_task:
 extract_invoice_data_task:
   description: >
     For a document at {document_path} classified as 'Invoice', extract:
-    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY), due_date (DD-MM-YYYY, null if absent), total_amount (RON, numeric), vat_amount (numeric), receipt_of (null if absent).
+    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY), due_date (DD-MM-YYYY, null if absent), total_amount (RON, numeric), vat_amount (numeric).
     Determine direction using: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
     Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
     Compare articles with {existing_articles}: match by name/code (case-insensitive), set isNew false if matched, assign next articleCode if new.
