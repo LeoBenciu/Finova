@@ -5,14 +5,50 @@ import os
 import json
 import csv
 import logging
-from crew import FirstCrewFinova
 from typing import Dict, Any
 import tempfile
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
+from crew import FirstCrewFinova
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
+
+def get_existing_articles() -> Dict:
+    articles = {}
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        articles_path = os.path.join(script_dir, "articles.csv")
+        
+        if not os.path.exists(articles_path):
+            articles_path = "articles.csv"
+        
+        with open(articles_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                articles[row["code"]] = {
+                    "name": row["name"],
+                    "vat": row["vat"],
+                    "unitOfMeasure": row["unitOfMeasure"],
+                    "type": row["type"]
+                }
+    except FileNotFoundError:
+        logging.warning("articles.csv not found, using empty articles")
+        return {}
+    except Exception as e:
+        logging.error(f"Error reading articles.csv: {str(e)}")
+        return {}
+    return articles
+
+def save_temp_file(base64_data: str) -> str:
+    """Save base64 data to a temporary file and return the path."""
+    try:
+        with tempfile.NamedTemporaryFile(mode='wb', suffix='.pdf', delete=False) as temp_file:
+            temp_file.write(base64.b64decode(base64_data))
+            return temp_file.name
+    except Exception as e:
+        logging.error(f"Error saving temporary file: {str(e)}")
+        raise
 
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text that might contain other content."""
@@ -77,46 +113,9 @@ def extract_json_from_text(text: str) -> dict:
     
     return {}
 
-
-def get_existing_articles() -> Dict:
-    articles = {}
-    try:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        articles_path = os.path.join(script_dir, "articles.csv")
-        
-        if not os.path.exists(articles_path):
-            articles_path = "articles.csv"
-        
-        with open(articles_path, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                articles[row["code"]] = {
-                    "name": row["name"],
-                    "vat": row["vat"],
-                    "unitOfMeasure": row["unitOfMeasure"],
-                    "type": row["type"]
-                }
-    except FileNotFoundError:
-        logging.warning("articles.csv not found, using empty articles")
-        return {}
-    except Exception as e:
-        logging.error(f"Error reading articles.csv: {str(e)}")
-        return {}
-    return articles
-
-def save_temp_file(base64_data: str) -> str:
-    """Save base64 data to a temporary file and return the path."""
-    try:
-        with tempfile.NamedTemporaryFile(mode='wb', suffix='.pdf', delete=False) as temp_file:
-            temp_file.write(base64.b64decode(base64_data))
-            return temp_file.name
-    except Exception as e:
-        logging.error(f"Error saving temporary file: {str(e)}")
-        raise
-
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
     """Process a single document and return extraction results."""
-    
+
     existing_articles = get_existing_articles()
     management_records = {"Depozit Central": {}, "Servicii": {}}
     
@@ -136,7 +135,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"],
             "existing_articles": existing_articles,
             "management_records": management_records,
-            "doc_type": "Unknown" 
+            "doc_type": "Unknown"  
         }
         
         captured_output = StringIO()
@@ -154,7 +153,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             logging.info(f"Number of tasks completed: {len(result.tasks_output)}")
             
             if result.tasks_output[0] and hasattr(result.tasks_output[0], 'raw') and result.tasks_output[0].raw:
-                logging.info(f"Task 0 raw output: {result.tasks_output[0].raw[:500]}...")  # Log first 500 chars
+                logging.info(f"Task 0 raw output: {result.tasks_output[0].raw[:500]}...") 
                 categorization_data = extract_json_from_text(result.tasks_output[0].raw)
                 if categorization_data:
                     combined_data.update(categorization_data)
@@ -164,7 +163,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 if len(result.tasks_output) > 1:
                     if result.tasks_output[1] and hasattr(result.tasks_output[1], 'raw') and result.tasks_output[1].raw:
                         logging.info(f"Task 1 raw output length: {len(result.tasks_output[1].raw)}")
-                        logging.info(f"Task 1 raw output: {result.tasks_output[1].raw[:1000]}...")  # Log first 1000 chars
+                        logging.info(f"Task 1 raw output: {result.tasks_output[1].raw[:1000]}...") 
                         extraction_data = extract_json_from_text(result.tasks_output[1].raw)
                         if extraction_data:
                             combined_data.update(extraction_data)
