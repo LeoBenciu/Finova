@@ -26,14 +26,54 @@ def extract_json_from_text(text: str) -> dict:
     
     import re
     
-    json_pattern = r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}'
-    matches = re.findall(json_pattern, text)
+    def find_json_objects(text):
+        results = []
+        brace_count = 0
+        start_idx = -1
+        
+        for i, char in enumerate(text):
+            if char == '{':
+                if brace_count == 0:
+                    start_idx = i
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0 and start_idx != -1:
+                    try:
+                        json_str = text[start_idx:i+1]
+                        json_obj = json.loads(json_str)
+                        results.append(json_obj)
+                    except json.JSONDecodeError:
+                        pass
+                    start_idx = -1
+        
+        return results
     
-    for match in matches:
-        try:
-            return json.loads(match)
-        except json.JSONDecodeError:
-            continue
+    json_objects = find_json_objects(text)
+    
+    if json_objects:
+        json_objects.sort(key=lambda x: len(str(x)), reverse=True)
+        return json_objects[0]
+    
+    if "document_type" in text.lower() or "vendor" in text.lower():
+        result = {}
+        patterns = [
+            (r'"document_type"\s*:\s*"([^"]+)"', 'document_type'),
+            (r'"direction"\s*:\s*"([^"]+)"', 'direction'),
+            (r'"vendor"\s*:\s*"([^"]+)"', 'vendor'),
+            (r'"vendor_ein"\s*:\s*"([^"]+)"', 'vendor_ein'),
+            (r'"buyer"\s*:\s*"([^"]+)"', 'buyer'),
+            (r'"buyer_ein"\s*:\s*"([^"]+)"', 'buyer_ein'),
+        ]
+        
+        for pattern, key in patterns:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                result[key] = match.group(1)
+        
+        if result:
+            logging.info(f"Extracted structured data using patterns: {result}")
+            return result
     
     return {}
 
@@ -76,6 +116,7 @@ def save_temp_file(base64_data: str) -> str:
 
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
     """Process a single document and return extraction results."""
+    
     existing_articles = get_existing_articles()
     management_records = {"Depozit Central": {}, "Servicii": {}}
     
@@ -95,35 +136,45 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"],
             "existing_articles": existing_articles,
             "management_records": management_records,
-            "doc_type": "Unknown"  
+            "doc_type": "Unknown" 
         }
         
         captured_output = StringIO()
         
         with redirect_stdout(captured_output), redirect_stderr(captured_output):
             result = crew.kickoff(inputs=inputs)
-    
+        
         combined_data = {
             "document_type": "Unknown",
             "direction": None,
             "line_items": []
         }
-
+        
         if hasattr(result, 'tasks_output') and result.tasks_output and len(result.tasks_output) > 0:
+            logging.info(f"Number of tasks completed: {len(result.tasks_output)}")
+            
             if result.tasks_output[0] and hasattr(result.tasks_output[0], 'raw') and result.tasks_output[0].raw:
+                logging.info(f"Task 0 raw output: {result.tasks_output[0].raw[:500]}...")  # Log first 500 chars
                 categorization_data = extract_json_from_text(result.tasks_output[0].raw)
                 if categorization_data:
                     combined_data.update(categorization_data)
                     logging.info(f"Document categorized as: {categorization_data.get('document_type', 'Unknown')}")
             
             if combined_data.get('document_type', '').lower() == 'invoice':
-                if len(result.tasks_output) > 1 and result.tasks_output[1] and hasattr(result.tasks_output[1], 'raw') and result.tasks_output[1].raw:
-                    extraction_data = extract_json_from_text(result.tasks_output[1].raw)
-                    if extraction_data:
-                        combined_data.update(extraction_data)
-                        logging.info("Invoice data extracted successfully")
+                if len(result.tasks_output) > 1:
+                    if result.tasks_output[1] and hasattr(result.tasks_output[1], 'raw') and result.tasks_output[1].raw:
+                        logging.info(f"Task 1 raw output length: {len(result.tasks_output[1].raw)}")
+                        logging.info(f"Task 1 raw output: {result.tasks_output[1].raw[:1000]}...")  # Log first 1000 chars
+                        extraction_data = extract_json_from_text(result.tasks_output[1].raw)
+                        if extraction_data:
+                            combined_data.update(extraction_data)
+                            logging.info(f"Invoice data extracted successfully: {list(extraction_data.keys())}")
+                        else:
+                            logging.error(f"Failed to extract invoice data from: {result.tasks_output[1].raw[:500]}...")
                     else:
-                        logging.error("Failed to extract invoice data")
+                        logging.error("Task 1 has no raw output")
+                else:
+                    logging.error("No second task output for invoice extraction")
             
             elif combined_data.get('document_type', '').lower() in ['receipt', 'chitanță']:
                 if len(result.tasks_output) > 2 and result.tasks_output[2] and hasattr(result.tasks_output[2], 'raw') and result.tasks_output[2].raw:
@@ -157,7 +208,6 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 os.remove(doc_path)
             except Exception as e:
                 logging.warning(f"Failed to remove temporary file: {str(e)}")
-        
 
 def read_base64_from_file(file_path: str) -> str:
     """Read base64 data from a file."""
