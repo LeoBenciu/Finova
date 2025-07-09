@@ -28,7 +28,14 @@ extract_invoice_data_task:
 
 extract_other_document_data_task:
   description: >
-    For non-factură documents at {document_path} of type {doc_type}, extract relevant data (e.g., date and total for chitanță, account number for extras_de_cont). Use Romanian date (DD/MM/YYYY) and number formatting (e.g., 1.234,56 RON). Output as a JSON string.
+    For non-factură documents at {document_path} of type {doc_type}, extract relevant data :
+    -For Receipts: receipt_number, vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), total_amount (paid/received), document_date (DD-MM-YYYY), invoice_reference (The number of the invoice, if available), payment_method(cash/card/bank).
+
+    -For Bank Statements: company_name, company_ein (number only, remove 'RO'), bank_name, account_number (ex: RO70BTRLRONCRT0CL4098501), statement_number, statement_period_start (DD-MM-YYYY), statement_period_end (DD-MM-YYYY), opening_balance (numeric), closing_balance (numeric), currency, transactions array with: transaction_date (DD-MM-YYYY), description, reference_number, debit_amount (numeric, null if none), credit_amount (numeric, null if none), balance_after_transaction (numeric), transaction_type (transfer/payment/deposit/withdrawal).
+    -For Contracts: contract_number, contract_type, parties array with: name, ein (number only, remove 'RO'), role (client/vendor/contractor), contract_date (DD-MM-YYYY), start_date (DD-MM-YYYY), end_date (DD-MM-YYYY), total_value (numeric), currency, payment_terms, deliverables array with: description, due_date (DD-MM-YYYY), amount (numeric), status (pending/completed).
+    -For Payment/Collection Orders: order_number, order_type (payment/collection), payer, payer_ein (number only, remove 'RO'), payee, payee_ein (number only, remove 'RO'), amount (numeric), currency, order_date (DD-MM-YYYY), execution_date (DD-MM-YYYY), reference_invoice, payment_method (bank_transfer/cash/check), bank_details with: account_number, bank_name, swift_code.
+    -For Z report: report_number, register_id, business_date (DD-MM-YYYY), opening_time, closing_time, total_sales (numeric), total_transactions, vat_breakdown array with: vat_rate, net_amount (numeric), vat_amount (numeric), total_amount (numeric), payment_methods array with: method (cash/card), amount (numeric), transaction_count, cancelled_transactions, refunds_amount (numeric).
+     Use Romanian date (DD/MM/YYYY) and number formatting (e.g., 1.234,56 RON). Output as a JSON string.
   expected_output: >
     A JSON string with extracted receipt details.
   agent: other_document_data_extractor
