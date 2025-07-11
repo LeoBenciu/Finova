@@ -54,7 +54,7 @@ def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text that might contain other content."""
     if not text:
         return {}
-
+    
     import re
     text = re.sub(r'\x1b\[[0-9;]*m', '', text)
     text = text.strip()
@@ -156,7 +156,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         combined_data = {
             "document_type": "Unknown",
-            "line_items": [] 
+            "line_items": []
         }
         
         if hasattr(result, 'tasks_output') and result.tasks_output:
@@ -184,20 +184,22 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                         else:
                             logging.error("Failed to extract invoice data")
                     
-                    elif i == 2 and combined_data.get('document_type', '').lower() != 'invoice':
-                        logging.info(f"Task 2 (other doc extraction) raw output: {task_output.raw[:1000]}...")
-                        other_data = extract_json_from_text(task_output.raw)
-                        if other_data:
-                            combined_data.update(other_data)
-                            logging.info(f"Other document data extracted. Keys: {list(other_data.keys())}")
-                        else:
-                            logging.error(f"Failed to extract data for {combined_data.get('document_type')} document")
+                    elif i == 2:
+                        doc_type = combined_data.get('document_type') or ''
+                        if doc_type.lower() != 'invoice' and doc_type.lower() != '':
+                            logging.info(f"Task 2 (other doc extraction) raw output: {task_output.raw[:1000]}...")
+                            other_data = extract_json_from_text(task_output.raw)
+                            if other_data:
+                                combined_data.update(other_data)
+                                logging.info(f"Other document data extracted. Keys: {list(other_data.keys())}")
+                            else:
+                                logging.error(f"Failed to extract data for {combined_data.get('document_type')} document")
                 else:
                     logging.warning(f"Task {i} has no output")
         else:
             logging.error("No tasks output found in result")
         
-        doc_type = combined_data.get('document_type', '').lower()
+        doc_type = (combined_data.get('document_type') or '').lower()
         
         if doc_type != 'invoice':
             invoice_only_fields = ['vendor_ein', 'buyer_ein', 'direction', 'vat_amount']
