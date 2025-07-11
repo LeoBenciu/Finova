@@ -24,10 +24,15 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
 
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
-    const documentTypes =[
-        "Invoice",
-        "Receipt"
-    ]
+    const documentTypes ={
+        "Invoice":"Factura",
+        "Receipt":"Chitanta",
+        "Bank Statement":"Extras de cont",
+        "Contract":"Contract",
+        "Z Report":"Raport z",
+        "Payment Order":"Dispozitie de plata",
+        "Collection Order":"Dispozitie de incasare"
+    };
 
     const [selectorValue, setSelectorValue] = useState<string>('');
 
@@ -70,7 +75,7 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
   <SelectContent className="bg-[var(--foreground)] border border-[var(--text4)] rounded-2xl shadow-lg
   max-h-60 overflow-y-auto">
     <SelectGroup>
-      {documentTypes.map((document,index)=>(
+      {Object.keys(documentTypes).map((document, index) => (
         <SelectItem 
           value={document} 
           key={index}
@@ -78,7 +83,7 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
           focus:bg-[var(--primary)]/10 rounded-lg mx-1 my-0.5 px-3 py-2
           transition-colors duration-200"
         >
-          {language==='ro'?(document==="Invoice"?'Factura':'Chitanta'):document}
+          {language === 'ro' ? documentTypes[document as keyof typeof documentTypes] : document}
         </SelectItem>
       ))}
     </SelectGroup>
