@@ -1,39 +1,51 @@
 import React from 'react';
-import EditableField from '../EditableField';
-import { useSelector } from 'react-redux';
+import InvoiceFields from './InvoiceFields';
+import ReceiptFields from './ReceiptFields';
+import BankStatementFields from './BankStatementFields';
+import ContractFields from './ContractFields';
+import ZReportFields from './ZReportFields';
+import PaymentOrderFields from './PaymentOrderFields';
+import DefaultFields from './DefaultFields';
 
-interface DefaultFieldsProps {
+interface DocumentTypeFieldsProps {
   editFile: any;
   setEditFile: (value: any) => void;
 }
 
-const DefaultFields: React.FC<DefaultFieldsProps> = ({ editFile, setEditFile }) => {
-  const language = useSelector((state: { user: { language: string } }) => state.user.language);
+const DocumentTypeFields: React.FC<DocumentTypeFieldsProps> = ({ editFile, setEditFile }) => {
+  const documentType = editFile?.result?.document_type?.toLowerCase() || '';
 
-  // Get all fields from the result object except document_type
-  const fields = Object.keys(editFile?.result || {}).filter(key => key !== 'document_type' && key !== 'line_items');
-
-  return (
-    <div className="space-y-4">
-      <p className="text-[var(--text2)] text-sm mb-4">
-        {language === 'ro' 
-          ? 'Tip document necunoscut. Afișăm toate câmpurile disponibile.'
-          : 'Unknown document type. Displaying all available fields.'}
-      </p>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {fields.map((fieldName) => (
-          <EditableField
-            key={fieldName}
-            label={fieldName.charAt(0).toUpperCase() + fieldName.slice(1).replace(/_/g, ' ')}
-            fieldName={fieldName}
-            editFile={editFile}
-            setEditFile={setEditFile}
-          />
-        ))}
-      </div>
-    </div>
-  );
+  switch (documentType) {
+    case 'invoice':
+    case 'factura':
+      return <InvoiceFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    case 'receipt':
+    case 'chitanta':
+    case 'chitanță':
+      return <ReceiptFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    case 'bank statement':
+    case 'extras de cont':
+      return <BankStatementFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    case 'contract':
+    case 'contracte':
+      return <ContractFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    case 'z report':
+    case 'raport z':
+      return <ZReportFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    case 'payment order':
+    case 'collection order':
+    case 'ordin de plata':
+    case 'ordin de incasare':
+      return <PaymentOrderFields editFile={editFile} setEditFile={setEditFile} />;
+    
+    default:
+      return <DefaultFields editFile={editFile} setEditFile={setEditFile} />;
+  }
 };
 
-export default DefaultFields;
+export default DocumentTypeFields;
