@@ -54,13 +54,15 @@ def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text that might contain other content."""
     if not text:
         return {}
+
+    import re
+    text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+    text = text.strip()
     
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         pass
-    
-    import re
     
     def find_json_objects(text):
         results = []
@@ -88,8 +90,15 @@ def extract_json_from_text(text: str) -> dict:
     json_objects = find_json_objects(text)
     
     if json_objects:
-        json_objects.sort(key=lambda x: len(str(x)), reverse=True)
+        json_objects.sort(key=lambda x: len(x.keys()), reverse=True)
         return json_objects[0]
+    
+    json_in_code = re.search(r'```(?:json)?\s*(\{[^`]+\})\s*```', text, re.DOTALL)
+    if json_in_code:
+        try:
+            return json.loads(json_in_code.group(1))
+        except json.JSONDecodeError:
+            pass
     
     if "document_type" in text.lower() or "vendor" in text.lower():
         result = {}
@@ -100,6 +109,8 @@ def extract_json_from_text(text: str) -> dict:
             (r'"vendor_ein"\s*:\s*"([^"]+)"', 'vendor_ein'),
             (r'"buyer"\s*:\s*"([^"]+)"', 'buyer'),
             (r'"buyer_ein"\s*:\s*"([^"]+)"', 'buyer_ein'),
+            (r'"company_name"\s*:\s*"([^"]+)"', 'company_name'),
+            (r'"company_ein"\s*:\s*"([^"]+)"', 'company_ein'),
         ]
         
         for pattern, key in patterns:
@@ -111,11 +122,11 @@ def extract_json_from_text(text: str) -> dict:
             logging.info(f"Extracted structured data using patterns: {result}")
             return result
     
+    logging.warning(f"Could not extract JSON from text: {text[:200]}...")
     return {}
 
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
     """Process a single document and return extraction results."""
-
     existing_articles = get_existing_articles()
     management_records = {"Depozit Central": {}, "Servicii": {}}
     
@@ -145,50 +156,62 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         combined_data = {
             "document_type": "Unknown",
-            "direction": None,
-            "line_items": []
+            "line_items": [] 
         }
         
-        if hasattr(result, 'tasks_output') and result.tasks_output and len(result.tasks_output) > 0:
+        if hasattr(result, 'tasks_output') and result.tasks_output:
             logging.info(f"Number of tasks completed: {len(result.tasks_output)}")
             
-            if result.tasks_output[0] and hasattr(result.tasks_output[0], 'raw') and result.tasks_output[0].raw:
-                logging.info(f"Task 0 raw output: {result.tasks_output[0].raw[:500]}...") 
-                categorization_data = extract_json_from_text(result.tasks_output[0].raw)
-                if categorization_data:
-                    combined_data.update(categorization_data)
-                    logging.info(f"Document categorized as: {categorization_data.get('document_type', 'Unknown')}")
-            
-            if combined_data.get('document_type', '').lower() == 'invoice':
-                if len(result.tasks_output) > 1:
-                    if result.tasks_output[1] and hasattr(result.tasks_output[1], 'raw') and result.tasks_output[1].raw:
-                        logging.info(f"Task 1 raw output length: {len(result.tasks_output[1].raw)}")
-                        logging.info(f"Task 1 raw output: {result.tasks_output[1].raw[:1000]}...") 
-                        extraction_data = extract_json_from_text(result.tasks_output[1].raw)
+            for i, task_output in enumerate(result.tasks_output):
+                if task_output and hasattr(task_output, 'raw') and task_output.raw:
+                    logging.info(f"Task {i} has output of length: {len(task_output.raw)}")
+                    
+                    if i == 0:
+                        logging.info(f"Task 0 (categorization) raw output: {task_output.raw[:500]}...")
+                        categorization_data = extract_json_from_text(task_output.raw)
+                        if categorization_data:
+                            combined_data.update(categorization_data)
+                            doc_type = categorization_data.get('document_type', 'Unknown')
+                            logging.info(f"Document categorized as: {doc_type}")
+                            inputs['doc_type'] = doc_type
+                    
+                    elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
+                        logging.info(f"Task 1 (invoice extraction) raw output: {task_output.raw[:1000]}...")
+                        extraction_data = extract_json_from_text(task_output.raw)
                         if extraction_data:
                             combined_data.update(extraction_data)
-                            logging.info(f"Invoice data extracted successfully: {list(extraction_data.keys())}")
+                            logging.info(f"Invoice data extracted. Keys: {list(extraction_data.keys())}")
                         else:
-                            logging.error(f"Failed to extract invoice data from: {result.tasks_output[1].raw[:500]}...")
-                    else:
-                        logging.error("Task 1 has no raw output")
+                            logging.error("Failed to extract invoice data")
+                    
+                    elif i == 2 and combined_data.get('document_type', '').lower() != 'invoice':
+                        logging.info(f"Task 2 (other doc extraction) raw output: {task_output.raw[:1000]}...")
+                        other_data = extract_json_from_text(task_output.raw)
+                        if other_data:
+                            combined_data.update(other_data)
+                            logging.info(f"Other document data extracted. Keys: {list(other_data.keys())}")
+                        else:
+                            logging.error(f"Failed to extract data for {combined_data.get('document_type')} document")
                 else:
-                    logging.error("No second task output for invoice extraction")
-            
-            elif combined_data.get('document_type', '').lower() in ['receipt', 'chitanță']:
-                if len(result.tasks_output) > 2 and result.tasks_output[2] and hasattr(result.tasks_output[2], 'raw') and result.tasks_output[2].raw:
-                    receipt_data = extract_json_from_text(result.tasks_output[2].raw)
-                    if receipt_data:
-                        combined_data.update(receipt_data)
-                        logging.info("Receipt data extracted successfully")
-                    else:
-                        logging.info("Receipt identified but minimal data extracted")
+                    logging.warning(f"Task {i} has no output")
+        else:
+            logging.error("No tasks output found in result")
         
-        if combined_data.get('document_type', '').lower() != 'invoice':
-            invoice_fields = ['vendor_ein', 'buyer_ein', 'direction', 'line_items', 'vat_amount']
-            for field in invoice_fields:
+        doc_type = combined_data.get('document_type', '').lower()
+        
+        if doc_type != 'invoice':
+            invoice_only_fields = ['vendor_ein', 'buyer_ein', 'direction', 'vat_amount']
+            for field in invoice_only_fields:
                 if field in combined_data and not combined_data.get(field):
                     combined_data.pop(field, None)
+        
+        if doc_type == 'invoice' and 'line_items' not in combined_data:
+            combined_data['line_items'] = []
+            logging.warning("No line_items found for invoice, setting empty array")
+        
+        if doc_type == 'bank statement' and 'transactions' not in combined_data:
+            combined_data['transactions'] = []
+            logging.warning("No transactions found for bank statement, setting empty array")
         
         return {
             "data": combined_data
@@ -198,7 +221,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         error_message = str(e)
         if "LLM" in error_message or "OpenAI" in error_message or "API" in error_message:
-            return {"error": "LLM configuration error. Please check OpenAI API key or set TEST_MODE=true.", "details": error_message}
+            return {"error": "LLM configuration error. Please check OpenAI API key.", "details": error_message}
         
         return {"error": f"Failed to process: {str(e)}"}
     finally:
