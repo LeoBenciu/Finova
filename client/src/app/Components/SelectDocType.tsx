@@ -27,11 +27,11 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
     const documentTypes ={
         "Invoice":"Factura",
         "Receipt":"Chitanta",
-        "Bank Statement":"Extras de cont",
+        "Bank Statement":"Extras De Cont",
         "Contract":"Contract",
-        "Z Report":"Raport z",
-        "Payment Order":"Dispozitie de plata",
-        "Collection Order":"Dispozitie de incasare"
+        "Z Report":"Raport Z",
+        "Payment Order":"Dispozitie De Plata",
+        "Collection Order":"Dispozitie De Incasare"
     };
 
     const [selectorValue, setSelectorValue] = useState<string>('');

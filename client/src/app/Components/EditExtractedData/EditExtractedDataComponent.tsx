@@ -3,12 +3,12 @@ import LoadingComponent from '../LoadingComponent';
 import { ArrowUp, CirclePlus, Save, Trash2 } from 'lucide-react';
 import { SelectDocType } from '../SelectDocType';
 import { useSaveFileAndExtractedDataMutation } from '@/redux/slices/apiSlice';
-import EditableField from './EditableField';
 import LineItems from './LineItems';
 import { AnimatePresence, motion } from 'framer-motion';
 import AreYouSureModal from '../AreYouSureModal';
 import DocumentViewer from './DocumentViewer';
 import { useSelector } from 'react-redux';
+import DocumentTypeFields from './Fields/DocumentTypeFields';
 
 interface EditExtractedDataProps {
   isLoading: boolean;
@@ -50,7 +50,17 @@ const containerVariants = {
   }
 };
 
-const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFiles, editFile, setEditFile, setIsModalOpen, isOpen, currentFile, setCurrentProcessingFile }: EditExtractedDataProps) => {
+const EditExtractedDataComponent = ({ 
+  isLoading, 
+  setProcessedFiles,
+  processedFiles, 
+  editFile, 
+  setEditFile, 
+  setIsModalOpen, 
+  isOpen, 
+  currentFile, 
+  setCurrentProcessingFile 
+}: EditExtractedDataProps) => {
   
   const [saveFileAndData, {isLoading:isSaving}] = useSaveFileAndExtractedDataMutation();
   const [lineItems, setLineItems] = useState<boolean>(false);
@@ -60,8 +70,8 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
 
   console.log('editFile:',editFile);
 
-  const currentClientCompanyEin =  useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein);
-  const language =useSelector((state:{user:{language:string}})=>state.user.language);
+  const currentClientCompanyEin = useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein);
+  const language = useSelector((state:{user:{language:string}})=>state.user.language);
 
   useEffect(() => {
     if (isLoading) {
@@ -92,7 +102,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
     } catch (e) {
       console.error('Failed to save the document and the data:', e);
     }
-  }, [saveFileAndData, currentClientCompanyEin,editFile,currentFile]);
+  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile]);
 
   const toggleLineItems = useCallback(() => {
     setLineItems((prev) => !prev);
@@ -111,7 +121,7 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
         line_items: []
       },
     });
-  },[editFile,setEditFile]);
+  },[editFile, setEditFile]);
 
   const handleCreateNewLineItem = useCallback(()=>{
     setEditFile({
@@ -130,7 +140,10 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
         ]
       }
     })
-  },[editFile,setEditFile]);
+  },[editFile, setEditFile]);
+
+  // Check if document type has line items (currently only invoices)
+  const hasLineItems = editFile?.result?.document_type?.toLowerCase() === 'invoice' && editFile?.result?.line_items;
 
   if (!isOpen) return null;
 
@@ -209,89 +222,15 @@ const EditExtractedDataComponent = ({ isLoading, setProcessedFiles,processedFile
                       </div>
                     </div>
 
-                    {/* Form Fields Grid */}
+                    {/* Dynamic Document Fields */}
                     <div className="p-6">
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {editFile?.result.receipt_of && (
-                          <div className="lg:col-span-2">
-                            <EditableField
-                              label={language==='ro'?"Chitanta pentru factura nr.":"Receipt for Invoice No."}
-                              fieldName="receipt_of"
-                              editFile={editFile}
-                              setEditFile={setEditFile}
-                            />
-                          </div>
-                        )}
-
-                        <EditableField
-                          label={language==='ro'?'Numarul documentului':'Document number'}
-                          fieldName="document_number"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Data':'Date'}
-                          fieldName="document_date"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Data scadentei':'Due date'}
-                          fieldName="due_date"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Cumparator':'Buyer'}
-                          fieldName="buyer"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'CUI Cumparator':'Buyer EIN'}
-                          fieldName="buyer_ein"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Vanzator':'Vendor'}
-                          fieldName="vendor"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'CUI Vanzator':'Vendor EIN'}
-                          fieldName="vendor_ein"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Suma totala':'Total amount'}
-                          fieldName="total_amount"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-
-                        <EditableField
-                          label={language==='ro'?'Total TVA':'Vat amount'}
-                          fieldName="vat_amount"
-                          editFile={editFile}
-                          setEditFile={setEditFile}
-                        />
-                      </div>
+                      <DocumentTypeFields editFile={editFile} setEditFile={setEditFile} />
                     </div>
                   </div>
                 )}
 
-                {/* Line Items Section */}
-                {editFile?.result.line_items && (
+                {/* Line Items Section - Only for invoices */}
+                {hasLineItems && (
                   <div className="mt-6">
                     <motion.button
                       className="bg-[var(--primary)] text-white rounded-2xl flex items-center gap-3 px-6 py-3 
