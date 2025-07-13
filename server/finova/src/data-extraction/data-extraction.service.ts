@@ -68,7 +68,7 @@ export class DataExtractionService {
     private readonly tempDir: string;
     private readonly processingQueue = ProcessingQueue.getInstance();
     private readonly maxFileSize = 10 * 1024 * 1024; 
-    private readonly processingTimeout = 300000; 
+    private readonly processingTimeout = 600000; 
     private dependenciesChecked = false;
 
     constructor(
@@ -282,16 +282,26 @@ export class DataExtractionService {
     }
 
     private async installDependencies() {
-        const command = 'python3 -m pip install crewai crewai-tools pytesseract pdf2image pillow --no-cache-dir';
-        this.logger.debug('Installing Python dependencies...');
-        
-        await execPromise(command, {
-            cwd: path.dirname(this.pythonScriptPath),
-            timeout: 60000
-        });
-        
-        this.logger.log('Python dependencies installed successfully');
-    }
+    const ocrDependencies = [
+        'crewai', 
+        'crewai-tools', 
+        'pytesseract', 
+        'pdf2image', 
+        'pillow', 
+        'opencv-python',
+        'numpy'
+    ];
+    
+    const command = `python3 -m pip install ${ocrDependencies.join(' ')} --no-cache-dir`;
+    this.logger.debug('Installing Python dependencies including OCR packages...');
+    
+    await execPromise(command, {
+        cwd: path.dirname(this.pythonScriptPath),
+        timeout: 180000
+    });
+    
+    this.logger.log('Python dependencies with OCR support installed successfully');
+}
 
     private setupTempFileCleanup() {
         setInterval(() => {

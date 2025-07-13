@@ -5,6 +5,7 @@ from typing import List, Dict, Type
 import os
 import json
 from pydantic import BaseModel, Field
+from enhanced_ocr_tool import EnhancedRomanianTextExtractorTool
 
 try:
     from crewai import Process
@@ -88,7 +89,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['document_categorizer'],
             verbose=True,
-            tools=[RomanianTextExtractorTool()],
+            tools=[EnhancedRomanianTextExtractorTool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
@@ -101,7 +102,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['invoice_data_extractor'],
             verbose=True,
-            tools=[RomanianTextExtractorTool()],
+            tools=[EnhancedRomanianTextExtractorTool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "existing_articles": self.existing_articles,
@@ -118,7 +119,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['other_document_data_extractor'],
             verbose=True,
-            tools=[RomanianTextExtractorTool()]
+            tools=[EnhancedRomanianTextExtractorTool()]
         )
 
     @task
