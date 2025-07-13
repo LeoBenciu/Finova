@@ -1,5 +1,5 @@
 # Core CrewAI dependencies
-crewai
+crewai>=0.76.0
 crewai-tools
 pydantic
 
@@ -8,10 +8,12 @@ PyPDF2
 
 # LLM API clients
 openai>=1.0.0
+anthropic>=0.25.0
 
-# Image processing (for PDF to image conversion - lightweight alternatives)
+# Image processing (for PDF to image conversion)
 pdf2image
 pillow
 
-# Optional: for better performance
+# Optional: for better performance and memory monitoring
 requests
+psutil

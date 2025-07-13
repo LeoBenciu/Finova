@@ -1,4 +1,4 @@
-from crewai import Agent, Crew, Task
+from crewai import Agent, Crew, Task, LLM
 from crewai.project import CrewBase, agent, crew, task
 from crewai.tools import BaseTool
 from typing import List, Dict, Type
@@ -74,6 +74,21 @@ def get_text_extractor_tool():
         print("Using Simple Text Extractor (fallback)")
         return SimpleTextExtractorTool()
 
+def get_configured_llm():
+    """Get properly configured LLM for CrewAI agents"""
+    
+    openai_api_key = os.getenv('OPENAI_API_KEY')
+    
+    if openai_api_key:
+        return LLM(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            max_tokens=4000
+        )
+    
+    print("Warning: No LLM configuration found. Please set OPENAI_API_KEY or another supported LLM provider.")
+    return None
+
 @CrewBase
 class FirstCrewFinova:
     """FirstCrewFinova crew for document categorization and data extraction"""
@@ -82,44 +97,53 @@ class FirstCrewFinova:
         self.client_company_ein = client_company_ein
         self.existing_articles = existing_articles
         self.management_records = management_records
+        
+        self.llm = get_configured_llm()
 
     @agent
     def document_categorizer(self) -> Agent:
-        return Agent(
-            config=self.agents_config['document_categorizer'],
-            verbose=True,
-            tools=[get_text_extractor_tool()],
-            config_dic={
-                "client_company_ein": self.client_company_ein,
-                "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
-                "buyer_labels": ["Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client"]
-            }
-        )
+        agent_config = {
+            'role': 'Document Categorizer',
+            'goal': 'Classify Romanian documents as factură (incoming or outgoing) based on CUI, chitanță, extras de cont, contract, raport, or unknown.',
+            'backstory': 'You are an expert in analyzing Romanian financial documents, skilled at identifying document types and determining invoice direction based on CUI and company information.',
+            'verbose': True,
+            'tools': [get_text_extractor_tool()],
+        }
+        
+        if self.llm:
+            agent_config['llm'] = self.llm
+            
+        return Agent(**agent_config)
 
     @agent
     def invoice_data_extractor(self) -> Agent:
-        return Agent(
-            config=self.agents_config['invoice_data_extractor'],
-            verbose=True,
-            tools=[get_text_extractor_tool()],
-            config_dic={
-                "client_company_ein": self.client_company_ein,
-                "existing_articles": self.existing_articles,
-                "management_records": self.management_records,
-                "incoming_types": ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"],
-                "outgoing_types": ["Nedefinit", "Marfuri", "Produse finite", "Ambalaje", "Produse reziduale", "Semifabricate", "Discount financiar iesiri", "Servicii vandute", "Discount comercial iesiri", "Ambalaje SGR", "Taxa verde"],
-                "vat_rates": ["NINETEEN", "NINE", "FIVE", "ZERO"],
-                "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"]
-            }
-        )
+        agent_config = {
+            'role': 'Invoice Data Extractor',
+            'goal': 'Extract structured bookkeeping data from Romanian invoices, including line items, and validate articles and management records.',
+            'backstory': 'You specialize in parsing Romanian invoices compliant with ANAF standards, comparing articles with a database, and selecting management records.',
+            'verbose': True,
+            'tools': [get_text_extractor_tool()],
+        }
+        
+        if self.llm:
+            agent_config['llm'] = self.llm
+            
+        return Agent(**agent_config)
 
     @agent
     def other_document_data_extractor(self) -> Agent:
-        return Agent(
-            config=self.agents_config['other_document_data_extractor'],
-            verbose=True,
-            tools=[get_text_extractor_tool()]
-        )
+        agent_config = {
+            'role': 'Other Document Data Extractor',
+            'goal': 'Extract relevant data from Romanian non-invoice documents such as chitanță, extras de cont, contracte, rapoarte, etc.',
+            'backstory': 'You are adept at extracting structured information from Romanian financial and legal documents to support downstream processes.',
+            'verbose': True,
+            'tools': [get_text_extractor_tool()],
+        }
+        
+        if self.llm:
+            agent_config['llm'] = self.llm
+            
+        return Agent(**agent_config)
 
     @task
     def categorize_document_task(self) -> Task:
@@ -144,8 +168,13 @@ class FirstCrewFinova:
     @crew
     def crew(self) -> Crew:
         """Creates the FirstCrewFinova crew"""
-        return Crew(
-            agents=self.agents,
-            tasks=self.tasks,
-            verbose=True
-        )
+        crew_config = {
+            'agents': self.agents,
+            'tasks': self.tasks,
+            'verbose': True,
+        }
+        
+        if self.llm:
+            crew_config['manager_llm'] = self.llm
+            
+        return Crew(**crew_config)

@@ -23,6 +23,24 @@ warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+def check_llm_configuration():
+    """Check if LLM is properly configured"""
+    openai_api_key = os.getenv('OPENAI_API_KEY')
+    anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
+    
+    if not openai_api_key and not anthropic_api_key:
+        logging.error("No LLM API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.")
+        return False
+    
+    if openai_api_key:
+        logging.info("OpenAI API key found - using OpenAI models")
+        return True
+    elif anthropic_api_key:
+        logging.info("Anthropic API key found - using Claude models")
+        return True
+    
+    return False
+
 def setup_memory_monitoring():
     """Setup memory monitoring if available."""
     try:
@@ -202,12 +220,25 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
     log_memory_usage("Before processing")
     
     try:
+        if not check_llm_configuration():
+            return {
+                "error": "LLM service not configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.",
+                "details": "No valid LLM API key found in environment variables"
+            }
+        
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
         
         log_memory_usage("After loading config")
         
         crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
+        
+        if not crew_instance.llm:
+            return {
+                "error": "Failed to configure LLM for CrewAI agents. Check API key validity.",
+                "details": "LLM configuration returned None"
+            }
+        
         crew = crew_instance.crew()
         
         log_memory_usage("After crew creation")
@@ -315,7 +346,9 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         logging.error(f"Failed to process {doc_path}: {str(e)}", exc_info=True)
         
         error_message = str(e)
-        if any(keyword in error_message for keyword in ["LLM", "OpenAI", "API", "rate limit", "quota"]):
+        if any(keyword in error_message.lower() for keyword in ["api", "key", "authentication", "unauthorized", "forbidden"]):
+            return {"error": "LLM API authentication failed. Please check your API key.", "details": error_message}
+        elif any(keyword in error_message for keyword in ["LLM", "OpenAI", "rate limit", "quota"]):
             return {"error": "LLM service error. Please check API configuration or try again later.", "details": error_message}
         elif "memory" in error_message.lower() or "killed" in error_message.lower():
             return {"error": "Memory limit exceeded. Please try with a smaller document.", "details": error_message}
