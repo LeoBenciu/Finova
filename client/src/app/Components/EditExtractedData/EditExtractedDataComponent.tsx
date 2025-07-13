@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, memo, SetStateAction, Dispatch } from 'react';
+import { useEffect, useState, useCallback, memo } from 'react';
 import LoadingComponent from '../LoadingComponent';
 import { ArrowUp, CirclePlus, Save, Trash2 } from 'lucide-react';
 import { SelectDocType } from '../SelectDocType';
@@ -19,9 +19,8 @@ interface EditExtractedDataProps {
   setIsModalOpen: (val: boolean) => void;
   isOpen: boolean;
   currentFile: File | null;
-  setCurrentProcessingFile:(t:any)=>void;
-  setProcessedFiles:Dispatch<SetStateAction<Record<string, any>>>;
-  processedFiles: Record<string, any>;
+  setCurrentProcessingFile: (t: any) => void;
+  onDocumentSaved: (fileName: string) => void;
 }
 
 type Item = {
@@ -52,26 +51,25 @@ const containerVariants = {
 
 const EditExtractedDataComponent = ({ 
   isLoading, 
-  setProcessedFiles,
-  processedFiles, 
   editFile, 
   setEditFile, 
   setIsModalOpen, 
   isOpen, 
   currentFile, 
-  setCurrentProcessingFile 
+  setCurrentProcessingFile,
+  onDocumentSaved
 }: EditExtractedDataProps) => {
   
-  const [saveFileAndData, {isLoading:isSaving}] = useSaveFileAndExtractedDataMutation();
+  const [saveFileAndData, {isLoading: isSaving}] = useSaveFileAndExtractedDataMutation();
   const [lineItems, setLineItems] = useState<boolean>(false);
   const [closeModal, setCloseModal] = useState<boolean>(false);
   const [internalLoading, setInternalLoading] = useState(isLoading);
   const [contentVisible, setContentVisible] = useState(false);
 
-  console.log('editFile:',editFile);
+  console.log('editFile:', editFile);
 
-  const currentClientCompanyEin = useSelector((state:{clientCompany:{current:{name:string,ein:string}}})=>state.clientCompany.current.ein);
-  const language = useSelector((state:{user:{language:string}})=>state.user.language);
+  const currentClientCompanyEin = useSelector((state: {clientCompany: {current: {name: string, ein: string}}}) => state.clientCompany.current.ein);
+  const language = useSelector((state: {user: {language: string}}) => state.user.language);
 
   useEffect(() => {
     if (isLoading) {
@@ -88,21 +86,26 @@ const EditExtractedDataComponent = ({
   }, [isLoading]);
 
   const handleSaveButton = useCallback(async () => {
+    if (!currentFile) return;
+    
     try {
       const fileSaved = await saveFileAndData({ 
         clientCompanyEin: currentClientCompanyEin, 
-        processedData: editFile ,
+        processedData: editFile,
         file: currentFile
       }).unwrap();
+      
       console.log('Saved File', fileSaved);
-      setProcessedFiles({...processedFiles, [currentFile?.name || '']: currentFile?.name ? {...processedFiles[currentFile.name], saved:true} : null})
+      
+      onDocumentSaved(currentFile.name);
+      
       setIsModalOpen(false);
       setCurrentProcessingFile(null);
 
     } catch (e) {
       console.error('Failed to save the document and the data:', e);
     }
-  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile]);
+  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile, onDocumentSaved, setIsModalOpen, setCurrentProcessingFile]);
 
   const toggleLineItems = useCallback(() => {
     setLineItems((prev) => !prev);
@@ -111,9 +114,9 @@ const EditExtractedDataComponent = ({
   const handleCloseModal = useCallback(() => {
     setCloseModal(true);
     setCurrentProcessingFile(null);
-  }, []);
+  }, [setCurrentProcessingFile]);
 
-  const handleDeleteLineItems = useCallback(()=>{
+  const handleDeleteLineItems = useCallback(() => {
     setEditFile({
       ...editFile,
       result: {
@@ -121,12 +124,12 @@ const EditExtractedDataComponent = ({
         line_items: []
       },
     });
-  },[editFile, setEditFile]);
+  }, [editFile, setEditFile]);
 
-  const handleCreateNewLineItem = useCallback(()=>{
+  const handleCreateNewLineItem = useCallback(() => {
     setEditFile({
       ...editFile,
-      result:{
+      result: {
         ...editFile?.result,
         line_items: [
           ...editFile?.result.line_items,
@@ -140,9 +143,8 @@ const EditExtractedDataComponent = ({
         ]
       }
     })
-  },[editFile, setEditFile]);
+  }, [editFile, setEditFile]);
 
-  // Check if document type has line items (currently only invoices)
   const hasLineItems = editFile?.result?.document_type?.toLowerCase() === 'invoice' && editFile?.result?.line_items;
 
   if (!isOpen) return null;
@@ -178,8 +180,11 @@ const EditExtractedDataComponent = ({
                 <div className="flex flex-row justify-between items-center">
                   <div>
                     <h3 className="text-left font-bold text-2xl text-[var(--text1)] mb-1">
-                      {language==='ro'?'Date extrase':'Extracted data'}
+                      {language === 'ro' ? 'Date extrase' : 'Extracted data'}
                     </h3>
+                    <p className="text-[var(--text2)] text-sm">
+                      {language === 'ro' ? 'Revizuiește și salvează datele extrase' : 'Review and save the extracted data'}
+                    </p>
                   </div>
                   
                   {!isSaving && (
@@ -189,14 +194,19 @@ const EditExtractedDataComponent = ({
                       onClick={handleSaveButton}
                     >
                       <Save size={16} />
-                      {language==='ro'?'Salvează':'Save'}
+                      {language === 'ro' ? 'Salvează' : 'Save'}
                     </button>
                   )}
                   
                   {isSaving && (
                     <div className='fixed inset-0 bg-black/50 flex justify-center items-center z-50'>
                       <div className='bg-[var(--foreground)] p-8 rounded-3xl shadow-2xl border border-[var(--text4)]'>
-                        <LoadingComponent />
+                        <div className="text-center">
+                          <LoadingComponent />
+                          <p className="mt-4 text-[var(--text2)]">
+                            {language === 'ro' ? 'Se salvează...' : 'Saving...'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -212,7 +222,7 @@ const EditExtractedDataComponent = ({
                       <div className="flex items-center justify-between">
                         <div>
                           <label className="text-base font-semibold text-[var(--text1)] mb-2 block">
-                            {language==='ro'?"Tipul Documentului":'Document Type'}
+                            {language === 'ro' ? "Tipul Documentului" : 'Document Type'}
                           </label>
                         </div>
                         <div className="min-w-40 max-w-40">
@@ -242,8 +252,8 @@ const EditExtractedDataComponent = ({
                         size={18}
                         className={`transition-transform duration-200 ${lineItems ? 'rotate-180' : 'rotate-90'}`}
                       />
-                      {language==='ro'?((lineItems ?'Ascunde ':'Arată ')):((lineItems ? 'Hide ' : 'Show '))}
-                      {language==='ro'?'articole':'line items'}
+                      {language === 'ro' ? ((lineItems ? 'Ascunde ' : 'Arată ')) : ((lineItems ? 'Hide ' : 'Show '))}
+                      {language === 'ro' ? 'articole' : 'line items'}
                       <span className="bg-white/20 text-xs px-2 py-1 rounded-full">
                         {editFile?.result.line_items?.length || 0}
                       </span>
@@ -268,7 +278,7 @@ const EditExtractedDataComponent = ({
                               onClick={handleCreateNewLineItem}
                             >
                               <CirclePlus size={18} />
-                              {language==='ro'?'Creează articol':'New item'}
+                              {language === 'ro' ? 'Creează articol' : 'New item'}
                             </button>
 
                             <button 
@@ -278,7 +288,7 @@ const EditExtractedDataComponent = ({
                               onClick={() => {handleDeleteLineItems(); toggleLineItems()}}
                             >
                               <Trash2 size={18} />
-                              {language==='ro'?'Șterge articole':'Delete items'}
+                              {language === 'ro' ? 'Șterge articole' : 'Delete items'}
                             </button>
                           </div>
 

@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
 import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Cpu, Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle } from "lucide-react";
+import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
@@ -20,90 +20,256 @@ type clientCompany= {
   }
 }
 
+type DocumentState = 'uploaded' | 'processing' | 'processed' | 'saved' | 'error';
+
+interface DocumentStatus {
+  state: DocumentState;
+  data?: any;
+  error?: string;
+}
+
 const FileUploadPage = () => {
   // State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [documents, setDocuments] = useState<File[]>([]);
-  const [processedFiles, setProcessedFiles] = useState<Record<string, any>>({});
+  const [documentStates, setDocumentStates] = useState<Record<string, DocumentStatus>>({});
   const [editFile, setEditFile] = useState<{ result: Record<string, any> } | undefined>(undefined);
   const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
   const [dropzoneVisible, setDropzoneVisible] = useState<boolean>(false);
 
   useEffect(()=>{
     console.log('Documents', documents)
-  },[documents])
+    console.log('Document States', documentStates)
+  },[documents, documentStates])
   
   const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name)
   const clientCompanyEin = useSelector((state:clientCompany)=>state.clientCompany.current.ein)
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
-  const [process, {isLoading}] = useExtractDataMutation();
+  const [process] = useExtractDataMutation();
+
+  useEffect(() => {
+    const newDocuments = documents.filter(doc => !documentStates[doc.name]);
+    
+    if (newDocuments.length > 0) {
+      const newStates: Record<string, DocumentStatus> = {};
+      newDocuments.forEach(doc => {
+        newStates[doc.name] = { state: 'uploaded' };
+      });
+      
+      setDocumentStates(prev => ({ ...prev, ...newStates }));
+      
+      newDocuments.forEach(doc => {
+        processDocument(doc);
+      });
+    }
+  }, [documents, clientCompanyEin]);
+
+  const processDocument = useCallback(async (file: File) => {
+    setDocumentStates(prev => ({
+      ...prev,
+      [file.name]: { state: 'processing' }
+    }));
+
+    try {
+      const processedFile = await process({ file, clientCompanyEin }).unwrap();
+      console.log("PROCESSED FILE:", processedFile);
+      
+      setDocumentStates(prev => ({
+        ...prev,
+        [file.name]: { 
+          state: 'processed', 
+          data: processedFile 
+        }
+      }));
+    } catch (error) {
+      console.error('Failed to process the document:', error);
+      
+      setDocumentStates(prev => ({
+        ...prev,
+        [file.name]: { 
+          state: 'error', 
+          error: error instanceof Error ? error.message : 'Processing failed'
+        }
+      }));
+    }
+  }, [process, clientCompanyEin]);
 
   const handleTooLongString = useCallback((str: string): string => {
     if (str.length > 25) return str.slice(0, 25) + '..';
     return str;
   }, []);
 
-  const handleProcessFile = useCallback(async (file: File) => {
-    setCurrentProcessingFile(file);
-    
-    try {
+  const handleReviewDocument = useCallback((file: File) => {
+    const documentState = documentStates[file.name];
+    if (documentState?.data) {
+      setEditFile(documentState.data);
+      setCurrentProcessingFile(file);
       setIsModalOpen(true);
-      
-      if (processedFiles[file.name]) {
-        setEditFile(processedFiles[file.name]);
-        return;
+    }
+  }, [documentStates]);
+
+  const handleRetryProcessing = useCallback((file: File) => {
+    processDocument(file);
+  }, [processDocument]);
+
+  const handleManualEdit = useCallback((file: File) => {
+    const basicData = {
+      result: {
+        document_type: '',
+        document_date: '',
+        line_items: []
       }
-      
-      const processedFile = await process({file,clientCompanyEin}).unwrap();
-      console.log("PROCESSED FILE:", processedFile);
-      setEditFile(processedFile);
-      
-      setProcessedFiles(prev => ({
-        ...prev,
-        [file.name]: processedFile
-      }));
-    } catch (e) {
-      console.error('Failed to process the document:', e);
-    } 
-  }, [process, processedFiles]);
+    };
+    
+    setEditFile(basicData);
+    setCurrentProcessingFile(file);
+    setIsModalOpen(true);
+  }, []);
 
   const handleDeleteDocument = useCallback((name: string): void => {
     setDocuments(prev => prev.filter(document => document.name !== name));
     
-    if (processedFiles[name]) {
-      const newProcessedFiles = { ...processedFiles };
-      delete newProcessedFiles[name];
-      setProcessedFiles(newProcessedFiles);
+    if (documentStates[name]) {
+      const newDocumentStates = { ...documentStates };
+      delete newDocumentStates[name];
+      setDocumentStates(newDocumentStates);
     }
-  }, [processedFiles]);
+  }, [documentStates]);
 
-  const getStatusIcon = (doc: any) => {
-    if (processedFiles[doc.name]?.saved) {
-      return <CheckCircle size={16} className="text-green-500" />;
-    } else if (processedFiles[doc.name]) {
-      return <AlertCircle size={16} className="text-yellow-500" />;
-    } else {
-      return <Clock size={16} className="text-gray-400" />;
+  const handleDocumentSaved = useCallback((fileName: string) => {
+    setDocumentStates(prev => ({
+      ...prev,
+      [fileName]: {
+        ...prev[fileName],
+        state: 'saved'
+      }
+    }));
+  }, []);
+
+  const getStatusIcon = (doc: File) => {
+    const state = documentStates[doc.name]?.state;
+    switch (state) {
+      case 'processing':
+        return <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+        >
+          <Clock size={16} className="text-blue-500" />
+        </motion.div>;
+      case 'processed':
+        return <CheckCircle size={16} className="text-green-500" />;
+      case 'saved':
+        return <CheckCircle size={16} className="text-emerald-600" />;
+      case 'error':
+        return <AlertCircle size={16} className="text-red-500" />;
+      default:
+        return <Clock size={16} className="text-gray-400" />;
     }
   };
 
-  const getStatusColor = (doc: any) => {
-    if (processedFiles[doc.name]?.saved) {
-      return 'text-green-600 bg-green-50 border-green-200';
-    } else if (processedFiles[doc.name]) {
-      return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    } else {
-      return 'text-gray-600 bg-gray-50 border-gray-200';
+  const getStatusColor = (doc: File) => {
+    const state = documentStates[doc.name]?.state;
+    switch (state) {
+      case 'processing':
+        return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'processed':
+        return 'text-green-600 bg-green-50 border-green-200';
+      case 'saved':
+        return 'text-emerald-600 bg-emerald-50 border-emerald-200';
+      case 'error':
+        return 'text-red-600 bg-red-50 border-red-200';
+      default:
+        return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };
 
-  const getStatusText = (doc: any) => {
-    if (processedFiles[doc.name]?.saved) {
-      return language === 'ro' ? 'Salvat' : 'Saved';
-    } else if (processedFiles[doc.name]) {
-      return language === 'ro' ? 'Procesat' : 'Processed';
-    } else {
-      return language === 'ro' ? 'Încărcat' : 'Uploaded';
+  const getStatusText = (doc: File) => {
+    const state = documentStates[doc.name]?.state;
+    switch (state) {
+      case 'processing':
+        return language === 'ro' ? 'Se procesează...' : 'Processing...';
+      case 'processed':
+        return language === 'ro' ? 'Procesat' : 'Processed';
+      case 'saved':
+        return language === 'ro' ? 'Salvat' : 'Saved';
+      case 'error':
+        return language === 'ro' ? 'Eroare' : 'Error';
+      default:
+        return language === 'ro' ? 'Încărcat' : 'Uploaded';
+    }
+  };
+
+  const renderActionButtons = (doc: File) => {
+    const state = documentStates[doc.name]?.state;
+
+    switch (state) {
+      case 'processing':
+        return (
+          <div className="flex items-center gap-2">
+            <div className="p-2 text-blue-500 bg-blue-500/20 rounded-lg">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              >
+                <Clock size={18} />
+              </motion.div>
+            </div>
+          </div>
+        );
+
+      case 'processed':
+      case 'saved':
+        return (
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleReviewDocument(doc)}
+                className="p-2 text-emerald-500 bg-emerald-500/20 hover:text-white
+                 hover:bg-emerald-500 rounded-lg transition-colors"
+              >
+                <Eye size={18} />
+              </button>
+            }
+            tip={state === 'saved' ? (language==='ro'?'Vezi date':'View data') : (language==='ro'?'Revizuiește':'Review')}
+          />
+        );
+
+      case 'error':
+        return (
+          <div className="flex items-center gap-2">
+            <TooltipDemo
+              trigger={
+                <button
+                  onClick={() => handleRetryProcessing(doc)}
+                  className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
+                   hover:bg-blue-500 rounded-lg transition-colors"
+                >
+                  <RotateCcw size={18} />
+                </button>
+              }
+              tip={language==='ro'?'Reîncearcă':'Retry'}
+            />
+            <TooltipDemo
+              trigger={
+                <button
+                  onClick={() => handleManualEdit(doc)}
+                  className="p-2 text-orange-500 bg-orange-500/20 hover:text-white
+                   hover:bg-orange-500 rounded-lg transition-colors"
+                >
+                  <Edit size={18} />
+                </button>
+              }
+              tip={language==='ro'?'Editare manuală':'Manual edit'}
+            />
+          </div>
+        );
+
+      default:
+        return (
+          <div className="p-2 text-gray-400 bg-gray-100 rounded-lg">
+            <Clock size={18} />
+          </div>
+        );
     }
   };
 
@@ -214,7 +380,7 @@ const FileUploadPage = () => {
               </span>
             </div>
             <p className="text-[var(--text2)] mt-2">
-              {language === 'ro' ? 'Aici poți vedea fișierele încărcate și statusul lor' : 'Here you can see your uploaded files and their status'}
+              {language === 'ro' ? 'Documentele se procesează automat după încărcare' : 'Documents are automatically processed after upload'}
             </p>
           </div>
 
@@ -243,10 +409,10 @@ const FileUploadPage = () => {
                         </h3>
                         <div className="flex items-center gap-4 mt-1">
                           <span className="text-[var(--text2)] font-medium">
-                            {processedFiles[doc.name]?.result.document_type || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
+                            {documentStates[doc.name]?.data?.result?.document_type || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
                           </span>
                           <span className="text-[var(--text3)] text-sm">
-                            {processedFiles[doc.name]?.result.document_date || '-'}
+                            {documentStates[doc.name]?.data?.result?.document_date || '-'}
                           </span>
                         </div>
                       </div>
@@ -262,38 +428,8 @@ const FileUploadPage = () => {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2">
-                      {/* View/Process Button */}
-                      {processedFiles[doc.name] ? (
-                        <TooltipDemo
-                          trigger={
-                            <button
-                              onClick={() => handleProcessFile(doc)}
-                              className="p-2 text-emerald-500 bg-emerald-500/20 hover:text-white
-                               hover:bg-emerald-500 rounded-lg transition-colors"
-                            >
-                              <Eye size={18} />
-                            </button>
-                          }
-                          tip={language==='ro'?'Vezi date':'View data'}
-                        />
-                      ) : (
-                        <TooltipDemo
-                          trigger={
-                            <button
-                              onClick={() => handleProcessFile(doc)}
-                              className={`p-2 rounded-lg transition-colors ${
-                                currentProcessingFile?.name === doc.name && isLoading
-                                  ? 'text-[var(--primary)] bg-[var(--primary)]/20 hover:bg-[var(--primary)] hover:text-white animate-pulse'
-                                  : 'text-[var(--primary)] bg-[var(--primary)]/20 hover:bg-[var(--primary)] hover:text-white'
-                              }`}
-                              disabled={currentProcessingFile?.name === doc.name && isLoading}
-                            >
-                              <Cpu size={18} />
-                            </button>
-                          }
-                          tip={language==='ro'?'Procesează':'Process'}
-                        />
-                      )}
+                      {/* Action Buttons */}
+                      {renderActionButtons(doc)}
 
                       {/* Delete Button */}
                       <TooltipDemo
@@ -325,15 +461,14 @@ const FileUploadPage = () => {
         </div>
       }>
         <ExtractedDataEdit
-          isLoading={isLoading && isModalOpen}
+          isLoading={false}
           editFile={editFile}
           setEditFile={setEditFile}
           setIsModalOpen={setIsModalOpen}
           isOpen={isModalOpen}
           currentFile={currentProcessingFile}
           setCurrentProcessingFile={setCurrentProcessingFile}
-          processedFiles={processedFiles}
-          setProcessedFiles={setProcessedFiles}
+          onDocumentSaved={handleDocumentSaved}
         />
       </Suspense>
 
