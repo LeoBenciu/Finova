@@ -1,8 +1,8 @@
 import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
-import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import { lazy, Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit } from "lucide-react";
+import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
@@ -20,27 +20,34 @@ type clientCompany= {
   }
 }
 
-type DocumentState = 'uploaded' | 'processing' | 'processed' | 'saved' | 'error';
+type DocumentState = 'uploaded' | 'queued' | 'processing' | 'processed' | 'saved' | 'error';
 
 interface DocumentStatus {
   state: DocumentState;
   data?: any;
   error?: string;
+  position?: number;
 }
 
 const FileUploadPage = () => {
-  // State
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [documents, setDocuments] = useState<File[]>([]);
   const [documentStates, setDocumentStates] = useState<Record<string, DocumentStatus>>({});
   const [editFile, setEditFile] = useState<{ result: Record<string, any> } | undefined>(undefined);
   const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
   const [dropzoneVisible, setDropzoneVisible] = useState<boolean>(false);
+  const [processingQueue, setProcessingQueue] = useState<string[]>([]);
+  const [isProcessingPaused, setIsProcessingPaused] = useState<boolean>(false);
+  const [currentlyProcessing, setCurrentlyProcessing] = useState<string | null>(null);
+
+  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef<boolean>(false);
 
   useEffect(()=>{
     console.log('Documents', documents)
     console.log('Document States', documentStates)
-  },[documents, documentStates])
+    console.log('Processing Queue', processingQueue)
+  },[documents, documentStates, processingQueue])
   
   const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name)
   const clientCompanyEin = useSelector((state:clientCompany)=>state.clientCompany.current.ein)
@@ -52,47 +59,113 @@ const FileUploadPage = () => {
     
     if (newDocuments.length > 0) {
       const newStates: Record<string, DocumentStatus> = {};
-      newDocuments.forEach(doc => {
-        newStates[doc.name] = { state: 'uploaded' };
+      const newQueueItems: string[] = [];
+      
+      newDocuments.forEach((doc, index) => {
+        newStates[doc.name] = { 
+          state: 'queued',
+          position: processingQueue.length + index + 1
+        };
+        newQueueItems.push(doc.name);
       });
       
       setDocumentStates(prev => ({ ...prev, ...newStates }));
-      
-      newDocuments.forEach(doc => {
-        processDocument(doc);
-      });
+      setProcessingQueue(prev => [...prev, ...newQueueItems]);
     }
-  }, [documents, clientCompanyEin]);
+  }, [documents, documentStates, processingQueue.length]);
 
-  const processDocument = useCallback(async (file: File) => {
+  useEffect(() => {
+    if (processingQueue.length > 0 && !isProcessingRef.current && !isProcessingPaused) {
+      processNextInQueue();
+    }
+  }, [processingQueue, isProcessingPaused]);
+
+  const processNextInQueue = useCallback(async () => {
+    if (isProcessingRef.current || processingQueue.length === 0 || isProcessingPaused) {
+      return;
+    }
+
+    isProcessingRef.current = true;
+    const nextDocumentName = processingQueue[0];
+    const document = documents.find(doc => doc.name === nextDocumentName);
+    
+    if (!document) {
+      setProcessingQueue(prev => prev.slice(1));
+      isProcessingRef.current = false;
+      return;
+    }
+
+    setCurrentlyProcessing(nextDocumentName);
+    
     setDocumentStates(prev => ({
       ...prev,
-      [file.name]: { state: 'processing' }
+      [nextDocumentName]: { state: 'processing' }
     }));
 
     try {
-      const processedFile = await process({ file, clientCompanyEin }).unwrap();
-      console.log("PROCESSED FILE:", processedFile);
+      console.log(`Processing document: ${nextDocumentName}`);
+      const processedFile = await process({ file: document, clientCompanyEin }).unwrap();
       
       setDocumentStates(prev => ({
         ...prev,
-        [file.name]: { 
+        [nextDocumentName]: { 
           state: 'processed', 
           data: processedFile 
         }
       }));
+      
+      console.log(`Successfully processed: ${nextDocumentName}`);
+      
     } catch (error) {
-      console.error('Failed to process the document:', error);
+      console.error(`Failed to process ${nextDocumentName}:`, error);
       
       setDocumentStates(prev => ({
         ...prev,
-        [file.name]: { 
+        [nextDocumentName]: { 
           state: 'error', 
           error: error instanceof Error ? error.message : 'Processing failed'
         }
       }));
+    } finally {
+      setProcessingQueue(prev => {
+        const newQueue = prev.slice(1);
+        setDocumentStates(prevStates => {
+          const updated = { ...prevStates };
+          newQueue.forEach((name, index) => {
+            if (updated[name]) {
+              updated[name] = {
+                ...updated[name],
+                position: index + 1
+              };
+            }
+          });
+          return updated;
+        });
+        return newQueue;
+      });
+      
+      setCurrentlyProcessing(null);
+      isProcessingRef.current = false;
+      
+      if (processingQueue.length > 1) { 
+        processingTimeoutRef.current = setTimeout(() => {
+          if (!isProcessingPaused) {
+            processNextInQueue();
+          }
+        }, 2000);
+      }
     }
-  }, [process, clientCompanyEin]);
+  }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused]);
+
+  const toggleProcessing = useCallback(() => {
+    setIsProcessingPaused(prev => {
+      const newPaused = !prev;
+      if (!newPaused && processingQueue.length > 0 && !isProcessingRef.current) {
+        setTimeout(processNextInQueue, 100);
+      }
+      return newPaused;
+    });
+  }, [processingQueue.length, processNextInQueue]);
 
   const handleTooLongString = useCallback((str: string): string => {
     if (str.length > 25) return str.slice(0, 25) + '..';
@@ -109,8 +182,19 @@ const FileUploadPage = () => {
   }, [documentStates]);
 
   const handleRetryProcessing = useCallback((file: File) => {
-    processDocument(file);
-  }, [processDocument]);
+    setProcessingQueue(prev => {
+      const filtered = prev.filter(name => name !== file.name);
+      return [...filtered, file.name];
+    });
+    
+    setDocumentStates(prev => ({
+      ...prev,
+      [file.name]: { 
+        state: 'queued',
+        position: processingQueue.length + 1
+      }
+    }));
+  }, [processingQueue.length]);
 
   const handleManualEdit = useCallback((file: File) => {
     const basicData = {
@@ -129,12 +213,19 @@ const FileUploadPage = () => {
   const handleDeleteDocument = useCallback((name: string): void => {
     setDocuments(prev => prev.filter(document => document.name !== name));
     
+    setProcessingQueue(prev => prev.filter(docName => docName !== name));
+    
     if (documentStates[name]) {
       const newDocumentStates = { ...documentStates };
       delete newDocumentStates[name];
       setDocumentStates(newDocumentStates);
     }
-  }, [documentStates]);
+    
+    if (currentlyProcessing === name) {
+      setCurrentlyProcessing(null);
+      isProcessingRef.current = false;
+    }
+  }, [documentStates, currentlyProcessing]);
 
   const handleDocumentSaved = useCallback((fileName: string) => {
     setDocumentStates(prev => ({
@@ -148,7 +239,16 @@ const FileUploadPage = () => {
 
   const getStatusIcon = (doc: File) => {
     const state = documentStates[doc.name]?.state;
+    const position = documentStates[doc.name]?.position;
+    
     switch (state) {
+      case 'queued':
+        return (
+          <div className="flex items-center gap-1">
+            <Clock size={16} className="text-blue-400" />
+            <span className="text-xs text-blue-600 font-medium">#{position}</span>
+          </div>
+        );
       case 'processing':
         return <motion.div
           animate={{ rotate: 360 }}
@@ -170,6 +270,8 @@ const FileUploadPage = () => {
   const getStatusColor = (doc: File) => {
     const state = documentStates[doc.name]?.state;
     switch (state) {
+      case 'queued':
+        return 'text-blue-600 bg-blue-50 border-blue-200';
       case 'processing':
         return 'text-blue-600 bg-blue-50 border-blue-200';
       case 'processed':
@@ -185,7 +287,11 @@ const FileUploadPage = () => {
 
   const getStatusText = (doc: File) => {
     const state = documentStates[doc.name]?.state;
+    const position = documentStates[doc.name]?.position;
+    
     switch (state) {
+      case 'queued':
+        return language === 'ro' ? `În coadă #${position}` : `Queued #${position}`;
       case 'processing':
         return language === 'ro' ? 'Se procesează...' : 'Processing...';
       case 'processed':
@@ -203,6 +309,15 @@ const FileUploadPage = () => {
     const state = documentStates[doc.name]?.state;
 
     switch (state) {
+      case 'queued':
+        return (
+          <div className="flex items-center gap-2">
+            <div className="p-2 text-blue-400 bg-blue-100 rounded-lg">
+              <Clock size={18} />
+            </div>
+          </div>
+        );
+
       case 'processing':
         return (
           <div className="flex items-center gap-2">
@@ -273,6 +388,14 @@ const FileUploadPage = () => {
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (processingTimeoutRef.current) {
+        clearTimeout(processingTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="min-h-screen p-8">
       {/* Header Section */}
@@ -288,27 +411,72 @@ const FileUploadPage = () => {
               </h1>
               <p className="text-[var(--text2)] text-lg text-left">
                 {language === 'ro' 
-                  ? 'Încarcă și procesează documentele tale financiare' 
-                  : 'Upload and process your financial documents'
+                  ? 'Încarcă și procesează documentele tale financiare secvențial' 
+                  : 'Upload and process your financial documents sequentially'
                 }
               </p>
             </div>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setDropzoneVisible(!dropzoneVisible)}
-            className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-[var(--primary)] to-blue-500 
-            text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-          >
-            {dropzoneVisible ? <X size={20} /> : <Plus size={20} />}
-            {dropzoneVisible 
-              ? (language==='ro' ? 'Închide' : 'Close')
-              : (language==='ro' ? 'Încarcă Fișiere' : 'Upload Files')
-            }
-          </motion.button>
+          <div className="flex items-center gap-3">
+            {/* Processing Controls */}
+            {processingQueue.length > 0 && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={toggleProcessing}
+                className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-medium shadow-sm transition-all duration-300 ${
+                  isProcessingPaused 
+                    ? 'bg-green-500 text-white hover:bg-green-600' 
+                    : 'bg-yellow-500 text-white hover:bg-yellow-600'
+                }`}
+              >
+                {isProcessingPaused ? <Play size={18} /> : <Pause size={18} />}
+                {isProcessingPaused 
+                  ? (language === 'ro' ? 'Continuă' : 'Resume')
+                  : (language === 'ro' ? 'Pauză' : 'Pause')
+                }
+              </motion.button>
+            )}
+
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setDropzoneVisible(!dropzoneVisible)}
+              className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-[var(--primary)] to-blue-500 
+              text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
+            >
+              {dropzoneVisible ? <X size={20} /> : <Plus size={20} />}
+              {dropzoneVisible 
+                ? (language==='ro' ? 'Închide' : 'Close')
+                : (language==='ro' ? 'Încarcă Fișiere' : 'Upload Files')
+              }
+            </motion.button>
+          </div>
         </div>
+
+        {/* Queue Status */}
+        {processingQueue.length > 0 && (
+          <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock size={20} className="text-blue-600" />
+                <span className="font-medium text-blue-800">
+                  {language === 'ro' 
+                    ? `${processingQueue.length} documente în coadă de procesare`
+                    : `${processingQueue.length} documents in processing queue`
+                  }
+                </span>
+              </div>
+              {currentlyProcessing && (
+                <span className="text-blue-600 text-sm">
+                  {language === 'ro' ? 'Se procesează: ' : 'Processing: '}
+                  {handleTooLongString(currentlyProcessing)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Upload Zone */}
@@ -344,8 +512,8 @@ const FileUploadPage = () => {
             </h3>
             <p className="text-[var(--text2)] mb-6">
               {language === 'ro' 
-                ? 'Începe prin a încărca documentele tale financiare pentru procesare automată' 
-                : 'Start by uploading your financial documents for automatic processing'
+                ? 'Documentele vor fi procesate secvențial pentru a evita supraîncărcarea memoriei' 
+                : 'Documents will be processed sequentially to prevent memory overload'
               }
             </p>
             <motion.button
@@ -378,9 +546,14 @@ const FileUploadPage = () => {
               <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
                 {documents.length} {language==='ro'?'fișiere':'files'}
               </span>
+              {processingQueue.length > 0 && (
+                <span className="bg-blue-500/20 text-blue-600 px-3 py-1 rounded-full text-sm font-semibold">
+                  {processingQueue.length} {language==='ro'?'în coadă':'queued'}
+                </span>
+              )}
             </div>
             <p className="text-[var(--text2)] mt-2">
-              {language === 'ro' ? 'Documentele se procesează automat după încărcare' : 'Documents are automatically processed after upload'}
+              {language === 'ro' ? 'Documentele se procesează unul câte unul pentru optimizarea memoriei' : 'Documents are processed one by one for memory optimization'}
             </p>
           </div>
 
@@ -437,6 +610,7 @@ const FileUploadPage = () => {
                           <button
                             onClick={() => handleDeleteDocument(doc.name)}
                             className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
+                            disabled={currentlyProcessing === doc.name}
                           >
                             <Trash size={18} />
                           </button>

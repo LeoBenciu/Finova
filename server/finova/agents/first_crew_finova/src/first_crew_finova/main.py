@@ -5,16 +5,62 @@ import os
 import json
 import csv
 import logging
-from typing import Dict, Any
+import gc
 import tempfile
+import tracemalloc
+from typing import Dict, Any, Optional
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 from crew import FirstCrewFinova
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+def setup_memory_monitoring():
+    """Setup memory monitoring if available."""
+    try:
+        tracemalloc.start()
+        return True
+    except Exception:
+        return False
+
+def log_memory_usage(label: str):
+    """Log current memory usage."""
+    try:
+        import psutil
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        logging.info(f"{label} - Memory: RSS={memory_info.rss // 1024 // 1024}MB, VMS={memory_info.vms // 1024 // 1024}MB")
+        
+        if tracemalloc.is_tracing():
+            current, peak = tracemalloc.get_traced_memory()
+            logging.info(f"{label} - Traced: Current={current // 1024 // 1024}MB, Peak={peak // 1024 // 1024}MB")
+    except ImportError:
+        pass
+    except Exception as e:
+        logging.debug(f"Memory logging failed: {e}")
+
+def cleanup_memory():
+    """Force garbage collection and cleanup."""
+    try:
+        collected = gc.collect()
+        logging.debug(f"Garbage collected {collected} objects")
+        
+        if tracemalloc.is_tracing():
+            tracemalloc.clear_traces()
+            
+    except Exception as e:
+        logging.debug(f"Memory cleanup failed: {e}")
 
 def get_existing_articles() -> Dict:
+    """Load existing articles with error handling and memory optimization."""
     articles = {}
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +69,10 @@ def get_existing_articles() -> Dict:
         if not os.path.exists(articles_path):
             articles_path = "articles.csv"
         
+        if not os.path.exists(articles_path):
+            logging.warning("articles.csv not found, using empty articles")
+            return {}
+            
         with open(articles_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -32,31 +82,51 @@ def get_existing_articles() -> Dict:
                     "unitOfMeasure": row["unitOfMeasure"],
                     "type": row["type"]
                 }
-    except FileNotFoundError:
-        logging.warning("articles.csv not found, using empty articles")
-        return {}
+                
+        logging.info(f"Loaded {len(articles)} articles")
+        
     except Exception as e:
         logging.error(f"Error reading articles.csv: {str(e)}")
         return {}
+    
     return articles
 
 def save_temp_file(base64_data: str) -> str:
-    """Save base64 data to a temporary file and return the path."""
+    """Save base64 data to a temporary file with error handling."""
     try:
+        if not base64_data:
+            raise ValueError("Empty base64 data")
+            
+        estimated_size = len(base64_data) * 3 // 4
+        max_size = 50 * 1024 * 1024
+        
+        if estimated_size > max_size:
+            raise ValueError(f"File too large: {estimated_size // 1024 // 1024}MB > {max_size // 1024 // 1024}MB")
+        
         with tempfile.NamedTemporaryFile(mode='wb', suffix='.pdf', delete=False) as temp_file:
-            temp_file.write(base64.b64decode(base64_data))
-            return temp_file.name
+            chunk_size = 1024 * 1024 
+            for i in range(0, len(base64_data), chunk_size):
+                chunk = base64_data[i:i + chunk_size]
+                decoded_chunk = base64.b64decode(chunk)
+                temp_file.write(decoded_chunk)
+                
+            temp_path = temp_file.name
+            
+        logging.info(f"Saved temporary file: {temp_path} ({estimated_size // 1024}KB)")
+        return temp_path
+        
     except Exception as e:
         logging.error(f"Error saving temporary file: {str(e)}")
         raise
 
 def extract_json_from_text(text: str) -> dict:
-    """Extract JSON from text that might contain other content."""
+    """Extract JSON from text with optimized parsing."""
     if not text:
         return {}
     
     import re
-    text = re.sub(r'\x1b\[[0-9;]*m', '', text)
+    
+    text = re.sub(r'\x1b\[[0-9;]*m', '', text) 
     text = text.strip()
     
     try:
@@ -81,6 +151,8 @@ def extract_json_from_text(text: str) -> dict:
                         json_str = text[start_idx:i+1]
                         json_obj = json.loads(json_str)
                         results.append(json_obj)
+                        if len(results) >= 5:
+                            break
                     except json.JSONDecodeError:
                         pass
                     start_idx = -1
@@ -100,7 +172,7 @@ def extract_json_from_text(text: str) -> dict:
         except json.JSONDecodeError:
             pass
     
-    if "document_type" in text.lower() or "vendor" in text.lower():
+    if any(keyword in text.lower() for keyword in ["document_type", "vendor", "buyer", "company"]):
         result = {}
         patterns = [
             (r'"document_type"\s*:\s*"([^"]+)"', 'document_type'),
@@ -119,21 +191,28 @@ def extract_json_from_text(text: str) -> dict:
                 result[key] = match.group(1)
         
         if result:
-            logging.info(f"Extracted structured data using patterns: {result}")
+            logging.info(f"Extracted structured data using patterns: {list(result.keys())}")
             return result
     
-    logging.warning(f"Could not extract JSON from text: {text[:200]}...")
+    logging.warning(f"Could not extract JSON from text (length: {len(text)})")
     return {}
 
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
-    """Process a single document and return extraction results."""
-    existing_articles = get_existing_articles()
-    management_records = {"Depozit Central": {}, "Servicii": {}}
+    """Process a single document with memory optimization."""
+    log_memory_usage("Before processing")
     
     try:
-        crew = FirstCrewFinova(client_company_ein, existing_articles, management_records).crew()
+        existing_articles = get_existing_articles()
+        management_records = {"Depozit Central": {}, "Servicii": {}}
         
-        logging.info(f"Processing document: {doc_path}")
+        log_memory_usage("After loading config")
+        
+        crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
+        crew = crew_instance.crew()
+        
+        log_memory_usage("After crew creation")
+        
+        logging.info(f"Processing document: {os.path.basename(doc_path)}")
         
         inputs = {
             "document_path": doc_path,
@@ -149,10 +228,14 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             "doc_type": "Unknown"  
         }
         
+        log_memory_usage("Before crew kickoff")
+        
         captured_output = StringIO()
         
         with redirect_stdout(captured_output), redirect_stderr(captured_output):
             result = crew.kickoff(inputs=inputs)
+        
+        log_memory_usage("After crew kickoff")
         
         combined_data = {
             "document_type": "Unknown",
@@ -160,44 +243,51 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         }
         
         if hasattr(result, 'tasks_output') and result.tasks_output:
-            logging.info(f"Number of tasks completed: {len(result.tasks_output)}")
+            logging.info(f"Processing {len(result.tasks_output)} task outputs")
             
             for i, task_output in enumerate(result.tasks_output):
-                if task_output and hasattr(task_output, 'raw') and task_output.raw:
-                    logging.info(f"Task {i} has output of length: {len(task_output.raw)}")
-                    
-                    if i == 0:
-                        logging.info(f"Task 0 (categorization) raw output: {task_output.raw[:500]}...")
-                        categorization_data = extract_json_from_text(task_output.raw)
-                        if categorization_data:
-                            combined_data.update(categorization_data)
-                            doc_type = categorization_data.get('document_type', 'Unknown')
-                            logging.info(f"Document categorized as: {doc_type}")
-                            inputs['doc_type'] = doc_type
-                    
-                    elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
-                        logging.info(f"Task 1 (invoice extraction) raw output: {task_output.raw[:1000]}...")
-                        extraction_data = extract_json_from_text(task_output.raw)
-                        if extraction_data:
-                            combined_data.update(extraction_data)
-                            logging.info(f"Invoice data extracted. Keys: {list(extraction_data.keys())}")
-                        else:
-                            logging.error("Failed to extract invoice data")
-                    
-                    elif i == 2:
-                        doc_type = combined_data.get('document_type') or ''
-                        if doc_type.lower() != 'invoice' and doc_type.lower() != '':
-                            logging.info(f"Task 2 (other doc extraction) raw output: {task_output.raw[:1000]}...")
-                            other_data = extract_json_from_text(task_output.raw)
-                            if other_data:
-                                combined_data.update(other_data)
-                                logging.info(f"Other document data extracted. Keys: {list(other_data.keys())}")
-                            else:
-                                logging.error(f"Failed to extract data for {combined_data.get('document_type')} document")
-                else:
-                    logging.warning(f"Task {i} has no output")
+                try:
+                    if task_output and hasattr(task_output, 'raw') and task_output.raw:
+                        output_length = len(task_output.raw)
+                        logging.info(f"Task {i} output length: {output_length}")
+                        
+                        if i == 0:
+                            categorization_data = extract_json_from_text(task_output.raw)
+                            if categorization_data:
+                                combined_data.update(categorization_data)
+                                doc_type = categorization_data.get('document_type', 'Unknown')
+                                logging.info(f"Document categorized as: {doc_type}")
+                                inputs['doc_type'] = doc_type
+                        
+                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
+                            extraction_data = extract_json_from_text(task_output.raw)
+                            if extraction_data:
+                                combined_data.update(extraction_data)
+                                logging.info(f"Invoice data extracted with keys: {list(extraction_data.keys())}")
+                        
+                        elif i == 2: 
+                            doc_type = combined_data.get('document_type', '').lower()
+                            if doc_type != 'invoice' and doc_type:
+                                other_data = extract_json_from_text(task_output.raw)
+                                if other_data:
+                                    combined_data.update(other_data)
+                                    logging.info(f"Other document data extracted with keys: {list(other_data.keys())}")
+                        
+                        del task_output.raw
+                        
+                    else:
+                        logging.warning(f"Task {i} has no output")
+                        
+                except Exception as e:
+                    logging.error(f"Error processing task {i}: {str(e)}")
+                    continue
         else:
             logging.error("No tasks output found in result")
+        
+        del crew
+        del crew_instance
+        del existing_articles
+        del management_records
         
         doc_type = (combined_data.get('document_type') or '').lower()
         
@@ -215,54 +305,116 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             combined_data['transactions'] = []
             logging.warning("No transactions found for bank statement, setting empty array")
         
+        log_memory_usage("After processing")
+        
         return {
             "data": combined_data
         }
+        
     except Exception as e:
         logging.error(f"Failed to process {doc_path}: {str(e)}", exc_info=True)
         
         error_message = str(e)
-        if "LLM" in error_message or "OpenAI" in error_message or "API" in error_message:
-            return {"error": "LLM configuration error. Please check OpenAI API key.", "details": error_message}
+        if any(keyword in error_message for keyword in ["LLM", "OpenAI", "API", "rate limit", "quota"]):
+            return {"error": "LLM service error. Please check API configuration or try again later.", "details": error_message}
+        elif "memory" in error_message.lower() or "killed" in error_message.lower():
+            return {"error": "Memory limit exceeded. Please try with a smaller document.", "details": error_message}
+        elif "timeout" in error_message.lower():
+            return {"error": "Processing timeout. Please try with a simpler document.", "details": error_message}
         
-        return {"error": f"Failed to process: {str(e)}"}
+        return {"error": f"Processing failed: {str(e)}"}
+    
     finally:
-        if os.path.exists(doc_path):
-            try:
-                os.remove(doc_path)
-            except Exception as e:
-                logging.warning(f"Failed to remove temporary file: {str(e)}")
+        cleanup_memory()
+        log_memory_usage("After cleanup")
 
 def read_base64_from_file(file_path: str) -> str:
-    """Read base64 data from a file."""
+    """Read base64 data from file with error handling."""
     try:
-        with open(file_path, 'r') as f:
-            return f.read().strip()
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"Base64 file not found: {file_path}")
+            
+        file_size = os.path.getsize(file_path)
+        max_size = 100 * 1024 * 1024 
+        
+        if file_size > max_size:
+            raise ValueError(f"Base64 file too large: {file_size // 1024 // 1024}MB")
+        
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            
+        if not content:
+            raise ValueError("Empty base64 file")
+            
+        logging.info(f"Read base64 file: {file_path} ({file_size // 1024}KB)")
+        return content
+        
     except Exception as e:
         logging.error(f"Error reading base64 file: {str(e)}")
         raise
 
-if __name__ == "__main__":
+def main():
+    """Main function with comprehensive error handling and memory management."""
+    memory_monitoring = setup_memory_monitoring()
+    
     try:
         if len(sys.argv) < 3:
-            print(json.dumps({"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path>"}))
+            result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path>"}
+            print(json.dumps(result, ensure_ascii=False))
             sys.exit(1)
         
-        client_company_ein = sys.argv[1]
-        base64_input = sys.argv[2]
+        client_company_ein = sys.argv[1].strip()
+        base64_input = sys.argv[2].strip()
+        
+        if not client_company_ein:
+            result = {"error": "Client company EIN is required"}
+            print(json.dumps(result, ensure_ascii=False))
+            sys.exit(1)
+        
+        log_memory_usage("Startup")
         
         if os.path.exists(base64_input) and os.path.isfile(base64_input):
             base64_data = read_base64_from_file(base64_input)
         else:
             base64_data = base64_input
+            
+        if not base64_data:
+            result = {"error": "No base64 data provided"}
+            print(json.dumps(result, ensure_ascii=False))
+            sys.exit(1)
         
         temp_file_path = save_temp_file(base64_data)
         
-        result = process_single_document(temp_file_path, client_company_ein)
+        try:
+            result = process_single_document(temp_file_path, client_company_ein)
+            
+            print(json.dumps(result, ensure_ascii=False))
+            
+        finally:
+            if os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                    logging.info(f"Cleaned up temporary file: {temp_file_path}")
+                except Exception as e:
+                    logging.warning(f"Failed to remove temporary file: {str(e)}")
         
-        print(json.dumps(result))
+    except KeyboardInterrupt:
+        logging.info("Processing interrupted by user")
+        print(json.dumps({"error": "Processing interrupted"}))
+        sys.exit(1)
         
     except Exception as e:
         logging.error(f"Unhandled error: {str(e)}", exc_info=True)
-        print(json.dumps({"error": str(e)}))
+        print(json.dumps({"error": str(e)}, ensure_ascii=False))
         sys.exit(1)
+        
+    finally:
+        cleanup_memory()
+        
+        if memory_monitoring and tracemalloc.is_tracing():
+            tracemalloc.stop()
+        
+        log_memory_usage("Exit")
+
+if __name__ == "__main__":
+    main()

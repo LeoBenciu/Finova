@@ -12,11 +12,64 @@ const execPromise = promisify(exec);
 const writeFilePromise = promisify(fs.writeFile);
 const unlinkPromise = promisify(fs.unlink);
 
+class ProcessingQueue {
+    private static instance: ProcessingQueue;
+    private queue: Array<{ promise: Promise<any>; resolve: Function; reject: Function }> = [];
+    private processing = false;
+    private readonly maxConcurrent = 1; 
+
+    static getInstance(): ProcessingQueue {
+        if (!ProcessingQueue.instance) {
+            ProcessingQueue.instance = new ProcessingQueue();
+        }
+        return ProcessingQueue.instance;
+    }
+
+    async add<T>(processor: () => Promise<T>): Promise<T> {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ 
+                promise: processor(), 
+                resolve, 
+                reject 
+            });
+            this.processNext();
+        });
+    }
+
+    private async processNext() {
+        if (this.processing || this.queue.length === 0) {
+            return;
+        }
+
+        this.processing = true;
+        const { promise, resolve, reject } = this.queue.shift()!;
+
+        try {
+            const result = await promise;
+            resolve(result);
+        } catch (error) {
+            reject(error);
+        } finally {
+            this.processing = false;
+            setTimeout(() => {
+                if (global.gc) {
+                    global.gc(); 
+                }
+                this.processNext();
+            }, 1000); 
+        }
+    }
+}
+
 @Injectable()
 export class DataExtractionService {
     private readonly logger = new Logger(DataExtractionService.name);
     private pythonScriptPath: string;
     private readonly tempDir: string;
+    private readonly processingQueue = ProcessingQueue.getInstance();
+    private readonly maxFileSize = 10 * 1024 * 1024;
+    private readonly processingTimeout = 300000; 
+    private dependenciesChecked = false;
 
     constructor(
         private readonly config: ConfigService, 
@@ -45,10 +98,13 @@ export class DataExtractionService {
             fs.mkdirSync(this.tempDir, { recursive: true });
         }
         
+        this.setupTempFileCleanup();
+        
         this.logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
         this.logger.log(`Current working directory: ${process.cwd()}`);
         this.logger.log(`Python script path: ${this.pythonScriptPath}`);
         this.logger.log(`Temp directory: ${this.tempDir}`);
+        this.logger.log(`Max file size: ${this.maxFileSize / (1024 * 1024)}MB`);
         
         try {
             const scriptDir = path.dirname(this.pythonScriptPath);
@@ -72,14 +128,28 @@ export class DataExtractionService {
     }
 
     async extractData(fileBase64: string, clientCompanyEin: string) {
+        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin));
+    }
+
+    private async processDocument(fileBase64: string, clientCompanyEin: string) {
         let tempBase64File: string | null = null;
+        const startTime = Date.now();
+        const memoryBefore = process.memoryUsage();
         
         try {
+            const estimatedSize = (fileBase64.length * 3) / 4; 
+            if (estimatedSize > this.maxFileSize) {
+                throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
+            }
+
+            this.logger.log(`Starting document processing. Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
+            this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
+
             if (!fs.existsSync(this.pythonScriptPath)) {
                 const alternativePaths = [
                     path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
                     '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
-                    path.join(process.cwd(), 'agents/first_crew_finova/src/first_crew_finova/main.py'),
+                    path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
                 ];
                 
                 let foundPath = null;
@@ -106,32 +176,41 @@ export class DataExtractionService {
                 throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
             }
 
-            const tempFileName = `base64_${randomBytes(8).toString('hex')}.txt`;
+            const tempFileName = `base64_${randomBytes(8).toString('hex')}_${Date.now()}.txt`;
             tempBase64File = path.join(this.tempDir, tempFileName);
             await writeFilePromise(tempBase64File, fileBase64);
             
             this.logger.debug(`Created temporary base64 file: ${tempBase64File}`);
 
-            try {
-                await execPromise('python3 -m pip install crewai crewai-tools pytesseract pdf2image pillow', {
-                    cwd: path.dirname(this.pythonScriptPath)
-                });
-            } catch (installError) {
-                this.logger.warn('Failed to install Python dependencies, they might already be installed');
+            if (!this.dependenciesChecked) {
+                try {
+                    await this.installDependencies();
+                    this.dependenciesChecked = true;
+                } catch (installError) {
+                    this.logger.warn('Failed to install Python dependencies, they might already be installed');
+                }
             }
 
             const command = `python3 "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}"`;
             
             this.logger.debug(`Executing command: ${command.substring(0, 100)}...`);
             
-            const { stdout, stderr } = await execPromise(command, {
-                maxBuffer: 1024 * 1024 * 10, 
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
+            });
+
+            const executionPromise = execPromise(command, {
+                maxBuffer: 1024 * 1024 * 10,
                 cwd: path.dirname(this.pythonScriptPath), 
                 env: {
                     ...process.env,
-                    PYTHONPATH: path.dirname(this.pythonScriptPath) 
+                    PYTHONPATH: path.dirname(this.pythonScriptPath),
+                    PYTHONUNBUFFERED: '1',
+                    MALLOC_ARENA_MAX: '2', 
                 }
             });
+
+            const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
             
             if (stderr) {
                 this.logger.warn(`Python stderr output: ${stderr}`);
@@ -142,7 +221,7 @@ export class DataExtractionService {
                 const jsonOutput = this.extractJsonFromOutput(stdout);
                 result = JSON.parse(jsonOutput);
             } catch (parseError) {
-                this.logger.error(`Failed to parse Python output. Raw output: ${stdout}`);
+                this.logger.error(`Failed to parse Python output. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
                 throw new Error(`Invalid JSON output from Python script: ${parseError.message}`);
             }
 
@@ -155,10 +234,31 @@ export class DataExtractionService {
             this.validateInvoiceDirection(extractedData, clientCompanyEin);
             this.validateExtractedData(extractedData, [], [], clientCompanyEin);
 
+            const processingTime = Date.now() - startTime;
+            const memoryAfter = process.memoryUsage();
+            const memoryDiff = {
+                rss: memoryAfter.rss - memoryBefore.rss,
+                heapUsed: memoryAfter.heapUsed - memoryBefore.heapUsed,
+                external: memoryAfter.external - memoryBefore.external
+            };
+
+            this.logger.log(`Document processing completed in ${processingTime}ms`);
+            this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
+
             return extractedData;
             
         } catch (error) {
-            this.logger.error(`Error extracting data for EIN ${clientCompanyEin}: ${error.message}`, error.stack);
+            const processingTime = Date.now() - startTime;
+            this.logger.error(`Error extracting data for EIN ${clientCompanyEin} after ${processingTime}ms: ${error.message}`, error.stack);
+            
+            if (error.message.includes('timeout')) {
+                throw new Error(`Document processing timed out after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
+            } else if (error.message.includes('maxBuffer')) {
+                throw new Error('Document output too large. Please try with a smaller or simpler document.');
+            } else if (error.message.includes('ENOENT')) {
+                throw new Error('Document processing system unavailable. Please try again later.');
+            }
+            
             throw new Error(`Failed to extract data from document: ${error.message}`);
         } finally {
             if (tempBase64File && fs.existsSync(tempBase64File)) {
@@ -169,10 +269,63 @@ export class DataExtractionService {
                     this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
                 }
             }
+
+            if (global.gc) {
+                global.gc();
+            }
+
+            const finalMemory = process.memoryUsage();
+            this.logger.debug(`Final memory state: ${JSON.stringify(finalMemory)}`);
+        }
+    }
+
+    private async installDependencies() {
+        const command = 'python3 -m pip install crewai crewai-tools pytesseract pdf2image pillow --no-cache-dir';
+        this.logger.debug('Installing Python dependencies...');
+        
+        await execPromise(command, {
+            cwd: path.dirname(this.pythonScriptPath),
+            timeout: 60000
+        });
+        
+        this.logger.log('Python dependencies installed successfully');
+    }
+
+    private setupTempFileCleanup() {
+        setInterval(() => {
+            this.cleanupOldTempFiles();
+        }, 30 * 60 * 1000); // 30 minutes
+
+        setTimeout(() => this.cleanupOldTempFiles(), 1000);
+    }
+
+    private async cleanupOldTempFiles() {
+        try {
+            const files = await fs.promises.readdir(this.tempDir);
+            const now = Date.now();
+            const oneHourAgo = now - (60 * 60 * 1000);
+
+            for (const file of files) {
+                const filePath = path.join(this.tempDir, file);
+                try {
+                    const stats = await fs.promises.stat(filePath);
+                    if (stats.mtime.getTime() < oneHourAgo) {
+                        await fs.promises.unlink(filePath);
+                        this.logger.debug(`Cleaned up old temp file: ${file}`);
+                    }
+                } catch (error) {
+                }
+            }
+        } catch (error) {
+            this.logger.warn(`Error during temp file cleanup: ${error.message}`);
         }
     }
 
     private extractJsonFromOutput(output: string): string {
+        if (!output) {
+            throw new Error('No output received from Python script');
+        }
+
         const lines = output.split('\n');
         
         let jsonString = '';
@@ -272,7 +425,10 @@ export class DataExtractionService {
         const numericFields = ['total_amount', 'vat_amount'];
         numericFields.forEach(field => {
             if (data[field] !== undefined && data[field] !== null) {
-                data[field] = Number(data[field]);
+                const numValue = Number(data[field]);
+                if (!isNaN(numValue)) {
+                    data[field] = numValue;
+                }
             }
         });
 
@@ -281,7 +437,10 @@ export class DataExtractionService {
                 const itemNumericFields = ['quantity', 'unit_price', 'vat_amount', 'total'];
                 itemNumericFields.forEach(field => {
                     if (item[field] !== undefined && item[field] !== null) {
-                        item[field] = Number(item[field]);
+                        const numValue = Number(item[field]);
+                        if (!isNaN(numValue)) {
+                            item[field] = numValue;
+                        }
                     }
                 });
                 
@@ -295,5 +454,23 @@ export class DataExtractionService {
         }
 
         return data;
+    }
+
+    getServiceHealth() {
+        const memory = process.memoryUsage();
+        return {
+            memory: {
+                rss: `${Math.round(memory.rss / 1024 / 1024)}MB`,
+                heapUsed: `${Math.round(memory.heapUsed / 1024 / 1024)}MB`,
+                heapTotal: `${Math.round(memory.heapTotal / 1024 / 1024)}MB`,
+                external: `${Math.round(memory.external / 1024 / 1024)}MB`
+            },
+            tempDir: this.tempDir,
+            pythonScriptPath: this.pythonScriptPath,
+            maxFileSize: `${this.maxFileSize / 1024 / 1024}MB`,
+            processingTimeout: `${this.processingTimeout / 1000}s`,
+            queueLength: this.processingQueue['queue']?.length || 0,
+            isProcessing: this.processingQueue['processing'] || false
+        };
     }
 }
