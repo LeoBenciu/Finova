@@ -388,6 +388,12 @@ def read_base64_from_file(file_path: str) -> str:
 
 def main():
     """Main function with comprehensive error handling and memory management."""
+
+    print(f"Python script started", file=sys.stderr)
+    print(f"OPENAI_API_KEY exists: {bool(os.getenv('OPENAI_API_KEY'))}", file=sys.stderr)
+    print(f"MODEL env var: {os.getenv('MODEL', 'NOT SET')}", file=sys.stderr)
+    print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+
     memory_monitoring = setup_memory_monitoring()
     
     try:
