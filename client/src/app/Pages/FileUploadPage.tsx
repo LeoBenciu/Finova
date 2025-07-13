@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play } from "lucide-react";
+import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
@@ -246,7 +246,6 @@ const FileUploadPage = () => {
         return (
           <div className="flex items-center gap-1">
             <Clock size={16} className="text-blue-400" />
-            <span className="text-xs text-blue-600 font-medium">#{position}</span>
           </div>
         );
       case 'processing':
@@ -254,7 +253,7 @@ const FileUploadPage = () => {
           animate={{ rotate: 360 }}
           transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
         >
-          <Clock size={16} className="text-blue-500" />
+          <LoaderCircle size={16} className="text-blue-500" />
         </motion.div>;
       case 'processed':
         return <CheckCircle size={16} className="text-green-500" />;
