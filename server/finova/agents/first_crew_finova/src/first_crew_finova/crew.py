@@ -5,20 +5,13 @@ from typing import List, Dict, Type
 import os
 import json
 from pydantic import BaseModel, Field
-from enhanced_ocr_tool import EnhancedRomanianTextExtractorTool
+from server.finova.agents.first_crew_finova.src.first_crew_finova.tools.llm_vision_ocr_tool import LLMVisionTextExtractorTool
 
 try:
     from crewai import Process
 except ImportError:
     from crewai.process import Process
 
-try:
-    import pytesseract
-    from pdf2image import convert_from_path
-    OCR_AVAILABLE = True
-except ImportError:
-    OCR_AVAILABLE = False
-    
 try:
     import PyPDF2
     PYPDF2_AVAILABLE = True
@@ -29,16 +22,16 @@ class FileReadInput(BaseModel):
     """Input schema for FileReadTool."""
     file_path: str = Field(..., description="Path to the file to read")
 
-class RomanianTextExtractorTool(BaseTool):
-    name: str = "romanian_text_extractor"
-    description: str = "Extracts text from files, with OCR support for Romanian PDFs"
+class SimpleTextExtractorTool(BaseTool):
+    name: str = "simple_text_extractor"
+    description: str = "Simple text extraction for text-based files"
     args_schema: Type[BaseModel] = FileReadInput
     
     def _run(self, file_path: str) -> str:
-        """Extract text from the given file."""
+        """Extract text from simple text files."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-            
+        
         if file_path.endswith(".pdf"):
             if PYPDF2_AVAILABLE:
                 try:
@@ -55,18 +48,7 @@ class RomanianTextExtractorTool(BaseTool):
                 except Exception as e:
                     print(f"PyPDF2 extraction failed: {str(e)}")
             
-            if OCR_AVAILABLE:
-                try:
-                    images = convert_from_path(file_path)
-                    text = ""
-                    for i, image in enumerate(images):
-                        page_text = pytesseract.image_to_string(image, lang="ron")
-                        text += f"Page {i + 1}:\n{page_text}\n\n"
-                    return text
-                except Exception as e:
-                    print(f"OCR failed: {str(e)}")
-            
-            return "Could not extract text from PDF. Please ensure the PDF contains text or install OCR dependencies."
+            return "Could not extract text from PDF. This appears to be an image-based PDF."
         else:
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
@@ -89,7 +71,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['document_categorizer'],
             verbose=True,
-            tools=[EnhancedRomanianTextExtractorTool()],
+            tools=[LLMVisionTextExtractorTool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
@@ -102,7 +84,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['invoice_data_extractor'],
             verbose=True,
-            tools=[EnhancedRomanianTextExtractorTool()],
+            tools=[LLMVisionTextExtractorTool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "existing_articles": self.existing_articles,
@@ -119,7 +101,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['other_document_data_extractor'],
             verbose=True,
-            tools=[EnhancedRomanianTextExtractorTool()]
+            tools=[LLMVisionTextExtractorTool()]
         )
 
     @task
