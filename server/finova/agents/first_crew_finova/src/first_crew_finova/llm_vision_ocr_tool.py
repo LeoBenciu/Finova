@@ -5,7 +5,6 @@ import base64
 from typing import Type, Optional
 from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
-import openai
 
 try:
     import PyPDF2
@@ -21,6 +20,12 @@ try:
 except ImportError:
     PDF_TO_IMAGE_AVAILABLE = False
 
+try:
+    import openai
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
 class FileReadInput(BaseModel):
     file_path: str = Field(..., description="Path to the file to read")
 
@@ -31,9 +36,14 @@ class LLMVisionTextExtractorTool(BaseTool):
     
     def __init__(self):
         super().__init__()
-        self.client = openai.OpenAI(
-            api_key=os.getenv('OPENAI_API_KEY')
-        )
+        self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        if OPENAI_AVAILABLE and self.openai_api_key:
+            self.client = openai.OpenAI(api_key=self.openai_api_key)
+            self.llm_available = True
+            logging.info("LLM Vision OCR initialized with OpenAI")
+        else:
+            self.llm_available = False
+            logging.warning("LLM Vision OCR not available - falling back to simple text extraction")
     
     def _run(self, file_path: str) -> str:
         if not os.path.exists(file_path):
@@ -42,7 +52,10 @@ class LLMVisionTextExtractorTool(BaseTool):
         if file_path.endswith(".pdf"):
             return self._extract_from_pdf(file_path)
         elif file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.tiff', '.bmp')):
-            return self._extract_from_image(file_path)
+            if self.llm_available:
+                return self._extract_from_image(file_path)
+            else:
+                return "Image file detected but LLM vision not available"
         else:
             return self._extract_from_text_file(file_path)
     
@@ -58,14 +71,15 @@ class LLMVisionTextExtractorTool(BaseTool):
             except Exception as e:
                 logging.info(f"Direct text extraction failed: {str(e)}")
         
-        if PDF_TO_IMAGE_AVAILABLE:
+        if self.llm_available and PDF_TO_IMAGE_AVAILABLE:
             try:
                 return self._extract_with_llm_vision(file_path)
             except Exception as e:
                 logging.error(f"LLM Vision OCR failed: {str(e)}")
-                raise
+                return self._extract_direct_text_fallback(file_path)
         else:
-            raise Exception("PDF to image conversion not available")
+            logging.warning("LLM Vision not available, using basic PDF extraction")
+            return self._extract_direct_text_fallback(file_path)
     
     def _extract_direct_text(self, file_path: str) -> str:
         """Extract text directly from PDF if it contains selectable text"""
@@ -77,6 +91,14 @@ class LLMVisionTextExtractorTool(BaseTool):
                 if page_text:
                     text += f"Page {page_num + 1}:\n{page_text}\n\n"
             return text
+    
+    def _extract_direct_text_fallback(self, file_path: str) -> str:
+        """Fallback PDF text extraction"""
+        try:
+            return self._extract_direct_text(file_path)
+        except Exception as e:
+            logging.error(f"PDF text extraction failed: {str(e)}")
+            return "Could not extract text from PDF. This may be an image-based PDF that requires OCR."
     
     def _extract_with_llm_vision(self, file_path: str) -> str:
         """Extract text using LLM vision capabilities"""
@@ -93,7 +115,7 @@ class LLMVisionTextExtractorTool(BaseTool):
                 all_text += f"=== PAGE {i + 1} ===\n{page_text}\n\n"
         
         if not all_text.strip():
-            return "No text could be extracted from this document."
+            return "No text could be extracted from this document using LLM Vision."
         
         return all_text
     
@@ -104,11 +126,14 @@ class LLMVisionTextExtractorTool(BaseTool):
     
     def _extract_text_from_image_with_llm(self, image: Image.Image, page_num: int) -> str:
         """Use LLM vision to extract text from image"""
+        if not self.llm_available:
+            return f"[LLM_VISION_UNAVAILABLE: Page {page_num}]"
+        
         try:
             buffer = io.BytesIO()
             if image.mode in ('RGBA', 'LA', 'P'):
                 image = image.convert('RGB')
-            image.save(buffer, format='JPEG', quality=95)
+            image.save(buffer, format='JPEG', quality=85)
             base64_image = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
             prompt = """You are an expert OCR system specialized in Romanian financial documents. 
@@ -150,7 +175,7 @@ class LLMVisionTextExtractorTool(BaseTool):
             
         except Exception as e:
             logging.error(f"LLM Vision OCR failed for page {page_num}: {str(e)}")
-            return f"[OCR_ERROR: Failed to extract text from page {page_num}]"
+            return f"[OCR_ERROR: Failed to extract text from page {page_num} - {str(e)}]"
     
     def _extract_from_text_file(self, file_path: str) -> str:
         """Extract text from plain text files"""

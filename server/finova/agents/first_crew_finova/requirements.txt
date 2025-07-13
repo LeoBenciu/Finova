@@ -3,13 +3,15 @@ crewai
 crewai-tools
 pydantic
 
-# PDF handling (only for text extraction, no system dependencies needed)
+# PDF handling
 PyPDF2
 
-# LLM API clients (choose one or both)
+# LLM API clients
 openai>=1.0.0
-anthropic>=0.25.0
 
-# Image processing (for PDF to image conversion)
+# Image processing (for PDF to image conversion - lightweight alternatives)
 pdf2image
 pillow
+
+# Optional: for better performance
+requests

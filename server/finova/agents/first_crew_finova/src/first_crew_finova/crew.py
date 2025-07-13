@@ -5,7 +5,6 @@ from typing import List, Dict, Type
 import os
 import json
 from pydantic import BaseModel, Field
-from server.finova.agents.first_crew_finova.src.first_crew_finova.tools.llm_vision_ocr_tool import LLMVisionTextExtractorTool
 
 try:
     from crewai import Process
@@ -17,6 +16,16 @@ try:
     PYPDF2_AVAILABLE = True
 except ImportError:
     PYPDF2_AVAILABLE = False
+
+try:
+    from llm_vision_ocr_tool import LLMVisionTextExtractorTool
+    LLM_VISION_AVAILABLE = True
+except ImportError:
+    LLM_VISION_AVAILABLE = False
+    try:
+        OCR_TOOL_AVAILABLE = True
+    except ImportError:
+        OCR_TOOL_AVAILABLE = False
 
 class FileReadInput(BaseModel):
     """Input schema for FileReadTool."""
@@ -57,6 +66,14 @@ class SimpleTextExtractorTool(BaseTool):
                 with open(file_path, "r", encoding="latin-1") as f:
                     return f.read()
 
+def get_text_extractor_tool():
+    if LLM_VISION_AVAILABLE:
+        print("Using LLM Vision Text Extractor")
+        return LLMVisionTextExtractorTool()
+    else:
+        print("Using Simple Text Extractor (fallback)")
+        return SimpleTextExtractorTool()
+
 @CrewBase
 class FirstCrewFinova:
     """FirstCrewFinova crew for document categorization and data extraction"""
@@ -71,7 +88,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['document_categorizer'],
             verbose=True,
-            tools=[LLMVisionTextExtractorTool()],
+            tools=[get_text_extractor_tool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
@@ -84,7 +101,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['invoice_data_extractor'],
             verbose=True,
-            tools=[LLMVisionTextExtractorTool()],
+            tools=[get_text_extractor_tool()],
             config_dic={
                 "client_company_ein": self.client_company_ein,
                 "existing_articles": self.existing_articles,
@@ -101,7 +118,7 @@ class FirstCrewFinova:
         return Agent(
             config=self.agents_config['other_document_data_extractor'],
             verbose=True,
-            tools=[LLMVisionTextExtractorTool()]
+            tools=[get_text_extractor_tool()]
         )
 
     @task
