@@ -5,6 +5,7 @@ from typing import List, Dict, Type
 import os
 import json
 from pydantic import BaseModel, Field
+import logging
 
 try:
     from crewai import Process
@@ -78,16 +79,35 @@ def get_configured_llm():
     """Get properly configured LLM for CrewAI agents"""
     
     openai_api_key = os.getenv('OPENAI_API_KEY')
+    model_name = os.getenv('MODEL', 'gpt-4o-mini')
     
-    if openai_api_key:
-        return LLM(
-            model="gpt-4o-mini",
+    if not openai_api_key:
+        logging.error("OPENAI_API_KEY environment variable not found")
+        return None
+    
+    logging.info(f"Configuring OpenAI LLM with model: {model_name}")
+    logging.info(f"API Key prefix: {openai_api_key[:10]}...") 
+    
+    try:
+        from crewai import LLM
+        
+        llm = LLM(
+            model=model_name,
             temperature=0.3,
             max_tokens=4000
         )
-    
-    print("Warning: No LLM configuration found. Please set OPENAI_API_KEY or another supported LLM provider.")
-    return None
+        
+        logging.info("LLM configuration successful")
+        return llm
+        
+    except Exception as e:
+        logging.error(f"Failed to configure LLM: {str(e)}")
+        logging.error(f"Model name: {model_name}")
+        logging.error("Please verify:")
+        logging.error("1. The model name is correct")
+        logging.error("2. Your API key has access to this model")
+        logging.error("3. Your API key is valid and not expired")
+        return None
 
 @CrewBase
 class FirstCrewFinova:
