@@ -239,7 +239,6 @@ const FileUploadPage = () => {
 
   const getStatusIcon = (doc: File) => {
     const state = documentStates[doc.name]?.state;
-    const position = documentStates[doc.name]?.position;
     
     switch (state) {
       case 'queued':
