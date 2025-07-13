@@ -16,7 +16,7 @@ class ProcessingQueue {
     private static instance: ProcessingQueue;
     private queue: Array<{ promise: Promise<any>; resolve: Function; reject: Function }> = [];
     private processing = false;
-    private readonly maxConcurrent = 1; 
+    private readonly maxConcurrent = 1;
 
     static getInstance(): ProcessingQueue {
         if (!ProcessingQueue.instance) {
@@ -53,7 +53,7 @@ class ProcessingQueue {
             this.processing = false;
             setTimeout(() => {
                 if (global.gc) {
-                    global.gc(); 
+                    global.gc();
                 }
                 this.processNext();
             }, 1000); 
@@ -67,7 +67,7 @@ export class DataExtractionService {
     private pythonScriptPath: string;
     private readonly tempDir: string;
     private readonly processingQueue = ProcessingQueue.getInstance();
-    private readonly maxFileSize = 10 * 1024 * 1024;
+    private readonly maxFileSize = 10 * 1024 * 1024; 
     private readonly processingTimeout = 300000; 
     private dependenciesChecked = false;
 
@@ -206,7 +206,7 @@ export class DataExtractionService {
                     ...process.env,
                     PYTHONPATH: path.dirname(this.pythonScriptPath),
                     PYTHONUNBUFFERED: '1',
-                    MALLOC_ARENA_MAX: '2', 
+                    MALLOC_ARENA_MAX: '2',
                 }
             });
 
@@ -232,6 +232,8 @@ export class DataExtractionService {
             const extractedData = result.data || result;
 
             this.validateInvoiceDirection(extractedData, clientCompanyEin);
+            this.validateDocumentRelevance(extractedData, clientCompanyEin);
+            this.validateAndNormalizeCurrency(extractedData);
             this.validateExtractedData(extractedData, [], [], clientCompanyEin);
 
             const processingTime = Date.now() - startTime;
@@ -294,7 +296,7 @@ export class DataExtractionService {
     private setupTempFileCleanup() {
         setInterval(() => {
             this.cleanupOldTempFiles();
-        }, 30 * 60 * 1000); // 30 minutes
+        }, 30 * 60 * 1000); 
 
         setTimeout(() => this.cleanupOldTempFiles(), 1000);
     }
@@ -380,6 +382,89 @@ export class DataExtractionService {
         throw new Error('Incomplete JSON object in output');
     }
 
+    private validateDocumentRelevance(data: any, clientCompanyEin: string) {
+        const documentType = data.document_type?.toLowerCase();
+        const buyerEin = data.buyer_ein?.toString().replace(/^RO/i, '');
+        const vendorEin = data.vendor_ein?.toString().replace(/^RO/i, '');
+        const companyEin = data.company_ein?.toString().replace(/^RO/i, '');
+        const cleanClientEin = clientCompanyEin.replace(/^RO/i, '');
+
+        if (documentType === 'invoice' || documentType === 'receipt') {
+            const isBuyer = buyerEin === cleanClientEin;
+            const isVendor = vendorEin === cleanClientEin;
+            
+            if (!isBuyer && !isVendor) {
+                this.logger.warn(`Document relevance warning: Neither buyer EIN (${buyerEin}) nor vendor EIN (${vendorEin}) matches client company EIN: ${cleanClientEin}`);
+                data.validation_warnings = data.validation_warnings || [];
+                data.validation_warnings.push({
+                    type: 'DOCUMENT_RELEVANCE',
+                    message: 'Document does not appear to belong to the selected company',
+                    severity: 'HIGH'
+                });
+            }
+
+            if (isBuyer && isVendor) {
+                this.logger.error(`Data error: Company EIN appears as both buyer and vendor in ${documentType}`);
+                data.validation_warnings = data.validation_warnings || [];
+                data.validation_warnings.push({
+                    type: 'DATA_ERROR',
+                    message: 'Company EIN appears as both buyer and vendor',
+                    severity: 'CRITICAL'
+                });
+            }
+        }
+
+        else if (companyEin && companyEin !== cleanClientEin) {
+            this.logger.warn(`Document relevance warning: Company EIN (${companyEin}) does not match client company EIN: ${cleanClientEin}`);
+            data.validation_warnings = data.validation_warnings || [];
+            data.validation_warnings.push({
+                type: 'DOCUMENT_RELEVANCE',
+                message: 'Document company EIN does not match selected company',
+                severity: 'MEDIUM'
+            });
+        }
+    }
+
+    private validateAndNormalizeCurrency(data: any) {
+        const supportedCurrencies = ['RON', 'EUR', 'USD', 'GBP', 'CHF', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK', 'HUF', 'BGN'];
+        
+        if (!data.currency) {
+            const documentText = JSON.stringify(data).toLowerCase();
+            
+            if (documentText.includes('eur') || documentText.includes('€')) {
+                data.currency = 'EUR';
+            } else if (documentText.includes('usd') || documentText.includes('$')) {
+                data.currency = 'USD';
+            } else if (documentText.includes('gbp') || documentText.includes('£')) {
+                data.currency = 'GBP';
+            } else if (documentText.includes('ron') || documentText.includes('lei')) {
+                data.currency = 'RON';
+            } else {
+                data.currency = 'RON';
+                this.logger.debug('No currency detected, defaulting to RON');
+            }
+        }
+
+        data.currency = data.currency.toUpperCase();
+
+        if (!supportedCurrencies.includes(data.currency)) {
+            this.logger.warn(`Unsupported currency detected: ${data.currency}, defaulting to RON`);
+            data.currency = 'RON';
+            data.validation_warnings = data.validation_warnings || [];
+            data.validation_warnings.push({
+                type: 'CURRENCY_WARNING',
+                message: `Unsupported currency detected, defaulted to RON`,
+                severity: 'LOW'
+            });
+        }
+
+        data.is_foreign_currency = data.currency !== 'RON';
+        
+        if (data.is_foreign_currency) {
+            this.logger.log(`Document identified as foreign currency: ${data.currency}`);
+        }
+    }
+
     private validateInvoiceDirection(data: any, clientCompanyEin: string) {
         if (!data.buyer_ein || !data.vendor_ein) {
             this.logger.warn('Missing buyer_ein or vendor_ein in extracted data');
@@ -397,6 +482,9 @@ export class DataExtractionService {
             this.logger.warn(`Neither buyer (${buyerEin}) nor vendor (${vendorEin}) matches client company EIN: ${cleanClientEin}`);
             return;
         }
+
+        data.direction = isIncoming ? 'incoming' : 'outgoing';
+        this.logger.log(`Invoice direction determined: ${data.direction}`);
 
         if (Array.isArray(data.line_items)) {
             const incomingTypes = ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"];

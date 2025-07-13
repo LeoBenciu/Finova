@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, memo } from 'react';
 import LoadingComponent from '../LoadingComponent';
-import { ArrowUp, CirclePlus, Save, Trash2 } from 'lucide-react';
+import { ArrowUp, CirclePlus, Save, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { SelectDocType } from '../SelectDocType';
 import { useSaveFileAndExtractedDataMutation } from '@/redux/slices/apiSlice';
 import LineItems from './LineItems';
@@ -65,11 +65,81 @@ const EditExtractedDataComponent = ({
   const [closeModal, setCloseModal] = useState<boolean>(false);
   const [internalLoading, setInternalLoading] = useState(isLoading);
   const [contentVisible, setContentVisible] = useState(false);
+  const [einValidation, setEinValidation] = useState<{isValid: boolean, message: string} | null>(null);
 
   console.log('editFile:', editFile);
 
   const currentClientCompanyEin = useSelector((state: {clientCompany: {current: {name: string, ein: string}}}) => state.clientCompany.current.ein);
   const language = useSelector((state: {user: {language: string}}) => state.user.language);
+
+  useEffect(() => {
+    if (editFile?.result) {
+      validateDocumentEIN();
+    }
+  }, [editFile, currentClientCompanyEin]);
+
+  const validateDocumentEIN = useCallback(() => {
+    if (!editFile?.result || !currentClientCompanyEin) return;
+
+    const documentType = editFile.result.document_type?.toLowerCase();
+    const buyerEin = editFile.result.buyer_ein?.toString().replace(/^RO/i, '');
+    const vendorEin = editFile.result.vendor_ein?.toString().replace(/^RO/i, '');
+    const companyEin = editFile.result.company_ein?.toString().replace(/^RO/i, '');
+    const cleanClientEin = currentClientCompanyEin.replace(/^RO/i, '');
+
+    if (documentType === 'invoice' || documentType === 'receipt') {
+      const isBuyer = buyerEin === cleanClientEin;
+      const isVendor = vendorEin === cleanClientEin;
+      
+      if (!isBuyer && !isVendor) {
+        setEinValidation({
+          isValid: false,
+          message: language === 'ro' 
+            ? 'Atenție: Acest document nu pare să aparțină companiei selectate. Nici cumpărătorul, nici vânzătorul nu se potrivesc cu EIN-ul companiei.'
+            : 'Warning: This document does not appear to belong to the selected company. Neither buyer nor vendor EIN matches the company EIN.'
+        });
+        return;
+      }
+
+      if (isBuyer && isVendor) {
+        setEinValidation({
+          isValid: false,
+          message: language === 'ro'
+            ? 'Eroare: EIN-ul companiei apare atât ca cumpărător, cât și ca vânzător. Verificați documentul.'
+            : 'Error: Company EIN appears as both buyer and vendor. Please check the document.'
+        });
+        return;
+      }
+
+      setEinValidation({
+        isValid: true,
+        message: language === 'ro'
+          ? `Document valid: Compania este ${isBuyer ? 'cumpărătorul' : 'vânzătorul'}`
+          : `Valid document: Company is the ${isBuyer ? 'buyer' : 'vendor'}`
+      });
+    }
+    
+    else if (companyEin) {
+      const isCompanyDocument = companyEin === cleanClientEin;
+      
+      if (!isCompanyDocument) {
+        setEinValidation({
+          isValid: false,
+          message: language === 'ro'
+            ? 'Atenție: EIN-ul din acest document nu se potrivește cu compania selectată.'
+            : 'Warning: The EIN in this document does not match the selected company.'
+        });
+        return;
+      }
+
+      setEinValidation({
+        isValid: true,
+        message: language === 'ro' ? 'Document valid pentru compania selectată' : 'Valid document for selected company'
+      });
+    } else {
+      setEinValidation(null);
+    }
+  }, [editFile, currentClientCompanyEin, language]);
 
   useEffect(() => {
     if (isLoading) {
@@ -145,7 +215,19 @@ const EditExtractedDataComponent = ({
     })
   }, [editFile, setEditFile]);
 
+  const handleCurrencyChange = useCallback((currency: string) => {
+    setEditFile({
+      ...editFile,
+      result: {
+        ...editFile?.result,
+        currency: currency
+      }
+    });
+  }, [editFile, setEditFile]);
+
   const hasLineItems = editFile?.result?.document_type?.toLowerCase() === 'invoice' && editFile?.result?.line_items;
+  
+  const supportsCurrency = ['invoice', 'receipt', 'contract'].includes(editFile?.result?.document_type?.toLowerCase());
 
   if (!isOpen) return null;
 
@@ -189,9 +271,14 @@ const EditExtractedDataComponent = ({
                   
                   {!isSaving && (
                     <button
-                      className="bg-[var(--primary)] text-white px-6 py-2.5 rounded-2xl flex items-center gap-2 
-                      hover:bg-[var(--primary)]/80 transition-all duration-200 font-medium shadow-sm"
+                      className={`px-6 py-2.5 rounded-2xl flex items-center gap-2 
+                      transition-all duration-200 font-medium shadow-sm ${
+                        einValidation?.isValid === false 
+                          ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                          : 'bg-[var(--primary)] text-white hover:bg-[var(--primary)]/80'
+                      }`}
                       onClick={handleSaveButton}
+                      disabled={einValidation?.isValid === false}
                     >
                       <Save size={16} />
                       {language === 'ro' ? 'Salvează' : 'Save'}
@@ -213,13 +300,38 @@ const EditExtractedDataComponent = ({
                 </div>
               </div>
 
+              {/* EIN Validation Alert */}
+              {einValidation && (
+                <motion.div 
+                  className={`mx-6 mt-4 p-4 rounded-2xl border ${
+                    einValidation.isValid 
+                      ? 'bg-green-50 border-green-200 text-green-800' 
+                      : 'bg-red-50 border-red-200 text-red-800'
+                  }`}
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center gap-3">
+                    {einValidation.isValid ? (
+                      <CheckCircle size={20} className="text-green-600 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle size={20} className="text-red-600 flex-shrink-0" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {einValidation.message}
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Content Section */}
               <div className="p-6">
                 {editFile && (
                   <div className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-sm">
-                    {/* Document Type Section */}
+                    {/* Document Type & Currency Section */}
                     <div className="border-b border-[var(--text4)] p-6">
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between mb-4">
                         <div>
                           <label className="text-base font-semibold text-[var(--text1)] mb-2 block">
                             {language === 'ro' ? "Tipul Documentului" : 'Document Type'}
@@ -230,6 +342,63 @@ const EditExtractedDataComponent = ({
                           editFile={editFile} setEditFile={setEditFile}/>
                         </div>
                       </div>
+
+                      {/* Currency Section */}
+                      {supportsCurrency && (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <label className="text-base font-semibold text-[var(--text1)] mb-2 block">
+                              {language === 'ro' ? "Moneda" : 'Currency'}
+                            </label>
+                          </div>
+                          <div className="min-w-40 max-w-40">
+                            <select
+                              value={editFile?.result.currency || 'RON'}
+                              onChange={(e) => handleCurrencyChange(e.target.value)}
+                              className="w-full px-3 py-2 border border-[var(--text4)] rounded-xl 
+                              bg-[var(--background)] text-[var(--text1)] focus:outline-none 
+                              focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
+                              transition-all duration-200"
+                            >
+                              <option value="RON">RON - Leu românesc</option>
+                              <option value="EUR">EUR - Euro</option>
+                              <option value="USD">USD - US Dollar</option>
+                              <option value="GBP">GBP - British Pound</option>
+                              <option value="CHF">CHF - Swiss Franc</option>
+                              <option value="JPY">JPY - Japanese Yen</option>
+                              <option value="CAD">CAD - Canadian Dollar</option>
+                              <option value="AUD">AUD - Australian Dollar</option>
+                              <option value="SEK">SEK - Swedish Krona</option>
+                              <option value="NOK">NOK - Norwegian Krone</option>
+                              <option value="DKK">DKK - Danish Krone</option>
+                              <option value="PLN">PLN - Polish Złoty</option>
+                              <option value="CZK">CZK - Czech Koruna</option>
+                              <option value="HUF">HUF - Hungarian Forint</option>
+                              <option value="BGN">BGN - Bulgarian Lev</option>
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Currency Category Info */}
+                      {supportsCurrency && editFile?.result.currency && editFile.result.currency !== 'RON' && (
+                        <motion.div 
+                          className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl"
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-3 h-3 bg-blue-500 rounded-full flex-shrink-0"></div>
+                            <span className="text-sm text-blue-800 font-medium">
+                              {language === 'ro' 
+                                ? `Document în valută (${editFile.result.currency}) - va fi salvat în categoria "Valută"`
+                                : `Foreign currency document (${editFile.result.currency}) - will be saved in "Foreign Currency" category`
+                              }
+                            </span>
+                          </div>
+                        </motion.div>
+                      )}
                     </div>
 
                     {/* Dynamic Document Fields */}

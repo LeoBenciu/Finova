@@ -319,14 +319,7 @@ const FileUploadPage = () => {
       case 'processing':
         return (
           <div className="flex items-center gap-2">
-            <div className="p-2 text-blue-500 bg-blue-500/20 rounded-lg">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              >
-                <Clock size={18} />
-              </motion.div>
-            </div>
+           
           </div>
         );
 
