@@ -28,6 +28,13 @@ def test_openai_connection():
     try:
         import openai
         api_key = os.getenv('OPENAI_API_KEY')
+        
+        if not api_key:
+            logging.error("No OpenAI API key found")
+            return False
+            
+        logging.info(f"Testing OpenAI API key (length: {len(api_key)}, prefix: {api_key[:10]}...)")
+        
         client = openai.OpenAI(api_key=api_key)
         
         response = client.chat.completions.create(
@@ -40,6 +47,7 @@ def test_openai_connection():
         return True
     except Exception as e:
         logging.error(f"OpenAI API test failed: {str(e)}")
+        logging.error(f"Error type: {type(e).__name__}")
         return False
 
 def check_llm_configuration():
@@ -53,12 +61,13 @@ def check_llm_configuration():
     
     if openai_api_key:
         logging.info("OpenAI API key found - using OpenAI models")
+        # Test the API key
         if test_openai_connection():
             logging.info("OpenAI API key verified and working")
+            return True
         else:
             logging.error("OpenAI API key validation failed")
             return False
-        return True
     elif anthropic_api_key:
         logging.info("Anthropic API key found - using Claude models")
         return True
@@ -244,21 +253,48 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
     log_memory_usage("Before processing")
     
     try:
+        api_key = os.getenv('OPENAI_API_KEY')
+        if not api_key:
+            return {
+                "error": "OPENAI_API_KEY environment variable not found",
+                "details": "Please set the OPENAI_API_KEY environment variable"
+            }
+        
+        logging.info(f"API Key info - Length: {len(api_key)}, Starts with 'sk-': {api_key.startswith('sk-')}")
+        
+        try:
+            import openai
+            client = openai.OpenAI(api_key=api_key)
+            test_response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=5
+            )
+            logging.info("Direct OpenAI API test passed")
+        except Exception as e:
+            logging.error(f"Direct OpenAI API test failed: {str(e)}")
+            error_msg = str(e).lower()
+            if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
+                return {
+                    "error": "OpenAI API key is invalid or expired. Please check your API key.",
+                    "details": str(e)
+                }
+            elif "rate limit" in error_msg:
+                return {
+                    "error": "OpenAI API rate limit exceeded. Please try again later.",
+                    "details": str(e)
+                }
+            else:
+                return {
+                    "error": f"OpenAI API error: {str(e)}",
+                    "details": str(e)
+                }
+        
         if not check_llm_configuration():
             return {
                 "error": "LLM service not configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.",
                 "details": "No valid LLM API key found in environment variables"
             }
-        
-        api_key = os.getenv('OPENAI_API_KEY')
-        if api_key:
-            logging.info(f"API Key length: {len(api_key)}")
-            logging.info(f"API Key prefix: {api_key[:10]}...")
-            logging.info(f"API Key suffix: ...{api_key[-4:]}")
-            if api_key.startswith('sk-'):
-                logging.info("API key format looks correct (starts with sk-)")
-            else:
-                logging.error(f"API key format may be incorrect. Starts with: {api_key[:5]}")
         
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
@@ -266,25 +302,61 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         log_memory_usage("After loading config")
         
         try:
+            logging.info("Creating FirstCrewFinova instance...")
             crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
-            logging.info("CrewAI instance created successfully")
+            logging.info("FirstCrewFinova instance created successfully")
+            
+            if not hasattr(crew_instance, 'llm'):
+                logging.error("crew_instance doesn't have 'llm' attribute")
+                return {
+                    "error": "CrewAI initialization error: missing llm attribute",
+                    "details": "The crew instance was created but LLM is not properly configured"
+                }
+            
+            if crew_instance.llm is None:
+                logging.error("crew_instance.llm is None")
+                
+                try:
+                    from crewai import LLM
+                    crew_instance.llm = LLM(
+                        model="gpt-4o-mini",
+                        temperature=0.3,
+                        max_tokens=4000,
+                        api_key=api_key
+                    )
+                    logging.info("Manually initialized LLM for crew_instance")
+                except Exception as llm_e:
+                    logging.error(f"Failed to manually initialize LLM: {str(llm_e)}")
+                    return {
+                        "error": "Failed to configure LLM for CrewAI agents",
+                        "details": str(llm_e)
+                    }
+            
         except Exception as e:
             logging.error(f"Failed to create CrewAI instance: {str(e)}")
             logging.error(f"Exception type: {type(e).__name__}")
-            import traceback
             logging.error(f"Traceback: {traceback.format_exc()}")
+            
+            if isinstance(e, ImportError):
+                return {
+                    "error": "CrewAI import error. Please ensure all dependencies are installed.",
+                    "details": str(e)
+                }
+            
             return {
-                "error": "Failed to initialize CrewAI. Check API key validity.",
+                "error": "Failed to initialize CrewAI. Check logs for details.",
                 "details": str(e)
             }
         
-        if not crew_instance.llm:
+        try:
+            crew = crew_instance.crew()
+            logging.info("Crew created successfully")
+        except Exception as e:
+            logging.error(f"Failed to create crew: {str(e)}")
             return {
-                "error": "Failed to configure LLM for CrewAI agents. Check API key validity.",
-                "details": "LLM configuration returned None"
+                "error": "Failed to create CrewAI crew",
+                "details": str(e)
             }
-        
-        crew = crew_instance.crew()
         
         log_memory_usage("After crew creation")
         
@@ -308,8 +380,16 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         captured_output = StringIO()
         
-        with redirect_stdout(captured_output), redirect_stderr(captured_output):
-            result = crew.kickoff(inputs=inputs)
+        try:
+            with redirect_stdout(captured_output), redirect_stderr(captured_output):
+                result = crew.kickoff(inputs=inputs)
+        except Exception as e:
+            logging.error(f"Crew kickoff failed: {str(e)}")
+            logging.error(f"Captured output: {captured_output.getvalue()}")
+            return {
+                "error": "Document processing failed during crew execution",
+                "details": str(e)
+            }
         
         log_memory_usage("After crew kickoff")
         
