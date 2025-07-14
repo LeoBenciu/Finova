@@ -4,6 +4,8 @@ from crewai.tools import BaseTool
 from typing import List, Dict, Type
 import os
 import json
+import traceback
+import sys
 from pydantic import BaseModel, Field
 import logging
 
@@ -81,15 +83,16 @@ def get_configured_llm():
     openai_api_key = os.getenv('OPENAI_API_KEY')
     model_name = os.getenv('MODEL', 'gpt-4o-mini')
     
-    if not openai_api_key:
-        logging.error("OPENAI_API_KEY environment variable not found")
-        return None
+    print(f"get_configured_llm: API key exists: {bool(openai_api_key)}", file=sys.stderr)
+    print(f"get_configured_llm: Model name: {model_name}", file=sys.stderr)
     
-    logging.info(f"Configuring OpenAI LLM with model: {model_name}")
-    logging.info(f"API Key prefix: {openai_api_key[:10]}...") 
+    if not openai_api_key:
+        print("ERROR: OPENAI_API_KEY environment variable not found", file=sys.stderr)
+        return None
     
     try:
         from crewai import LLM
+        print("Importing LLM from crewai...", file=sys.stderr)
         
         llm = LLM(
             model=model_name,
@@ -97,8 +100,13 @@ def get_configured_llm():
             max_tokens=4000
         )
         
-        logging.info("LLM configuration successful")
+        print("LLM configuration successful", file=sys.stderr)
         return llm
+        
+    except Exception as e:
+        print(f"ERROR: Failed to configure LLM: {str(e)}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+        return None
         
     except Exception as e:
         logging.error(f"Failed to configure LLM: {str(e)}")

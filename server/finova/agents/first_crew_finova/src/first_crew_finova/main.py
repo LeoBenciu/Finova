@@ -12,17 +12,26 @@ import traceback
 from typing import Dict, Any, Optional
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
-from crew import FirstCrewFinova
 
+# Configure logging to go to stderr so Node.js can capture it
 logging.basicConfig(
-    level=logging.INFO, 
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    handlers=[logging.StreamHandler(sys.stderr)]
 )
 
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Test imports at the very beginning
+try:
+    from crew import FirstCrewFinova
+    print("Successfully imported FirstCrewFinova", file=sys.stderr)
+except Exception as e:
+    print(f"ERROR: Failed to import FirstCrewFinova: {str(e)}", file=sys.stderr)
+    print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
+    sys.exit(1)
 
 def test_openai_connection():
     """Test direct OpenAI connection to verify API key."""
@@ -31,24 +40,25 @@ def test_openai_connection():
         api_key = os.getenv('OPENAI_API_KEY')
         
         if not api_key:
-            logging.error("No OpenAI API key found")
+            print("ERROR: No OpenAI API key found in test_openai_connection", file=sys.stderr)
             return False
             
-        logging.info(f"Testing OpenAI API key (length: {len(api_key)}, prefix: {api_key[:10]}...)")
+        print(f"Testing OpenAI API key (length: {len(api_key)}, prefix: {api_key[:10]}...)", file=sys.stderr)
         
         client = openai.OpenAI(api_key=api_key)
         
+        # Try a simple completion
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Say 'API key works'"}],
             max_tokens=10
         )
         
-        logging.info(f"OpenAI API test successful: {response.choices[0].message.content}")
+        print(f"OpenAI API test successful: {response.choices[0].message.content}", file=sys.stderr)
         return True
     except Exception as e:
-        logging.error(f"OpenAI API test failed: {str(e)}")
-        logging.error(f"Error type: {type(e).__name__}")
+        print(f"ERROR: OpenAI API test failed: {str(e)}", file=sys.stderr)
+        print(f"Error type: {type(e).__name__}", file=sys.stderr)
         return False
 
 def check_llm_configuration():
@@ -57,20 +67,20 @@ def check_llm_configuration():
     anthropic_api_key = os.getenv('ANTHROPIC_API_KEY')
     
     if not openai_api_key and not anthropic_api_key:
-        logging.error("No LLM API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.")
+        print("ERROR: No LLM API key found. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable.", file=sys.stderr)
         return False
     
     if openai_api_key:
-        logging.info("OpenAI API key found - using OpenAI models")
+        print("OpenAI API key found - using OpenAI models", file=sys.stderr)
         # Test the API key
         if test_openai_connection():
-            logging.info("OpenAI API key verified and working")
+            print("OpenAI API key verified and working", file=sys.stderr)
             return True
         else:
-            logging.error("OpenAI API key validation failed")
+            print("ERROR: OpenAI API key validation failed", file=sys.stderr)
             return False
     elif anthropic_api_key:
-        logging.info("Anthropic API key found - using Claude models")
+        print("Anthropic API key found - using Claude models", file=sys.stderr)
         return True
     
     return False
@@ -89,27 +99,27 @@ def log_memory_usage(label: str):
         import psutil
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
-        logging.info(f"{label} - Memory: RSS={memory_info.rss // 1024 // 1024}MB, VMS={memory_info.vms // 1024 // 1024}MB")
+        print(f"{label} - Memory: RSS={memory_info.rss // 1024 // 1024}MB, VMS={memory_info.vms // 1024 // 1024}MB", file=sys.stderr)
         
         if tracemalloc.is_tracing():
             current, peak = tracemalloc.get_traced_memory()
-            logging.info(f"{label} - Traced: Current={current // 1024 // 1024}MB, Peak={peak // 1024 // 1024}MB")
+            print(f"{label} - Traced: Current={current // 1024 // 1024}MB, Peak={peak // 1024 // 1024}MB", file=sys.stderr)
     except ImportError:
         pass
     except Exception as e:
-        logging.debug(f"Memory logging failed: {e}")
+        print(f"Memory logging failed: {e}", file=sys.stderr)
 
 def cleanup_memory():
     """Force garbage collection and cleanup."""
     try:
         collected = gc.collect()
-        logging.debug(f"Garbage collected {collected} objects")
+        print(f"Garbage collected {collected} objects", file=sys.stderr)
         
         if tracemalloc.is_tracing():
             tracemalloc.clear_traces()
             
     except Exception as e:
-        logging.debug(f"Memory cleanup failed: {e}")
+        print(f"Memory cleanup failed: {e}", file=sys.stderr)
 
 def get_existing_articles() -> Dict:
     """Load existing articles with error handling and memory optimization."""
@@ -122,7 +132,7 @@ def get_existing_articles() -> Dict:
             articles_path = "articles.csv"
         
         if not os.path.exists(articles_path):
-            logging.warning("articles.csv not found, using empty articles")
+            print("WARNING: articles.csv not found, using empty articles", file=sys.stderr)
             return {}
             
         with open(articles_path, "r", encoding="utf-8") as f:
@@ -135,10 +145,10 @@ def get_existing_articles() -> Dict:
                     "type": row["type"]
                 }
                 
-        logging.info(f"Loaded {len(articles)} articles")
+        print(f"Loaded {len(articles)} articles", file=sys.stderr)
         
     except Exception as e:
-        logging.error(f"Error reading articles.csv: {str(e)}")
+        print(f"ERROR: Error reading articles.csv: {str(e)}", file=sys.stderr)
         return {}
     
     return articles
@@ -164,11 +174,11 @@ def save_temp_file(base64_data: str) -> str:
                 
             temp_path = temp_file.name
             
-        logging.info(f"Saved temporary file: {temp_path} ({estimated_size // 1024}KB)")
+        print(f"Saved temporary file: {temp_path} ({estimated_size // 1024}KB)", file=sys.stderr)
         return temp_path
         
     except Exception as e:
-        logging.error(f"Error saving temporary file: {str(e)}")
+        print(f"ERROR: Error saving temporary file: {str(e)}", file=sys.stderr)
         raise
 
 def extract_json_from_text(text: str) -> dict:
@@ -243,37 +253,44 @@ def extract_json_from_text(text: str) -> dict:
                 result[key] = match.group(1)
         
         if result:
-            logging.info(f"Extracted structured data using patterns: {list(result.keys())}")
+            print(f"Extracted structured data using patterns: {list(result.keys())}", file=sys.stderr)
             return result
     
-    logging.warning(f"Could not extract JSON from text (length: {len(text)})")
+    print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)
     return {}
 
 def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
     """Process a single document with memory optimization."""
+    print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
     log_memory_usage("Before processing")
     
     try:
+        # First, check and validate API key
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
+            error_msg = "OPENAI_API_KEY environment variable not found"
+            print(f"ERROR: {error_msg}", file=sys.stderr)
             return {
-                "error": "OPENAI_API_KEY environment variable not found",
+                "error": error_msg,
                 "details": "Please set the OPENAI_API_KEY environment variable"
             }
         
-        logging.info(f"API Key info - Length: {len(api_key)}, Starts with 'sk-': {api_key.startswith('sk-')}")
+        print(f"API Key info - Length: {len(api_key)}, Starts with 'sk-': {api_key.startswith('sk-')}", file=sys.stderr)
         
+        # Test direct OpenAI connection first
         try:
             import openai
+            print("Testing direct OpenAI connection...", file=sys.stderr)
             client = openai.OpenAI(api_key=api_key)
             test_response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=5
             )
-            logging.info("Direct OpenAI API test passed")
+            print("Direct OpenAI API test PASSED", file=sys.stderr)
         except Exception as e:
-            logging.error(f"Direct OpenAI API test failed: {str(e)}")
+            print(f"ERROR: Direct OpenAI API test FAILED: {str(e)}", file=sys.stderr)
+            print(f"Error type: {type(e).__name__}", file=sys.stderr)
             error_msg = str(e).lower()
             if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
                 return {
@@ -297,27 +314,33 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 "details": "No valid LLM API key found in environment variables"
             }
         
+        print("Loading existing articles...", file=sys.stderr)
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
         
         log_memory_usage("After loading config")
         
+        # Try to create CrewAI instance with detailed error handling
         try:
-            logging.info("Creating FirstCrewFinova instance...")
+            print("Creating FirstCrewFinova instance...", file=sys.stderr)
             crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
-            logging.info("FirstCrewFinova instance created successfully")
+            print("FirstCrewFinova instance created successfully", file=sys.stderr)
             
+            # Check if llm exists
             if not hasattr(crew_instance, 'llm'):
-                logging.error("crew_instance doesn't have 'llm' attribute")
+                print("ERROR: crew_instance doesn't have 'llm' attribute", file=sys.stderr)
+                print(f"crew_instance attributes: {dir(crew_instance)}", file=sys.stderr)
                 return {
                     "error": "CrewAI initialization error: missing llm attribute",
                     "details": "The crew instance was created but LLM is not properly configured"
                 }
             
             if crew_instance.llm is None:
-                logging.error("crew_instance.llm is None")
+                print("ERROR: crew_instance.llm is None", file=sys.stderr)
                 
+                # Try alternative initialization
                 try:
+                    print("Attempting manual LLM initialization...", file=sys.stderr)
                     from crewai import LLM
                     crew_instance.llm = LLM(
                         model="gpt-4o-mini",
@@ -325,19 +348,23 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                         max_tokens=4000,
                         api_key=api_key
                     )
-                    logging.info("Manually initialized LLM for crew_instance")
+                    print("Manually initialized LLM for crew_instance", file=sys.stderr)
                 except Exception as llm_e:
-                    logging.error(f"Failed to manually initialize LLM: {str(llm_e)}")
+                    print(f"ERROR: Failed to manually initialize LLM: {str(llm_e)}", file=sys.stderr)
+                    print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
                     return {
                         "error": "Failed to configure LLM for CrewAI agents",
                         "details": str(llm_e)
                     }
             
-        except Exception as e:
-            logging.error(f"Failed to create CrewAI instance: {str(e)}")
-            logging.error(f"Exception type: {type(e).__name__}")
-            logging.error(f"Traceback: {traceback.format_exc()}")
+            print("crew_instance.llm is configured properly", file=sys.stderr)
             
+        except Exception as e:
+            print(f"ERROR: Failed to create CrewAI instance: {str(e)}", file=sys.stderr)
+            print(f"Exception type: {type(e).__name__}", file=sys.stderr)
+            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+            
+            # Check if it's an import error
             if isinstance(e, ImportError):
                 return {
                     "error": "CrewAI import error. Please ensure all dependencies are installed.",
@@ -349,11 +376,14 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 "details": str(e)
             }
         
+        # Create crew
         try:
+            print("Creating crew from crew_instance...", file=sys.stderr)
             crew = crew_instance.crew()
-            logging.info("Crew created successfully")
+            print("Crew created successfully", file=sys.stderr)
         except Exception as e:
-            logging.error(f"Failed to create crew: {str(e)}")
+            print(f"ERROR: Failed to create crew: {str(e)}", file=sys.stderr)
+            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
             return {
                 "error": "Failed to create CrewAI crew",
                 "details": str(e)
@@ -361,7 +391,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         log_memory_usage("After crew creation")
         
-        logging.info(f"Processing document: {os.path.basename(doc_path)}")
+        print(f"Processing document: {os.path.basename(doc_path)}", file=sys.stderr)
         
         inputs = {
             "document_path": doc_path,
@@ -382,11 +412,14 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         captured_output = StringIO()
         
         try:
+            print("Starting crew kickoff...", file=sys.stderr)
             with redirect_stdout(captured_output), redirect_stderr(captured_output):
                 result = crew.kickoff(inputs=inputs)
+            print("Crew kickoff completed", file=sys.stderr)
         except Exception as e:
-            logging.error(f"Crew kickoff failed: {str(e)}")
-            logging.error(f"Captured output: {captured_output.getvalue()}")
+            print(f"ERROR: Crew kickoff failed: {str(e)}", file=sys.stderr)
+            print(f"Captured output: {captured_output.getvalue()}", file=sys.stderr)
+            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
             return {
                 "error": "Document processing failed during crew execution",
                 "details": str(e)
@@ -400,27 +433,27 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         }
         
         if hasattr(result, 'tasks_output') and result.tasks_output:
-            logging.info(f"Processing {len(result.tasks_output)} task outputs")
+            print(f"Processing {len(result.tasks_output)} task outputs", file=sys.stderr)
             
             for i, task_output in enumerate(result.tasks_output):
                 try:
                     if task_output and hasattr(task_output, 'raw') and task_output.raw:
                         output_length = len(task_output.raw)
-                        logging.info(f"Task {i} output length: {output_length}")
+                        print(f"Task {i} output length: {output_length}", file=sys.stderr)
                         
                         if i == 0:
                             categorization_data = extract_json_from_text(task_output.raw)
                             if categorization_data:
                                 combined_data.update(categorization_data)
                                 doc_type = categorization_data.get('document_type', 'Unknown')
-                                logging.info(f"Document categorized as: {doc_type}")
+                                print(f"Document categorized as: {doc_type}", file=sys.stderr)
                                 inputs['doc_type'] = doc_type
                         
                         elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
                             extraction_data = extract_json_from_text(task_output.raw)
                             if extraction_data:
                                 combined_data.update(extraction_data)
-                                logging.info(f"Invoice data extracted with keys: {list(extraction_data.keys())}")
+                                print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
                         
                         elif i == 2: 
                             doc_type = combined_data.get('document_type', '').lower()
@@ -428,18 +461,18 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                                 other_data = extract_json_from_text(task_output.raw)
                                 if other_data:
                                     combined_data.update(other_data)
-                                    logging.info(f"Other document data extracted with keys: {list(other_data.keys())}")
+                                    print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
                         
                         del task_output.raw
                         
                     else:
-                        logging.warning(f"Task {i} has no output")
+                        print(f"WARNING: Task {i} has no output", file=sys.stderr)
                         
                 except Exception as e:
-                    logging.error(f"Error processing task {i}: {str(e)}")
+                    print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
                     continue
         else:
-            logging.error("No tasks output found in result")
+            print("ERROR: No tasks output found in result", file=sys.stderr)
         
         del crew
         del crew_instance
@@ -456,11 +489,11 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         if doc_type == 'invoice' and 'line_items' not in combined_data:
             combined_data['line_items'] = []
-            logging.warning("No line_items found for invoice, setting empty array")
+            print("WARNING: No line_items found for invoice, setting empty array", file=sys.stderr)
         
         if doc_type == 'bank statement' and 'transactions' not in combined_data:
             combined_data['transactions'] = []
-            logging.warning("No transactions found for bank statement, setting empty array")
+            print("WARNING: No transactions found for bank statement, setting empty array", file=sys.stderr)
         
         log_memory_usage("After processing")
         
@@ -469,7 +502,8 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         }
         
     except Exception as e:
-        logging.error(f"Failed to process {doc_path}: {str(e)}", exc_info=True)
+        print(f"ERROR: Unhandled exception in process_single_document: {str(e)}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
         
         error_message = str(e)
         if any(keyword in error_message.lower() for keyword in ["api", "key", "authentication", "unauthorized", "forbidden"]):
@@ -505,20 +539,34 @@ def read_base64_from_file(file_path: str) -> str:
         if not content:
             raise ValueError("Empty base64 file")
             
-        logging.info(f"Read base64 file: {file_path} ({file_size // 1024}KB)")
+        print(f"Read base64 file: {file_path} ({file_size // 1024}KB)", file=sys.stderr)
         return content
         
     except Exception as e:
-        logging.error(f"Error reading base64 file: {str(e)}")
+        print(f"ERROR: Error reading base64 file: {str(e)}", file=sys.stderr)
         raise
 
 def main():
     """Main function with comprehensive error handling and memory management."""
 
     print(f"Python script started", file=sys.stderr)
+    print(f"Python version: {sys.version}", file=sys.stderr)
     print(f"OPENAI_API_KEY exists: {bool(os.getenv('OPENAI_API_KEY'))}", file=sys.stderr)
     print(f"MODEL env var: {os.getenv('MODEL', 'NOT SET')}", file=sys.stderr)
     print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
+    
+    # Test imports
+    try:
+        import crewai
+        print(f"CrewAI version: {crewai.__version__ if hasattr(crewai, '__version__') else 'unknown'}", file=sys.stderr)
+    except ImportError as e:
+        print(f"ERROR: Cannot import crewai: {e}", file=sys.stderr)
+    
+    try:
+        import openai
+        print(f"OpenAI version: {openai.__version__ if hasattr(openai, '__version__') else 'unknown'}", file=sys.stderr)
+    except ImportError as e:
+        print(f"ERROR: Cannot import openai: {e}", file=sys.stderr)
 
     memory_monitoring = setup_memory_monitoring()
     
@@ -559,17 +607,18 @@ def main():
             if os.path.exists(temp_file_path):
                 try:
                     os.remove(temp_file_path)
-                    logging.info(f"Cleaned up temporary file: {temp_file_path}")
+                    print(f"Cleaned up temporary file: {temp_file_path}", file=sys.stderr)
                 except Exception as e:
-                    logging.warning(f"Failed to remove temporary file: {str(e)}")
+                    print(f"WARNING: Failed to remove temporary file: {str(e)}", file=sys.stderr)
         
     except KeyboardInterrupt:
-        logging.info("Processing interrupted by user")
+        print("Processing interrupted by user", file=sys.stderr)
         print(json.dumps({"error": "Processing interrupted"}))
         sys.exit(1)
         
     except Exception as e:
-        logging.error(f"Unhandled error: {str(e)}", exc_info=True)
+        print(f"ERROR: Unhandled error in main: {str(e)}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
         print(json.dumps({"error": str(e)}, ensure_ascii=False))
         sys.exit(1)
         
