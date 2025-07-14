@@ -36,12 +36,13 @@ class LLMVisionTextExtractorTool(BaseTool):
     
     def __init__(self):
         super().__init__()
-        self.openai_api_key = os.getenv('OPENAI_API_KEY')
-        if OPENAI_AVAILABLE and self.openai_api_key:
-            self.client = openai.OpenAI(api_key=self.openai_api_key)
+        api_key = os.getenv('OPENAI_API_KEY')
+        if OPENAI_AVAILABLE and api_key:
+            self.client = openai.OpenAI(api_key=api_key)
             self.llm_available = True
             logging.info("LLM Vision OCR initialized with OpenAI")
         else:
+            self.client = None
             self.llm_available = False
             logging.warning("LLM Vision OCR not available - falling back to simple text extraction")
     
@@ -126,7 +127,7 @@ class LLMVisionTextExtractorTool(BaseTool):
     
     def _extract_text_from_image_with_llm(self, image: Image.Image, page_num: int) -> str:
         """Use LLM vision to extract text from image"""
-        if not self.llm_available:
+        if not self.llm_available or not self.client:
             return f"[LLM_VISION_UNAVAILABLE: Page {page_num}]"
         
         try:
