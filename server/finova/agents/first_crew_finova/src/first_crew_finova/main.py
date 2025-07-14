@@ -8,6 +8,7 @@ import logging
 import gc
 import tempfile
 import tracemalloc
+import traceback
 from typing import Dict, Any, Optional
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
