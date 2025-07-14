@@ -2,7 +2,7 @@ import os
 import tempfile
 import logging
 import base64
-from typing import Type, Optional
+from typing import Type, Optional, Any
 from pydantic import BaseModel, Field
 from crewai.tools import BaseTool
 
@@ -33,6 +33,8 @@ class LLMVisionTextExtractorTool(BaseTool):
     name: str = "llm_vision_text_extractor"
     description: str = "Advanced text extraction using LLM vision capabilities for Romanian documents"
     args_schema: Type[BaseModel] = FileReadInput
+    client: Optional[Any] = Field(None, description="OpenAI client instance")
+    llm_available: bool = Field(False, description="Whether LLM is available")
     
     def __init__(self):
         super().__init__()
