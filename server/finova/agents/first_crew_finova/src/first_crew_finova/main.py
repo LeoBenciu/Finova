@@ -23,6 +23,25 @@ warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
+def test_openai_connection():
+    """Test direct OpenAI connection to verify API key."""
+    try:
+        import openai
+        api_key = os.getenv('OPENAI_API_KEY')
+        client = openai.OpenAI(api_key=api_key)
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": "Say 'API key works'"}],
+            max_tokens=10
+        )
+        
+        logging.info(f"OpenAI API test successful: {response.choices[0].message.content}")
+        return True
+    except Exception as e:
+        logging.error(f"OpenAI API test failed: {str(e)}")
+        return False
+
 def check_llm_configuration():
     """Check if LLM is properly configured"""
     openai_api_key = os.getenv('OPENAI_API_KEY')
@@ -34,6 +53,11 @@ def check_llm_configuration():
     
     if openai_api_key:
         logging.info("OpenAI API key found - using OpenAI models")
+        if test_openai_connection():
+            logging.info("OpenAI API key verified and working")
+        else:
+            logging.error("OpenAI API key validation failed")
+            return False
         return True
     elif anthropic_api_key:
         logging.info("Anthropic API key found - using Claude models")
@@ -226,12 +250,33 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 "details": "No valid LLM API key found in environment variables"
             }
         
+        api_key = os.getenv('OPENAI_API_KEY')
+        if api_key:
+            logging.info(f"API Key length: {len(api_key)}")
+            logging.info(f"API Key prefix: {api_key[:10]}...")
+            logging.info(f"API Key suffix: ...{api_key[-4:]}")
+            if api_key.startswith('sk-'):
+                logging.info("API key format looks correct (starts with sk-)")
+            else:
+                logging.error(f"API key format may be incorrect. Starts with: {api_key[:5]}")
+        
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
         
         log_memory_usage("After loading config")
         
-        crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
+        try:
+            crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
+            logging.info("CrewAI instance created successfully")
+        except Exception as e:
+            logging.error(f"Failed to create CrewAI instance: {str(e)}")
+            logging.error(f"Exception type: {type(e).__name__}")
+            import traceback
+            logging.error(f"Traceback: {traceback.format_exc()}")
+            return {
+                "error": "Failed to initialize CrewAI. Check API key validity.",
+                "details": str(e)
+            }
         
         if not crew_instance.llm:
             return {
