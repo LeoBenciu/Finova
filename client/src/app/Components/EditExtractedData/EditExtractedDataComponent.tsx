@@ -245,28 +245,54 @@ const EditExtractedDataComponent = ({
     if (!currentFile) return;
     
     try {
-      const dataToSave = {
-        ...editFile,
-        userCorrections: userCorrections.length > 0 ? userCorrections : undefined
-      };
+        const dataToSave = {
+            ...editFile,
+            userCorrections: userCorrections.length > 0 ? userCorrections : undefined
+        };
 
-      const fileSaved = await saveFileAndData({ 
-        clientCompanyEin: currentClientCompanyEin, 
-        processedData: dataToSave,
-        file: currentFile
-      }).unwrap();
-      
-      console.log('Saved File with corrections', fileSaved);
-      
-      onDocumentSaved(currentFile.name);
-      
-      setIsModalOpen(false);
-      setCurrentProcessingFile(null);
+        console.log('=== SAVE DEBUG INFO ===');
+        console.log('Current file:', currentFile.name);
+        console.log('Client Company EIN:', currentClientCompanyEin);
+        console.log('Data to save:', JSON.stringify(dataToSave, null, 2));
+        console.log('User corrections count:', userCorrections.length);
+        console.log('Has compliance validation:', !!dataToSave.result?.compliance_validation);
+        console.log('Has duplicate detection:', !!dataToSave.result?.duplicate_detection);
+        console.log('======================');
+
+        if (!dataToSave.result) {
+            throw new Error('No result data to save');
+        }
+
+        if (!dataToSave.result.document_type) {
+            throw new Error('Document type is required');
+        }
+
+        if (!currentClientCompanyEin) {
+            throw new Error('Client company EIN is required');
+        }
+
+        const fileSaved = await saveFileAndData({ 
+            clientCompanyEin: currentClientCompanyEin, 
+            processedData: dataToSave,
+            file: currentFile
+        }).unwrap();
+        
+        console.log('✅ File saved successfully:', fileSaved);
+        
+        onDocumentSaved(currentFile.name);
+        setIsModalOpen(false);
+        setCurrentProcessingFile(null);
 
     } catch (e) {
-      console.error('Failed to save the document and the data:', e);
+        console.error('❌ Failed to save document:', e);
+        
+        if (typeof e === 'object' && e !== null && 'data' in e && typeof (e as any).data?.message === 'string') {
+            alert(`Save failed: ${(e as any).data.message}`);
+        } else {
+            alert('Failed to save the document. Please try again.');
+        }
     }
-  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile, onDocumentSaved, setIsModalOpen, setCurrentProcessingFile, userCorrections]);
+}, [saveFileAndData, currentClientCompanyEin, editFile, currentFile, onDocumentSaved, setIsModalOpen, setCurrentProcessingFile, userCorrections]);
 
   const toggleLineItems = useCallback(() => {
     setLineItems((prev) => !prev);

@@ -760,4 +760,110 @@ export class DataExtractionService {
             isProcessing: this.processingQueue['processing'] || false
         };
     }
+
+    async saveDuplicateDetectionWithTransaction(
+    prisma: any, // PrismaTransaction type
+    documentId: number, 
+    duplicateDetection: any
+): Promise<void> {
+    try {
+        if (!duplicateDetection?.duplicate_matches) return;
+
+        for (const match of duplicateDetection.duplicate_matches) {
+            if (match.document_id && match.document_id !== documentId) {
+                await prisma.documentDuplicateCheck.create({
+                    data: {
+                        originalDocumentId: documentId,
+                        duplicateDocumentId: match.document_id,
+                        similarityScore: match.similarity_score || 0.0,
+                        matchingFields: match.matching_fields || {},
+                        duplicateType: this.mapDuplicateType(match.duplicate_type),
+                        status: DuplicateStatus.PENDING
+                    }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('[DUPLICATE_DETECTION_ERROR]', error);
+        // Don't throw - let the transaction continue
+    }
+}
+
+async saveComplianceValidationWithTransaction(
+    prisma: any, // PrismaTransaction type
+    documentId: number, 
+    complianceValidation: any
+): Promise<void> {
+    try {
+        await prisma.complianceValidation.create({
+            data: {
+                documentId: documentId,
+                overallStatus: this.mapComplianceStatus(complianceValidation.compliance_status),
+                validationRules: complianceValidation.validation_rules || [],
+                errors: complianceValidation.errors || null,
+                warnings: complianceValidation.warnings || null,
+                validatedAt: new Date()
+            }
+        });
+    } catch (error) {
+        console.error('[COMPLIANCE_VALIDATION_ERROR]', error);
+        // Don't throw - let the transaction continue
+    }
+}
+
+async saveUserCorrectionWithTransaction(
+    prisma: any, // PrismaTransaction type
+    documentId: number, 
+    userId: number, 
+    correction: any
+): Promise<void> {
+    try {
+        await prisma.userCorrection.create({
+            data: {
+                documentId: documentId,
+                userId: userId,
+                correctionType: this.mapCorrectionType(correction.correctionType || correction.field),
+                originalValue: correction.originalValue,
+                correctedValue: correction.correctedValue || correction.newValue,
+                confidence: correction.confidence || null,
+                applied: false
+            }
+        });
+    } catch (error) {
+        console.error('[USER_CORRECTION_ERROR]', error);
+        // Don't throw - let the transaction continue
+    }
+}
+
+private mapDuplicateType(type: string): DuplicateType {
+    const mapping = {
+        'exact_match': DuplicateType.EXACT_MATCH,
+        'content_match': DuplicateType.CONTENT_MATCH,
+        'similar_content': DuplicateType.SIMILAR_CONTENT
+    };
+    return mapping[type?.toLowerCase()] || DuplicateType.SIMILAR_CONTENT;
+}
+
+private mapComplianceStatus(status: string): ComplianceStatus {
+    const mapping = {
+        'compliant': ComplianceStatus.COMPLIANT,
+        'non_compliant': ComplianceStatus.NON_COMPLIANT,
+        'warning': ComplianceStatus.WARNING,
+        'pending': ComplianceStatus.PENDING
+    };
+    return mapping[status?.toLowerCase()] || ComplianceStatus.PENDING;
+}
+
+private mapCorrectionType(type: string): CorrectionType {
+    const mapping = {
+        'document_type': CorrectionType.DOCUMENT_TYPE,
+        'direction': CorrectionType.INVOICE_DIRECTION,
+        'vendor_information': CorrectionType.VENDOR_INFORMATION,
+        'buyer_information': CorrectionType.BUYER_INFORMATION,
+        'amounts': CorrectionType.AMOUNTS,
+        'dates': CorrectionType.DATES,
+        'line_items': CorrectionType.LINE_ITEMS
+    };
+    return mapping[type] || CorrectionType.OTHER;
+}
 }
