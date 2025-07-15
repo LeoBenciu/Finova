@@ -13,6 +13,7 @@ import hashlib
 from typing import Dict, Any, Optional, List
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
+from datetime import datetime
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -405,10 +406,14 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         log_memory_usage("After crew creation")
         
         print(f"Processing document: {os.path.basename(doc_path)}", file=sys.stderr)
+
+        current_date = datetime.now().strftime("%d/%m/%Y")
+        print(f"Current date for validation: {current_date}", file=sys.stderr)
         
         inputs = {
             "document_path": doc_path,
             "client_company_ein": client_company_ein,
+            "current_date": current_date,
             "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
             "buyer_labels": ["Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client", "Destinatar"],
             "incoming_types": ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"],

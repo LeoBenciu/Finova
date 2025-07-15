@@ -20,7 +20,9 @@ categorize_document_task:
 extract_invoice_data_task:
   description: >
     For a document at {document_path} classified as 'Invoice', extract:
-    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY), due_date (DD-MM-YYYY, null if absent), total_amount (numeric), vat_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    CURRENT DATE: {current_date} (use as reference - dates should not be after this)
+
+    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY, must not be after {current_date}), due_date (DD-MM-YYYY, null if absent, must not be after {current_date}), total_amount (numeric), vat_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
     Determine direction using: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
     Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
     Compare articles with {existing_articles}: match by name/code (case-insensitive), set isNew false if matched, assign next articleCode if new.
@@ -33,12 +35,14 @@ extract_invoice_data_task:
 
 extract_other_document_data_task:
   description: >
-    For non-factură documents at {document_path} of type {doc_type}, extract relevant data :
-    -For Receipts: receipt_number, vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), total_amount (paid/received), document_date (DD-MM-YYYY), invoice_reference (The number of the invoice, if available), payment_method(cash/card/bank), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
-    -For Bank Statements: company_name, company_ein (number only, remove 'RO'), bank_name, account_number (ex: RO70BTRLRONCRT0CL4098501), statement_number, statement_period_start (DD-MM-YYYY), statement_period_end (DD-MM-YYYY), opening_balance (numeric, just the number without currency), closing_balance (numeric, just the number without currency), currency, transactions array with: transaction_date (DD-MM-YYYY), description, reference_number, debit_amount (numeric, null if none, just the number without currency), credit_amount (numeric, null if none, just the number without currency), balance_after_transaction (numeric, just the number without currency), transaction_type (transfer/payment/deposit/withdrawal).
-    -For Contracts: contract_number, contract_type, parties array with: name, ein (number only, remove 'RO'), role (client/vendor/contractor), contract_date (DD-MM-YYYY), start_date (DD-MM-YYYY), end_date (DD-MM-YYYY), total_value (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), payment_terms, deliverables array with: description, due_date (DD-MM-YYYY), amount (numeric), status (pending/completed).
-    -For Payment/Collection Orders: order_number, order_type (payment/collection), payer, payer_ein (number only, remove 'RO'), payee, payee_ein (number only, remove 'RO'), amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), order_date (DD-MM-YYYY), execution_date (DD-MM-YYYY), reference_invoice, payment_method (bank_transfer/cash/check), bank_details with: account_number, bank_name, swift_code.
-    -For Z report: report_number, register_id, business_date (DD-MM-YYYY), opening_time, closing_time, total_sales (numeric), total_transactions, vat_breakdown array with: vat_rate, net_amount (numeric), vat_amount (numeric), total_amount (numeric), payment_methods array with: method (cash/card), amount (numeric), transaction_count, cancelled_transactions, refunds_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    For non-factură documents at {document_path} of type {doc_type}, extract relevant data:
+    CURRENT DATE: {current_date} (use as reference - dates should not be after this)
+
+    -For Receipts: receipt_number, vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), total_amount (paid/received), document_date (DD-MM-YYYY, must not be after {current_date}), invoice_reference (The number of the invoice, if available), payment_method(cash/card/bank), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    -For Bank Statements: company_name, company_ein (number only, remove 'RO'), bank_name, account_number (ex: RO70BTRLRONCRT0CL4098501), statement_number, statement_period_start (DD-MM-YYYY, must not be after {current_date}), statement_period_end (DD-MM-YYYY, must not be after {current_date}), opening_balance (numeric, just the number without currency), closing_balance (numeric, just the number without currency), currency, transactions array with: transaction_date (DD-MM-YYYY, must not be after {current_date}), description, reference_number, debit_amount (numeric, null if none, just the number without currency), credit_amount (numeric, null if none, just the number without currency), balance_after_transaction (numeric, just the number without currency), transaction_type (transfer/payment/deposit/withdrawal).
+    -For Contracts: contract_number, contract_type, parties array with: name, ein (number only, remove 'RO'), role (client/vendor/contractor), contract_date (DD-MM-YYYY, must not be after {current_date}), start_date (DD-MM-YYYY, must not be after {current_date}), end_date (DD-MM-YYYY), total_value (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), payment_terms, deliverables array with: description, due_date (DD-MM-YYYY), amount (numeric), status (pending/completed).
+    -For Payment/Collection Orders: order_number, order_type (payment/collection), payer, payer_ein (number only, remove 'RO'), payee, payee_ein (number only, remove 'RO'), amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), order_date (DD-MM-YYYY, must not be after {current_date}), execution_date (DD-MM-YYYY), reference_invoice, payment_method (bank_transfer/cash/check), bank_details with: account_number, bank_name, swift_code.
+    -For Z report: report_number, register_id, business_date (DD-MM-YYYY, must not be after {current_date}), opening_time, closing_time, total_sales (numeric), total_transactions, vat_breakdown array with: vat_rate, net_amount (numeric), vat_amount (numeric), total_amount (numeric), payment_methods array with: method (cash/card), amount (numeric), transaction_count, cancelled_transactions, refunds_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
     IMPORTANT: For receipts, always check if buyer_ein or vendor_ein matches '{client_company_ein}' - if neither matches, add validation_warning about document relevance.
     For other documents, check if company_ein matches '{client_company_ein}' - if not, add validation_warning.
     Use Romanian date (DD/MM/YYYY) and number formatting (e.g., 1.234,56 RON). Output as a JSON string.
@@ -71,6 +75,8 @@ detect_duplicates_task:
 validate_compliance_task:
   description: >
     Validate the Romanian compliance of the document at {document_path} with extracted data.
+    CURRENT DATE: {current_date} (use this as reference for date validation)
+
     Check compliance with Romanian ANAF regulations:
 
     FOR INVOICES:
@@ -80,30 +86,36 @@ validate_compliance_task:
     - VAT rates: Must be 0%, 5%, 9%, or 19% (current Romanian rates)
     - Currency declaration: Foreign currency transactions must be properly declared
     - Amount calculations: VAT calculations must be accurate
-    - Invoice date: Must not be future date, must be within current fiscal year context
+    - Invoice date: Must not be after {current_date}, must be within reasonable timeframe
 
     FOR RECEIPTS:
     - Must contain vendor information with valid CUI/EIN
-    - Must have clear transaction date and amount
+    - Must have clear transaction date and amount (not after {current_date})
     - Payment method should be specified
 
     FOR CONTRACTS:
     - Must have valid CUI/EIN for all parties
-    - Contract dates must be logical (start <= end)
+    - Contract dates must be logical (start <= end, not after {current_date})
     - Must contain essential contract elements
 
     FOR BANK STATEMENTS:
-    - Account number must follow Romanian IBAN format (RO + 22 characters)
+    - Account number must follow Romanian IBAN format: exactly 'RO' + 22 digits (total 24 characters). Example: RO70BTRLRONCRT0CL4097501 is CORRECT format.
     - Transactions must have proper format and sequence
-    - Balances must be mathematically correct
+    - Balances must be mathematically correct  
+    - Transaction dates must not be after {current_date}
+    - Statement period dates must not be after {current_date}
 
     Check for common compliance issues:
     - Missing or invalid VAT numbers
-    - Incorrect VAT calculations
+    - Incorrect VAT calculations  
     - Missing mandatory fields
     - Invalid date formats
     - Currency compliance for foreign transactions
     - ANAF-specific format requirements
+    - Future dates (dates after {current_date})
+
+    IMPORTANT: When validating dates, compare against the current date {current_date}. 
+    A date is only "future" if it comes AFTER {current_date}.
 
     Output JSON with: {{'compliance_status': 'COMPLIANT|NON_COMPLIANT|WARNING', 'validation_rules': [array], 'errors': [array], 'warnings': [array], 'overall_score': float}}
   expected_output: >

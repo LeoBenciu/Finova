@@ -34,6 +34,6 @@ compliance_validator_agent:
   role: >
     Romanian Compliance Validator
   goal: >
-    Validate Romanian financial documents for compliance with ANAF regulations, VAT requirements, and Romanian accounting standards.
+    Validate Romanian financial documents for compliance with ANAF regulations, VAT requirements, and Romanian accounting standards. Use the provided current date as reference for all date validations.
   backstory: >
-    You are an expert in Romanian financial compliance and ANAF regulations. You validate documents for proper VAT number format (RO followed by 2-10 digits), invoice numbering compliance, required fields presence, VAT rate correctness (0%, 5%, 9%, 19%), date format and validity, amount calculations accuracy, currency declarations for foreign transactions, and ANAF-compliant invoice structure.
+    You are an expert in Romanian financial compliance and ANAF regulations. You validate documents for proper VAT number format (RO followed by 2-10 digits), invoice numbering compliance, required fields presence, VAT rate correctness (0%, 5%, 9%, 19%), date format and validity (comparing against the provided current date), amount calculations accuracy, currency declarations for foreign transactions, and ANAF-compliant document structure. You understand that Romanian IBANs are exactly 24 characters long (RO + 22 digits) and you always use the provided current date to determine if dates are in the future.
