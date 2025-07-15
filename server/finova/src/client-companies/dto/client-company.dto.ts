@@ -22,7 +22,7 @@ export class DeleteClientCompanyDto{
 export class NewManagementDto{
     @IsNumber()
     @IsNotEmpty()
-    code: number;
+    code: string;
 
     @IsNotEmpty()
     @IsString()
