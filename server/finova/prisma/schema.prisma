@@ -21,6 +21,7 @@ model User {
   accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
   rpaActionsTriggered RpaAction[]       @relation("TriggeredByUser")
   legalAgreements     LegalAgreement[]
+  userCorrections     UserCorrection[]
 }
 
 model LegalAgreement {
@@ -39,19 +40,27 @@ model LegalAgreement {
 }
 
 model Document {
-  id                 Int               @id @default(autoincrement())
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  name               String
-  type               String
-  path               String
-  s3Key              String
-  contentType        String
-  fileSize           Int?
-  accountingClientId Int
-  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
-  processedData      ProcessedData?
-  rpaActions         RpaAction[]
+  id                    Int                      @id @default(autoincrement())
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  name                  String
+  type                  String
+  path                  String
+  s3Key                 String
+  contentType           String
+  fileSize              Int?
+  documentHash          String?
+  accountingClientId    Int
+  accountingClient      AccountingClients        @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  processedData         ProcessedData?
+  rpaActions            RpaAction[]
+  duplicateChecks       DocumentDuplicateCheck[] @relation("OriginalDocument")
+  duplicateMatches      DocumentDuplicateCheck[] @relation("DuplicateDocument")
+  complianceValidations ComplianceValidation[]
+  userCorrections       UserCorrection[]
+
+  @@index([documentHash])
+  @@index([accountingClientId])
 }
 
 model ProcessedData {
@@ -59,6 +68,57 @@ model ProcessedData {
   documentId      Int      @unique
   document        Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   extractedFields Json
+}
+
+model DocumentDuplicateCheck {
+  id                  Int             @id @default(autoincrement())
+  createdAt           DateTime        @default(now())
+  originalDocumentId  Int
+  duplicateDocumentId Int
+  originalDocument    Document        @relation("OriginalDocument", fields: [originalDocumentId], references: [id], onDelete: Cascade)
+  duplicateDocument   Document        @relation("DuplicateDocument", fields: [duplicateDocumentId], references: [id], onDelete: Cascade)
+  similarityScore     Float
+  matchingFields      Json
+  duplicateType       DuplicateType
+  status              DuplicateStatus @default(PENDING)
+
+  @@unique([originalDocumentId, duplicateDocumentId])
+  @@index([originalDocumentId])
+  @@index([duplicateDocumentId])
+}
+
+model ComplianceValidation {
+  id              Int              @id @default(autoincrement())
+  createdAt       DateTime         @default(now())
+  documentId      Int
+  document        Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  overallStatus   ComplianceStatus
+  validationRules Json
+  errors          Json?
+  warnings        Json?
+  validatedAt     DateTime         @default(now())
+
+  @@index([documentId])
+  @@index([overallStatus])
+}
+
+model UserCorrection {
+  id             Int            @id @default(autoincrement())
+  createdAt      DateTime       @default(now())
+  documentId     Int
+  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId         Int
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  correctionType CorrectionType
+  originalValue  Json
+  correctedValue Json
+  confidence     Float?
+  applied        Boolean        @default(false)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([correctionType])
+  @@index([applied])
 }
 
 model RpaAction {
@@ -71,8 +131,8 @@ model RpaAction {
   accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
   actionType         RpaActionType
   status             RpaActionStatus   @default(PENDING)
-  result             Json? // For storing error messages, success details, etc.
-  triggeredById      Int? // User ID who triggered the action, could be null if automated
+  result             Json?
+  triggeredById      Int?
   triggeredBy        User?             @relation("TriggeredByUser", fields: [triggeredById], references: [id])
 }
 
@@ -254,4 +314,34 @@ enum RpaActionStatus {
   COMPLETED
   FAILED
   CANCELED
+}
+
+enum DuplicateType {
+  EXACT_MATCH
+  CONTENT_MATCH
+  SIMILAR_CONTENT
+}
+
+enum DuplicateStatus {
+  PENDING
+  CONFIRMED
+  DISMISSED
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  NON_COMPLIANT
+  WARNING
+  PENDING
+}
+
+enum CorrectionType {
+  DOCUMENT_TYPE
+  INVOICE_DIRECTION
+  VENDOR_INFORMATION
+  BUYER_INFORMATION
+  AMOUNTS
+  LINE_ITEMS
+  DATES
+  OTHER
 }

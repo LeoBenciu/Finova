@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 @Module({
   imports: [ConfigModule, PrismaModule],
   controllers: [DataExtractionController],
-  providers: [DataExtractionService]
+  providers: [DataExtractionService],
+  exports: [DataExtractionService]
 })
 export class DataExtractionModule {}

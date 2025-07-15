@@ -7,6 +7,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
 import { randomBytes } from 'crypto';
+import { DuplicateType, DuplicateStatus, ComplianceStatus, CorrectionType } from '@prisma/client';
 
 const execPromise = promisify(exec);
 const writeFilePromise = promisify(fs.writeFile);
@@ -131,6 +132,52 @@ export class DataExtractionService {
         return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin));
     }
 
+    private async getExistingDocuments(accountingClientId: number) {
+        const documents = await this.prisma.document.findMany({
+            where: {
+                accountingClientId: accountingClientId
+            },
+            include: {
+                processedData: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            take: 100 
+        });
+
+        return documents.map(doc => ({
+            id: doc.id,
+            name: doc.name,
+            documentHash: doc.documentHash,
+            ...(typeof doc.processedData?.extractedFields === 'object' && doc.processedData?.extractedFields !== null
+                ? doc.processedData.extractedFields
+                : {})
+        }));
+    }
+
+    private async getUserCorrections(accountingClientId: number) {
+        const corrections = await this.prisma.userCorrection.findMany({
+            where: {
+                document: {
+                    accountingClientId: accountingClientId
+                },
+                applied: false
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            take: 50
+        });
+
+        return corrections.map(correction => ({
+            correctionType: correction.correctionType,
+            originalValue: correction.originalValue,
+            correctedValue: correction.correctedValue,
+            confidence: correction.confidence
+        }));
+    }
+
     private async processDocument(fileBase64: string, clientCompanyEin: string) {
         let tempBase64File: string | null = null;
         const startTime = Date.now();
@@ -176,6 +223,20 @@ export class DataExtractionService {
                 throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
             }
 
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    clientCompanyId: clientCompany.id
+                }
+            });
+
+            if (!accountingClientRelation) {
+                throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
+            }
+
+            const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
+            
+            const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
+
             const tempFileName = `base64_${randomBytes(8).toString('hex')}_${Date.now()}.txt`;
             tempBase64File = path.join(this.tempDir, tempFileName);
             await writeFilePromise(tempBase64File, fileBase64);
@@ -191,7 +252,10 @@ export class DataExtractionService {
                 }
             }
 
-            const command = `python3 "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}"`;
+            const existingDocsJson = JSON.stringify(existingDocuments);
+            const userCorrectionsJson = JSON.stringify(userCorrections);
+            
+            const command = `python3 "${this.pythonScriptPath}" "${clientCompanyEin}" "${tempBase64File}" '${existingDocsJson}' '${userCorrectionsJson}'`;
             
             this.logger.debug(`Executing command: ${command.substring(0, 100)}...`);
             
@@ -230,6 +294,14 @@ export class DataExtractionService {
             }
 
             const extractedData = result.data || result;
+
+            if (extractedData.duplicate_detection) {
+                this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
+            }
+
+            if (extractedData.compliance_validation) {
+                this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
+            }
 
             this.validateInvoiceDirection(extractedData, clientCompanyEin);
             this.validateDocumentRelevance(extractedData, clientCompanyEin);
@@ -281,27 +353,144 @@ export class DataExtractionService {
         }
     }
 
+    async saveDuplicateDetection(documentId: number, duplicateData: any) {
+        if (!duplicateData.is_duplicate || !duplicateData.duplicate_matches) {
+            return;
+        }
+
+        const duplicateChecks = [];
+        for (const match of duplicateData.duplicate_matches) {
+            try {
+                const duplicateCheck = await this.prisma.documentDuplicateCheck.create({
+                    data: {
+                        originalDocumentId: match.document_id,
+                        duplicateDocumentId: documentId,
+                        similarityScore: match.similarity_score,
+                        matchingFields: match.matching_fields,
+                        duplicateType: match.duplicate_type as DuplicateType,
+                        status: DuplicateStatus.PENDING
+                    }
+                });
+                duplicateChecks.push(duplicateCheck);
+            } catch (error) {
+                this.logger.warn(`Failed to save duplicate check: ${error.message}`);
+            }
+        }
+
+        return duplicateChecks;
+    }
+
+    async saveComplianceValidation(documentId: number, complianceData: any) {
+        try {
+            const compliance = await this.prisma.complianceValidation.create({
+                data: {
+                    documentId: documentId,
+                    overallStatus: complianceData.compliance_status as ComplianceStatus,
+                    validationRules: complianceData.validation_rules || [],
+                    errors: complianceData.errors || [],
+                    warnings: complianceData.warnings || []
+                }
+            });
+
+            return compliance;
+        } catch (error) {
+            this.logger.error(`Failed to save compliance validation: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async saveUserCorrection(documentId: number, userId: number, correctionData: {
+        correctionType: CorrectionType;
+        originalValue: any;
+        correctedValue: any;
+        confidence?: number;
+    }) {
+        try {
+            const correction = await this.prisma.userCorrection.create({
+                data: {
+                    documentId: documentId,
+                    userId: userId,
+                    correctionType: correctionData.correctionType,
+                    originalValue: correctionData.originalValue,
+                    correctedValue: correctionData.correctedValue,
+                    confidence: correctionData.confidence || null,
+                    applied: false
+                }
+            });
+
+            this.logger.log(`User correction saved: ${correctionData.correctionType} for document ${documentId}`);
+            return correction;
+        } catch (error) {
+            this.logger.error(`Failed to save user correction: ${error.message}`);
+            throw error;
+        }
+    }
+
+    async getDuplicateAlerts(accountingClientId: number) {
+        return this.prisma.documentDuplicateCheck.findMany({
+            where: {
+                originalDocument: {
+                    accountingClientId: accountingClientId
+                },
+                status: DuplicateStatus.PENDING
+            },
+            include: {
+                originalDocument: true,
+                duplicateDocument: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+    }
+
+    async getComplianceAlerts(accountingClientId: number) {
+        return this.prisma.complianceValidation.findMany({
+            where: {
+                document: {
+                    accountingClientId: accountingClientId
+                },
+                overallStatus: {
+                    in: [ComplianceStatus.NON_COMPLIANT, ComplianceStatus.WARNING]
+                }
+            },
+            include: {
+                document: true
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+    }
+
+    async updateDuplicateStatus(duplicateCheckId: number, status: DuplicateStatus) {
+        return this.prisma.documentDuplicateCheck.update({
+            where: { id: duplicateCheckId },
+            data: { status: status }
+        });
+    }
+
     private async installDependencies() {
-    const ocrDependencies = [
-        'crewai', 
-        'crewai-tools', 
-        'pytesseract', 
-        'pdf2image', 
-        'pillow', 
-        'opencv-python',
-        'numpy'
-    ];
-    
-    const command = `python3 -m pip install ${ocrDependencies.join(' ')} --no-cache-dir`;
-    this.logger.debug('Installing Python dependencies including OCR packages...');
-    
-    await execPromise(command, {
-        cwd: path.dirname(this.pythonScriptPath),
-        timeout: 180000
-    });
-    
-    this.logger.log('Python dependencies with OCR support installed successfully');
-}
+        const ocrDependencies = [
+            'crewai', 
+            'crewai-tools', 
+            'pytesseract', 
+            'pdf2image', 
+            'pillow', 
+            'opencv-python',
+            'numpy'
+        ];
+        
+        const command = `python3 -m pip install ${ocrDependencies.join(' ')} --no-cache-dir`;
+        this.logger.debug('Installing Python dependencies including OCR packages...');
+        
+        await execPromise(command, {
+            cwd: path.dirname(this.pythonScriptPath),
+            timeout: 180000
+        });
+        
+        this.logger.log('Python dependencies with OCR support installed successfully');
+    }
 
     private setupTempFileCleanup() {
         setInterval(() => {

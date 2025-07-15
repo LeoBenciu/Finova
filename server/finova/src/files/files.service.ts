@@ -1,12 +1,17 @@
 import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { ArticleType, User } from '@prisma/client';
+import { ArticleType, User, CorrectionType, DuplicateStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { DataExtractionService } from '../data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
+import * as crypto from 'crypto';
 
 @Injectable()
 export class FilesService {
 
-    constructor(private prisma: PrismaService){}
+    constructor(
+        private prisma: PrismaService,
+        private dataExtractionService: DataExtractionService
+    ) {}
     
     async getFiles(ein: string, user: User) {
         try {
@@ -51,6 +56,22 @@ export class FilesService {
                                 select: { id: true, name: true, ein: true }
                             }
                         }
+                    },
+                    duplicateChecks: {
+                        include: {
+                            originalDocument: true
+                        }
+                    },
+                    duplicateMatches: {
+                        include: {
+                            duplicateDocument: true
+                        }
+                    },
+                    complianceValidations: {
+                        orderBy: {
+                            createdAt: 'desc'
+                        },
+                        take: 1
                     }
                 }
             });
@@ -90,12 +111,22 @@ export class FilesService {
                         Key: document.s3Key,
                         Expires: 60 * 60,
                     });
+
+                    const hasDuplicateAlert = document.duplicateChecks.some(check => check.status === 'PENDING') ||
+                                           document.duplicateMatches.some(check => check.status === 'PENDING');
+
+                    const latestCompliance = document.complianceValidations[0];
+                    const hasComplianceIssues = latestCompliance && 
+                        (latestCompliance.overallStatus === 'NON_COMPLIANT' || latestCompliance.overallStatus === 'WARNING');
     
                     return {
                         ...document,
                         processedData: processedData.filter(pd => pd.documentId === document.id),
                         signedUrl,
-                        rpa: rpaActions.filter(rp => rp.documentId === document.id)
+                        rpa: rpaActions.filter(rp => rp.documentId === document.id),
+                        hasDuplicateAlert,
+                        hasComplianceIssues,
+                        complianceStatus: latestCompliance?.overallStatus || 'PENDING'
                     };
                 })
             );
@@ -146,6 +177,10 @@ export class FilesService {
         return hasAccess;
     }
 
+    private generateDocumentHash(fileBuffer: Buffer): string {
+        return crypto.createHash('md5').update(fileBuffer).digest('hex');
+    }
+
     async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
         let uploadResult;
         let fileKey;
@@ -184,6 +219,8 @@ export class FilesService {
             if (!accountingClientRelation) {
                 throw new UnauthorizedException('You don\'t have access to this client company');
             }
+
+            const documentHash = this.generateDocumentHash(file.buffer);
     
             fileKey = `${currentUser.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
     
@@ -203,6 +240,7 @@ export class FilesService {
                         s3Key: fileKey,
                         contentType: file.mimetype,
                         fileSize: file.size,
+                        documentHash: documentHash,
                         accountingClientId: accountingClientRelation.id
                     }
                 });
@@ -213,6 +251,20 @@ export class FilesService {
                         extractedFields: processedData
                     }
                 });
+
+                if (processedData.result.duplicate_detection) {
+                    await this.dataExtractionService.saveDuplicateDetection(
+                        document.id, 
+                        processedData.result.duplicate_detection
+                    );
+                }
+
+                if (processedData.result.compliance_validation) {
+                    await this.dataExtractionService.saveComplianceValidation(
+                        document.id, 
+                        processedData.result.compliance_validation
+                    );
+                }
     
                 if (processedData.result.line_items && processedData.result.line_items.length > 0) {
                     console.log(`[DEBUG] Creating articles from ${processedData.result.line_items.length} line items`);
@@ -290,121 +342,343 @@ export class FilesService {
         }
     }
 
-    async updateFiles(processedData:any, clientCompanyEin:string, user:User, docId:number )
-    {
+    async updateFiles(processedData: any, clientCompanyEin: string, user: User, docId: number) {
         try {
             const clientCompany = await this.prisma.clientCompany.findUnique({
-                where:{
-                    ein:clientCompanyEin
+                where: {
+                    ein: clientCompanyEin
                 }
             });
 
-            if(!clientCompany) throw new NotFoundException('Failed to find client company in the database');
+            if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
 
             const accountingClientRelation = await this.prisma.accountingClients.findMany({
-                where:{
+                where: {
                     accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId:  clientCompany.id
+                    clientCompanyId: clientCompany.id
                 }
             });
-            if( accountingClientRelation.length===0) throw new NotFoundException('You don\'t have access to this client company');
+            if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
 
             const document = await this.prisma.document.findUnique({
                 where: {
-                  id: docId,
-                  accountingClientId: accountingClientRelation[0].id
-                }});
-
-            if(!document) throw new NotFoundException('Document doesn\'t exist in the database');
-
-            const updatedProcessedData = await this.prisma.processedData.update({
-                where:{
-                    documentId: docId
+                    id: docId,
+                    accountingClientId: accountingClientRelation[0].id
                 },
-                data:{
-                    extractedFields:processedData
+                include: {
+                    processedData: true
                 }
             });
 
-            return {document, updatedProcessedData}
+            if (!document) throw new NotFoundException('Document doesn\'t exist in the database');
+
+            if (document.processedData) {
+                await this.detectAndSaveUserCorrections(
+                    document.processedData.extractedFields,
+                    processedData,
+                    docId,
+                    user.id
+                );
+            }
+
+            const updatedProcessedData = await this.prisma.processedData.update({
+                where: {
+                    documentId: docId
+                },
+                data: {
+                    extractedFields: processedData
+                }
+            });
+
+            return { document, updatedProcessedData }
         } catch (e) {
-            if( e instanceof NotFoundException) throw e;
+            if (e instanceof NotFoundException) throw e;
             throw new InternalServerErrorException("Failed to update the file's data!")
+        }
+    }
+
+    private async detectAndSaveUserCorrections(originalData: any, newData: any, documentId: number, userId: number) {
+        const corrections = [];
+
+        if (originalData.result?.document_type !== newData.result?.document_type) {
+            corrections.push({
+                correctionType: CorrectionType.DOCUMENT_TYPE,
+                originalValue: { document_type: originalData.result?.document_type },
+                correctedValue: { document_type: newData.result?.document_type },
+                confidence: originalData.result?.confidence || null
+            });
+        }
+
+        if (originalData.result?.direction !== newData.result?.direction) {
+            corrections.push({
+                correctionType: CorrectionType.INVOICE_DIRECTION,
+                originalValue: { direction: originalData.result?.direction },
+                correctedValue: { direction: newData.result?.direction }
+            });
+        }
+
+        if (originalData.result?.vendor !== newData.result?.vendor || 
+            originalData.result?.vendor_ein !== newData.result?.vendor_ein) {
+            corrections.push({
+                correctionType: CorrectionType.VENDOR_INFORMATION,
+                originalValue: { 
+                    vendor: originalData.result?.vendor, 
+                    vendor_ein: originalData.result?.vendor_ein 
+                },
+                correctedValue: { 
+                    vendor: newData.result?.vendor, 
+                    vendor_ein: newData.result?.vendor_ein 
+                }
+            });
+        }
+
+        if (originalData.result?.buyer !== newData.result?.buyer || 
+            originalData.result?.buyer_ein !== newData.result?.buyer_ein) {
+            corrections.push({
+                correctionType: CorrectionType.BUYER_INFORMATION,
+                originalValue: { 
+                    buyer: originalData.result?.buyer, 
+                    buyer_ein: originalData.result?.buyer_ein 
+                },
+                correctedValue: { 
+                    buyer: newData.result?.buyer, 
+                    buyer_ein: newData.result?.buyer_ein 
+                }
+            });
+        }
+
+        if (originalData.result?.total_amount !== newData.result?.total_amount || 
+            originalData.result?.vat_amount !== newData.result?.vat_amount) {
+            corrections.push({
+                correctionType: CorrectionType.AMOUNTS,
+                originalValue: { 
+                    total_amount: originalData.result?.total_amount, 
+                    vat_amount: originalData.result?.vat_amount 
+                },
+                correctedValue: { 
+                    total_amount: newData.result?.total_amount, 
+                    vat_amount: newData.result?.vat_amount 
+                }
+            });
+        }
+
+        if (originalData.result?.document_date !== newData.result?.document_date || 
+            originalData.result?.due_date !== newData.result?.due_date) {
+            corrections.push({
+                correctionType: CorrectionType.DATES,
+                originalValue: { 
+                    document_date: originalData.result?.document_date, 
+                    due_date: originalData.result?.due_date 
+                },
+                correctedValue: { 
+                    document_date: newData.result?.document_date, 
+                    due_date: newData.result?.due_date 
+                }
+            });
+        }
+
+        const originalLineItems = originalData.result?.line_items || [];
+        const newLineItems = newData.result?.line_items || [];
+        if (JSON.stringify(originalLineItems) !== JSON.stringify(newLineItems)) {
+            corrections.push({
+                correctionType: CorrectionType.LINE_ITEMS,
+                originalValue: { line_items: originalLineItems },
+                correctedValue: { line_items: newLineItems }
+            });
+        }
+
+        for (const correction of corrections) {
+            await this.dataExtractionService.saveUserCorrection(documentId, userId, correction);
+        }
+
+        if (corrections.length > 0) {
+            console.log(`[LEARNING] Saved ${corrections.length} user corrections for document ${documentId}`);
+        }
+    }
+
+    async getDuplicateAlerts(clientCompanyEin: string, user: User) {
+        try {
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
+            });
+
+            if (!clientCompany) {
+                throw new NotFoundException('Client company not found');
+            }
+
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
+                }
+            });
+
+            if (!accountingClientRelation) {
+                throw new UnauthorizedException('No access to this client company');
+            }
+
+            return await this.dataExtractionService.getDuplicateAlerts(accountingClientRelation.id);
+        } catch (e) {
+            console.error('[GET_DUPLICATE_ALERTS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to get duplicate alerts');
+        }
+    }
+
+    async getComplianceAlerts(clientCompanyEin: string, user: User) {
+        try {
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
+            });
+
+            if (!clientCompany) {
+                throw new NotFoundException('Client company not found');
+            }
+
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
+                }
+            });
+
+            if (!accountingClientRelation) {
+                throw new UnauthorizedException('No access to this client company');
+            }
+
+            return await this.dataExtractionService.getComplianceAlerts(accountingClientRelation.id);
+        } catch (e) {
+            console.error('[GET_COMPLIANCE_ALERTS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to get compliance alerts');
+        }
+    }
+
+    async updateDuplicateStatus(duplicateCheckId: number, status: DuplicateStatus, user: User) {
+        try {
+            const duplicateCheck = await this.prisma.documentDuplicateCheck.findUnique({
+                where: { id: duplicateCheckId },
+                include: {
+                    originalDocument: {
+                        include: {
+                            accountingClient: true
+                        }
+                    }
+                }
+            });
+
+            if (!duplicateCheck) {
+                throw new NotFoundException('Duplicate check not found');
+            }
+
+            if (duplicateCheck.originalDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+                throw new UnauthorizedException('No access to this duplicate check');
+            }
+
+            return await this.dataExtractionService.updateDuplicateStatus(duplicateCheckId, status);
+        } catch (e) {
+            console.error('[UPDATE_DUPLICATE_STATUS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to update duplicate status');
         }
     }
 
     async deleteFiles(clientCompanyEin: string, docId: number, user: User) {
         try {
-          const clientCompany = await this.prisma.clientCompany.findUnique({
-            where: { ein: clientCompanyEin }
-          });
-          
-          if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
-          
-          const accountingClientRelation = await this.prisma.accountingClients.findMany({
-            where: {
-              accountingCompanyId: user.accountingCompanyId,
-              clientCompanyId: clientCompany.id
-            }
-          });
-          
-          if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
-          
-          const document = await this.prisma.document.findUnique({
-            where: {
-              id: docId,
-              accountingClientId: accountingClientRelation[0].id
-            }
-          });
-          
-          if (!document) throw new NotFoundException('Document not found');
-
-          const s3 = new AWS.S3({
-            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-            region: process.env.AWS_REGION
-          });
-
-          await s3.deleteObject({
-            Bucket: process.env.AWS_S3_BUCKET_NAME,
-            Key: document.s3Key
-          }).promise();
-
-          return await this.prisma.$transaction(async (prisma) => {
-            const deletedProcessedData = await prisma.processedData.deleteMany({
-              where: {
-                documentId: docId
-              }
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
             });
             
-            const deletedRpaAction = await prisma.rpaAction.deleteMany({
-              where: {
-                documentId: docId,
-                accountingClientId: accountingClientRelation[0].id
-              }
+            if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
+            
+            const accountingClientRelation = await this.prisma.accountingClients.findMany({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
+                }
             });
             
-            const deletedDocument = await prisma.document.delete({
-              where: {
-                id: docId,
-                accountingClientId: accountingClientRelation[0].id
-              }
+            if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
+            
+            const document = await this.prisma.document.findUnique({
+                where: {
+                    id: docId,
+                    accountingClientId: accountingClientRelation[0].id
+                }
             });
             
-            return {
-              deletedDocument,
-              deletedProcessedData,
-              deletedRpaAction,
-              s3DeleteStatus: 'Success'
-            };
-          });
-          
+            if (!document) throw new NotFoundException('Document not found');
+
+            const s3 = new AWS.S3({
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+                region: process.env.AWS_REGION
+            });
+
+            await s3.deleteObject({
+                Bucket: process.env.AWS_S3_BUCKET_NAME,
+                Key: document.s3Key
+            }).promise();
+
+            return await this.prisma.$transaction(async (prisma) => {
+                const deletedUserCorrections = await prisma.userCorrection.deleteMany({
+                    where: { documentId: docId }
+                });
+
+                const deletedComplianceValidations = await prisma.complianceValidation.deleteMany({
+                    where: { documentId: docId }
+                });
+
+                const deletedDuplicateChecks = await prisma.documentDuplicateCheck.deleteMany({
+                    where: {
+                        OR: [
+                            { originalDocumentId: docId },
+                            { duplicateDocumentId: docId }
+                        ]
+                    }
+                });
+
+                const deletedProcessedData = await prisma.processedData.deleteMany({
+                    where: { documentId: docId }
+                });
+                
+                const deletedRpaAction = await prisma.rpaAction.deleteMany({
+                    where: {
+                        documentId: docId,
+                        accountingClientId: accountingClientRelation[0].id
+                    }
+                });
+                
+                const deletedDocument = await prisma.document.delete({
+                    where: {
+                        id: docId,
+                        accountingClientId: accountingClientRelation[0].id
+                    }
+                });
+                
+                return {
+                    deletedDocument,
+                    deletedProcessedData,
+                    deletedRpaAction,
+                    deletedDuplicateChecks,
+                    deletedComplianceValidations,
+                    deletedUserCorrections,
+                    s3DeleteStatus: 'Success'
+                };
+            });
+            
         } catch (e) {
-          if (e instanceof NotFoundException) throw e;
-          if (e.code === 'NoSuchKey'){
-            throw new InternalServerErrorException("File not found in S3 storage, but database records were deleted.");
-          }
-          throw new InternalServerErrorException("Failed to delete the file and its data!");
+            if (e instanceof NotFoundException) throw e;
+            if (e.code === 'NoSuchKey') {
+                throw new InternalServerErrorException("File not found in S3 storage, but database records were deleted.");
+            }
+            throw new InternalServerErrorException("Failed to delete the file and its data!");
         }
-      }
     }
+
+    async getServiceHealth() {
+        try {
+            return await this.dataExtractionService.getServiceHealth();
+        } catch (e) {
+            console.error('[GET_SERVICE_HEALTH_ERROR]', e);
+            throw new InternalServerErrorException('Failed to get service health');
+        }
+    }
+}

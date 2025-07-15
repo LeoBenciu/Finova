@@ -8,9 +8,13 @@ categorize_document_task:
     - Vendor labels: {vendor_labels}
     - Buyer labels: {buyer_labels}
     If labels are missing, use hierarchy: company with CUI/bank details (vendor), header position, invoice number prefix, logo, contact details.
-    Output a JSON string with 'document_type' and 'direction' (e.g., {'document_type': 'Invoice', 'direction': 'incoming'}).
+
+    IMPORTANT: Learn from previous user corrections if available. Apply the patterns from corrections to improve accuracy.
+
+    Output a JSON string with 'document_type', 'direction' (for factură), and 'confidence' (0.0-1.0).
+    Example: {'document_type': 'Invoice', 'direction': 'incoming', 'confidence': 0.95}
   expected_output: >
-    A JSON string with document type and direction (for factură).
+    A JSON string with document type, direction (for factură), and confidence score.
   agent: document_categorizer
 
 extract_invoice_data_task:
@@ -41,3 +45,67 @@ extract_other_document_data_task:
   expected_output: >
     A JSON string with extracted document details including currency information and validation warnings if applicable.
   agent: other_document_data_extractor
+
+detect_duplicates_task:
+  description: >
+    Compare the current document data with existing documents from {existing_documents} to detect potential duplicates.
+    For the document at {document_path}, analyze the extracted data and compare with existing documents based on:
+    - Exact file hash match (highest priority)
+    - Invoice/document number match
+    - Same vendor, amount, and date combination
+    - Similar content with high similarity score
+
+    Generate a hash for the current document using the document_hash_generator tool.
+    Use the duplicate_detector tool to compare extracted data with existing documents.
+
+    Classify duplicates as:
+    - EXACT_MATCH: Same file content (hash match) or identical invoice number + vendor + amount + date
+    - CONTENT_MATCH: Same invoice number OR (same vendor + amount + date)
+    - SIMILAR_CONTENT: High similarity in multiple fields but not exact match
+
+    Output JSON with: {{'is_duplicate': boolean, 'duplicate_matches': [array of matches], 'document_hash': 'hash_string', 'confidence': float}}
+  expected_output: >
+    A JSON string with duplicate detection results including matches, hash, and confidence score.
+  agent: duplicate_detector_agent
+
+validate_compliance_task:
+  description: >
+    Validate the Romanian compliance of the document at {document_path} with extracted data.
+    Check compliance with Romanian ANAF regulations:
+
+    FOR INVOICES:
+    - VAT number format: Must be 'RO' followed by 2-10 digits for Romanian entities
+    - Invoice series and number: Must be continuous and follow ANAF format
+    - Required fields: Vendor name/address, buyer name/address, invoice date, due date, amounts
+    - VAT rates: Must be 0%, 5%, 9%, or 19% (current Romanian rates)
+    - Currency declaration: Foreign currency transactions must be properly declared
+    - Amount calculations: VAT calculations must be accurate
+    - Invoice date: Must not be future date, must be within current fiscal year context
+
+    FOR RECEIPTS:
+    - Must contain vendor information with valid CUI/EIN
+    - Must have clear transaction date and amount
+    - Payment method should be specified
+
+    FOR CONTRACTS:
+    - Must have valid CUI/EIN for all parties
+    - Contract dates must be logical (start <= end)
+    - Must contain essential contract elements
+
+    FOR BANK STATEMENTS:
+    - Account number must follow Romanian IBAN format (RO + 22 characters)
+    - Transactions must have proper format and sequence
+    - Balances must be mathematically correct
+
+    Check for common compliance issues:
+    - Missing or invalid VAT numbers
+    - Incorrect VAT calculations
+    - Missing mandatory fields
+    - Invalid date formats
+    - Currency compliance for foreign transactions
+    - ANAF-specific format requirements
+
+    Output JSON with: {{'compliance_status': 'COMPLIANT|NON_COMPLIANT|WARNING', 'validation_rules': [array], 'errors': [array], 'warnings': [array], 'overall_score': float}}
+  expected_output: >
+    A JSON string with comprehensive compliance validation results.
+  agent: compliance_validator_agent

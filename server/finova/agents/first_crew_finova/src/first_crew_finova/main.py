@@ -9,11 +9,11 @@ import gc
 import tempfile
 import tracemalloc
 import traceback
-from typing import Dict, Any, Optional
+import hashlib
+from typing import Dict, Any, Optional, List
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 
-# Configure logging to go to stderr so Node.js can capture it
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -24,7 +24,6 @@ warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# Test imports at the very beginning
 try:
     from crew import FirstCrewFinova
     print("Successfully imported FirstCrewFinova", file=sys.stderr)
@@ -47,7 +46,6 @@ def test_openai_connection():
         
         client = openai.OpenAI(api_key=api_key)
         
-        # Try a simple completion
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Say 'API key works'"}],
@@ -72,7 +70,6 @@ def check_llm_configuration():
     
     if openai_api_key:
         print("OpenAI API key found - using OpenAI models", file=sys.stderr)
-        # Test the API key
         if test_openai_connection():
             print("OpenAI API key verified and working", file=sys.stderr)
             return True
@@ -152,6 +149,20 @@ def get_existing_articles() -> Dict:
         return {}
     
     return articles
+
+def generate_document_hash(file_path: str) -> str:
+    """Generate MD5 hash of document content."""
+    try:
+        with open(file_path, 'rb') as f:
+            content = f.read()
+            return hashlib.md5(content).hexdigest()
+    except Exception as e:
+        print(f"Failed to generate document hash: {str(e)}", file=sys.stderr)
+        return ""
+
+def load_user_corrections(client_company_ein: str) -> List[Dict]:
+    """Load user corrections for learning (mock implementation - replace with actual DB call)."""
+    return []
 
 def save_temp_file(base64_data: str) -> str:
     """Save base64 data to a temporary file with error handling."""
@@ -259,13 +270,12 @@ def extract_json_from_text(text: str) -> dict:
     print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)
     return {}
 
-def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str, Any]:
-    """Process a single document with memory optimization."""
+def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None) -> Dict[str, Any]:
+    """Process a single document with memory optimization and new features."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
     log_memory_usage("Before processing")
     
     try:
-        # First, check and validate API key
         api_key = os.getenv('OPENAI_API_KEY')
         if not api_key:
             error_msg = "OPENAI_API_KEY environment variable not found"
@@ -277,7 +287,6 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         print(f"API Key info - Length: {len(api_key)}, Starts with 'sk-': {api_key.startswith('sk-')}", file=sys.stderr)
         
-        # Test direct OpenAI connection first
         try:
             import openai
             print("Testing direct OpenAI connection...", file=sys.stderr)
@@ -318,15 +327,22 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
         
+        user_corrections = load_user_corrections(client_company_ein)
+        
+        document_hash = generate_document_hash(doc_path)
+        
         log_memory_usage("After loading config")
         
-        # Try to create CrewAI instance with detailed error handling
         try:
             print("Creating FirstCrewFinova instance...", file=sys.stderr)
-            crew_instance = FirstCrewFinova(client_company_ein, existing_articles, management_records)
+            crew_instance = FirstCrewFinova(
+                client_company_ein, 
+                existing_articles, 
+                management_records, 
+                user_corrections
+            )
             print("FirstCrewFinova instance created successfully", file=sys.stderr)
             
-            # Check if llm exists
             if not hasattr(crew_instance, 'llm'):
                 print("ERROR: crew_instance doesn't have 'llm' attribute", file=sys.stderr)
                 print(f"crew_instance attributes: {dir(crew_instance)}", file=sys.stderr)
@@ -338,7 +354,6 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             if crew_instance.llm is None:
                 print("ERROR: crew_instance.llm is None", file=sys.stderr)
                 
-                # Try alternative initialization
                 try:
                     print("Attempting manual LLM initialization...", file=sys.stderr)
                     from crewai import LLM
@@ -364,7 +379,6 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             print(f"Exception type: {type(e).__name__}", file=sys.stderr)
             print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
             
-            # Check if it's an import error
             if isinstance(e, ImportError):
                 return {
                     "error": "CrewAI import error. Please ensure all dependencies are installed.",
@@ -376,7 +390,6 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                 "details": str(e)
             }
         
-        # Create crew
         try:
             print("Creating crew from crew_instance...", file=sys.stderr)
             crew = crew_instance.crew()
@@ -404,6 +417,8 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
             "units_of_measure": ["BUCATA", "KILOGRAM", "LITRU", "METRU", "GRAM", "CUTIE", "PACHET", "PUNGA", "SET", "METRU_PATRAT", "METRU_CUB", "MILIMETRU", "CENTIMETRU", "TONA", "PERECHE", "SAC", "MILILITRU", "KILOWATT_ORA", "MINUT", "ORA", "ZI_DE_LUCRU", "LUNI_DE_LUCRU", "DOZA", "UNITATE_DE_SERVICE", "O_MIE_DE_BUCATI", "TRIMESTRU", "PROCENT", "KILOMETRU", "LADA", "DRY_TONE", "CENTIMETRU_PATRAT", "MEGAWATI_ORA", "ROLA", "TAMBUR", "SAC_PLASTIC", "PALET_LEMN", "UNITATE", "TONA_NETA", "HECTOMETRU_PATRAT", "FOAIE"],
             "existing_articles": existing_articles,
             "management_records": management_records,
+            "existing_documents": existing_documents or [],
+            "document_hash": document_hash,
             "doc_type": "Unknown"  
         }
         
@@ -429,7 +444,10 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
         
         combined_data = {
             "document_type": "Unknown",
-            "line_items": []
+            "line_items": [],
+            "document_hash": document_hash,
+            "duplicate_detection": {"is_duplicate": False, "duplicate_matches": []},
+            "compliance_validation": {"compliance_status": "PENDING", "validation_rules": [], "errors": [], "warnings": []}
         }
         
         if hasattr(result, 'tasks_output') and result.tasks_output:
@@ -449,7 +467,7 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                                 print(f"Document categorized as: {doc_type}", file=sys.stderr)
                                 inputs['doc_type'] = doc_type
                         
-                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
+                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':  # Invoice extraction
                             extraction_data = extract_json_from_text(task_output.raw)
                             if extraction_data:
                                 combined_data.update(extraction_data)
@@ -462,6 +480,18 @@ def process_single_document(doc_path: str, client_company_ein: str) -> Dict[str,
                                 if other_data:
                                     combined_data.update(other_data)
                                     print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
+                        
+                        elif i == 3: 
+                            duplicate_data = extract_json_from_text(task_output.raw)
+                            if duplicate_data:
+                                combined_data['duplicate_detection'] = duplicate_data
+                                print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
+                        
+                        elif i == 4:
+                            compliance_data = extract_json_from_text(task_output.raw)
+                            if compliance_data:
+                                combined_data['compliance_validation'] = compliance_data
+                                print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
                         
                         del task_output.raw
                         
@@ -555,7 +585,6 @@ def main():
     print(f"MODEL env var: {os.getenv('MODEL', 'NOT SET')}", file=sys.stderr)
     print(f"Current working directory: {os.getcwd()}", file=sys.stderr)
     
-    # Test imports
     try:
         import crewai
         print(f"CrewAI version: {crewai.__version__ if hasattr(crewai, '__version__') else 'unknown'}", file=sys.stderr)
@@ -572,12 +601,19 @@ def main():
     
     try:
         if len(sys.argv) < 3:
-            result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path>"}
+            result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path> [existing_documents_json]"}
             print(json.dumps(result, ensure_ascii=False))
             sys.exit(1)
         
         client_company_ein = sys.argv[1].strip()
         base64_input = sys.argv[2].strip()
+        
+        existing_documents = []
+        if len(sys.argv) > 3:
+            try:
+                existing_documents = json.loads(sys.argv[3])
+            except json.JSONDecodeError:
+                print("Warning: Invalid existing documents JSON, proceeding without duplicate detection", file=sys.stderr)
         
         if not client_company_ein:
             result = {"error": "Client company EIN is required"}
@@ -599,7 +635,7 @@ def main():
         temp_file_path = save_temp_file(base64_data)
         
         try:
-            result = process_single_document(temp_file_path, client_company_ein)
+            result = process_single_document(temp_file_path, client_company_ein, existing_documents)
             
             print(json.dumps(result, ensure_ascii=False))
             
