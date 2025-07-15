@@ -457,58 +457,72 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         
         if hasattr(result, 'tasks_output') and result.tasks_output:
             print(f"Processing {len(result.tasks_output)} task outputs", file=sys.stderr)
-            
+
             for i, task_output in enumerate(result.tasks_output):
                 try:
                     if task_output and hasattr(task_output, 'raw') and task_output.raw:
                         output_length = len(task_output.raw)
                         print(f"Task {i} output length: {output_length}", file=sys.stderr)
-                        
+
                         if i == 0:
                             categorization_data = extract_json_from_text(task_output.raw)
-                            if categorization_data:
+                            if categorization_data and isinstance(categorization_data, dict):
                                 combined_data.update(categorization_data)
                                 doc_type = categorization_data.get('document_type', 'Unknown')
                                 print(f"Document categorized as: {doc_type}", file=sys.stderr)
                                 inputs['doc_type'] = doc_type
-                        
-                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':  # Invoice extraction
+
+                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
                             extraction_data = extract_json_from_text(task_output.raw)
-                            if extraction_data:
+                            if extraction_data and isinstance(extraction_data, dict):
                                 combined_data.update(extraction_data)
                                 print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
-                        
-                        elif i == 2: 
+
+                        elif i == 2:
                             doc_type = combined_data.get('document_type', '').lower()
                             if doc_type != 'invoice' and doc_type:
-                                other_data = extract_json_from_text(task_output.raw)
-                                if other_data:
-                                    combined_data.update(other_data)
-                                    print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
-                        
-                        elif i == 3: 
-                            duplicate_data = extract_json_from_text(task_output.raw)
-                            if duplicate_data:
-                                combined_data['duplicate_detection'] = duplicate_data
-                                print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
-                        
+                                try:
+                                    other_data = extract_json_from_text(task_output.raw)
+                                    print(f"Raw other_data type: {type(other_data)}, content preview: {str(other_data)[:200]}", file=sys.stderr)
+
+                                    if other_data and isinstance(other_data, dict):
+                                        for key, value in other_data.items():
+                                            combined_data[key] = value
+                                        print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
+                                    else:
+                                        print(f"WARNING: Task 2 returned non-dict data: {type(other_data)}", file=sys.stderr)
+                                except Exception as task2_error:
+                                    print(f"ERROR: Task 2 processing failed: {str(task2_error)}", file=sys.stderr)
+                                    print(f"Task 2 raw output: {task_output.raw[:500]}...", file=sys.stderr)
+
+                        elif i == 3:
+                            try:
+                                duplicate_data = extract_json_from_text(task_output.raw)
+                                if duplicate_data and isinstance(duplicate_data, dict):
+                                    combined_data['duplicate_detection'] = duplicate_data
+                                    print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
+                            except Exception as task3_error:
+                                print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
+
                         elif i == 4:
-                            compliance_data = extract_json_from_text(task_output.raw)
-                            if compliance_data:
-                                combined_data['compliance_validation'] = compliance_data
-                                print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
-                        
+                            try:
+                                compliance_data = extract_json_from_text(task_output.raw)
+                                if compliance_data and isinstance(compliance_data, dict):
+                                    combined_data['compliance_validation'] = compliance_data
+                                    print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
+                            except Exception as task4_error:
+                                print(f"ERROR: Task 4 processing failed: {str(task4_error)}", file=sys.stderr)
+
                         del task_output.raw
-                        
+
                     else:
                         print(f"WARNING: Task {i} has no output", file=sys.stderr)
-                        
+
                 except Exception as e:
                     print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
+                    print(f"Task {i} traceback: {traceback.format_exc()}", file=sys.stderr)
                     continue
-        else:
-            print("ERROR: No tasks output found in result", file=sys.stderr)
-        
+                
         del crew
         del crew_instance
         del existing_articles
