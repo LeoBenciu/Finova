@@ -252,40 +252,41 @@ export class ClientCompaniesService {
             const articleData = articlesRows.length > 0 ? articlesRows.map((row, index) => {
               this.logger.debug(`Processing article row ${index + 1}: ${JSON.stringify(row)}`);
               
-              const code = parseInt(row.cod);
-              if (isNaN(code) || !row.cod) {
-                throw new BadRequestException(`Invalid or missing code in articles.csv at row ${index + 2}`);
-              }
-              if (!row.denumire) {
-                throw new BadRequestException(`Missing name in articles.csv at row ${index + 2}`);
-              }
-              
-              const vatValue = normalizeVatValue(row.tva);
-              const vat = vatMap[vatValue];
-              if (!vat) {
-                throw new BadRequestException(`Invalid vat '${row.tva}' in articles.csv at row ${index + 2}`);
-              }
-              
-              const umValue = row.um?.trim().toLowerCase() || 'buc';
-              const unitOfMeasure = unitOfMeasureMap[umValue] || UnitOfMeasure.BUCATA;
-              
-              const typeValue = row.den_tip?.trim().toLowerCase() || 'marfuri';
-              const type = articleTypeMap[typeValue] || ArticleType.MARFURI;
-              
-              return {
-                code,
-                name: row.denumire.trim(),
-                vat: vat as VatRate,
-                unitOfMeasure,
-                type,
-              };
-            }) : [];
+                const code = row.cod?.toString().trim();
+  
+                  if (!code || code === '') {
+                    throw new BadRequestException(`Invalid or missing code in articles.csv at row ${index + 2}`);
+                  }
+                  if (!row.denumire) {
+                    throw new BadRequestException(`Missing name in articles.csv at row ${index + 2}`);
+                  }
+
+                  const vatValue = normalizeVatValue(row.tva);
+                  const vat = vatMap[vatValue];
+                  if (!vat) {
+                    throw new BadRequestException(`Invalid vat '${row.tva}' in articles.csv at row ${index + 2}`);
+                  }
+
+                  const umValue = row.um?.trim().toLowerCase() || 'buc';
+                  const unitOfMeasure = unitOfMeasureMap[umValue] || UnitOfMeasure.BUCATA;
+
+                  const typeValue = row.den_tip?.trim().toLowerCase() || 'marfuri';
+                  const type = articleTypeMap[typeValue] || ArticleType.MARFURI;
+
+                  return {
+                    code, 
+                    name: row.denumire.trim(),
+                    vat: vat as VatRate,
+                    unitOfMeasure,
+                    type,
+                  };
+                }) : [];
               
             const managementData = managementRows.length > 0 ? managementRows.map((row, index) => {
               this.logger.debug(`Processing management row ${index + 1}: ${JSON.stringify(row)}`);
               
-              const code = parseInt(row.cod);
-              if (isNaN(code) || !row.cod) {
+              const code = row.cod?.toString().trim();
+              if (!code || code === '') {
                 throw new BadRequestException(`Invalid or missing code in management.csv at row ${index + 2}`);
               }
               if (!row.denumire) {
@@ -302,7 +303,7 @@ export class ClientCompaniesService {
               }
               
               return {
-                code,
+                code, 
                 name: row.denumire.trim(),
                 type,
                 manager: row.gestionar?.trim() || null,
@@ -320,10 +321,11 @@ export class ClientCompaniesService {
               const articleCodeCounts = articleData.reduce((acc, a) => {
                 acc[a.code] = (acc[a.code] || 0) + 1;
                 return acc;
-              }, {} as Record<number, number>);
+              }, {} as Record<string, number>);
+
               const articleDuplicates = Object.keys(articleCodeCounts)
-                .filter((code) => articleCodeCounts[parseInt(code)] > 1)
-                .map((code) => parseInt(code));
+                .filter((code) => articleCodeCounts[code] > 1); 
+
               if (articleDuplicates.length) {
                 throw new BadRequestException(`Duplicate cod values in articles.csv: ${articleDuplicates.join(', ')}`);
               }
@@ -333,10 +335,11 @@ export class ClientCompaniesService {
               const managementCodeCounts = managementData.reduce((acc, m) => {
                 acc[m.code] = (acc[m.code] || 0) + 1;
                 return acc;
-              }, {} as Record<number, number>);
+              }, {} as Record<string, number>); 
+
               const managementDuplicates = Object.keys(managementCodeCounts)
-                .filter((code) => managementCodeCounts[parseInt(code)] > 1)
-                .map((code) => parseInt(code));
+                .filter((code) => managementCodeCounts[code] > 1);
+
               if (managementDuplicates.length) {
                 throw new BadRequestException(`Duplicate cod values in management.csv: ${managementDuplicates.join(', ')}`);
               }
