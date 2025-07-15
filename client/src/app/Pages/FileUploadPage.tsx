@@ -324,6 +324,16 @@ const FileUploadPage = () => {
     }
   };
 
+    const docType ={
+        "Invoice":"Factura",
+        "Receipt":"Chitanta",
+        "Bank Statement":"Extras De Cont",
+        "Contract":"Contract",
+        "Z Report":"Raport Z",
+        "Payment Order":"Dispozitie De Plata",
+        "Collection Order":"Dispozitie De Incasare"
+    };
+
   const getStatusText = (doc: File) => {
     const state = documentStates[doc.name]?.state;
     const position = documentStates[doc.name]?.position;
@@ -343,7 +353,7 @@ const FileUploadPage = () => {
     
     switch (state) {
       case 'queued':
-        return language === 'ro' ? `În coadă #${position}` : `Queued #${position}`;
+        return language === 'ro' ? `În coadă: ${position}` : `Queued: ${position}`;
       case 'processing':
         return language === 'ro' ? 'Se procesează...' : 'Processing...';
       case 'processed':
@@ -616,13 +626,8 @@ const FileUploadPage = () => {
                 {language === 'ro' ? 'Fișierele Tale' : 'Your Files'}
               </h2>
               <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
-                {documents.length} {language==='ro'?'fișiere':'files'}
+                {documents.length} {language==='ro'?'fișiere':'files'} {processingQueue.length>0? `- ${processingQueue.length} ${language==='ro'?'în coadă':'queued'}`: '' }
               </span>
-              {processingQueue.length > 0 && (
-                <span className="bg-blue-500/20 text-blue-600 px-3 py-1 rounded-full text-sm font-semibold">
-                  {processingQueue.length} {language==='ro'?'în coadă':'queued'}
-                </span>
-              )}
             </div>
             <p className="text-[var(--text2)] mt-2">
               {language === 'ro' ? 'Documentele se procesează unul câte unul pentru optimizarea memoriei' : 'Documents are processed one by one for memory optimization'}
@@ -654,10 +659,12 @@ const FileUploadPage = () => {
                         </h3>
                         <div className="flex items-center gap-4 mt-1">
                           <span className="text-[var(--text2)] font-medium">
-                            {documentStates[doc.name]?.data?.result?.document_type || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
+                            {language==='ro'
+                              ? documentStates[doc.name]?.data?.result?.document_type
+                              : docType[String(documentStates[doc.name]?.data?.result?.document_type) as keyof typeof docType] || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
                           </span>
                           <span className="text-[var(--text3)] text-sm">
-                            {documentStates[doc.name]?.data?.result?.document_date || '-'}
+                            {documentStates[doc.name]?.data?.result?.document_date || documentStates[doc.name]?.data?.result?.statement_period_start || '-'}
                           </span>
                         </div>
                       </div>

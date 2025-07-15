@@ -179,7 +179,7 @@ model AccountingClients {
 
 model Article {
   id                 Int               @id @default(autoincrement())
-  code               Int
+  code               String
   name               String
   vat                VatRate
   unitOfMeasure      UnitOfMeasure
@@ -196,7 +196,7 @@ model Article {
 
 model Management {
   id                 Int               @id @default(autoincrement())
-  code               Int
+  code               String
   name               String
   type               ManagementType
   manager            String?
