@@ -20,7 +20,7 @@ type clientCompanyName = {
   }
 }
 
-export type documentType = 'Invoice' | 'Receipt';
+export type documentType = 'Invoice' | 'Receipt' | 'Bank Statement' | 'Contract' | 'Z Report' | 'Payment Order' | 'Collection Order';
 
 const FileManagementPage = () => {
 
@@ -52,6 +52,83 @@ const FileManagementPage = () => {
     from: undefined,
     to:undefined,
   });
+
+  const docType ={
+    "Invoice":"Factura",
+    "Receipt":"Chitanta",
+    "Bank Statement":"Extras De Cont",
+    "Contract":"Contract",
+    "Z Report":"Raport Z",
+    "Payment Order":"Dispozitie De Plata",
+    "Collection Order":"Dispozitie De Incasare"
+  };
+
+  const getDocumentDate = (file: any): string => {
+  try {
+    const extractedData = file.processedData?.[0]?.extractedFields?.result;
+    
+    if (!extractedData) {
+      return format(file.createdAt, 'dd-MM-yyyy');
+    }
+
+    let documentDate = null;
+
+    switch (file.type) {
+      case 'Invoice':
+      case 'Receipt':
+        documentDate = extractedData.document_date;
+        break;
+      
+      case 'Bank Statement':
+        documentDate = extractedData.statement_period_start || extractedData.statement_period_end;
+        break;
+      
+      case 'Contract':
+        documentDate = extractedData.contract_date || extractedData.start_date;
+        break;
+      
+      case 'Z Report':
+        documentDate = extractedData.business_date;
+        break;
+      
+      case 'Payment Order':
+      case 'Collection Order':
+        documentDate = extractedData.order_date;
+        break;
+      
+      default:
+        documentDate = extractedData.document_date || 
+                      extractedData.date || 
+                      extractedData.transaction_date;
+        break;
+    }
+
+    if (documentDate) {
+      const dateStr = String(documentDate);
+      
+      if (dateStr.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/)) {
+        const parts = dateStr.split(/[\/\-]/);
+        const day = parts[0];
+        const month = parts[1];
+        const year = parts[2];
+        return `${day}-${month}-${year}`;
+      }
+      
+      if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+        const date = new Date(dateStr);
+        return format(date, 'dd-MM-yyyy');
+      }
+      
+      return dateStr;
+    }
+
+    return format(file.createdAt, 'dd-MM-yyyy');
+    
+  } catch (error) {
+    console.error('Error extracting document date:', error);
+    return format(file.createdAt, 'dd-MM-yyyy');
+  }
+};
 
   useEffect(()=>{
     console.log('files:',files);
@@ -588,12 +665,15 @@ const FileManagementPage = () => {
                             </a>
                           }/>
                           <div className="flex items-center gap-4 mt-1">
-                            <span className="text-[var(--text2)] font-medium">
-                              {language==='ro'?(file.type==='Invoice'?'Factură':'Chitanță'):file.type}
-                            </span>
+                              <span className="text-[var(--text2)] font-medium">
+                                {language === 'ro'
+                                  ? docType[String(file.type) as keyof typeof docType] || 'Tip necunoscut'
+                                  : file.type || 'Unknown type'
+                                }
+                              </span>
                             <div className="flex items-center gap-1 text-[var(--text3)]">
                               <Calendar size={14} />
-                              <span>{format(file.createdAt,'dd-MM-yyyy')}</span>
+                              <span>{getDocumentDate(file)}</span>
                             </div>
                           </div>
                         </div>

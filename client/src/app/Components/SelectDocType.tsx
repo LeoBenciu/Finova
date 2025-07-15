@@ -54,14 +54,8 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
     }
 
     const handleSelect2 =(val:string)=>{
-      if(val==='Invoice')
-      { 
-        setEditFile('Invoice');
-        setSelectorValue('Invoice');
-      }else {
-        setEditFile('Receipt');
-        setSelectorValue('Receipt');
-      };
+        setEditFile(val);
+        setSelectorValue(val);
     }
 
   return (
