@@ -1,13 +1,12 @@
 import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from "react";
-import { useExtractDataMutation, useGetDuplicateAlertsQuery, useGetComplianceAlertsQuery } from "@/redux/slices/apiSlice";
+import { useExtractDataMutation, useGetDuplicateAlertsQuery } from "@/redux/slices/apiSlice";
 import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle, AlertTriangle, Shield } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 import DuplicateAlertsComponent from '../Components/DuplicateAlertsComponent';
-import ComplianceAlertsComponent from '../Components/ComplianceAlertsComponent';
 import computer from '@/assets/undraw_computer-files_7dj6.svg';
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -42,7 +41,6 @@ const FileUploadPage = () => {
   const [isProcessingPaused, setIsProcessingPaused] = useState<boolean>(false);
   const [currentlyProcessing, setCurrentlyProcessing] = useState<string | null>(null);
   const [showDuplicateAlerts, setShowDuplicateAlerts] = useState<boolean>(false);
-  const [showComplianceAlerts, setShowComplianceAlerts] = useState<boolean>(false);
 
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef<boolean>(false);
@@ -59,11 +57,6 @@ const FileUploadPage = () => {
   const [process] = useExtractDataMutation();
 
   const { data: duplicateAlerts = [] } = useGetDuplicateAlertsQuery(
-    { company: clientCompanyEin },
-    { skip: !clientCompanyEin }
-  );
-  
-  const { data: complianceAlerts = [] } = useGetComplianceAlertsQuery(
     { company: clientCompanyEin },
     { skip: !clientCompanyEin }
   );
@@ -488,19 +481,6 @@ const FileUploadPage = () => {
               </motion.button>
             )}
 
-            {complianceAlerts.length > 0 && (
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => setShowComplianceAlerts(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-2xl 
-                font-medium shadow-sm hover:bg-red-600 transition-all duration-300"
-              >
-                <Shield size={18} />
-                {complianceAlerts.length} {language === 'ro' ? 'Probleme' : 'Issues'}
-              </motion.button>
-            )}
-
             {/* Processing Controls */}
             {processingQueue.length > 0 && (
               <motion.button
@@ -659,9 +639,10 @@ const FileUploadPage = () => {
                         </h3>
                         <div className="flex items-center gap-4 mt-1">
                           <span className="text-[var(--text2)] font-medium">
-                            {language==='ro'
-                              ? documentStates[doc.name]?.data?.result?.document_type
-                              : docType[String(documentStates[doc.name]?.data?.result?.document_type) as keyof typeof docType] || (language === 'ro' ? 'Tip necunoscut' : 'Unknown type')}
+                            {language === 'ro'
+                              ? docType[String(documentStates[doc.name]?.data?.result?.document_type) as keyof typeof docType] || 'Tip necunoscut'
+                              : documentStates[doc.name]?.data?.result?.document_type || 'Unknown type'
+                            }
                           </span>
                           <span className="text-[var(--text3)] text-sm">
                             {documentStates[doc.name]?.data?.result?.document_date || documentStates[doc.name]?.data?.result?.statement_period_start || '-'}
@@ -730,28 +711,6 @@ const FileUploadPage = () => {
           </motion.div>
         )}
 
-        {showComplianceAlerts && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden"
-            >
-              <div className="p-6 overflow-y-auto max-h-[80vh]">
-                <ComplianceAlertsComponent 
-                  clientCompanyEin={clientCompanyEin}
-                  onClose={() => setShowComplianceAlerts(false)}
-                />
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
 
       {/* Modal */}
