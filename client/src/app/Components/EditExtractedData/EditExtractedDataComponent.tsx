@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, memo } from 'react';
 import LoadingComponent from '../LoadingComponent';
-import { ArrowUp, CirclePlus, Save, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { ArrowUp, CirclePlus, Save, Trash2, AlertTriangle, CheckCircle, Brain } from 'lucide-react';
 import { SelectDocType } from '../SelectDocType';
 import { useSaveFileAndExtractedDataMutation } from '@/redux/slices/apiSlice';
 import LineItems from './LineItems';
@@ -66,11 +66,97 @@ const EditExtractedDataComponent = ({
   const [internalLoading, setInternalLoading] = useState(isLoading);
   const [contentVisible, setContentVisible] = useState(false);
   const [einValidation, setEinValidation] = useState<{isValid: boolean, message: string} | null>(null);
-
-  console.log('editFile:', editFile);
+  const [userCorrections, setUserCorrections] = useState<any[]>([]);
+  const [originalData, setOriginalData] = useState<any>(null);
 
   const currentClientCompanyEin = useSelector((state: {clientCompany: {current: {name: string, ein: string}}}) => state.clientCompany.current.ein);
   const language = useSelector((state: {user: {language: string}}) => state.user.language);
+
+  // Store original data when component loads
+  useEffect(() => {
+    if (editFile?.result && !originalData) {
+      setOriginalData(JSON.parse(JSON.stringify(editFile.result)));
+    }
+  }, [editFile, originalData]);
+
+  // Track changes and detect corrections
+  const trackChanges = useCallback((field: string, originalValue: any, newValue: any) => {
+    if (JSON.stringify(originalValue) !== JSON.stringify(newValue)) {
+      const correction = {
+        field,
+        originalValue,
+        newValue,
+        timestamp: Date.now()
+      };
+      
+      setUserCorrections(prev => {
+        // Remove any existing correction for this field
+        const filtered = prev.filter(c => c.field !== field);
+        return [...filtered, correction];
+      });
+    } else {
+      // Remove correction if value is reverted to original
+      setUserCorrections(prev => prev.filter(c => c.field !== field));
+    }
+  }, []);
+
+  // Enhanced setEditFile that tracks changes
+  const updateEditFile = useCallback((newData: any) => {
+    if (originalData) {
+      // Detect specific field changes
+      const original = originalData;
+      const updated = newData.result || newData;
+
+      // Track document type changes
+      if (original.document_type !== updated.document_type) {
+        trackChanges('document_type', original.document_type, updated.document_type);
+      }
+
+      // Track direction changes
+      if (original.direction !== updated.direction) {
+        trackChanges('direction', original.direction, updated.direction);
+      }
+
+      // Track vendor information changes
+      if (original.vendor !== updated.vendor || original.vendor_ein !== updated.vendor_ein) {
+        trackChanges('vendor_information', 
+          { vendor: original.vendor, vendor_ein: original.vendor_ein },
+          { vendor: updated.vendor, vendor_ein: updated.vendor_ein }
+        );
+      }
+
+      // Track buyer information changes
+      if (original.buyer !== updated.buyer || original.buyer_ein !== updated.buyer_ein) {
+        trackChanges('buyer_information',
+          { buyer: original.buyer, buyer_ein: original.buyer_ein },
+          { buyer: updated.buyer, buyer_ein: updated.buyer_ein }
+        );
+      }
+
+      // Track amount changes
+      if (original.total_amount !== updated.total_amount || original.vat_amount !== updated.vat_amount) {
+        trackChanges('amounts',
+          { total_amount: original.total_amount, vat_amount: original.vat_amount },
+          { total_amount: updated.total_amount, vat_amount: updated.vat_amount }
+        );
+      }
+
+      // Track date changes
+      if (original.document_date !== updated.document_date || original.due_date !== updated.due_date) {
+        trackChanges('dates',
+          { document_date: original.document_date, due_date: original.due_date },
+          { document_date: updated.document_date, due_date: updated.due_date }
+        );
+      }
+
+      // Track line items changes
+      if (JSON.stringify(original.line_items || []) !== JSON.stringify(updated.line_items || [])) {
+        trackChanges('line_items', original.line_items || [], updated.line_items || []);
+      }
+    }
+
+    setEditFile(newData);
+  }, [originalData, trackChanges, setEditFile]);
 
   useEffect(() => {
     if (editFile?.result) {
@@ -159,13 +245,18 @@ const EditExtractedDataComponent = ({
     if (!currentFile) return;
     
     try {
+      const dataToSave = {
+        ...editFile,
+        userCorrections: userCorrections.length > 0 ? userCorrections : undefined
+      };
+
       const fileSaved = await saveFileAndData({ 
         clientCompanyEin: currentClientCompanyEin, 
-        processedData: editFile,
+        processedData: dataToSave,
         file: currentFile
       }).unwrap();
       
-      console.log('Saved File', fileSaved);
+      console.log('Saved File with corrections', fileSaved);
       
       onDocumentSaved(currentFile.name);
       
@@ -175,7 +266,7 @@ const EditExtractedDataComponent = ({
     } catch (e) {
       console.error('Failed to save the document and the data:', e);
     }
-  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile, onDocumentSaved, setIsModalOpen, setCurrentProcessingFile]);
+  }, [saveFileAndData, currentClientCompanyEin, editFile, currentFile, onDocumentSaved, setIsModalOpen, setCurrentProcessingFile, userCorrections]);
 
   const toggleLineItems = useCallback(() => {
     setLineItems((prev) => !prev);
@@ -187,17 +278,18 @@ const EditExtractedDataComponent = ({
   }, [setCurrentProcessingFile]);
 
   const handleDeleteLineItems = useCallback(() => {
-    setEditFile({
+    const newData = {
       ...editFile,
       result: {
         ...editFile?.result,
         line_items: []
       },
-    });
-  }, [editFile, setEditFile]);
+    };
+    updateEditFile(newData);
+  }, [editFile, updateEditFile]);
 
   const handleCreateNewLineItem = useCallback(() => {
-    setEditFile({
+    const newData = {
       ...editFile,
       result: {
         ...editFile?.result,
@@ -212,18 +304,20 @@ const EditExtractedDataComponent = ({
           }
         ]
       }
-    })
-  }, [editFile, setEditFile]);
+    };
+    updateEditFile(newData);
+  }, [editFile, updateEditFile]);
 
   const handleCurrencyChange = useCallback((currency: string) => {
-    setEditFile({
+    const newData = {
       ...editFile,
       result: {
         ...editFile?.result,
         currency: currency
       }
-    });
-  }, [editFile, setEditFile]);
+    };
+    updateEditFile(newData);
+  }, [editFile, updateEditFile]);
 
   const hasLineItems = editFile?.result?.document_type?.toLowerCase() === 'invoice' && editFile?.result?.line_items;
   
@@ -325,6 +419,83 @@ const EditExtractedDataComponent = ({
                 </motion.div>
               )}
 
+              {/* User Corrections Alert */}
+              {userCorrections.length > 0 && (
+                <motion.div 
+                  className="mx-6 mt-4 p-4 rounded-2xl border bg-blue-50 border-blue-200 text-blue-800"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Brain size={20} className="text-blue-600 flex-shrink-0" />
+                    <div>
+                      <span className="text-sm font-medium">
+                        {language === 'ro' 
+                          ? `${userCorrections.length} corecții detectate - AI-ul va învăța din aceste modificări`
+                          : `${userCorrections.length} corrections detected - AI will learn from these changes`
+                        }
+                      </span>
+                      <div className="text-xs mt-1 opacity-75">
+                        {language === 'ro' 
+                          ? 'Corecțiile vor îmbunătăți acuratețea pentru documentele viitoare'
+                          : 'Corrections will improve accuracy for future documents'
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Alert Sections for Duplicate and Compliance */}
+              {editFile?.result?.duplicate_detection?.is_duplicate && (
+                <motion.div 
+                  className="mx-6 mt-4 p-4 rounded-2xl border bg-orange-50 border-orange-200 text-orange-800"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle size={20} className="text-orange-600 flex-shrink-0" />
+                    <div>
+                      <span className="text-sm font-medium">
+                        {language === 'ro' ? 'Possible Duplicate Detected' : 'Possible Duplicate Detected'}
+                      </span>
+                      <div className="text-xs mt-1">
+                        {language === 'ro' 
+                          ? `${editFile.result.duplicate_detection.duplicate_matches?.length || 0} documente similare găsite`
+                          : `${editFile.result.duplicate_detection.duplicate_matches?.length || 0} similar documents found`
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {editFile?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT' && (
+                <motion.div 
+                  className="mx-6 mt-4 p-4 rounded-2xl border bg-red-50 border-red-200 text-red-800"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle size={20} className="text-red-600 flex-shrink-0" />
+                    <div>
+                      <span className="text-sm font-medium">
+                        {language === 'ro' ? 'Probleme de Conformitate' : 'Compliance Issues'}
+                      </span>
+                      <div className="text-xs mt-1">
+                        {language === 'ro' 
+                          ? 'Documentul nu respectă standardele ANAF'
+                          : 'Document does not meet ANAF standards'
+                        }
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               {/* Content Section */}
               <div className="p-6">
                 {editFile && (
@@ -338,8 +509,11 @@ const EditExtractedDataComponent = ({
                           </label>
                         </div>
                         <div className="min-w-40 max-w-40">
-                          <SelectDocType value={editFile?.result.document_type} 
-                          editFile={editFile} setEditFile={setEditFile}/>
+                          <SelectDocType 
+                            value={editFile?.result.document_type} 
+                            editFile={editFile} 
+                            setEditFile={updateEditFile}
+                          />
                         </div>
                       </div>
 
@@ -403,7 +577,10 @@ const EditExtractedDataComponent = ({
 
                     {/* Dynamic Document Fields */}
                     <div className="p-6">
-                      <DocumentTypeFields editFile={editFile} setEditFile={setEditFile} />
+                      <DocumentTypeFields 
+                        editFile={editFile} 
+                        setEditFile={updateEditFile} 
+                      />
                     </div>
                   </div>
                 )}
@@ -466,7 +643,7 @@ const EditExtractedDataComponent = ({
                             {editFile.result.line_items.map((item: Item, index: number) => (
                               <LineItems
                                 key={`line-item-${index}`}
-                                setEditFile={setEditFile}
+                                setEditFile={updateEditFile}
                                 editFile={editFile}
                                 item={item}
                                 index={index}

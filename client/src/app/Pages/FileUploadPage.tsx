@@ -1,11 +1,13 @@
 import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from "react";
-import { useExtractDataMutation } from "@/redux/slices/apiSlice";
-import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle } from "lucide-react";
+import { useExtractDataMutation, useGetDuplicateAlertsQuery, useGetComplianceAlertsQuery } from "@/redux/slices/apiSlice";
+import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle, AlertTriangle, Shield } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
+import DuplicateAlertsComponent from '../Components/DuplicateAlertsComponent';
+import ComplianceAlertsComponent from '../Components/ComplianceAlertsComponent';
 import computer from '@/assets/undraw_computer-files_7dj6.svg';
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -39,6 +41,8 @@ const FileUploadPage = () => {
   const [processingQueue, setProcessingQueue] = useState<string[]>([]);
   const [isProcessingPaused, setIsProcessingPaused] = useState<boolean>(false);
   const [currentlyProcessing, setCurrentlyProcessing] = useState<string | null>(null);
+  const [showDuplicateAlerts, setShowDuplicateAlerts] = useState<boolean>(false);
+  const [showComplianceAlerts, setShowComplianceAlerts] = useState<boolean>(false);
 
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef<boolean>(false);
@@ -53,6 +57,16 @@ const FileUploadPage = () => {
   const clientCompanyEin = useSelector((state:clientCompany)=>state.clientCompany.current.ein)
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const [process] = useExtractDataMutation();
+
+  const { data: duplicateAlerts = [] } = useGetDuplicateAlertsQuery(
+    { company: clientCompanyEin },
+    { skip: !clientCompanyEin }
+  );
+  
+  const { data: complianceAlerts = [] } = useGetComplianceAlertsQuery(
+    { company: clientCompanyEin },
+    { skip: !clientCompanyEin }
+  );
 
   useEffect(() => {
     const newDocuments = documents.filter(doc => !documentStates[doc.name]);
@@ -239,34 +253,61 @@ const FileUploadPage = () => {
 
   const getStatusIcon = (doc: File) => {
     const state = documentStates[doc.name]?.state;
+    const data = documentStates[doc.name]?.data;
     
-    switch (state) {
-      case 'queued':
-        return (
-          <div className="flex items-center gap-1">
-            <Clock size={16} className="text-blue-400" />
-          </div>
-        );
-      case 'processing':
-        return <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        >
-          <LoaderCircle size={16} className="text-blue-500" />
-        </motion.div>;
-      case 'processed':
-        return <CheckCircle size={16} className="text-green-500" />;
-      case 'saved':
-        return <CheckCircle size={16} className="text-emerald-600" />;
-      case 'error':
-        return <AlertCircle size={16} className="text-red-500" />;
-      default:
-        return <Clock size={16} className="text-gray-400" />;
+    const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT' ||
+                              data?.result?.compliance_validation?.compliance_status === 'WARNING';
+    
+    const baseIcon = (() => {
+      switch (state) {
+        case 'queued':
+          return <Clock size={16} className="text-blue-400" />;
+        case 'processing':
+          return <motion.div
+            animate={{ rotate: 360 }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          >
+            <LoaderCircle size={16} className="text-blue-500" />
+          </motion.div>;
+        case 'processed':
+        case 'saved':
+          return <CheckCircle size={16} className="text-green-500" />;
+        case 'error':
+          return <AlertCircle size={16} className="text-red-500" />;
+        default:
+          return <Clock size={16} className="text-gray-400" />;
+      }
+    })();
+
+    if (hasDuplicateAlert || hasComplianceIssue) {
+      return (
+        <div className="flex items-center gap-1">
+          {baseIcon}
+          {hasDuplicateAlert && <AlertTriangle size={12} className="text-orange-500" />}
+          {hasComplianceIssue && <Shield size={12} className="text-red-500" />}
+        </div>
+      );
     }
+
+    return baseIcon;
   };
 
   const getStatusColor = (doc: File) => {
     const state = documentStates[doc.name]?.state;
+    const data = documentStates[doc.name]?.data;
+    
+    const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
+    
+    if (hasComplianceIssue) {
+      return 'text-red-600 bg-red-50 border-red-200';
+    }
+    
+    if (hasDuplicateAlert) {
+      return 'text-orange-600 bg-orange-50 border-orange-200';
+    }
+    
     switch (state) {
       case 'queued':
         return 'text-blue-600 bg-blue-50 border-blue-200';
@@ -286,6 +327,19 @@ const FileUploadPage = () => {
   const getStatusText = (doc: File) => {
     const state = documentStates[doc.name]?.state;
     const position = documentStates[doc.name]?.position;
+    const data = documentStates[doc.name]?.data;
+    
+    // Check for priority alerts
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
+    const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
+    
+    if (hasComplianceIssue) {
+      return language === 'ro' ? 'Neconform' : 'Non-Compliant';
+    }
+    
+    if (hasDuplicateAlert && (state === 'processed' || state === 'saved')) {
+      return language === 'ro' ? 'Posibil Duplicat' : 'Possible Duplicate';
+    }
     
     switch (state) {
       case 'queued':
@@ -410,6 +464,33 @@ const FileUploadPage = () => {
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Alert Buttons */}
+            {duplicateAlerts.length > 0 && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowDuplicateAlerts(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-2xl 
+                font-medium shadow-sm hover:bg-orange-600 transition-all duration-300"
+              >
+                <AlertTriangle size={18} />
+                {duplicateAlerts.length} {language === 'ro' ? 'Duplicate' : 'Duplicates'}
+              </motion.button>
+            )}
+
+            {complianceAlerts.length > 0 && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowComplianceAlerts(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-2xl 
+                font-medium shadow-sm hover:bg-red-600 transition-all duration-300"
+              >
+                <Shield size={18} />
+                {complianceAlerts.length} {language === 'ro' ? 'Probleme' : 'Issues'}
+              </motion.button>
+            )}
+
             {/* Processing Controls */}
             {processingQueue.length > 0 && (
               <motion.button
@@ -616,6 +697,55 @@ const FileUploadPage = () => {
           </div>
         </motion.div>
       )}
+
+      {/* Alert Modals */}
+      <AnimatePresence>
+        {showDuplicateAlerts && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden"
+            >
+              <div className="p-6 overflow-y-auto max-h-[80vh]">
+                <DuplicateAlertsComponent 
+                  clientCompanyEin={clientCompanyEin}
+                  onClose={() => setShowDuplicateAlerts(false)}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {showComplianceAlerts && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-2xl max-w-4xl w-full max-h-[80vh] overflow-hidden"
+            >
+              <div className="p-6 overflow-y-auto max-h-[80vh]">
+                <ComplianceAlertsComponent 
+                  clientCompanyEin={clientCompanyEin}
+                  onClose={() => setShowComplianceAlerts(false)}
+                />
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal */}
       <Suspense fallback={

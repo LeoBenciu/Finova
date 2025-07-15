@@ -26,7 +26,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -74,7 +74,8 @@ export const finovaApi = createApi({
                     body: formData,
                     formData: true
                 }
-            }
+            },
+            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts']
         }),
 
         updateFileAndExtractedData: build.mutation({
@@ -88,7 +89,8 @@ export const finovaApi = createApi({
                   docId
                 }
               };
-            }
+            },
+            invalidatesTags: ['Files']
           }),
 
         deleteFileAndExtractedData: build.mutation({
@@ -98,7 +100,8 @@ export const finovaApi = createApi({
                 body:{
                     clientCompanyEin,
                     docId
-                }})
+                }}),
+            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts']
         }),
 
         getClientCompanies: build.mutation({
@@ -196,6 +199,41 @@ export const finovaApi = createApi({
         getFiles: build.query({
             query:({company})=>({
                 url:`/files/${company}`,
+                method:'GET'
+            }),
+            providesTags: ['Files']
+        }),
+
+        getDuplicateAlerts: build.query({
+            query:({company})=>({
+                url:`/files/${company}/duplicate-alerts`,
+                method:'GET'
+            }),
+            providesTags: ['DuplicateAlerts']
+        }),
+
+        getComplianceAlerts: build.query({
+            query:({company})=>({
+                url:`/files/${company}/compliance-alerts`,
+                method:'GET'
+            }),
+            providesTags: ['ComplianceAlerts']
+        }),
+
+        updateDuplicateStatus: build.mutation({
+            query:({duplicateCheckId, status})=>({
+                url:`/files/duplicate-status/${duplicateCheckId}`,
+                method:'PUT',
+                body: {
+                    status
+                }
+            }),
+            invalidatesTags: ['DuplicateAlerts', 'Files']
+        }),
+
+        getServiceHealth: build.query({
+            query:()=>({
+                url:'/files/service/health',
                 method:'GET'
             })
         }),
@@ -328,4 +366,5 @@ useResetPasswordMutation, useInsertClientInvoiceMutation,
 useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
 useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
-useModifyRpaCredentialsMutation, useGetRpaDataQuery} = finovaApi;
+useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
+useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery} = finovaApi;
