@@ -1,6 +1,9 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery } from '@/redux/slices/apiSlice';
-import { Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, Calendar, Zap, X } from 'lucide-react';
+import { 
+  Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
+  Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download 
+} from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import EditExtractedDataManagement from '../Components/EditExtractedDataManagement';
@@ -139,39 +142,55 @@ const FileManagementPage = () => {
   },[filteredFiles])
 
   useEffect(()=>{
-    if(!files?.documents) return;
-    
-    let newFilteredFiles = files.documents;
-    if(nameSearch.length>0){
-       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.name.toLowerCase().includes(nameSearch.toLowerCase())
-      ))
-    };
-    if(typeFilter){
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.type===typeFilter
-      ))
-    };
-    if(intervalDateFilter.from !== undefined){
-      const date1 = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        compareAsc(file.createdAt, date1) >=0
-      ))
-    }
-    if(intervalDateFilter.to !== undefined){
-      const date2 = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
-      const date2End = addDays(date2,1);
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        compareAsc(file.createdAt, date2End) <0
-      ))
-    }
+  if(!files?.documents) return;
+  
+  let newFilteredFiles = files.documents;
+  if(nameSearch.length>0){
+     newFilteredFiles = newFilteredFiles.filter((file:any)=>(
+      file.name.toLowerCase().includes(nameSearch.toLowerCase())
+    ))
+  };
+  if(typeFilter){
+    newFilteredFiles = newFilteredFiles.filter((file:any)=>(
+      file.type===typeFilter
+    ))
+  };
+  
+  if(intervalDateFilter.from !== undefined){
+    const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
+    newFilteredFiles = newFilteredFiles.filter((file:any)=>{
+      try {
+        const documentDateStr = getDocumentDate(file);
+        const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
+        return compareAsc(documentDate, filterFromDate) >= 0;
+      } catch (error) {
+        console.error('Error parsing document date for filtering:', error);
+        return compareAsc(file.createdAt, filterFromDate) >= 0;
+      }
+    });
+  }
+  
+  if(intervalDateFilter.to !== undefined){
+    const filterToDate = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
+    const filterToDateEnd = addDays(filterToDate, 1);
+    newFilteredFiles = newFilteredFiles.filter((file:any)=>{
+      try {
+        const documentDateStr = getDocumentDate(file);
+        const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
+        return compareAsc(documentDate, filterToDateEnd) < 0;
+      } catch (error) {
+        console.error('Error parsing document date for filtering:', error);
+        return compareAsc(file.createdAt, filterToDateEnd) < 0;
+      }
+    });
+  }
 
-    setFilteredFiles({
-      ...files,
-      documents: newFilteredFiles
-    })
-  },[typeFilter, setTypeFilter,nameSearch, 
-    setNameSearch,intervalDateFilter,setIntervalDateFilter, files]);
+  setFilteredFiles({
+    ...files,
+    documents: newFilteredFiles
+  })
+},[typeFilter, setTypeFilter,nameSearch, 
+  setNameSearch,intervalDateFilter,setIntervalDateFilter, files]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
   const { data: filesData, isLoading: isFilesLoading } = useGetFilesQuery({company:clientCompanyEin});
@@ -487,8 +506,78 @@ const FileManagementPage = () => {
   };
 
   const getFileIcon = (fileType: string) => {
-    return fileType === 'Invoice' ? FileText : Receipt;
-  };
+  switch (fileType) {
+    case 'Invoice':
+      return FileText;
+    case 'Receipt':
+      return Receipt;
+    case 'Bank Statement':
+      return CreditCard;
+    case 'Contract':
+      return FileSignature;
+    case 'Z Report':
+      return BarChart3;
+    case 'Payment Order':
+      return Send;
+    case 'Collection Order':
+      return Download;
+    default:
+      return FileText;
+  }
+};
+
+const getFileIconColor = (fileType: string) => {
+  switch (fileType) {
+    case 'Invoice':
+      return {
+        text: 'text-blue-500',
+        bg: 'bg-blue-500/10',
+        hover: 'hover:bg-blue-500/20'
+      };
+    case 'Receipt':
+      return {
+        text: 'text-orange-500',
+        bg: 'bg-orange-500/10',
+        hover: 'hover:bg-orange-500/20'
+      };
+    case 'Bank Statement':
+      return {
+        text: 'text-red-500',
+        bg: 'bg-red-500/10',
+        hover: 'hover:bg-red-500/20'
+      };
+    case 'Contract':
+      return {
+        text: 'text-teal-500',
+        bg: 'bg-teal-500/10',
+        hover: 'hover:bg-teal-500/20'
+      };
+    case 'Z Report':
+      return {
+        text: 'text-yellow-500',
+        bg: 'bg-yellow-500/10',
+        hover: 'hover:bg-yellow-500/20'
+      };
+    case 'Payment Order':
+      return {
+        text: 'text-purple-500',
+        bg: 'bg-purple-500/10',
+        hover: 'hover:bg-purple-500/20'
+      };
+    case 'Collection Order':
+      return {
+        text: 'text-green-500',
+        bg: 'bg-green-500/10',
+        hover: 'hover:bg-green-500/20'
+      };
+    default:
+      return {
+        text: 'text-gray-500',
+        bg: 'bg-gray-500/10',
+        hover: 'hover:bg-gray-500/20'
+      };
+  }
+};
 
   return (
     <div className="p-8">
@@ -621,6 +710,7 @@ const FileManagementPage = () => {
               {filteredFiles?.documents?.map((file: any, index: number) => {
                 const FileIcon = getFileIcon(file.type);
                 const isSelected = selectedFiles.has(file.id);
+                const iconColors = getFileIconColor(file.type);
                 
                 return (
                   <motion.div
@@ -635,7 +725,6 @@ const FileManagementPage = () => {
                     }`}
                   >
                     <div className="flex items-center gap-4">
-                      {/* Selection Checkbox */}
                       <button
                         onClick={() => toggleFileSelection(file.id)}
                         className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
@@ -646,13 +735,12 @@ const FileManagementPage = () => {
                           <Square size={20} className="text-[var(--text3)]" />
                         )}
                       </button>
-
-                      {/* File Icon & Info */}
+                      
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
-                          <FileIcon size={24} className="text-[var(--primary)]" />
+                        <div className={`w-12 h-12 ${iconColors.bg} ${iconColors.hover} rounded-xl flex items-center justify-center flex-shrink-0 transition-colors`}>
+                          <FileIcon size={24} className={iconColors.text} />
                         </div>
-                        
+
                         <div className="flex-1 min-w-0">
                           <MyTooltip content={file.name} trigger={
                             <a 
@@ -665,12 +753,12 @@ const FileManagementPage = () => {
                             </a>
                           }/>
                           <div className="flex items-center gap-4 mt-1">
-                              <span className="text-[var(--text2)] font-medium">
-                                {language === 'ro'
-                                  ? docType[String(file.type) as keyof typeof docType] || 'Tip necunoscut'
-                                  : file.type || 'Unknown type'
-                                }
-                              </span>
+                            <span className="text-[var(--text2)] font-medium">
+                              {language === 'ro'
+                                ? docType[String(file.type) as keyof typeof docType] || 'Tip necunoscut'
+                                : file.type || 'Unknown type'
+                              }
+                            </span>
                             <div className="flex items-center gap-1 text-[var(--text3)]">
                               <Calendar size={14} />
                               <span>{getDocumentDate(file)}</span>
@@ -678,7 +766,7 @@ const FileManagementPage = () => {
                           </div>
                         </div>
                       </div>
-
+                            
                       {/* Status */}
                       <div className="flex items-center gap-2">
                         <span className={`text-sm font-medium ${getStatusColor(file)}`}>
