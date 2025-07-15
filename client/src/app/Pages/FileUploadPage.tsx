@@ -332,7 +332,6 @@ const FileUploadPage = () => {
     const position = documentStates[doc.name]?.position;
     const data = documentStates[doc.name]?.data;
     
-    // Check for priority alerts
     const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
     
@@ -361,28 +360,28 @@ const FileUploadPage = () => {
   };
 
   const renderActionButtons = (doc: File) => {
-    const state = documentStates[doc.name]?.state;
+  const state = documentStates[doc.name]?.state;
 
-    switch (state) {
-      case 'queued':
-        return (
-          <div className="flex items-center gap-2">
-            <div className="p-2 text-blue-400 bg-blue-100 rounded-lg">
-              <Clock size={18} />
-            </div>
+  switch (state) {
+    case 'queued':
+      return (
+        <div className="flex items-center gap-2">
+          <div className="p-2 text-blue-400 bg-blue-100 rounded-lg">
+            <Clock size={18} />
           </div>
-        );
+        </div>
+      );
 
-      case 'processing':
-        return (
-          <div className="flex items-center gap-2">
-           
-          </div>
-        );
+    case 'processing':
+      return (
+        <div className="flex items-center gap-2">
+        </div>
+      );
 
-      case 'processed':
-      case 'saved':
-        return (
+    case 'processed':
+    case 'saved':
+      return (
+        <div className="flex items-center gap-2">
           <TooltipDemo
             trigger={
               <button
@@ -395,46 +394,60 @@ const FileUploadPage = () => {
             }
             tip={state === 'saved' ? (language==='ro'?'Vezi date':'View data') : (language==='ro'?'Revizuiește':'Review')}
           />
-        );
+          
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleRetryProcessing(doc)}
+                className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
+                 hover:bg-blue-500 rounded-lg transition-colors"
+              >
+                <RotateCcw size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Reprocessează':'Reprocess'}
+          />
+        </div>
+      );
 
-      case 'error':
-        return (
-          <div className="flex items-center gap-2">
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleRetryProcessing(doc)}
-                  className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
-                   hover:bg-blue-500 rounded-lg transition-colors"
-                >
-                  <RotateCcw size={18} />
-                </button>
-              }
-              tip={language==='ro'?'Reîncearcă':'Retry'}
-            />
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleManualEdit(doc)}
-                  className="p-2 text-orange-500 bg-orange-500/20 hover:text-white
-                   hover:bg-orange-500 rounded-lg transition-colors"
-                >
-                  <Edit size={18} />
-                </button>
-              }
-              tip={language==='ro'?'Editare manuală':'Manual edit'}
-            />
-          </div>
-        );
+    case 'error':
+      return (
+        <div className="flex items-center gap-2">
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleRetryProcessing(doc)}
+                className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
+                 hover:bg-blue-500 rounded-lg transition-colors"
+              >
+                <RotateCcw size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Reîncearcă':'Retry'}
+          />
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleManualEdit(doc)}
+                className="p-2 text-orange-500 bg-orange-500/20 hover:text-white
+                 hover:bg-orange-500 rounded-lg transition-colors"
+              >
+                <Edit size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Editare manuală':'Manual edit'}
+          />
+        </div>
+      );
 
-      default:
-        return (
-          <div className="p-2 text-gray-400 bg-gray-100 rounded-lg">
-            <Clock size={18} />
-          </div>
-        );
-    }
-  };
+    default:
+      return (
+        <div className="p-2 text-gray-400 bg-gray-100 rounded-lg">
+          <Clock size={18} />
+        </div>
+      );
+  }
+};
 
   useEffect(() => {
     return () => {

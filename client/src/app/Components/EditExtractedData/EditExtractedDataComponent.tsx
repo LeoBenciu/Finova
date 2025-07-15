@@ -72,14 +72,12 @@ const EditExtractedDataComponent = ({
   const currentClientCompanyEin = useSelector((state: {clientCompany: {current: {name: string, ein: string}}}) => state.clientCompany.current.ein);
   const language = useSelector((state: {user: {language: string}}) => state.user.language);
 
-  // Store original data when component loads
   useEffect(() => {
     if (editFile?.result && !originalData) {
       setOriginalData(JSON.parse(JSON.stringify(editFile.result)));
     }
   }, [editFile, originalData]);
 
-  // Track changes and detect corrections
   const trackChanges = useCallback((field: string, originalValue: any, newValue: any) => {
     if (JSON.stringify(originalValue) !== JSON.stringify(newValue)) {
       const correction = {
@@ -90,34 +88,27 @@ const EditExtractedDataComponent = ({
       };
       
       setUserCorrections(prev => {
-        // Remove any existing correction for this field
         const filtered = prev.filter(c => c.field !== field);
         return [...filtered, correction];
       });
     } else {
-      // Remove correction if value is reverted to original
       setUserCorrections(prev => prev.filter(c => c.field !== field));
     }
   }, []);
 
-  // Enhanced setEditFile that tracks changes
   const updateEditFile = useCallback((newData: any) => {
     if (originalData) {
-      // Detect specific field changes
       const original = originalData;
       const updated = newData.result || newData;
 
-      // Track document type changes
       if (original.document_type !== updated.document_type) {
         trackChanges('document_type', original.document_type, updated.document_type);
       }
 
-      // Track direction changes
       if (original.direction !== updated.direction) {
         trackChanges('direction', original.direction, updated.direction);
       }
 
-      // Track vendor information changes
       if (original.vendor !== updated.vendor || original.vendor_ein !== updated.vendor_ein) {
         trackChanges('vendor_information', 
           { vendor: original.vendor, vendor_ein: original.vendor_ein },
@@ -125,7 +116,6 @@ const EditExtractedDataComponent = ({
         );
       }
 
-      // Track buyer information changes
       if (original.buyer !== updated.buyer || original.buyer_ein !== updated.buyer_ein) {
         trackChanges('buyer_information',
           { buyer: original.buyer, buyer_ein: original.buyer_ein },
@@ -133,7 +123,6 @@ const EditExtractedDataComponent = ({
         );
       }
 
-      // Track amount changes
       if (original.total_amount !== updated.total_amount || original.vat_amount !== updated.vat_amount) {
         trackChanges('amounts',
           { total_amount: original.total_amount, vat_amount: original.vat_amount },
@@ -141,7 +130,6 @@ const EditExtractedDataComponent = ({
         );
       }
 
-      // Track date changes
       if (original.document_date !== updated.document_date || original.due_date !== updated.due_date) {
         trackChanges('dates',
           { document_date: original.document_date, due_date: original.due_date },
@@ -149,7 +137,6 @@ const EditExtractedDataComponent = ({
         );
       }
 
-      // Track line items changes
       if (JSON.stringify(original.line_items || []) !== JSON.stringify(updated.line_items || [])) {
         trackChanges('line_items', original.line_items || [], updated.line_items || []);
       }
