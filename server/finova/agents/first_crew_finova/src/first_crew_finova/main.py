@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
+from crewai import Crew, get_text_extractor_tool, FirstCrewFinova
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -496,9 +497,84 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
     
     return create_fallback_response(), False
 
-def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None) -> Dict[str, Any]:
+def process_categorization_only(crew_instance, inputs: dict) -> dict:
+    """Process document for categorization only."""
+    try:
+        print("Running categorization-only processing", file=sys.stderr)
+        
+        captured_output = StringIO()
+        
+        categorization_task = crew_instance.categorize_document_task()
+        categorization_task.agent = crew_instance.document_categorizer()
+        
+        minimal_crew = Crew(
+            agents=[crew_instance.document_categorizer()],
+            tasks=[categorization_task],
+            verbose=True
+        )
+        
+        with redirect_stdout(captured_output), redirect_stderr(captured_output):
+            result = minimal_crew.kickoff(inputs=inputs)
+        
+        combined_data = {
+            "document_type": "Unknown",
+            "document_hash": inputs.get("document_hash", ""),
+        }
+        
+        if hasattr(result, 'raw') and result.raw:
+            categorization_data = extract_json_from_text(result.raw)
+            if categorization_data and isinstance(categorization_data, dict):
+                combined_data.update(categorization_data)
+                doc_type = categorization_data.get('document_type', 'Unknown')
+                print(f"Document categorized as: {doc_type}", file=sys.stderr)
+                
+                if doc_type == 'Invoice':
+                    text_extractor = get_text_extractor_tool()
+                    document_text = text_extractor._run(inputs['document_path'])
+                    
+                    import re
+                    buyer_patterns = [
+                        r'Cumpărător.*?(?:CUI|CIF):\s*(?:RO)?(\d+)',
+                        r'Client.*?(?:CUI|CIF):\s*(?:RO)?(\d+)',
+                        r'Beneficiar.*?(?:CUI|CIF):\s*(?:RO)?(\d+)'
+                    ]
+                    vendor_patterns = [
+                        r'Furnizor.*?(?:CUI|CIF):\s*(?:RO)?(\d+)',
+                        r'Vânzător.*?(?:CUI|CIF):\s*(?:RO)?(\d+)',
+                        r'Emitent.*?(?:CUI|CIF):\s*(?:RO)?(\d+)'
+                    ]
+                    
+                    for pattern in buyer_patterns:
+                        match = re.search(pattern, document_text, re.IGNORECASE | re.DOTALL)
+                        if match:
+                            combined_data['buyer_ein'] = match.group(1)
+                            break
+                    
+                    for pattern in vendor_patterns:
+                        match = re.search(pattern, document_text, re.IGNORECASE | re.DOTALL)
+                        if match:
+                            combined_data['vendor_ein'] = match.group(1)
+                            break
+        
+        return combined_data
+        
+    except Exception as e:
+        print(f"ERROR in categorization processing: {str(e)}", file=sys.stderr)
+        print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
+        return {
+            "document_type": "Unknown",
+            "error": f"Categorization failed: {str(e)}"
+        }
+
+def process_single_document(
+    doc_path: str, 
+    client_company_ein: str, 
+    existing_documents: List[Dict] = None,
+    user_corrections: List[Dict] = None,
+    categorization_only: bool = False
+) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
-    print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
+    print(f"Starting process_single_document for EIN: {client_company_ein}, categorization_only: {categorization_only}", file=sys.stderr)
     log_memory_usage("Before processing")
     
     try:
@@ -553,8 +629,6 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         existing_articles = get_existing_articles()
         management_records = {"Depozit Central": {}, "Servicii": {}}
         
-        user_corrections = load_user_corrections(client_company_ein)
-        
         document_hash = generate_document_hash(doc_path)
         
         log_memory_usage("After loading config")
@@ -565,7 +639,7 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
                 client_company_ein, 
                 existing_articles, 
                 management_records, 
-                user_corrections
+                user_corrections or []
             )
             print("FirstCrewFinova instance created successfully", file=sys.stderr)
             
@@ -597,15 +671,19 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "management_records": management_records,
             "existing_documents": existing_documents or [],
             "document_hash": document_hash,
-            "doc_type": "Unknown"  
+            "doc_type": "Unknown"
         }
         
         log_memory_usage("Before crew kickoff")
         
-        combined_data, success = process_with_retry(crew_instance, inputs)
-        
-        if not success:
-            print("Processing completed with fallback response", file=sys.stderr)
+        if categorization_only:
+            combined_data = process_categorization_only(crew_instance, inputs)
+        else:
+            combined_data, success = process_with_retry(crew_instance, inputs)
+            
+            if not success:
+                print("Processing failed, no fallback will be returned", file=sys.stderr)
+                return {"error": "Document processing failed. Please try again or contact support."}
         
         del crew_instance
         del existing_articles
@@ -619,30 +697,31 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
                 if field in combined_data and not combined_data.get(field):
                     combined_data.pop(field, None)
         
-        if doc_type == 'invoice' and 'line_items' not in combined_data:
+        if doc_type == 'invoice' and 'line_items' not in combined_data and not categorization_only:
             combined_data['line_items'] = []
             print("WARNING: No line_items found for invoice, setting empty array", file=sys.stderr)
         
-        if doc_type == 'bank statement' and 'transactions' not in combined_data:
+        if doc_type == 'bank statement' and 'transactions' not in combined_data and not categorization_only:
             combined_data['transactions'] = []
             print("WARNING: No transactions found for bank statement, setting empty array", file=sys.stderr)
         
-        if 'duplicate_detection' not in combined_data:
-            combined_data['duplicate_detection'] = {
-                "is_duplicate": False,
-                "duplicate_matches": [],
-                "document_hash": document_hash,
-                "confidence": 0.0
-            }
-        
-        if 'compliance_validation' not in combined_data:
-            combined_data['compliance_validation'] = {
-                "compliance_status": "PENDING",
-                "overall_score": 0.0,
-                "validation_rules": {"ro": [], "en": []},
-                "errors": {"ro": [], "en": []},
-                "warnings": {"ro": [], "en": []}
-            }
+        if not categorization_only:
+            if 'duplicate_detection' not in combined_data:
+                combined_data['duplicate_detection'] = {
+                    "is_duplicate": False,
+                    "duplicate_matches": [],
+                    "document_hash": document_hash,
+                    "confidence": 0.0
+                }
+            
+            if 'compliance_validation' not in combined_data:
+                combined_data['compliance_validation'] = {
+                    "compliance_status": "PENDING",
+                    "overall_score": 0.0,
+                    "validation_rules": {"ro": [], "en": []},
+                    "errors": {"ro": [], "en": []},
+                    "warnings": {"ro": [], "en": []}
+                }
         
         log_memory_usage("After processing")
         
@@ -720,19 +799,30 @@ def main():
     
     try:
         if len(sys.argv) < 3:
-            result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path> [existing_documents_json]"}
+            result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path> [existing_documents_json] [user_corrections_json] [--categorization-only]"}
             print(json.dumps(result, ensure_ascii=False))
             sys.exit(1)
+        
+        categorization_only = '--categorization-only' in sys.argv
+        if categorization_only:
+            print("Running in categorization-only mode", file=sys.stderr)
         
         client_company_ein = sys.argv[1].strip()
         base64_input = sys.argv[2].strip()
         
         existing_documents = []
-        if len(sys.argv) > 3:
+        if len(sys.argv) > 3 and not sys.argv[3].startswith('--'):
             try:
                 existing_documents = json.loads(sys.argv[3])
             except json.JSONDecodeError:
                 print("Warning: Invalid existing documents JSON, proceeding without duplicate detection", file=sys.stderr)
+        
+        user_corrections = []
+        if len(sys.argv) > 4 and not sys.argv[4].startswith('--'):
+            try:
+                user_corrections = json.loads(sys.argv[4])
+            except json.JSONDecodeError:
+                print("Warning: Invalid user corrections JSON, proceeding without learning data", file=sys.stderr)
         
         if not client_company_ein:
             result = {"error": "Client company EIN is required"}
@@ -754,7 +844,13 @@ def main():
         temp_file_path = save_temp_file(base64_data)
         
         try:
-            result = process_single_document(temp_file_path, client_company_ein, existing_documents)
+            result = process_single_document(
+                temp_file_path, 
+                client_company_ein, 
+                existing_documents, 
+                user_corrections,
+                categorization_only
+            )
             
             print(json.dumps(result, ensure_ascii=False))
             
@@ -784,6 +880,3 @@ def main():
             tracemalloc.stop()
         
         log_memory_usage("Exit")
-
-if __name__ == "__main__":
-    main()

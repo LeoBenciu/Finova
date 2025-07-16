@@ -11,20 +11,28 @@ export class DataExtractionController {
 
     @Post()
     @UseInterceptors(FileInterceptor('file'))
-    async extractData(@UploadedFile() file: Express.Multer.File, @Body() body: { ein: string }){
-
+    async extractData(
+        @UploadedFile() file: Express.Multer.File, 
+        @Body() body: { ein: string; categorizationOnly?: string }
+    ){
         if (!file) {
             throw new BadRequestException('No file uploaded');
-          }
+        }
       
-          if (!body.ein) {
+        if (!body.ein) {
             throw new BadRequestException('EIN is required');
-          }
+        }
 
         const fileBuffer = file.buffer;
         const fileBase64 = fileBuffer.toString('base64');
+        
+        const categorizationOnly = body.categorizationOnly === 'true';
 
-        const extractedData = await this.dataExtractionService.extractData(fileBase64, body.ein);
+        const extractedData = await this.dataExtractionService.extractData(
+            fileBase64, 
+            body.ein,
+            categorizationOnly
+        );
 
         return {result: extractedData};
     }

@@ -156,9 +156,273 @@ export class DataExtractionService {
         }
     }
 
-    async extractData(fileBase64: string, clientCompanyEin: string) {
-        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin));
+
+async extractData(fileBase64: string, clientCompanyEin: string, categorizationOnly: boolean = false) {
+    return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, categorizationOnly));
+}
+
+private async processDocument(fileBase64: string, clientCompanyEin: string, categorizationOnly: boolean = false) {
+    let tempBase64File: string | null = null;
+    let tempExistingDocsFile: string | null = null;
+    let tempUserCorrectionsFile: string | null = null;
+    const startTime = Date.now();
+    const memoryBefore = process.memoryUsage();
+    
+    try {
+        const estimatedSize = (fileBase64.length * 3) / 4;
+        if (estimatedSize > this.maxFileSize) {
+            throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
+        }
+    
+        this.logger.log(`Starting document processing. Categorization only: ${categorizationOnly}. Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
+        this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
+    
+        if (!fs.existsSync(this.pythonScriptPath)) {
+            const alternativePaths = [
+                path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
+                '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
+                path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
+                path.join(process.cwd(), 'src', 'server', 'finova', 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
+            ];
+            
+            let foundPath = null;
+            for (const altPath of alternativePaths) {
+                this.logger.debug(`Checking alternative path: ${altPath}`);
+                if (fs.existsSync(altPath)) {
+                    foundPath = altPath;
+                    this.logger.log(`Found Python script at alternative path: ${altPath}`);
+                    break;
+                }
+            }
+            
+            if (!foundPath) {
+                throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
+            }
+            
+            this.pythonScriptPath = foundPath;
+        }
+    
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein: clientCompanyEin },
+        });
+        if (!clientCompany) {
+            throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
+        }
+    
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+            where: {
+                clientCompanyId: clientCompany.id
+            }
+        });
+    
+        if (!accountingClientRelation) {
+            throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
+        }
+    
+        const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
+        const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
+    
+        const timestamp = Date.now();
+        const randomId = randomBytes(8).toString('hex');
+        const tempFileName = `base64_${randomId}_${timestamp}.txt`;
+        const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
+        const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
+        
+        tempBase64File = path.join(this.tempDir, tempFileName);
+        tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
+        tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
+    
+        await Promise.all([
+            writeFilePromise(tempBase64File, fileBase64),
+            writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
+            writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2))
+        ]);
+        
+        this.logger.debug(`Created temporary files: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}`);
+    
+        if (!this.dependenciesChecked) {
+            try {
+                await this.installDependencies();
+                this.dependenciesChecked = true;
+            } catch (installError) {
+                this.logger.warn('Failed to install Python dependencies, they might already be installed');
+            }
+        }
+    
+        const args = [
+            clientCompanyEin,
+            tempBase64File,
+            tempExistingDocsFile,
+            tempUserCorrectionsFile
+        ];
+        
+        if (categorizationOnly) {
+            args.push('--categorization-only');
+        }
+        
+        this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
+        
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
+        });
+    
+        const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
+            const { spawn } = require('child_process');
+            
+            const child = spawn('python3', [this.pythonScriptPath, ...args], {
+                cwd: path.dirname(this.pythonScriptPath),
+                env: {
+                    ...process.env,
+                    PYTHONPATH: path.dirname(this.pythonScriptPath),
+                    PYTHONUNBUFFERED: '1',
+                    MALLOC_ARENA_MAX: '2',
+                },
+                stdio: ['pipe', 'pipe', 'pipe']
+            });
+        
+            let stdout = '';
+            let stderr = '';
+        
+            child.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+        
+            child.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+        
+            child.on('close', (code) => {
+                if (code === 0) {
+                    resolve({ stdout, stderr });
+                } else {
+                    reject(new Error(`Python process exited with code ${code}. stderr: ${stderr}`));
+                }
+            });
+        
+            child.on('error', (error) => {
+                reject(error);
+            });
+        });
+    
+        const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
+        
+        if (stderr) {
+            this.logger.warn(`Python stderr output: ${stderr}`);
+        }
+    
+        let result;
+        try {
+            const jsonOutput = this.extractJsonFromOutput(stdout);
+            result = JSON.parse(jsonOutput);
+        } catch (parseError) {
+            this.logger.error(`Failed to parse Python output. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
+            
+            throw new Error('Failed to extract data from document. Please try again or contact support.');
+        }
+    
+        if (result.error) {
+            this.logger.error(`Python script returned error: ${result.error}`);
+            
+            const errorMessage = result.error.toLowerCase();
+            if (errorMessage.includes('api key') || errorMessage.includes('authentication')) {
+                throw new Error(result.error);
+            }
+            
+            throw new Error(`Document processing failed: ${result.error}`);
+        }
+    
+        const extractedData = result.data || result;
+        
+        if (categorizationOnly) {
+            if (!extractedData.document_type) {
+                throw new Error('Failed to categorize document type');
+            }
+            
+            if (extractedData.document_type === 'Invoice') {
+                this.validateInvoiceDirection(extractedData, clientCompanyEin);
+            }
+            
+            return extractedData;
+        }
+        
+        const validation = this.validateProcessedData(extractedData);
+
+        if (!validation.isValid) {
+            this.logger.error(`Data validation failed: ${validation.errors.join(', ')}`);
+            throw new Error(`Invalid data extracted: ${validation.errors.join(', ')}`);
+        }
+        
+        if (validation.warnings.length > 0) {
+            this.logger.warn(`Data validation warnings: ${validation.warnings.join(', ')}`);
+        }
+    
+        if (extractedData.duplicate_detection) {
+            this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
+        }
+    
+        if (extractedData.compliance_validation) {
+            this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
+        }
+    
+        this.validateInvoiceDirection(extractedData, clientCompanyEin);
+        this.validateDocumentRelevance(extractedData, clientCompanyEin);
+        this.validateAndNormalizeCurrency(extractedData);
+        this.validateExtractedData(extractedData, [], [], clientCompanyEin);
+    
+        const processingTime = Date.now() - startTime;
+        const memoryAfter = process.memoryUsage();
+        const memoryDiff = {
+            rss: memoryAfter.rss - memoryBefore.rss,
+            heapUsed: memoryAfter.heapUsed - memoryBefore.heapUsed,
+            external: memoryAfter.external - memoryBefore.external
+        };
+    
+        this.logger.log(`Document processing completed in ${processingTime}ms`);
+        this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
+    
+        return extractedData;
+        
+    } catch (error) {
+        const processingTime = Date.now() - startTime;
+        this.logger.error(`Error extracting data for EIN ${clientCompanyEin} after ${processingTime}ms: ${error.message}`, error.stack);
+        
+        if (error.message.includes('timeout')) {
+            throw new Error(`Document processing timed out after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
+        } else if (error.message.includes('maxBuffer')) {
+            throw new Error('Document output too large. Please try with a smaller or simpler document.');
+        } else if (error.message.includes('ENOENT')) {
+            throw new Error('Document processing system unavailable. Please try again later.');
+        } else if (error.message.includes('spawn') || error.message.includes('Python process')) {
+            throw new Error('Python processing failed. Please check system configuration.');
+        } else if (error.message.includes('api key') || error.message.includes('authentication')) {
+            throw new Error('API authentication failed. Please check your API configuration.');
+        }
+        
+        throw error; 
+    } finally {
+        const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile].filter(Boolean);
+        
+        await Promise.all(
+            tempFiles.map(async (file) => {
+                if (file && fs.existsSync(file)) {
+                    try {
+                        await unlinkPromise(file);
+                        this.logger.debug(`Cleaned up temporary file: ${file}`);
+                    } catch (cleanupError) {
+                        this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
+                    }
+                }
+            })
+        );
+    
+        if (global.gc) {
+            global.gc();
+        }
+    
+        const finalMemory = process.memoryUsage();
+        this.logger.debug(`Final memory state: ${JSON.stringify(finalMemory)}`);
     }
+}
 
     private validateProcessedData(data: any): ProcessedDataValidation {
     const validation: ProcessedDataValidation = {
@@ -255,269 +519,6 @@ export class DataExtractionService {
             correctedValue: correction.correctedValue,
             confidence: correction.confidence
         }));
-    }
-    
-     private async processDocument(fileBase64: string, clientCompanyEin: string) {
-        let tempBase64File: string | null = null;
-        let tempExistingDocsFile: string | null = null;
-        let tempUserCorrectionsFile: string | null = null;
-        const startTime = Date.now();
-        const memoryBefore = process.memoryUsage();
-        
-        try {
-            const estimatedSize = (fileBase64.length * 3) / 4; 
-            if (estimatedSize > this.maxFileSize) {
-                throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
-            }
-        
-            this.logger.log(`Starting document processing. Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
-            this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
-        
-            if (!fs.existsSync(this.pythonScriptPath)) {
-                const alternativePaths = [
-                    path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
-                    '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
-                    path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-                    path.join(process.cwd(), 'src', 'server', 'finova', 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-                ];
-                
-                let foundPath = null;
-                for (const altPath of alternativePaths) {
-                    this.logger.debug(`Checking alternative path: ${altPath}`);
-                    if (fs.existsSync(altPath)) {
-                        foundPath = altPath;
-                        this.logger.log(`Found Python script at alternative path: ${altPath}`);
-                        break;
-                    }
-                }
-                
-                if (!foundPath) {
-                    throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
-                }
-                
-                this.pythonScriptPath = foundPath;
-            }
-        
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: clientCompanyEin },
-            });
-            if (!clientCompany) {
-                throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
-            }
-        
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    clientCompanyId: clientCompany.id
-                }
-            });
-        
-            if (!accountingClientRelation) {
-                throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
-            }
-        
-            const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
-            const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
-        
-            const timestamp = Date.now();
-            const randomId = randomBytes(8).toString('hex');
-            const tempFileName = `base64_${randomId}_${timestamp}.txt`;
-            const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
-            const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
-            
-            tempBase64File = path.join(this.tempDir, tempFileName);
-            tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
-            tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
-        
-            await Promise.all([
-                writeFilePromise(tempBase64File, fileBase64),
-                writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
-                writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2))
-            ]);
-            
-            this.logger.debug(`Created temporary files: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}`);
-        
-            if (!this.dependenciesChecked) {
-                try {
-                    await this.installDependencies();
-                    this.dependenciesChecked = true;
-                } catch (installError) {
-                    this.logger.warn('Failed to install Python dependencies, they might already be installed');
-                }
-            }
-        
-            const args = [
-                clientCompanyEin,
-                tempBase64File,
-                tempExistingDocsFile,
-                tempUserCorrectionsFile
-            ];
-            
-            this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
-            
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
-            });
-        
-            const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
-                const { spawn } = require('child_process');
-                
-                const child = spawn('python3', [this.pythonScriptPath, ...args], {
-                    cwd: path.dirname(this.pythonScriptPath),
-                    env: {
-                        ...process.env,
-                        PYTHONPATH: path.dirname(this.pythonScriptPath),
-                        PYTHONUNBUFFERED: '1',
-                        MALLOC_ARENA_MAX: '2',
-                    },
-                    stdio: ['pipe', 'pipe', 'pipe']
-                });
-            
-                let stdout = '';
-                let stderr = '';
-            
-                child.stdout.on('data', (data) => {
-                    stdout += data.toString();
-                });
-            
-                child.stderr.on('data', (data) => {
-                    stderr += data.toString();
-                });
-            
-                child.on('close', (code) => {
-                    if (code === 0) {
-                        resolve({ stdout, stderr });
-                    } else {
-                        reject(new Error(`Python process exited with code ${code}. stderr: ${stderr}`));
-                    }
-                });
-            
-                child.on('error', (error) => {
-                    reject(error);
-                });
-            });
-        
-            const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
-            
-            if (stderr) {
-                this.logger.warn(`Python stderr output: ${stderr}`);
-            }
-        
-            let result;
-            try {
-                const jsonOutput = this.extractJsonFromOutput(stdout);
-                result = JSON.parse(jsonOutput);
-            } catch (parseError) {
-                this.logger.error(`Failed to parse Python output. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
-                
-                let docType = 'Unknown';
-                try {
-                    const typeMatch = stdout.match(/"document_type"\s*:\s*"([^"]+)"/i);
-                    if (typeMatch) {
-                        docType = typeMatch[1];
-                    }
-                } catch (e) {
-                }
-                
-                const fallbackResponse = this.createFallbackResponse(docType);
-                this.logger.warn('Using fallback response due to parsing error');
-                return fallbackResponse;
-            }
-        
-            if (result.error) {
-                this.logger.error(`Python script returned error: ${result.error}`);
-                
-                const errorMessage = result.error.toLowerCase();
-                if (errorMessage.includes('api key') || errorMessage.includes('authentication')) {
-                    throw new Error(result.error);
-                }
-                
-                const fallbackResponse = this.createFallbackResponse();
-                this.logger.warn('Using fallback response due to Python error');
-                return fallbackResponse;
-            }
-        
-            const extractedData = result.data || result;
-            
-            const validation = this.validateProcessedData(extractedData);
-
-            if (!validation.isValid) {
-                this.logger.warn(`Data validation failed: ${validation.errors.join(', ')}`);
-                if (!extractedData.document_type) {
-                    const fallbackResponse = this.createFallbackResponse('Unknown');
-                    return fallbackResponse;
-                }
-            }
-            
-            if (validation.warnings.length > 0) {
-                this.logger.warn(`Data validation warnings: ${validation.warnings.join(', ')}`);
-            }
-        
-            if (extractedData.duplicate_detection) {
-                this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
-            }
-        
-            if (extractedData.compliance_validation) {
-                this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
-            }
-        
-            this.validateInvoiceDirection(extractedData, clientCompanyEin);
-            this.validateDocumentRelevance(extractedData, clientCompanyEin);
-            this.validateAndNormalizeCurrency(extractedData);
-            this.validateExtractedData(extractedData, [], [], clientCompanyEin);
-        
-            const processingTime = Date.now() - startTime;
-            const memoryAfter = process.memoryUsage();
-            const memoryDiff = {
-                rss: memoryAfter.rss - memoryBefore.rss,
-                heapUsed: memoryAfter.heapUsed - memoryBefore.heapUsed,
-                external: memoryAfter.external - memoryBefore.external
-            };
-        
-            this.logger.log(`Document processing completed in ${processingTime}ms`);
-            this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
-        
-            return extractedData;
-            
-        } catch (error) {
-            const processingTime = Date.now() - startTime;
-            this.logger.error(`Error extracting data for EIN ${clientCompanyEin} after ${processingTime}ms: ${error.message}`, error.stack);
-            
-            if (error.message.includes('timeout')) {
-                throw new Error(`Document processing timed out after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
-            } else if (error.message.includes('maxBuffer')) {
-                throw new Error('Document output too large. Please try with a smaller or simpler document.');
-            } else if (error.message.includes('ENOENT')) {
-                throw new Error('Document processing system unavailable. Please try again later.');
-            } else if (error.message.includes('spawn') || error.message.includes('Python process')) {
-                throw new Error('Python processing failed. Please check system configuration.');
-            } else if (error.message.includes('api key') || error.message.includes('authentication')) {
-                throw new Error('API authentication failed. Please check your API configuration.');
-            }
-            
-            throw new Error(`Failed to extract data from document: ${error.message}`);
-        } finally {
-            const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile].filter(Boolean);
-            
-            await Promise.all(
-                tempFiles.map(async (file) => {
-                    if (file && fs.existsSync(file)) {
-                        try {
-                            await unlinkPromise(file);
-                            this.logger.debug(`Cleaned up temporary file: ${file}`);
-                        } catch (cleanupError) {
-                            this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
-                        }
-                    }
-                })
-            );
-        
-            if (global.gc) {
-                global.gc();
-            }
-        
-            const finalMemory = process.memoryUsage();
-            this.logger.debug(`Final memory state: ${JSON.stringify(finalMemory)}`);
-        }
     }
 
     async saveDuplicateDetection(documentId: number, duplicateData: any) {
@@ -910,31 +911,31 @@ export class DataExtractionService {
     }
 
     async saveDuplicateDetectionWithTransaction(
-    prisma: any, // PrismaTransaction type
-    documentId: number, 
-    duplicateDetection: any
-): Promise<void> {
-    try {
-        if (!duplicateDetection?.duplicate_matches) return;
+        prisma: any,
+        documentId: number, 
+        duplicateDetection: any
+    ): Promise<void> {
+        try {
+            if (!duplicateDetection?.duplicate_matches) return;
 
-        for (const match of duplicateDetection.duplicate_matches) {
-            if (match.document_id && match.document_id !== documentId) {
-                await prisma.documentDuplicateCheck.create({
-                    data: {
-                        originalDocumentId: documentId,
-                        duplicateDocumentId: match.document_id,
-                        similarityScore: match.similarity_score || 0.0,
-                        matchingFields: match.matching_fields || {},
-                        duplicateType: this.mapDuplicateType(match.duplicate_type),
-                        status: DuplicateStatus.PENDING
-                    }
-                });
+            for (const match of duplicateDetection.duplicate_matches) {
+                if (match.document_id && match.document_id !== documentId) {
+                    await prisma.documentDuplicateCheck.create({
+                        data: {
+                            originalDocumentId: documentId,
+                            duplicateDocumentId: match.document_id,
+                            similarityScore: match.similarity_score || 0.0,
+                            matchingFields: match.matching_fields || {},
+                            duplicateType: this.mapDuplicateType(match.duplicate_type),
+                            status: DuplicateStatus.PENDING
+                        }
+                    });
+                }
             }
+        } catch (error) {
+            console.error('[DUPLICATE_DETECTION_ERROR]', error);
         }
-    } catch (error) {
-        console.error('[DUPLICATE_DETECTION_ERROR]', error);
     }
-}
 
 async saveComplianceValidationWithTransaction(
     prisma: any,
