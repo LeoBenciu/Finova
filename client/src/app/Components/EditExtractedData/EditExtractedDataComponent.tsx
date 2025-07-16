@@ -9,6 +9,7 @@ import AreYouSureModal from '../AreYouSureModal';
 import DocumentViewer from './DocumentViewer';
 import { useSelector } from 'react-redux';
 import DocumentTypeFields from './Fields/DocumentTypeFields';
+import { translateComplianceMessages } from './ComplianceTranslation';
 
 interface EditExtractedDataProps {
   isLoading: boolean;
@@ -527,7 +528,6 @@ const EditExtractedDataComponent = ({
                         )}
                       </div>
                       
-                      {/* Errors Section */}
                       {editFile.result.compliance_validation.errors && 
                        editFile.result.compliance_validation.errors.length > 0 && (
                         <div className="mb-3">
@@ -535,7 +535,8 @@ const EditExtractedDataComponent = ({
                             {language === 'ro' ? 'Erori găsite:' : 'Issues Found:'}
                           </h4>
                           <ul className="space-y-2">
-                            {editFile.result.compliance_validation.errors.map((error: string, index: number) => (
+                            {translateComplianceMessages(editFile.result.compliance_validation.errors, language)
+                              .map((error: string, index: number) => (
                               <li key={index} className="text-sm flex items-start gap-3">
                                 <span className="text-red-500 mt-1 flex-shrink-0">•</span>
                                 <span className="text-red-700 leading-relaxed">{error}</span>
@@ -545,7 +546,6 @@ const EditExtractedDataComponent = ({
                         </div>
                       )}
 
-                      {/* Warnings Section */}
                       {editFile.result.compliance_validation.warnings && 
                        editFile.result.compliance_validation.warnings.length > 0 && (
                         <div className="mb-3">
@@ -553,7 +553,8 @@ const EditExtractedDataComponent = ({
                             {language === 'ro' ? 'Avertismente:' : 'Warnings:'}
                           </h4>
                           <ul className="space-y-2">
-                            {editFile.result.compliance_validation.warnings.map((warning: string, index: number) => (
+                            {translateComplianceMessages(editFile.result.compliance_validation.warnings, language)
+                              .map((warning: string, index: number) => (
                               <li key={index} className="text-sm flex items-start gap-3">
                                 <span className="text-orange-500 mt-1 flex-shrink-0">⚠</span>
                                 <span className="text-orange-700 leading-relaxed">{warning}</span>
@@ -563,7 +564,6 @@ const EditExtractedDataComponent = ({
                         </div>
                       )}
 
-                      {/* Validation Rules (Collapsible) */}
                       {editFile.result.compliance_validation.validation_rules && 
                        editFile.result.compliance_validation.validation_rules.length > 0 && (
                         <details className="mt-3">
@@ -573,7 +573,8 @@ const EditExtractedDataComponent = ({
                           </summary>
                           <div className="mt-2 pl-4 border-l-2 border-gray-300">
                             <ul className="space-y-1">
-                              {editFile.result.compliance_validation.validation_rules.map((rule: string, index: number) => (
+                              {translateComplianceMessages(editFile.result.compliance_validation.validation_rules, language)
+                                .map((rule: string, index: number) => (
                                 <li key={index} className="text-xs text-gray-600 flex items-start gap-2">
                                   <span className="text-gray-400 mt-0.5 flex-shrink-0">→</span>
                                   <span className="leading-relaxed">{rule}</span>
@@ -584,7 +585,6 @@ const EditExtractedDataComponent = ({
                         </details>
                       )}
 
-                      {/* Summary Footer */}
                       <div className={`text-xs mt-4 pt-3 border-t border-current/20 font-medium ${
                         editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
                           ? 'text-red-700'
