@@ -10,6 +10,7 @@ import tempfile
 import tracemalloc
 import traceback
 import hashlib
+import time
 from typing import Dict, Any, Optional, List
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
@@ -33,6 +34,97 @@ except Exception as e:
     print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
     sys.exit(1)
 
+def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[bool, list[str]]:
+    """Validate that processed data contains all required fields based on document type."""
+    errors = []
+    
+    if not data or not isinstance(data, dict):
+        errors.append("Invalid data structure")
+        return False, errors
+    
+    if not data.get('document_type'):
+        errors.append("Missing document_type")
+    
+    doc_type = data.get('document_type', '').lower()
+    
+    if doc_type == 'invoice':
+        required_fields = ['vendor', 'buyer', 'document_date', 'total_amount']
+        for field in required_fields:
+            if not data.get(field):
+                errors.append(f"Missing required invoice field: {field}")
+        
+        if 'line_items' not in data:
+            errors.append("Missing line_items for invoice")
+        elif not isinstance(data['line_items'], list):
+            errors.append("line_items must be an array")
+            
+    elif doc_type == 'receipt':
+        required_fields = ['vendor', 'total_amount', 'document_date']
+        for field in required_fields:
+            if not data.get(field):
+                errors.append(f"Missing required receipt field: {field}")
+                
+    elif doc_type == 'bank statement':
+        required_fields = ['company_name', 'bank_name', 'account_number']
+        for field in required_fields:
+            if not data.get(field):
+                errors.append(f"Missing required bank statement field: {field}")
+        
+        if 'transactions' not in data:
+            errors.append("Missing transactions for bank statement")
+        elif not isinstance(data['transactions'], list):
+            errors.append("transactions must be an array")
+            
+    elif doc_type == 'contract':
+        required_fields = ['contract_number', 'contract_date']
+        for field in required_fields:
+            if not data.get(field):
+                errors.append(f"Missing required contract field: {field}")
+    
+    if 'duplicate_detection' in data:
+        dup_data = data['duplicate_detection']
+        if not isinstance(dup_data, dict):
+            errors.append("duplicate_detection must be an object")
+        else:
+            if 'is_duplicate' not in dup_data:
+                errors.append("Missing is_duplicate in duplicate_detection")
+            if 'duplicate_matches' not in dup_data:
+                errors.append("Missing duplicate_matches in duplicate_detection")
+    
+    if 'compliance_validation' in data:
+        comp_data = data['compliance_validation']
+        if not isinstance(comp_data, dict):
+            errors.append("compliance_validation must be an object")
+        else:
+            if 'compliance_status' not in comp_data:
+                errors.append("Missing compliance_status in compliance_validation")
+    
+    return len(errors) == 0, errors
+
+def create_fallback_response(doc_type: str = "Unknown") -> dict:
+    """Create a minimal fallback response when processing fails."""
+    return {
+        "document_type": doc_type,
+        "document_date": "",
+        "line_items": [] if doc_type.lower() == 'invoice' else None,
+        "transactions": [] if doc_type.lower() == 'bank statement' else None,
+        "duplicate_detection": {
+            "is_duplicate": False,
+            "duplicate_matches": [],
+            "document_hash": "",
+            "confidence": 0.0
+        },
+        "compliance_validation": {
+            "compliance_status": "PENDING",
+            "overall_score": 0.0,
+            "validation_rules": {"ro": [], "en": []},
+            "errors": {"ro": ["Procesare incompletă - verificați manual"], "en": ["Incomplete processing - please verify manually"]},
+            "warnings": {"ro": [], "en": []}
+        },
+        "confidence": 0.1,
+        "processing_status": "FALLBACK"
+    }
+
 def test_openai_connection():
     """Test direct OpenAI connection to verify API key."""
     try:
@@ -50,7 +142,8 @@ def test_openai_connection():
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "Say 'API key works'"}],
-            max_tokens=10
+            max_tokens=10,
+            timeout=30
         )
         
         print(f"OpenAI API test successful: {response.choices[0].message.content}", file=sys.stderr)
@@ -349,8 +442,115 @@ def extract_json_from_text(text: str) -> dict:
     print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)
     return {}
 
+def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tuple[dict, bool]:
+    """Process document with retry logic and validation."""
+    for attempt in range(max_retries + 1):
+        try:
+            print(f"Processing attempt {attempt + 1}/{max_retries + 1}", file=sys.stderr)
+            
+            captured_output = StringIO()
+            
+            with redirect_stdout(captured_output), redirect_stderr(captured_output):
+                result = crew_instance.crew().kickoff(inputs=inputs)
+            
+            combined_data = {
+                "document_type": "Unknown",
+                "line_items": [],
+                "document_hash": inputs.get("document_hash", ""),
+                "duplicate_detection": {"is_duplicate": False, "duplicate_matches": []},
+                "compliance_validation": {"compliance_status": "PENDING", "validation_rules": {"ro": [], "en": []}, "errors": {"ro": [], "en": []}, "warnings": {"ro": [], "en": []}}
+            }
+            
+            if hasattr(result, 'tasks_output') and result.tasks_output:
+                print(f"Processing {len(result.tasks_output)} task outputs", file=sys.stderr)
+
+                for i, task_output in enumerate(result.tasks_output):
+                    try:
+                        if task_output and hasattr(task_output, 'raw') and task_output.raw:
+                            output_length = len(task_output.raw)
+                            print(f"Task {i} output length: {output_length}", file=sys.stderr)
+
+                            if i == 0:  
+                                categorization_data = extract_json_from_text(task_output.raw)
+                                if categorization_data and isinstance(categorization_data, dict):
+                                    combined_data.update(categorization_data)
+                                    doc_type = categorization_data.get('document_type', 'Unknown')
+                                    print(f"Document categorized as: {doc_type}", file=sys.stderr)
+                                    inputs['doc_type'] = doc_type
+
+                            elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':  # Invoice extraction
+                                extraction_data = extract_json_from_text(task_output.raw)
+                                if extraction_data and isinstance(extraction_data, dict):
+                                    combined_data.update(extraction_data)
+                                    print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
+
+                            elif i == 2: 
+                                doc_type = combined_data.get('document_type', '').lower()
+                                if doc_type != 'invoice' and doc_type:
+                                    try:
+                                        other_data = extract_json_from_text(task_output.raw)
+                                        if other_data and isinstance(other_data, dict):
+                                            combined_data.update(other_data)
+                                            print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
+                                    except Exception as task2_error:
+                                        print(f"ERROR: Task 2 processing failed: {str(task2_error)}", file=sys.stderr)
+
+                            elif i == 3: 
+                                try:
+                                    duplicate_data = extract_json_from_text(task_output.raw)
+                                    if duplicate_data and isinstance(duplicate_data, dict):
+                                        combined_data['duplicate_detection'] = duplicate_data
+                                        print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
+                                except Exception as task3_error:
+                                    print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
+
+                            elif i == 4: 
+                                try:
+                                    compliance_data = extract_json_from_text(task_output.raw)
+                                    if compliance_data and isinstance(compliance_data, dict):
+                                        combined_data['compliance_validation'] = compliance_data
+                                        print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
+                                except Exception as task4_error:
+                                    print(f"ERROR: Task 4 processing failed: {str(task4_error)}", file=sys.stderr)
+
+                    except Exception as e:
+                        print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
+                        continue
+            
+            is_valid, validation_errors = validate_processed_data(combined_data)
+            
+            if is_valid:
+                print(f"Processing successful on attempt {attempt + 1}", file=sys.stderr)
+                return combined_data, True
+            else:
+                print(f"Validation failed on attempt {attempt + 1}: {validation_errors}", file=sys.stderr)
+                if attempt < max_retries:
+                    print(f"Retrying processing (attempt {attempt + 2})", file=sys.stderr)
+                    time.sleep(2)  
+                    continue
+                else:
+                    print("Max retries reached, returning fallback response", file=sys.stderr)
+                    fallback = create_fallback_response(combined_data.get('document_type', 'Unknown'))
+                    if combined_data.get('document_type'):
+                        fallback['document_type'] = combined_data['document_type']
+                    if combined_data.get('duplicate_detection'):
+                        fallback['duplicate_detection'] = combined_data['duplicate_detection']
+                    return fallback, False
+                    
+        except Exception as e:
+            print(f"Processing attempt {attempt + 1} failed with error: {str(e)}", file=sys.stderr)
+            if attempt < max_retries:
+                print(f"Retrying after error (attempt {attempt + 2})", file=sys.stderr)
+                time.sleep(3)  
+                continue
+            else:
+                print("Max retries reached after errors, returning fallback response", file=sys.stderr)
+                return create_fallback_response(), False
+    
+    return create_fallback_response(), False
+
 def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None) -> Dict[str, Any]:
-    """Process a single document with memory optimization and new features."""
+    """Process a single document with memory optimization and improved error handling."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
     log_memory_usage("Before processing")
     
@@ -373,12 +573,12 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             test_response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": "test"}],
-                max_tokens=5
+                max_tokens=5,
+                timeout=30
             )
             print("Direct OpenAI API test PASSED", file=sys.stderr)
         except Exception as e:
             print(f"ERROR: Direct OpenAI API test FAILED: {str(e)}", file=sys.stderr)
-            print(f"Error type: {type(e).__name__}", file=sys.stderr)
             error_msg = str(e).lower()
             if "authentication" in error_msg or "api key" in error_msg or "unauthorized" in error_msg:
                 return {
@@ -422,62 +622,10 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             )
             print("FirstCrewFinova instance created successfully", file=sys.stderr)
             
-            if not hasattr(crew_instance, 'llm'):
-                print("ERROR: crew_instance doesn't have 'llm' attribute", file=sys.stderr)
-                print(f"crew_instance attributes: {dir(crew_instance)}", file=sys.stderr)
-                return {
-                    "error": "CrewAI initialization error: missing llm attribute",
-                    "details": "The crew instance was created but LLM is not properly configured"
-                }
-            
-            if crew_instance.llm is None:
-                print("ERROR: crew_instance.llm is None", file=sys.stderr)
-                
-                try:
-                    print("Attempting manual LLM initialization...", file=sys.stderr)
-                    from crewai import LLM
-                    crew_instance.llm = LLM(
-                        model="gpt-4o-mini",
-                        temperature=0.3,
-                        max_tokens=4000,
-                        api_key=api_key
-                    )
-                    print("Manually initialized LLM for crew_instance", file=sys.stderr)
-                except Exception as llm_e:
-                    print(f"ERROR: Failed to manually initialize LLM: {str(llm_e)}", file=sys.stderr)
-                    print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
-                    return {
-                        "error": "Failed to configure LLM for CrewAI agents",
-                        "details": str(llm_e)
-                    }
-            
-            print("crew_instance.llm is configured properly", file=sys.stderr)
-            
         except Exception as e:
             print(f"ERROR: Failed to create CrewAI instance: {str(e)}", file=sys.stderr)
-            print(f"Exception type: {type(e).__name__}", file=sys.stderr)
-            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
-            
-            if isinstance(e, ImportError):
-                return {
-                    "error": "CrewAI import error. Please ensure all dependencies are installed.",
-                    "details": str(e)
-                }
-            
             return {
                 "error": "Failed to initialize CrewAI. Check logs for details.",
-                "details": str(e)
-            }
-        
-        try:
-            print("Creating crew from crew_instance...", file=sys.stderr)
-            crew = crew_instance.crew()
-            print("Crew created successfully", file=sys.stderr)
-        except Exception as e:
-            print(f"ERROR: Failed to create crew: {str(e)}", file=sys.stderr)
-            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
-            return {
-                "error": "Failed to create CrewAI crew",
                 "details": str(e)
             }
         
@@ -507,101 +655,11 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         
         log_memory_usage("Before crew kickoff")
         
-        captured_output = StringIO()
+        combined_data, success = process_with_retry(crew_instance, inputs)
         
-        try:
-            print("Starting crew kickoff...", file=sys.stderr)
-            with redirect_stdout(captured_output), redirect_stderr(captured_output):
-                result = crew.kickoff(inputs=inputs)
-            print("Crew kickoff completed", file=sys.stderr)
-        except Exception as e:
-            print(f"ERROR: Crew kickoff failed: {str(e)}", file=sys.stderr)
-            print(f"Captured output: {captured_output.getvalue()}", file=sys.stderr)
-            print(f"Traceback:\n{traceback.format_exc()}", file=sys.stderr)
-            return {
-                "error": "Document processing failed during crew execution",
-                "details": str(e)
-            }
+        if not success:
+            print("Processing completed with fallback response", file=sys.stderr)
         
-        log_memory_usage("After crew kickoff")
-        
-        combined_data = {
-            "document_type": "Unknown",
-            "line_items": [],
-            "document_hash": document_hash,
-            "duplicate_detection": {"is_duplicate": False, "duplicate_matches": []},
-            "compliance_validation": {"compliance_status": "PENDING", "validation_rules": [], "errors": [], "warnings": []}
-        }
-        
-        if hasattr(result, 'tasks_output') and result.tasks_output:
-            print(f"Processing {len(result.tasks_output)} task outputs", file=sys.stderr)
-
-            for i, task_output in enumerate(result.tasks_output):
-                try:
-                    if task_output and hasattr(task_output, 'raw') and task_output.raw:
-                        output_length = len(task_output.raw)
-                        print(f"Task {i} output length: {output_length}", file=sys.stderr)
-
-                        if i == 0:
-                            categorization_data = extract_json_from_text(task_output.raw)
-                            if categorization_data and isinstance(categorization_data, dict):
-                                combined_data.update(categorization_data)
-                                doc_type = categorization_data.get('document_type', 'Unknown')
-                                print(f"Document categorized as: {doc_type}", file=sys.stderr)
-                                inputs['doc_type'] = doc_type
-
-                        elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':
-                            extraction_data = extract_json_from_text(task_output.raw)
-                            if extraction_data and isinstance(extraction_data, dict):
-                                combined_data.update(extraction_data)
-                                print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
-
-                        elif i == 2:
-                            doc_type = combined_data.get('document_type', '').lower()
-                            if doc_type != 'invoice' and doc_type:
-                                try:
-                                    other_data = extract_json_from_text(task_output.raw)
-                                    print(f"Raw other_data type: {type(other_data)}, content preview: {str(other_data)[:200]}", file=sys.stderr)
-
-                                    if other_data and isinstance(other_data, dict):
-                                        for key, value in other_data.items():
-                                            combined_data[key] = value
-                                        print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
-                                    else:
-                                        print(f"WARNING: Task 2 returned non-dict data: {type(other_data)}", file=sys.stderr)
-                                except Exception as task2_error:
-                                    print(f"ERROR: Task 2 processing failed: {str(task2_error)}", file=sys.stderr)
-                                    print(f"Task 2 raw output: {task_output.raw[:500]}...", file=sys.stderr)
-
-                        elif i == 3:
-                            try:
-                                duplicate_data = extract_json_from_text(task_output.raw)
-                                if duplicate_data and isinstance(duplicate_data, dict):
-                                    combined_data['duplicate_detection'] = duplicate_data
-                                    print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
-                            except Exception as task3_error:
-                                print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
-
-                        elif i == 4:
-                            try:
-                                compliance_data = extract_json_from_text(task_output.raw)
-                                if compliance_data and isinstance(compliance_data, dict):
-                                    combined_data['compliance_validation'] = compliance_data
-                                    print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
-                            except Exception as task4_error:
-                                print(f"ERROR: Task 4 processing failed: {str(task4_error)}", file=sys.stderr)
-
-                        del task_output.raw
-
-                    else:
-                        print(f"WARNING: Task {i} has no output", file=sys.stderr)
-
-                except Exception as e:
-                    print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
-                    print(f"Task {i} traceback: {traceback.format_exc()}", file=sys.stderr)
-                    continue
-                
-        del crew
         del crew_instance
         del existing_articles
         del management_records
@@ -621,6 +679,23 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         if doc_type == 'bank statement' and 'transactions' not in combined_data:
             combined_data['transactions'] = []
             print("WARNING: No transactions found for bank statement, setting empty array", file=sys.stderr)
+        
+        if 'duplicate_detection' not in combined_data:
+            combined_data['duplicate_detection'] = {
+                "is_duplicate": False,
+                "duplicate_matches": [],
+                "document_hash": document_hash,
+                "confidence": 0.0
+            }
+        
+        if 'compliance_validation' not in combined_data:
+            combined_data['compliance_validation'] = {
+                "compliance_status": "PENDING",
+                "overall_score": 0.0,
+                "validation_rules": {"ro": [], "en": []},
+                "errors": {"ro": [], "en": []},
+                "warnings": {"ro": [], "en": []}
+            }
         
         log_memory_usage("After processing")
         

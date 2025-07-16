@@ -13,6 +13,34 @@ const execPromise = promisify(exec);
 const writeFilePromise = promisify(fs.writeFile);
 const unlinkPromise = promisify(fs.unlink);
 
+interface ProcessedDataValidation {
+    isValid: boolean;
+    errors: string[];
+    warnings: string[];
+}
+
+interface FallbackResponse {
+    document_type: string;
+    document_date: string;
+    line_items?: any[];
+    transactions?: any[];
+    duplicate_detection: {
+        is_duplicate: boolean;
+        duplicate_matches: any[];
+        document_hash: string;
+        confidence: number;
+    };
+    compliance_validation: {
+        compliance_status: string;
+        overall_score: number;
+        validation_rules: { ro: string[]; en: string[] };
+        errors: { ro: string[]; en: string[] };
+        warnings: { ro: string[]; en: string[] };
+    };
+    confidence: number;
+    processing_status: string;
+}
+
 class ProcessingQueue {
     private static instance: ProcessingQueue;
     private queue: Array<{ promise: Promise<any>; resolve: Function; reject: Function }> = [];
@@ -130,6 +158,169 @@ export class DataExtractionService {
 
     async extractData(fileBase64: string, clientCompanyEin: string) {
         return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin));
+    }
+
+    private validateProcessedData(data: any): ProcessedDataValidation {
+        const validation: ProcessedDataValidation = {
+            isValid: true,
+            errors: [],
+            warnings: []
+        };
+
+        if (!data || typeof data !== 'object') {
+            validation.isValid = false;
+            validation.errors.push('Invalid data structure received');
+            return validation;
+        }
+
+        const result = data.result || data;
+
+        if (!result.document_type) {
+            validation.isValid = false;
+            validation.errors.push('Missing document_type');
+            return validation;
+        }
+
+        const docType = result.document_type.toLowerCase();
+
+        switch (docType) {
+            case 'invoice':
+                const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
+                const missingInvoiceFields = requiredInvoiceFields.filter(field => !result[field]);
+                
+                if (missingInvoiceFields.length > 0) {
+                    validation.isValid = false;
+                    validation.errors.push(`Missing required invoice fields: ${missingInvoiceFields.join(', ')}`);
+                }
+
+                if (!Array.isArray(result.line_items)) {
+                    validation.warnings.push('Invoice line_items should be an array');
+                    result.line_items = [];
+                }
+                break;
+
+            case 'receipt':
+                const requiredReceiptFields = ['vendor', 'total_amount', 'document_date'];
+                const missingReceiptFields = requiredReceiptFields.filter(field => !result[field]);
+                
+                if (missingReceiptFields.length > 0) {
+                    validation.isValid = false;
+                    validation.errors.push(`Missing required receipt fields: ${missingReceiptFields.join(', ')}`);
+                }
+                break;
+
+            case 'bank statement':
+                const requiredBankFields = ['company_name', 'bank_name', 'account_number'];
+                const missingBankFields = requiredBankFields.filter(field => !result[field]);
+                
+                if (missingBankFields.length > 0) {
+                    validation.isValid = false;
+                    validation.errors.push(`Missing required bank statement fields: ${missingBankFields.join(', ')}`);
+                }
+
+                if (!Array.isArray(result.transactions)) {
+                    validation.warnings.push('Bank statement transactions should be an array');
+                    result.transactions = [];
+                }
+                break;
+
+            case 'contract':
+                const requiredContractFields = ['contract_number', 'contract_date'];
+                const missingContractFields = requiredContractFields.filter(field => !result[field]);
+                
+                if (missingContractFields.length > 0) {
+                    validation.isValid = false;
+                    validation.errors.push(`Missing required contract fields: ${missingContractFields.join(', ')}`);
+                }
+                break;
+
+            default:
+                if (!result.document_date) {
+                    validation.warnings.push('Missing document_date for document type: ' + docType);
+                }
+        }
+
+        if (result.duplicate_detection) {
+            if (typeof result.duplicate_detection !== 'object') {
+                validation.warnings.push('duplicate_detection should be an object');
+                result.duplicate_detection = {
+                    is_duplicate: false,
+                    duplicate_matches: [],
+                    confidence: 0.0
+                };
+            } else {
+                if (typeof result.duplicate_detection.is_duplicate !== 'boolean') {
+                    result.duplicate_detection.is_duplicate = false;
+                }
+                if (!Array.isArray(result.duplicate_detection.duplicate_matches)) {
+                    result.duplicate_detection.duplicate_matches = [];
+                }
+            }
+        }
+
+        // Validate compliance_validation structure
+        if (result.compliance_validation) {
+            if (typeof result.compliance_validation !== 'object') {
+                validation.warnings.push('compliance_validation should be an object');
+                result.compliance_validation = {
+                    compliance_status: 'PENDING',
+                    overall_score: 0.0,
+                    validation_rules: { ro: [], en: [] },
+                    errors: { ro: [], en: [] },
+                    warnings: { ro: [], en: [] }
+                };
+            } else {
+                if (!result.compliance_validation.compliance_status) {
+                    result.compliance_validation.compliance_status = 'PENDING';
+                }
+                if (typeof result.compliance_validation.overall_score !== 'number') {
+                    result.compliance_validation.overall_score = 0.0;
+                }
+                
+                const bilingualFields = ['validation_rules', 'errors', 'warnings'];
+                bilingualFields.forEach(field => {
+                    if (!result.compliance_validation[field] || typeof result.compliance_validation[field] !== 'object') {
+                        result.compliance_validation[field] = { ro: [], en: [] };
+                    } else {
+                        if (!Array.isArray(result.compliance_validation[field].ro)) {
+                            result.compliance_validation[field].ro = [];
+                        }
+                        if (!Array.isArray(result.compliance_validation[field].en)) {
+                            result.compliance_validation[field].en = [];
+                        }
+                    }
+                });
+            }
+        }
+
+        return validation;
+    }
+
+    private createFallbackResponse(docType: string = 'Unknown', documentHash: string = ''): FallbackResponse {
+        return {
+            document_type: docType,
+            document_date: '',
+            line_items: docType.toLowerCase() === 'invoice' ? [] : undefined,
+            transactions: docType.toLowerCase() === 'bank statement' ? [] : undefined,
+            duplicate_detection: {
+                is_duplicate: false,
+                duplicate_matches: [],
+                document_hash: documentHash,
+                confidence: 0.0
+            },
+            compliance_validation: {
+                compliance_status: 'PENDING',
+                overall_score: 0.0,
+                validation_rules: { ro: [], en: [] },
+                errors: { 
+                    ro: ['Procesare incompletă - verificați manual'], 
+                    en: ['Incomplete processing - please verify manually'] 
+                },
+                warnings: { ro: [], en: [] }
+            },
+            confidence: 0.1,
+            processing_status: 'FALLBACK'
+        };
     }
 
     private async getExistingDocuments(accountingClientId: number) {
@@ -329,14 +520,59 @@ export class DataExtractionService {
                 result = JSON.parse(jsonOutput);
             } catch (parseError) {
                 this.logger.error(`Failed to parse Python output. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
-                throw new Error(`Invalid JSON output from Python script: ${parseError.message}`);
+                
+                let docType = 'Unknown';
+                try {
+                    const typeMatch = stdout.match(/"document_type"\s*:\s*"([^"]+)"/i);
+                    if (typeMatch) {
+                        docType = typeMatch[1];
+                    }
+                } catch (e) {
+                }
+                
+                const fallbackResponse = this.createFallbackResponse(docType);
+                this.logger.warn('Using fallback response due to parsing error');
+                return fallbackResponse;
             }
         
             if (result.error) {
-                throw new Error(result.error);
+                this.logger.error(`Python script returned error: ${result.error}`);
+                
+                const errorMessage = result.error.toLowerCase();
+                if (errorMessage.includes('api key') || errorMessage.includes('authentication')) {
+                    throw new Error(result.error);
+                }
+                
+                const fallbackResponse = this.createFallbackResponse();
+                this.logger.warn('Using fallback response due to Python error');
+                return fallbackResponse;
             }
         
             const extractedData = result.data || result;
+            
+            const validation = this.validateProcessedData(extractedData);
+            
+            if (!validation.isValid) {
+                this.logger.warn(`Data validation failed: ${validation.errors.join(', ')}`);
+                
+                const fallbackResponse = this.createFallbackResponse(
+                    extractedData.document_type || 'Unknown'
+                );
+                
+                if (extractedData.duplicate_detection && typeof extractedData.duplicate_detection === 'object') {
+                    fallbackResponse.duplicate_detection = {
+                        ...fallbackResponse.duplicate_detection,
+                        ...extractedData.duplicate_detection
+                    };
+                }
+                
+                this.logger.warn('Using enhanced fallback response due to validation failure');
+                return fallbackResponse;
+            }
+            
+            if (validation.warnings.length > 0) {
+                this.logger.warn(`Data validation warnings: ${validation.warnings.join(', ')}`);
+            }
         
             if (extractedData.duplicate_detection) {
                 this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
@@ -376,6 +612,8 @@ export class DataExtractionService {
                 throw new Error('Document processing system unavailable. Please try again later.');
             } else if (error.message.includes('spawn') || error.message.includes('Python process')) {
                 throw new Error('Python processing failed. Please check system configuration.');
+            } else if (error.message.includes('api key') || error.message.includes('authentication')) {
+                throw new Error('API authentication failed. Please check your API configuration.');
             }
             
             throw new Error(`Failed to extract data from document: ${error.message}`);
@@ -817,7 +1055,6 @@ export class DataExtractionService {
         }
     } catch (error) {
         console.error('[DUPLICATE_DETECTION_ERROR]', error);
-        // Don't throw - let the transaction continue
     }
 }
 
@@ -906,7 +1143,7 @@ async saveComplianceValidation(documentId: number, complianceData: any) {
 }
 
 async saveUserCorrectionWithTransaction(
-    prisma: any, // PrismaTransaction type
+    prisma: any, 
     documentId: number, 
     userId: number, 
     correction: any
@@ -925,7 +1162,6 @@ async saveUserCorrectionWithTransaction(
         });
     } catch (error) {
         console.error('[USER_CORRECTION_ERROR]', error);
-        // Don't throw - let the transaction continue
     }
 }
 
