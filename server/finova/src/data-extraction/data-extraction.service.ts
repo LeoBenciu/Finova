@@ -19,12 +19,26 @@ interface ProcessedDataValidation {
     warnings: string[];
 }
 
-interface ProcessingPhase {
-    id: number;
-    name: string;
-    description: string;
-    requiresDocumentType: boolean;
-    requiresFullExtraction: boolean;
+interface FallbackResponse {
+    document_type: string;
+    document_date: string;
+    line_items?: any[];
+    transactions?: any[];
+    duplicate_detection: {
+        is_duplicate: boolean;
+        duplicate_matches: any[];
+        document_hash: string;
+        confidence: number;
+    };
+    compliance_validation: {
+        compliance_status: string;
+        overall_score: number;
+        validation_rules: { ro: string[]; en: string[] };
+        errors: { ro: string[]; en: string[] };
+        warnings: { ro: string[]; en: string[] };
+    };
+    confidence: number;
+    processing_status: string;
 }
 
 class ProcessingQueue {
@@ -86,37 +100,6 @@ export class DataExtractionService {
     private readonly processingTimeout = 600000; 
     private dependenciesChecked = false;
 
-    private readonly processingPhases: ProcessingPhase[] = [
-        {
-            id: 0,
-            name: 'Categorization',
-            description: 'Identify document types and basic information',
-            requiresDocumentType: true,
-            requiresFullExtraction: false
-        },
-        {
-            id: 1,
-            name: 'Incoming Invoices',
-            description: 'Full processing of incoming invoices (we are buyers)',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        },
-        {
-            id: 2,
-            name: 'Outgoing Invoices',
-            description: 'Full processing of outgoing invoices (we are sellers)',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        },
-        {
-            id: 3,
-            name: 'Other Documents',
-            description: 'Process receipts, bank statements, contracts, etc.',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        }
-    ];
-
     constructor(
         private readonly config: ConfigService, 
         private readonly prisma: PrismaService
@@ -173,85 +156,59 @@ export class DataExtractionService {
         }
     }
 
-    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0) {
-        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
+    async extractData(fileBase64: string, clientCompanyEin: string) {
+        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin));
     }
 
-    private validateProcessedData(data: any, phase: number): ProcessedDataValidation {
-        const validation: ProcessedDataValidation = {
-            isValid: true,
-            errors: [],
-            warnings: []
-        };
+    private validateProcessedData(data: any): ProcessedDataValidation {
+    const validation: ProcessedDataValidation = {
+        isValid: true,
+        errors: [],
+        warnings: []
+    };
 
-        if (!data || typeof data !== 'object') {
-            validation.isValid = false;
-            validation.errors.push('Invalid data structure received');
-            return validation;
-        }
-
-        const result = data.result || data;
-        const currentPhase = this.processingPhases[phase];
-
-        if (!result.document_type) {
-            validation.isValid = false;
-            validation.errors.push('Missing document_type');
-            return validation;
-        }
-
-        if (currentPhase?.requiresFullExtraction) {
-            const docType = result.document_type.toLowerCase();
-
-            switch (docType) {
-                case 'invoice':
-                    const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
-                    const missingInvoiceFields = requiredInvoiceFields.filter(field => !result[field]);
-                    
-                    if (missingInvoiceFields.length > 0) {
-                        validation.isValid = false;
-                        validation.errors.push(`Missing required invoice fields: ${missingInvoiceFields.join(', ')}`);
-                    }
-
-                    if (!Array.isArray(result.line_items)) {
-                        validation.warnings.push('Invoice line_items should be an array');
-                    }
-
-                    if (phase === 1 || phase === 2) {
-                        if (!result.direction) {
-                            validation.warnings.push('Missing invoice direction');
-                        } else if (phase === 1 && result.direction !== 'incoming') {
-                            validation.warnings.push('Expected incoming invoice in phase 1');
-                        } else if (phase === 2 && result.direction !== 'outgoing') {
-                            validation.warnings.push('Expected outgoing invoice in phase 2');
-                        }
-                    }
-                    break;
-
-                case 'receipt':
-                    const requiredReceiptFields = ['vendor', 'total_amount', 'document_date'];
-                    const missingReceiptFields = requiredReceiptFields.filter(field => !result[field]);
-                    
-                    if (missingReceiptFields.length > 0) {
-                        validation.warnings.push(`Missing receipt fields: ${missingReceiptFields.join(', ')}`);
-                    }
-                    break;
-
-                case 'bank statement':
-                    const requiredBankFields = ['company_name', 'bank_name'];
-                    const missingBankFields = requiredBankFields.filter(field => !result[field]);
-                    
-                    if (missingBankFields.length > 0) {
-                        validation.warnings.push(`Missing bank statement fields: ${missingBankFields.join(', ')}`);
-                    }
-
-                    if (!Array.isArray(result.transactions)) {
-                        validation.warnings.push('Bank statement transactions should be an array');
-                    }
-                    break;
-            }
-        }
-
+    if (!data || typeof data !== 'object') {
+        validation.isValid = false;
+        validation.errors.push('Invalid data structure received');
         return validation;
+    }
+
+    const result = data.result || data;
+
+    if (!result.document_type) {
+        validation.isValid = false;
+        validation.errors.push('Missing document_type');
+        return validation;
+    }
+
+    return validation;
+}
+
+    private createFallbackResponse(docType: string = 'Unknown', documentHash: string = ''): FallbackResponse {
+        return {
+            document_type: docType,
+            document_date: '',
+            line_items: docType.toLowerCase() === 'invoice' ? [] : undefined,
+            transactions: docType.toLowerCase() === 'bank statement' ? [] : undefined,
+            duplicate_detection: {
+                is_duplicate: false,
+                duplicate_matches: [],
+                document_hash: documentHash,
+                confidence: 0.0
+            },
+            compliance_validation: {
+                compliance_status: 'PENDING',
+                overall_score: 0.0,
+                validation_rules: { ro: [], en: [] },
+                errors: { 
+                    ro: ['Procesare incompletă - verificați manual'], 
+                    en: ['Incomplete processing - please verify manually'] 
+                },
+                warnings: { ro: [], en: [] }
+            },
+            confidence: 0.1,
+            processing_status: 'FALLBACK'
+        };
     }
 
     private async getExistingDocuments(accountingClientId: number) {
@@ -278,26 +235,6 @@ export class DataExtractionService {
         }));
     }
 
-    private async getExistingArticles(accountingClientId: number) {
-        const articles = await this.prisma.article.findMany({
-            where: {
-                accountingClientId: accountingClientId
-            }
-        });
-
-        const articlesMap: Record<string, any> = {};
-        articles.forEach(article => {
-            articlesMap[article.code] = {
-                name: article.name,
-                vat: article.vat,
-                unitOfMeasure: article.unitOfMeasure,
-                type: article.type
-            };
-        });
-
-        return articlesMap;
-    }
-
     private async getUserCorrections(accountingClientId: number) {
         const corrections = await this.prisma.userCorrection.findMany({
             where: {
@@ -320,11 +257,10 @@ export class DataExtractionService {
         }));
     }
     
-    private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0) {
+     private async processDocument(fileBase64: string, clientCompanyEin: string) {
         let tempBase64File: string | null = null;
         let tempExistingDocsFile: string | null = null;
         let tempUserCorrectionsFile: string | null = null;
-        let tempExistingArticlesFile: string | null = null;
         const startTime = Date.now();
         const memoryBefore = process.memoryUsage();
         
@@ -334,8 +270,7 @@ export class DataExtractionService {
                 throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
             }
         
-            const currentPhase = this.processingPhases[processingPhase];
-            this.logger.log(`Starting document processing in phase ${processingPhase} (${currentPhase?.name}). Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
+            this.logger.log(`Starting document processing. Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
             this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
         
             if (!fs.existsSync(this.pythonScriptPath)) {
@@ -382,28 +317,24 @@ export class DataExtractionService {
         
             const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
             const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
-            const existingArticles = await this.getExistingArticles(accountingClientRelation.id);
         
             const timestamp = Date.now();
             const randomId = randomBytes(8).toString('hex');
             const tempFileName = `base64_${randomId}_${timestamp}.txt`;
             const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
             const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
-            const existingArticlesFileName = `existing_articles_${randomId}_${timestamp}.json`;
             
             tempBase64File = path.join(this.tempDir, tempFileName);
             tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
             tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
-            tempExistingArticlesFile = path.join(this.tempDir, existingArticlesFileName);
         
             await Promise.all([
                 writeFilePromise(tempBase64File, fileBase64),
                 writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
-                writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2)),
-                writeFilePromise(tempExistingArticlesFile, JSON.stringify(existingArticles, null, 2))
+                writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2))
             ]);
             
-            this.logger.debug(`Created temporary files for phase ${processingPhase}: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}, ${tempExistingArticlesFile}`);
+            this.logger.debug(`Created temporary files: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}`);
         
             if (!this.dependenciesChecked) {
                 try {
@@ -418,9 +349,7 @@ export class DataExtractionService {
                 clientCompanyEin,
                 tempBase64File,
                 tempExistingDocsFile,
-                tempUserCorrectionsFile,
-                tempExistingArticlesFile,
-                processingPhase.toString()
+                tempUserCorrectionsFile
             ];
             
             this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
@@ -439,7 +368,6 @@ export class DataExtractionService {
                         PYTHONPATH: path.dirname(this.pythonScriptPath),
                         PYTHONUNBUFFERED: '1',
                         MALLOC_ARENA_MAX: '2',
-                        PROCESSING_PHASE: processingPhase.toString()
                     },
                     stdio: ['pipe', 'pipe', 'pipe']
                 });
@@ -479,49 +407,63 @@ export class DataExtractionService {
                 const jsonOutput = this.extractJsonFromOutput(stdout);
                 result = JSON.parse(jsonOutput);
             } catch (parseError) {
-                this.logger.error(`Failed to parse Python output in phase ${processingPhase}. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
-                throw new Error(`Failed to parse processing results in phase ${processingPhase}: ${parseError.message}`);
+                this.logger.error(`Failed to parse Python output. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
+                
+                let docType = 'Unknown';
+                try {
+                    const typeMatch = stdout.match(/"document_type"\s*:\s*"([^"]+)"/i);
+                    if (typeMatch) {
+                        docType = typeMatch[1];
+                    }
+                } catch (e) {
+                }
+                
+                const fallbackResponse = this.createFallbackResponse(docType);
+                this.logger.warn('Using fallback response due to parsing error');
+                return fallbackResponse;
             }
         
             if (result.error) {
-                this.logger.error(`Python script returned error in phase ${processingPhase}: ${result.error}`);
-                throw new Error(`Processing failed in phase ${processingPhase}: ${result.error}`);
+                this.logger.error(`Python script returned error: ${result.error}`);
+                
+                const errorMessage = result.error.toLowerCase();
+                if (errorMessage.includes('api key') || errorMessage.includes('authentication')) {
+                    throw new Error(result.error);
+                }
+                
+                const fallbackResponse = this.createFallbackResponse();
+                this.logger.warn('Using fallback response due to Python error');
+                return fallbackResponse;
             }
         
             const extractedData = result.data || result;
             
-            const validation = this.validateProcessedData(extractedData, processingPhase);
-            
+            const validation = this.validateProcessedData(extractedData);
+
             if (!validation.isValid) {
-                this.logger.error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
-                throw new Error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
+                this.logger.warn(`Data validation failed: ${validation.errors.join(', ')}`);
+                if (!extractedData.document_type) {
+                    const fallbackResponse = this.createFallbackResponse('Unknown');
+                    return fallbackResponse;
+                }
             }
             
             if (validation.warnings.length > 0) {
-                this.logger.warn(`Data validation warnings in phase ${processingPhase}: ${validation.warnings.join(', ')}`);
+                this.logger.warn(`Data validation warnings: ${validation.warnings.join(', ')}`);
             }
         
-            if (processingPhase === 0) {
-                this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
-                if (extractedData.document_type === 'Invoice') {
-                    this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
-                }
-            } else {
-                if (extractedData.duplicate_detection) {
-                    this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
-                }
-        
-                if (extractedData.compliance_validation) {
-                    this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
-                }
+            if (extractedData.duplicate_detection) {
+                this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
             }
         
-            if (currentPhase?.requiresFullExtraction) {
-                this.validateInvoiceDirection(extractedData, clientCompanyEin);
-                this.validateDocumentRelevance(extractedData, clientCompanyEin);
-                this.validateAndNormalizeCurrency(extractedData);
-                this.validateExtractedData(extractedData, [], [], clientCompanyEin);
+            if (extractedData.compliance_validation) {
+                this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
             }
+        
+            this.validateInvoiceDirection(extractedData, clientCompanyEin);
+            this.validateDocumentRelevance(extractedData, clientCompanyEin);
+            this.validateAndNormalizeCurrency(extractedData);
+            this.validateExtractedData(extractedData, [], [], clientCompanyEin);
         
             const processingTime = Date.now() - startTime;
             const memoryAfter = process.memoryUsage();
@@ -531,30 +473,30 @@ export class DataExtractionService {
                 external: memoryAfter.external - memoryBefore.external
             };
         
-            this.logger.log(`Document processing completed in phase ${processingPhase} (${currentPhase?.name}) in ${processingTime}ms`);
+            this.logger.log(`Document processing completed in ${processingTime}ms`);
             this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
         
             return extractedData;
             
         } catch (error) {
             const processingTime = Date.now() - startTime;
-            this.logger.error(`Error extracting data for EIN ${clientCompanyEin} in phase ${processingPhase} after ${processingTime}ms: ${error.message}`, error.stack);
+            this.logger.error(`Error extracting data for EIN ${clientCompanyEin} after ${processingTime}ms: ${error.message}`, error.stack);
             
             if (error.message.includes('timeout')) {
-                throw new Error(`Document processing timed out in phase ${processingPhase} after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
+                throw new Error(`Document processing timed out after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
             } else if (error.message.includes('maxBuffer')) {
-                throw new Error(`Document output too large in phase ${processingPhase}. Please try with a smaller or simpler document.`);
+                throw new Error('Document output too large. Please try with a smaller or simpler document.');
             } else if (error.message.includes('ENOENT')) {
                 throw new Error('Document processing system unavailable. Please try again later.');
             } else if (error.message.includes('spawn') || error.message.includes('Python process')) {
-                throw new Error(`Python processing failed in phase ${processingPhase}. Please check system configuration.`);
+                throw new Error('Python processing failed. Please check system configuration.');
             } else if (error.message.includes('api key') || error.message.includes('authentication')) {
                 throw new Error('API authentication failed. Please check your API configuration.');
             }
             
-            throw new Error(`Failed to extract data from document in phase ${processingPhase}: ${error.message}`);
+            throw new Error(`Failed to extract data from document: ${error.message}`);
         } finally {
-            const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile, tempExistingArticlesFile].filter(Boolean);
+            const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile].filter(Boolean);
             
             await Promise.all(
                 tempFiles.map(async (file) => {
@@ -963,174 +905,173 @@ export class DataExtractionService {
             maxFileSize: `${this.maxFileSize / 1024 / 1024}MB`,
             processingTimeout: `${this.processingTimeout / 1000}s`,
             queueLength: this.processingQueue['queue']?.length || 0,
-            isProcessing: this.processingQueue['processing'] || false,
-            processingPhases: this.processingPhases
+            isProcessing: this.processingQueue['processing'] || false
         };
     }
 
     async saveDuplicateDetectionWithTransaction(
-        prisma: any, 
-        documentId: number, 
-        duplicateDetection: any
-    ): Promise<void> {
-        try {
-            if (!duplicateDetection?.duplicate_matches) return;
+    prisma: any, // PrismaTransaction type
+    documentId: number, 
+    duplicateDetection: any
+): Promise<void> {
+    try {
+        if (!duplicateDetection?.duplicate_matches) return;
 
-            for (const match of duplicateDetection.duplicate_matches) {
-                if (match.document_id && match.document_id !== documentId) {
-                    await prisma.documentDuplicateCheck.create({
-                        data: {
-                            originalDocumentId: documentId,
-                            duplicateDocumentId: match.document_id,
-                            similarityScore: match.similarity_score || 0.0,
-                            matchingFields: match.matching_fields || {},
-                            duplicateType: this.mapDuplicateType(match.duplicate_type),
-                            status: DuplicateStatus.PENDING
-                        }
-                    });
-                }
+        for (const match of duplicateDetection.duplicate_matches) {
+            if (match.document_id && match.document_id !== documentId) {
+                await prisma.documentDuplicateCheck.create({
+                    data: {
+                        originalDocumentId: documentId,
+                        duplicateDocumentId: match.document_id,
+                        similarityScore: match.similarity_score || 0.0,
+                        matchingFields: match.matching_fields || {},
+                        duplicateType: this.mapDuplicateType(match.duplicate_type),
+                        status: DuplicateStatus.PENDING
+                    }
+                });
             }
-        } catch (error) {
-            console.error('[DUPLICATE_DETECTION_ERROR]', error);
         }
+    } catch (error) {
+        console.error('[DUPLICATE_DETECTION_ERROR]', error);
     }
+}
 
-    async saveComplianceValidationWithTransaction(
-        prisma: any,
-        documentId: number, 
-        complianceValidation: any
-    ): Promise<void> {
-        try {
-            let validationRules, errors, warnings;
-            
-            if (complianceValidation.validation_rules?.ro && complianceValidation.validation_rules?.en) {
-                validationRules = complianceValidation.validation_rules;
-                errors = complianceValidation.errors;
-                warnings = complianceValidation.warnings;
-            } else {
-                validationRules = {
-                    ro: complianceValidation.validation_rules || [],
-                    en: complianceValidation.validation_rules || []
-                };
-                errors = {
-                    ro: complianceValidation.errors || [],
-                    en: complianceValidation.errors || []
-                };
-                warnings = {
-                    ro: complianceValidation.warnings || [],
-                    en: complianceValidation.warnings || []
-                };
+async saveComplianceValidationWithTransaction(
+    prisma: any,
+    documentId: number, 
+    complianceValidation: any
+): Promise<void> {
+    try {
+        let validationRules, errors, warnings;
+        
+        if (complianceValidation.validation_rules?.ro && complianceValidation.validation_rules?.en) {
+            validationRules = complianceValidation.validation_rules;
+            errors = complianceValidation.errors;
+            warnings = complianceValidation.warnings;
+        } else {
+            validationRules = {
+                ro: complianceValidation.validation_rules || [],
+                en: complianceValidation.validation_rules || []
+            };
+            errors = {
+                ro: complianceValidation.errors || [],
+                en: complianceValidation.errors || []
+            };
+            warnings = {
+                ro: complianceValidation.warnings || [],
+                en: complianceValidation.warnings || []
+            };
+        }
+
+        await prisma.complianceValidation.create({
+            data: {
+                documentId: documentId,
+                overallStatus: this.mapComplianceStatus(complianceValidation.compliance_status),
+                validationRules: validationRules,
+                errors: errors,
+                warnings: warnings,
+                overallScore: complianceValidation.overall_score || null,
+                validatedAt: new Date()
             }
-
-            await prisma.complianceValidation.create({
-                data: {
-                    documentId: documentId,
-                    overallStatus: this.mapComplianceStatus(complianceValidation.compliance_status),
-                    validationRules: validationRules,
-                    errors: errors,
-                    warnings: warnings,
-                    overallScore: complianceValidation.overall_score || null,
-                    validatedAt: new Date()
-                }
-            });
-        } catch (error) {
-            console.error('[COMPLIANCE_VALIDATION_ERROR]', error);
-        }
+        });
+    } catch (error) {
+        console.error('[COMPLIANCE_VALIDATION_ERROR]', error);
     }
+}
 
-    async saveComplianceValidation(documentId: number, complianceData: any) {
-        try {
-            let validationRules, errors, warnings;
-            
-            if (complianceData.validation_rules?.ro && complianceData.validation_rules?.en) {
-                validationRules = complianceData.validation_rules;
-                errors = complianceData.errors;
-                warnings = complianceData.warnings;
-            } else {
-                validationRules = {
-                    ro: complianceData.validation_rules || [],
-                    en: complianceData.validation_rules || []
-                };
-                errors = {
-                    ro: complianceData.errors || [],
-                    en: complianceData.errors || []
-                };
-                warnings = {
-                    ro: complianceData.warnings || [],
-                    en: complianceData.warnings || []
-                };
+async saveComplianceValidation(documentId: number, complianceData: any) {
+    try {
+        let validationRules, errors, warnings;
+        
+        if (complianceData.validation_rules?.ro && complianceData.validation_rules?.en) {
+            validationRules = complianceData.validation_rules;
+            errors = complianceData.errors;
+            warnings = complianceData.warnings;
+        } else {
+            validationRules = {
+                ro: complianceData.validation_rules || [],
+                en: complianceData.validation_rules || []
+            };
+            errors = {
+                ro: complianceData.errors || [],
+                en: complianceData.errors || []
+            };
+            warnings = {
+                ro: complianceData.warnings || [],
+                en: complianceData.warnings || []
+            };
+        }
+
+        const compliance = await this.prisma.complianceValidation.create({
+            data: {
+                documentId: documentId,
+                overallStatus: complianceData.compliance_status as ComplianceStatus,
+                validationRules: validationRules,
+                errors: errors,
+                warnings: warnings,
+                overallScore: complianceData.overall_score || null
             }
+        });
 
-            const compliance = await this.prisma.complianceValidation.create({
-                data: {
-                    documentId: documentId,
-                    overallStatus: complianceData.compliance_status as ComplianceStatus,
-                    validationRules: validationRules,
-                    errors: errors,
-                    warnings: warnings,
-                    overallScore: complianceData.overall_score || null
-                }
-            });
-
-            return compliance;
-        } catch (error) {
-            this.logger.error(`Failed to save compliance validation: ${error.message}`);
-            throw error;
-        }
+        return compliance;
+    } catch (error) {
+        this.logger.error(`Failed to save compliance validation: ${error.message}`);
+        throw error;
     }
+}
 
-    async saveUserCorrectionWithTransaction(
-        prisma: any, 
-        documentId: number, 
-        userId: number, 
-        correction: any
-    ): Promise<void> {
-        try {
-            await prisma.userCorrection.create({
-                data: {
-                    documentId: documentId,
-                    userId: userId,
-                    correctionType: this.mapCorrectionType(correction.correctionType || correction.field),
-                    originalValue: correction.originalValue,
-                    correctedValue: correction.correctedValue || correction.newValue,
-                    confidence: correction.confidence || null,
-                    applied: false
-                }
-            });
-        } catch (error) {
-            console.error('[USER_CORRECTION_ERROR]', error);
-        }
+async saveUserCorrectionWithTransaction(
+    prisma: any, 
+    documentId: number, 
+    userId: number, 
+    correction: any
+): Promise<void> {
+    try {
+        await prisma.userCorrection.create({
+            data: {
+                documentId: documentId,
+                userId: userId,
+                correctionType: this.mapCorrectionType(correction.correctionType || correction.field),
+                originalValue: correction.originalValue,
+                correctedValue: correction.correctedValue || correction.newValue,
+                confidence: correction.confidence || null,
+                applied: false
+            }
+        });
+    } catch (error) {
+        console.error('[USER_CORRECTION_ERROR]', error);
     }
+}
 
-    private mapDuplicateType(type: string): DuplicateType {
-        const mapping = {
-            'exact_match': DuplicateType.EXACT_MATCH,
-            'content_match': DuplicateType.CONTENT_MATCH,
-            'similar_content': DuplicateType.SIMILAR_CONTENT
-        };
-        return mapping[type?.toLowerCase()] || DuplicateType.SIMILAR_CONTENT;
-    }
+private mapDuplicateType(type: string): DuplicateType {
+    const mapping = {
+        'exact_match': DuplicateType.EXACT_MATCH,
+        'content_match': DuplicateType.CONTENT_MATCH,
+        'similar_content': DuplicateType.SIMILAR_CONTENT
+    };
+    return mapping[type?.toLowerCase()] || DuplicateType.SIMILAR_CONTENT;
+}
 
-    private mapComplianceStatus(status: string): ComplianceStatus {
-        const mapping = {
-            'compliant': ComplianceStatus.COMPLIANT,
-            'non_compliant': ComplianceStatus.NON_COMPLIANT,
-            'warning': ComplianceStatus.WARNING,
-            'pending': ComplianceStatus.PENDING
-        };
-        return mapping[status?.toLowerCase()] || ComplianceStatus.PENDING;
-    }
+private mapComplianceStatus(status: string): ComplianceStatus {
+    const mapping = {
+        'compliant': ComplianceStatus.COMPLIANT,
+        'non_compliant': ComplianceStatus.NON_COMPLIANT,
+        'warning': ComplianceStatus.WARNING,
+        'pending': ComplianceStatus.PENDING
+    };
+    return mapping[status?.toLowerCase()] || ComplianceStatus.PENDING;
+}
 
-    private mapCorrectionType(type: string): CorrectionType {
-        const mapping = {
-            'document_type': CorrectionType.DOCUMENT_TYPE,
-            'direction': CorrectionType.INVOICE_DIRECTION,
-            'vendor_information': CorrectionType.VENDOR_INFORMATION,
-            'buyer_information': CorrectionType.BUYER_INFORMATION,
-            'amounts': CorrectionType.AMOUNTS,
-            'dates': CorrectionType.DATES,
-            'line_items': CorrectionType.LINE_ITEMS
-        };
-        return mapping[type] || CorrectionType.OTHER;
-    }
+private mapCorrectionType(type: string): CorrectionType {
+    const mapping = {
+        'document_type': CorrectionType.DOCUMENT_TYPE,
+        'direction': CorrectionType.INVOICE_DIRECTION,
+        'vendor_information': CorrectionType.VENDOR_INFORMATION,
+        'buyer_information': CorrectionType.BUYER_INFORMATION,
+        'amounts': CorrectionType.AMOUNTS,
+        'dates': CorrectionType.DATES,
+        'line_items': CorrectionType.LINE_ITEMS
+    };
+    return mapping[type] || CorrectionType.OTHER;
+}
 }

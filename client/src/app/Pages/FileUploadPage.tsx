@@ -2,7 +2,7 @@ import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
 import { lazy, Suspense, useState, useCallback, useEffect, useRef } from "react";
 import { useExtractDataMutation, useGetDuplicateAlertsQuery } from "@/redux/slices/apiSlice";
-import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle, AlertTriangle, Shield, RefreshCw, ArrowDown, ArrowUp, Package } from "lucide-react";
+import { Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, AlertCircle, RotateCcw, Edit, Pause, Play, LoaderCircle, AlertTriangle, Shield, RefreshCw } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
@@ -21,7 +21,7 @@ type clientCompany= {
   }
 }
 
-type DocumentState = 'uploaded' | 'queued' | 'categorizing' | 'categorized' | 'processing' | 'processed' | 'saved' | 'error' | 'retry';
+type DocumentState = 'uploaded' | 'queued' | 'processing' | 'processed' | 'saved' | 'error' | 'retry';
 
 interface DocumentStatus {
   state: DocumentState;
@@ -30,18 +30,6 @@ interface DocumentStatus {
   position?: number;
   retryCount?: number;
   lastAttempt?: number;
-  category?: string;
-  direction?: 'incoming' | 'outgoing' | 'unknown';
-  processingPhase?: number;
-}
-
-interface ProcessingPhase {
-  id: number;
-  name: string;
-  description: string;
-  icon: React.ReactNode;
-  color: string;
-  filter: (doc: File, status: DocumentStatus) => boolean;
 }
 
 const MAX_RETRIES = 3;
@@ -60,64 +48,23 @@ const FileUploadPage = () => {
   const [currentlyProcessing, setCurrentlyProcessing] = useState<string | null>(null);
   const [showDuplicateAlerts, setShowDuplicateAlerts] = useState<boolean>(false);
   const [queueErrors, setQueueErrors] = useState<number>(0);
-  const [currentPhase, setCurrentPhase] = useState<number>(0);
 
   const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef<boolean>(false);
   const currentAbortController = useRef<AbortController | null>(null);
 
+  useEffect(()=>{
+    console.log('Documents', documents)
+    console.log('Document States', documentStates)
+    console.log('Processing Queue', processingQueue)
+    console.log('Queue Errors', queueErrors)
+  },[documents, documentStates, processingQueue, queueErrors])
+  
   const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name)
   const clientCompanyEin = useSelector((state:clientCompany)=>state.clientCompany.current.ein)
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const [process] = useExtractDataMutation();
 
-  const processingPhases: ProcessingPhase[] = [
-    {
-      id: 0,
-      name: language === 'ro' ? 'Categorizare' : 'Categorization',
-      description: language === 'ro' ? 'Identifică tipul documentelor' : 'Identify document types',
-      icon: <FileText size={16} />,
-      color: 'blue',
-      filter: (_doc: File, status: DocumentStatus) => 
-        Boolean(status.state === 'queued' && !status.category)
-    },
-    {
-      id: 1,
-      name: language === 'ro' ? 'Facturi Primite' : 'Incoming Invoices',
-      description: language === 'ro' ? 'Procesează facturi unde suntem cumpărători' : 'Process invoices where we are buyers',
-      icon: <ArrowDown size={16} />,
-      color: 'green',
-      filter: (_doc: File, status: DocumentStatus) => 
-        Boolean(status.category === 'Invoice' && status.direction === 'incoming' && status.state === 'categorized')
-    },
-    {
-      id: 2,
-      name: language === 'ro' ? 'Facturi Emise' : 'Outgoing Invoices',
-      description: language === 'ro' ? 'Procesează facturi unde suntem vânzători' : 'Process invoices where we are sellers',
-      icon: <ArrowUp size={16} />,
-      color: 'orange',
-      filter: (_doc: File, status: DocumentStatus) => 
-        Boolean(status.category === 'Invoice' && status.direction === 'outgoing' && status.state === 'categorized')
-    },
-    {
-      id: 3,
-      name: language === 'ro' ? 'Alte Documente' : 'Other Documents',
-      description: language === 'ro' ? 'Procesează chitanțe, extrase bancare, etc.' : 'Process receipts, bank statements, etc.',
-      icon: <Package size={16} />,
-      color: 'purple',
-      filter: (_doc: File, status: DocumentStatus) => 
-        Boolean(status.category && status.category !== 'Invoice' && status.state === 'categorized')
-    }
-  ];
-
-  useEffect(()=>{
-    console.log('Documents', documents)
-    console.log('Document States', documentStates)
-    console.log('Processing Queue', processingQueue)
-    console.log('Current Phase', currentPhase)
-    console.log('Queue Errors', queueErrors)
-  },[documents, documentStates, processingQueue, currentPhase, queueErrors])
-  
   const { data: duplicateAlerts = [] } = useGetDuplicateAlertsQuery(
     { company: clientCompanyEin },
     { skip: !clientCompanyEin }
@@ -129,7 +76,7 @@ const FileUploadPage = () => {
     }
   }, [processingQueue.length, currentlyProcessing]);
 
-  useEffect(() => {
+    useEffect(() => {
     const retryFailedDocuments = () => {
       const failedDocs = Object.entries(documentStates)
         .filter(([, status]) => 
@@ -141,7 +88,7 @@ const FileUploadPage = () => {
 
       if (failedDocs.length > 0 && !isProcessingPaused && queueErrors < 10) {
         console.log(`Auto-retrying ${failedDocs.length} failed documents`);
-        
+
         failedDocs.forEach(docName => {
           setDocumentStates(prev => ({
             ...prev,
@@ -174,8 +121,7 @@ const FileUploadPage = () => {
           state: 'queued',
           position: processingQueue.length + index + 1,
           retryCount: 0,
-          lastAttempt: 0,
-          processingPhase: 0 
+          lastAttempt: 0
         };
         newQueueItems.push(doc.name);
       });
@@ -189,63 +135,7 @@ const FileUploadPage = () => {
     if (processingQueue.length > 0 && !isProcessingRef.current && !isProcessingPaused) {
       processNextInQueue();
     }
-  }, [processingQueue, isProcessingPaused, currentPhase]);
-
-  const determineDocumentDirection = useCallback((extractedData: any): 'incoming' | 'outgoing' | 'unknown' => {
-    const buyerEin = extractedData.buyer_ein?.replace(/^RO/i, '');
-    const vendorEin = extractedData.vendor_ein?.replace(/^RO/i, '');
-    const cleanClientEin = clientCompanyEin.replace(/^RO/i, '');
-
-    if (buyerEin === cleanClientEin) return 'incoming';
-    if (vendorEin === cleanClientEin) return 'outgoing';
-    return 'unknown';
-  }, [clientCompanyEin]);
-
-  const organizeProcessingQueue = useCallback(() => {
-    console.log('Organizing processing queue by phases...');
-    
-    const currentPhaseObj = processingPhases[currentPhase];
-    if (!currentPhaseObj) return;
-
-    const docsForCurrentPhase = documents.filter(doc => {
-      const status = documentStates[doc.name];
-      return status && currentPhaseObj.filter(doc, status);
-    });
-
-    const newQueue = docsForCurrentPhase.map(doc => doc.name);
-    
-    if (newQueue.length > 0) {
-      console.log(`Phase ${currentPhase} (${currentPhaseObj.name}): ${newQueue.length} documents ready`);
-      setProcessingQueue(newQueue);
-      
-      setDocumentStates(prev => {
-        const updated = { ...prev };
-        newQueue.forEach((name, index) => {
-          if (updated[name]) {
-            updated[name] = {
-              ...updated[name],
-              position: index + 1,
-              processingPhase: currentPhase
-            };
-          }
-        });
-        return updated;
-      });
-    } else {
-      console.log(`Phase ${currentPhase} (${currentPhaseObj.name}): No documents ready, moving to next phase`);
-      advanceToNextPhase();
-    }
-  }, [currentPhase, documents, documentStates]);
-
-  const advanceToNextPhase = useCallback(() => {
-    if (currentPhase < processingPhases.length - 1) {
-      console.log(`Advancing from phase ${currentPhase} to ${currentPhase + 1}`);
-      setCurrentPhase(prev => prev + 1);
-    } else {
-      console.log('All phases completed');
-      setProcessingQueue([]);
-    }
-  }, [currentPhase]);
+  }, [processingQueue, isProcessingPaused]);
 
   const validateProcessedData = useCallback((data: any): boolean => {
     if (!data || typeof data !== 'object') {
@@ -255,9 +145,45 @@ const FileUploadPage = () => {
 
     const result = data.result || data;
     
-    if (!result.document_type) {
+    // Check for required fields based on document type
+    const docType = result.document_type?.toLowerCase();
+    
+    if (!docType) {
       console.warn('Missing document_type in processed data');
       return false;
+    }
+
+    // Validate based on document type
+    switch (docType) {
+      case 'invoice':
+        const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
+        const missingFields = requiredInvoiceFields.filter(field => !result[field]);
+        if (missingFields.length > 0) {
+          console.warn(`Missing required invoice fields: ${missingFields.join(', ')}`);
+          return false;
+        }
+        break;
+      
+      case 'receipt':
+        if (!result.vendor || !result.total_amount || !result.document_date) {
+          console.warn('Missing required receipt fields');
+          return false;
+        }
+        break;
+      
+      case 'bank statement':
+        if (!result.company_name || !result.bank_name || !result.account_number) {
+          console.warn('Missing required bank statement fields');
+          return false;
+        }
+        break;
+      
+      default:
+        // For other document types, just ensure basic structure exists
+        if (!result.document_date) {
+          console.warn('Missing document_date for document type:', docType);
+          return false;
+        }
     }
 
     return true;
@@ -275,28 +201,25 @@ const FileUploadPage = () => {
     if (!document) {
       setProcessingQueue(prev => prev.slice(1));
       isProcessingRef.current = false;
-      organizeProcessingQueue();
       return;
     }
 
+    // Create abort controller for this processing attempt
     currentAbortController.current = new AbortController();
     const abortSignal = currentAbortController.current.signal;
 
     setCurrentlyProcessing(nextDocumentName);
     
-    const currentPhaseObj = processingPhases[currentPhase];
-    const isCategorizationPhase = currentPhase === 0;
-    
     setDocumentStates(prev => ({
       ...prev,
       [nextDocumentName]: { 
         ...prev[nextDocumentName],
-        state: isCategorizationPhase ? 'categorizing' : 'processing',
-        lastAttempt: Date.now(),
-        processingPhase: currentPhase
+        state: 'processing',
+        lastAttempt: Date.now()
       }
     }));
 
+    // Set processing timeout
     const timeoutId = setTimeout(() => {
       if (currentAbortController.current) {
         currentAbortController.current.abort();
@@ -304,59 +227,34 @@ const FileUploadPage = () => {
     }, PROCESSING_TIMEOUT);
 
     try {
-      console.log(`Processing document: ${nextDocumentName} in phase ${currentPhase} (${currentPhaseObj.name}) (attempt ${(documentStates[nextDocumentName]?.retryCount || 0) + 1})`);
+      console.log(`Processing document: ${nextDocumentName} (attempt ${(documentStates[nextDocumentName]?.retryCount || 0) + 1})`);
       
-      // Note: You may need to update your API slice to accept processingPhase parameter:
-      // In your apiSlice.ts, update the extractData mutation to include processingPhase
       const processedFile = await process({ 
         file: document, 
-        clientCompanyEin,
-        processingPhase: currentPhase 
+        clientCompanyEin 
       }).unwrap();
       
+      // Clear timeout on success
       clearTimeout(timeoutId);
       
+      // Validate the processed data
       if (!validateProcessedData(processedFile)) {
         throw new Error('Received incomplete or invalid data from processing service');
       }
       
-      const extractedData = processedFile.data || processedFile;
+      setDocumentStates(prev => ({
+        ...prev,
+        [nextDocumentName]: { 
+          state: 'processed', 
+          data: processedFile,
+          retryCount: prev[nextDocumentName]?.retryCount || 0,
+          lastAttempt: Date.now()
+        }
+      }));
       
-      if (isCategorizationPhase) {
-        const docType = extractedData.document_type;
-        const direction = docType === 'Invoice' ? determineDocumentDirection(extractedData) : 'unknown';
-        
-        setDocumentStates(prev => ({
-          ...prev,
-          [nextDocumentName]: { 
-            ...prev[nextDocumentName],
-            state: 'categorized',
-            category: docType,
-            direction: direction,
-            data: extractedData,
-            retryCount: prev[nextDocumentName]?.retryCount || 0,
-            lastAttempt: Date.now()
-          }
-        }));
-        
-        console.log(`Document categorized: ${nextDocumentName} as ${docType} (${direction})`);
-      } else {
-        setDocumentStates(prev => ({
-          ...prev,
-          [nextDocumentName]: { 
-            state: 'processed', 
-            data: extractedData,
-            category: prev[nextDocumentName]?.category,
-            direction: prev[nextDocumentName]?.direction,
-            retryCount: prev[nextDocumentName]?.retryCount || 0,
-            lastAttempt: Date.now(),
-            processingPhase: currentPhase
-          }
-        }));
-        
-        console.log(`Successfully processed: ${nextDocumentName} in phase ${currentPhase}`);
-      }
+      console.log(`Successfully processed: ${nextDocumentName}`);
       
+      // Reset queue error count on successful processing
       setQueueErrors(0);
       
     } catch (error) {
@@ -370,6 +268,7 @@ const FileUploadPage = () => {
       } else if (error instanceof Error) {
         errorMessage = error.message;
         
+        // Don't retry certain types of errors
         if (error.message.includes('file too large') || 
             error.message.includes('invalid file format') ||
             error.message.includes('authentication')) {
@@ -388,91 +287,88 @@ const FileUploadPage = () => {
           state: willRetry ? 'error' : 'error',
           error: errorMessage,
           retryCount: currentRetryCount + 1,
-          lastAttempt: Date.now(),
-          category: prev[nextDocumentName]?.category,
-          direction: prev[nextDocumentName]?.direction,
-          processingPhase: currentPhase
+          lastAttempt: Date.now()
         }
       }));
       
+      // Increment queue errors
       setQueueErrors(prev => prev + 1);
       
+      // If too many errors, pause processing
       if (queueErrors >= 5) {
         console.warn('Too many consecutive errors, pausing queue processing');
         setIsProcessingPaused(true);
       }
       
     } finally {
+      // Clean up abort controller
       currentAbortController.current = null;
       
       setProcessingQueue(prev => {
         const newQueue = prev.slice(1);
-        
-        if (newQueue.length === 0) {
-          setTimeout(organizeProcessingQueue, 100);
-        } else {
-          setDocumentStates(prevStates => {
-            const updated = { ...prevStates };
-            newQueue.forEach((name, index) => {
-              if (updated[name] && (updated[name].state === 'queued' || updated[name].state === 'categorized')) {
-                updated[name] = {
-                  ...updated[name],
-                  position: index + 1
-                };
-              }
-            });
-            return updated;
+        setDocumentStates(prevStates => {
+          const updated = { ...prevStates };
+          newQueue.forEach((name, index) => {
+            if (updated[name] && updated[name].state === 'queued') {
+              updated[name] = {
+                ...updated[name],
+                position: index + 1
+              };
+            }
           });
-        }
-        
+          return updated;
+        });
         return newQueue;
       });
       
       setCurrentlyProcessing(null);
       isProcessingRef.current = false;
       
-      if (!isProcessingPaused && queueErrors < 10) { 
+      // Continue processing after a delay to prevent overwhelming the system
+      if (processingQueue.length > 1 && !isProcessingPaused) { 
         processingTimeoutRef.current = setTimeout(() => {
           if (!isProcessingPaused && queueErrors < 10) {
             processNextInQueue();
           }
-        }, queueErrors > 0 ? 3000 : 1000); 
+        }, queueErrors > 0 ? 3000 : 1000); // Longer delay if there were errors
       }
     }
-  }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused, documentStates, queueErrors, validateProcessedData, currentPhase, organizeProcessingQueue, determineDocumentDirection]);
+  }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused, documentStates, queueErrors, validateProcessedData]);
 
   const clearQueue = useCallback(() => {
+    // Cancel current processing
     if (currentAbortController.current) {
       currentAbortController.current.abort();
     }
     
+    // Clear timeouts
     if (processingTimeoutRef.current) {
       clearTimeout(processingTimeoutRef.current);
     }
     
+    // Reset all states
     setProcessingQueue([]);
     setCurrentlyProcessing(null);
     setIsProcessingPaused(false);
     setQueueErrors(0);
-    setCurrentPhase(0);
     isProcessingRef.current = false;
     
+    // Reset document states to uploaded for queued/processing documents
     setDocumentStates(prev => {
       const updated = { ...prev };
       Object.keys(updated).forEach(docName => {
-        if (['queued', 'categorizing', 'categorized', 'processing', 'error', 'retry'].includes(updated[docName].state)) {
+        if (['queued', 'processing', 'error', 'retry'].includes(updated[docName].state)) {
           updated[docName] = {
             state: 'uploaded',
             retryCount: 0,
-            lastAttempt: 0,
-            processingPhase: 0
+            lastAttempt: 0
           };
         }
       });
       return updated;
     });
     
-    console.log('Queue cleared and reset to initial state');
+    console.log('Queue cleared and reset');
   }, []);
 
   const toggleProcessing = useCallback(() => {
@@ -480,12 +376,10 @@ const FileUploadPage = () => {
       const newPaused = !prev;
       if (!newPaused && processingQueue.length > 0 && !isProcessingRef.current) {
         setTimeout(processNextInQueue, 100);
-      } else if (!newPaused && processingQueue.length === 0) {
-        setTimeout(organizeProcessingQueue, 100);
       }
       return newPaused;
     });
-  }, [processingQueue.length, processNextInQueue, organizeProcessingQueue]);
+  }, [processingQueue.length, processNextInQueue]);
 
   const handleTooLongString = useCallback((str: string): string => {
     if (str.length > 25) return str.slice(0, 25) + '..';
@@ -502,27 +396,25 @@ const FileUploadPage = () => {
   }, [documentStates]);
 
   const handleRetryProcessing = useCallback((file: File) => {
-    const currentStatus = documentStates[file.name];
-    
+    // Reset the document state and add back to queue
     setDocumentStates(prev => ({
       ...prev,
       [file.name]: {
-        state: currentStatus?.category ? 'categorized' : 'queued',
+        state: 'queued',
         position: processingQueue.length + 1,
         retryCount: 0,
-        lastAttempt: 0,
-        category: currentStatus?.category,
-        direction: currentStatus?.direction,
-        processingPhase: currentStatus?.category ? 
-          (currentStatus.category === 'Invoice' ? 
-            (currentStatus.direction === 'incoming' ? 1 : 2) : 3) : 0
+        lastAttempt: 0
       }
     }));
     
-    setQueueErrors(0);
+    setProcessingQueue(prev => {
+      const filtered = prev.filter(name => name !== file.name);
+      return [...filtered, file.name];
+    });
     
-    setTimeout(organizeProcessingQueue, 100);
-  }, [processingQueue.length, documentStates, organizeProcessingQueue]);
+    // Reset queue errors if retrying manually
+    setQueueErrors(0);
+  }, [processingQueue.length]);
 
   const handleManualEdit = useCallback((file: File) => {
     const basicData = {
@@ -539,6 +431,7 @@ const FileUploadPage = () => {
   }, []);
 
   const handleDeleteDocument = useCallback((name: string): void => {
+    // Cancel processing if this document is being processed
     if (currentlyProcessing === name && currentAbortController.current) {
       currentAbortController.current.abort();
     }
@@ -582,15 +475,6 @@ const FileUploadPage = () => {
       switch (state) {
         case 'queued':
           return <Clock size={16} className="text-blue-400" />;
-        case 'categorizing':
-          return <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          >
-            <FileText size={16} className="text-purple-500" />
-          </motion.div>;
-        case 'categorized':
-          return <CheckCircle size={16} className="text-purple-500" />;
         case 'retry':
           return (
             <div className="flex items-center gap-1">
@@ -651,10 +535,6 @@ const FileUploadPage = () => {
     switch (state) {
       case 'queued':
         return 'text-blue-600 bg-blue-50 border-blue-200';
-      case 'categorizing':
-        return 'text-purple-600 bg-purple-50 border-purple-200';
-      case 'categorized':
-        return 'text-purple-600 bg-purple-50 border-purple-200';
       case 'retry':
         return 'text-orange-600 bg-orange-50 border-orange-200';
       case 'processing':
@@ -685,9 +565,6 @@ const FileUploadPage = () => {
     const position = documentStates[doc.name]?.position;
     const data = documentStates[doc.name]?.data;
     const retryCount = documentStates[doc.name]?.retryCount || 0;
-    const category = documentStates[doc.name]?.category;
-    const direction = documentStates[doc.name]?.direction;
-    const phase = documentStates[doc.name]?.processingPhase || 0;
     
     const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
@@ -702,24 +579,11 @@ const FileUploadPage = () => {
     
     switch (state) {
       case 'queued':
-        const phaseInfo = processingPhases[phase];
-        return language === 'ro' ? 
-          `Faza ${phase + 1}: ${phaseInfo?.name} (${position})` : 
-          `Phase ${phase + 1}: ${phaseInfo?.name} (${position})`;
-      case 'categorizing':
-        return language === 'ro' ? 'Se categorizează...' : 'Categorizing...';
-      case 'categorized':
-        const directionText = direction === 'incoming' ? 
-          (language === 'ro' ? 'Primită' : 'Incoming') : 
-          direction === 'outgoing' ? 
-          (language === 'ro' ? 'Emisă' : 'Outgoing') : '';
-        return `${category}${directionText ? ` (${directionText})` : ''}`;
+        return language === 'ro' ? `În coadă: ${position}` : `Queued: ${position}`;
       case 'retry':
         return language === 'ro' ? `Reîncercare ${retryCount}` : `Retry ${retryCount}`;
       case 'processing':
-        return language === 'ro' ? 
-          `Se procesează în faza ${phase + 1}...` : 
-          `Processing in phase ${phase + 1}...`;
+        return language === 'ro' ? 'Se procesează...' : 'Processing...';
       case 'processed':
         return language === 'ro' ? 'Procesat' : 'Processed';
       case 'saved':
@@ -735,112 +599,95 @@ const FileUploadPage = () => {
   };
 
   const renderActionButtons = (doc: File) => {
-    const state = documentStates[doc.name]?.state;
+  const state = documentStates[doc.name]?.state;
 
-    switch (state) {
-      case 'queued':
-      case 'categorizing':
-      case 'categorized':
-      case 'retry':
-        return (
-          <div className="flex items-center gap-2">
-            <div className="p-2 text-blue-400 bg-blue-100 rounded-lg">
-              <Clock size={18} />
-            </div>
-          </div>
-        );
-
-      case 'processing':
-        return (
-          <div className="flex items-center gap-2">
-          </div>
-        );
-
-      case 'processed':
-      case 'saved':
-        return (
-          <div className="flex items-center gap-2">
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleReviewDocument(doc)}
-                  className="p-2 text-emerald-500 bg-emerald-500/20 hover:text-white
-                   hover:bg-emerald-500 rounded-lg transition-colors"
-                >
-                  <Eye size={18} />
-                </button>
-              }
-              tip={state === 'saved' ? (language==='ro'?'Vezi date':'View data') : (language==='ro'?'Revizuiește':'Review')}
-            />
-            
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleRetryProcessing(doc)}
-                  className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
-                   hover:bg-blue-500 rounded-lg transition-colors"
-                >
-                  <RotateCcw size={18} />
-                </button>
-              }
-              tip={language==='ro'?'Reprocessează':'Reprocess'}
-            />
-          </div>
-        );
-
-      case 'error':
-        return (
-          <div className="flex items-center gap-2">
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleRetryProcessing(doc)}
-                  className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
-                   hover:bg-blue-500 rounded-lg transition-colors"
-                >
-                  <RotateCcw size={18} />
-                </button>
-              }
-              tip={language==='ro'?'Reîncearcă':'Retry'}
-            />
-            <TooltipDemo
-              trigger={
-                <button
-                  onClick={() => handleManualEdit(doc)}
-                  className="p-2 text-orange-500 bg-orange-500/20 hover:text-white
-                   hover:bg-orange-500 rounded-lg transition-colors"
-                >
-                  <Edit size={18} />
-                </button>
-              }
-              tip={language==='ro'?'Editare manuală':'Manual edit'}
-            />
-          </div>
-        );
-
-      default:
-        return (
-          <div className="p-2 text-gray-400 bg-gray-100 rounded-lg">
+  switch (state) {
+    case 'queued':
+    case 'retry':
+      return (
+        <div className="flex items-center gap-2">
+          <div className="p-2 text-blue-400 bg-blue-100 rounded-lg">
             <Clock size={18} />
           </div>
-        );
-    }
-  };
+        </div>
+      );
 
-  const getCurrentPhaseStats = () => {
-    const totalDocs = documents.length;
-    const uploadedDocs = documents.filter(doc => documentStates[doc.name]?.state === 'uploaded').length;
-    const categorizedDocs = documents.filter(doc => documentStates[doc.name]?.category).length;
-    const processedDocs = documents.filter(doc => ['processed', 'saved'].includes(documentStates[doc.name]?.state || '')).length;
-    
-    return {
-      total: totalDocs,
-      uploaded: uploadedDocs,
-      categorized: categorizedDocs,
-      processed: processedDocs,
-      remaining: totalDocs - processedDocs
-    };
-  };
+    case 'processing':
+      return (
+        <div className="flex items-center gap-2">
+        </div>
+      );
+
+    case 'processed':
+    case 'saved':
+      return (
+        <div className="flex items-center gap-2">
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleReviewDocument(doc)}
+                className="p-2 text-emerald-500 bg-emerald-500/20 hover:text-white
+                 hover:bg-emerald-500 rounded-lg transition-colors"
+              >
+                <Eye size={18} />
+              </button>
+            }
+            tip={state === 'saved' ? (language==='ro'?'Vezi date':'View data') : (language==='ro'?'Revizuiește':'Review')}
+          />
+          
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleRetryProcessing(doc)}
+                className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
+                 hover:bg-blue-500 rounded-lg transition-colors"
+              >
+                <RotateCcw size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Reprocessează':'Reprocess'}
+          />
+        </div>
+      );
+
+    case 'error':
+      return (
+        <div className="flex items-center gap-2">
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleRetryProcessing(doc)}
+                className="p-2 text-blue-500 bg-blue-500/20 hover:text-white
+                 hover:bg-blue-500 rounded-lg transition-colors"
+              >
+                <RotateCcw size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Reîncearcă':'Retry'}
+          />
+          <TooltipDemo
+            trigger={
+              <button
+                onClick={() => handleManualEdit(doc)}
+                className="p-2 text-orange-500 bg-orange-500/20 hover:text-white
+                 hover:bg-orange-500 rounded-lg transition-colors"
+              >
+                <Edit size={18} />
+              </button>
+            }
+            tip={language==='ro'?'Editare manuală':'Manual edit'}
+          />
+        </div>
+      );
+
+    default:
+      return (
+        <div className="p-2 text-gray-400 bg-gray-100 rounded-lg">
+          <Clock size={18} />
+        </div>
+      );
+  }
+};
 
   useEffect(() => {
     return () => {
@@ -853,10 +700,9 @@ const FileUploadPage = () => {
     };
   }, []);
 
-  const stats = getCurrentPhaseStats();
-
   return (
     <div className="min-h-screen p-8">
+      {/* Header Section */}
       <div className="mb-8">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -869,25 +715,15 @@ const FileUploadPage = () => {
               </h1>
               <p className="text-[var(--text2)] text-lg text-left">
                 {language === 'ro' 
-                  ? 'Procesare inteligentă în fazele: Categorizare → Facturi Primite → Facturi Emise → Alte Documente' 
-                  : 'Smart processing in phases: Categorization → Incoming Invoices → Outgoing Invoices → Other Documents'
+                  ? 'Încarcă și procesează documentele tale financiare secvențial' 
+                  : 'Upload and process your financial documents sequentially'
                 }
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {documents.length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-[var(--foreground)] rounded-2xl border border-[var(--text4)]">
-                <span className="text-sm font-medium text-[var(--text2)]">
-                  {language === 'ro' ? 'Faza' : 'Phase'} {currentPhase + 1}/{processingPhases.length}
-                </span>
-                <div className={`p-1 rounded-lg bg-${processingPhases[currentPhase]?.color}-500/20 text-${processingPhases[currentPhase]?.color}-600`}>
-                  {processingPhases[currentPhase]?.icon}
-                </div>
-              </div>
-            )}
-
+            {/* Alert Buttons */}
             {duplicateAlerts.length > 0 && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -901,6 +737,7 @@ const FileUploadPage = () => {
               </motion.button>
             )}
 
+            {/* Queue Error Alert */}
             {queueErrors > 3 && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -910,10 +747,11 @@ const FileUploadPage = () => {
                 font-medium shadow-sm hover:bg-red-600 transition-all duration-300"
               >
                 <RefreshCw size={18} />
-                {language === 'ro' ? 'Resetează' : 'Reset'}
+                {language === 'ro' ? 'Resetează Coada' : 'Reset Queue'}
               </motion.button>
             )}
 
+            {/* Processing Controls */}
             {processingQueue.length > 0 && (
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -949,59 +787,7 @@ const FileUploadPage = () => {
           </div>
         </div>
 
-        {documents.length > 0 && (
-          <div className="mt-6 grid grid-cols-4 gap-4">
-            {processingPhases.map((phase, index) => {
-              const isCurrentPhase = index === currentPhase;
-              const isCompletedPhase = index < currentPhase;
-              const docsInPhase = documents.filter(doc => {
-                const status = documentStates[doc.name];
-                return status && phase.filter(doc, status);
-              }).length;
-              
-              return (
-                <div 
-                  key={phase.id}
-                  className={`p-4 rounded-xl border ${
-                    isCurrentPhase 
-                      ? `border-${phase.color}-300 bg-${phase.color}-50` 
-                      : isCompletedPhase 
-                      ? 'border-green-300 bg-green-50' 
-                      : 'border-gray-200 bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className={`p-1 rounded-lg ${
-                      isCurrentPhase 
-                        ? `bg-${phase.color}-500 text-white` 
-                        : isCompletedPhase 
-                        ? 'bg-green-500 text-white' 
-                        : 'bg-gray-400 text-white'
-                    }`}>
-                      {phase.icon}
-                    </div>
-                    <span className="font-medium text-sm">{phase.name}</span>
-                  </div>
-                  <p className="text-xs text-gray-600 mb-2">{phase.description}</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-gray-500">
-                      {docsInPhase} {language === 'ro' ? 'documente' : 'documents'}
-                    </span>
-                    {isCurrentPhase && (
-                      <span className="text-xs font-medium text-blue-600">
-                        {language === 'ro' ? 'Activ' : 'Active'}
-                      </span>
-                    )}
-                    {isCompletedPhase && (
-                      <CheckCircle size={12} className="text-green-500" />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
+        {/* Queue Status */}
         {processingQueue.length > 0 && (
           <div className={`mt-4 p-4 rounded-2xl border ${queueErrors > 3 ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-200'}`}>
             <div className="flex items-center justify-between">
@@ -1009,8 +795,8 @@ const FileUploadPage = () => {
                 <Clock size={20} className={queueErrors > 3 ? 'text-red-600' : 'text-blue-600'} />
                 <span className={`font-medium ${queueErrors > 3 ? 'text-red-800' : 'text-blue-800'}`}>
                   {language === 'ro' 
-                    ? `${processingQueue.length} documente în coadă pentru faza ${currentPhase + 1} (${processingPhases[currentPhase]?.name})`
-                    : `${processingQueue.length} documents queued for phase ${currentPhase + 1} (${processingPhases[currentPhase]?.name})`
+                    ? `${processingQueue.length} documente în coadă de procesare`
+                    : `${processingQueue.length} documents in processing queue`
                   }
                   {queueErrors > 0 && (
                     <span className="ml-2 text-red-600">
@@ -1030,6 +816,7 @@ const FileUploadPage = () => {
         )}
       </div>
 
+      {/* Upload Zone */}
       <AnimatePresence>
         {dropzoneVisible && (
           <motion.div
@@ -1048,6 +835,7 @@ const FileUploadPage = () => {
         )}
       </AnimatePresence>
 
+      {/* Empty State */}
       {!dropzoneVisible && documents.length === 0 && (
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -1061,8 +849,8 @@ const FileUploadPage = () => {
             </h3>
             <p className="text-[var(--text2)] mb-6">
               {language === 'ro' 
-                ? 'Documentele vor fi procesate inteligent în fazele: Categorizare → Facturi Primite → Facturi Emise → Alte Documente' 
-                : 'Documents will be processed intelligently in phases: Categorization → Incoming Invoices → Outgoing Invoices → Other Documents'
+                ? 'Documentele vor fi procesate secvențial pentru a evita supraîncărcarea memoriei' 
+                : 'Documents will be processed sequentially to prevent memory overload'
               }
             </p>
             <motion.button
@@ -1079,12 +867,14 @@ const FileUploadPage = () => {
         </motion.div>
       )}
 
+      {/* Files List */}
       {documents && documents.length > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden"
         >
+          {/* Header */}
           <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -1092,15 +882,11 @@ const FileUploadPage = () => {
                   {language === 'ro' ? 'Fișierele Tale' : 'Your Files'}
                 </h2>
                 <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
-                  {documents.length} {language==='ro'?'fișiere':'files'}
+                  {documents.length} {language==='ro'?'fișiere':'files'} {processingQueue.length>0? `- ${processingQueue.length} ${language==='ro'?'în coadă':'queued'}`: '' }
                 </span>
-                {stats.processed > 0 && (
-                  <span className="bg-green-500/20 text-green-600 px-3 py-1 rounded-full text-sm font-semibold">
-                    {stats.processed} {language==='ro'?'procesate':'processed'}
-                  </span>
-                )}
               </div>
               
+              {/* Clear Queue Button */}
               {(processingQueue.length > 0 || queueErrors > 0) && (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -1115,13 +901,11 @@ const FileUploadPage = () => {
               )}
             </div>
             <p className="text-[var(--text2)] mt-2">
-              {language === 'ro' 
-                ? `Procesare inteligentă în fazele: Faza ${currentPhase + 1}/${processingPhases.length} - ${processingPhases[currentPhase]?.name}` 
-                : `Smart phased processing: Phase ${currentPhase + 1}/${processingPhases.length} - ${processingPhases[currentPhase]?.name}`
-              }
+              {language === 'ro' ? 'Documentele se procesează unul câte unul pentru optimizarea memoriei' : 'Documents are processed one by one for memory optimization'}
             </p>
           </div>
 
+          {/* Files Grid */}
           <div className="p-6">
             <div className="space-y-3">
               {documents.map((doc, index: number) => (
@@ -1134,6 +918,7 @@ const FileUploadPage = () => {
                   border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
                 >
                   <div className="flex items-center gap-4">
+                    {/* File Icon & Info */}
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
                         <FileText size={24} className="text-[var(--primary)]" />
@@ -1146,8 +931,8 @@ const FileUploadPage = () => {
                         <div className="flex items-center gap-4 mt-1">
                           <span className="text-[var(--text2)] font-medium">
                             {language === 'ro'
-                              ? docType[String(documentStates[doc.name]?.data?.result?.document_type || documentStates[doc.name]?.category) as keyof typeof docType] || documentStates[doc.name]?.category || 'Tip necunoscut'
-                              : documentStates[doc.name]?.data?.result?.document_type || documentStates[doc.name]?.category || 'Unknown type'
+                              ? docType[String(documentStates[doc.name]?.data?.result?.document_type) as keyof typeof docType] || 'Tip necunoscut'
+                              : documentStates[doc.name]?.data?.result?.document_type || 'Unknown type'
                             }
                           </span>
                           <span className="text-[var(--text3)] text-sm">
@@ -1162,6 +947,7 @@ const FileUploadPage = () => {
                       </div>
                     </div>
 
+                    {/* Status */}
                     <div className="flex items-center gap-2">
                       <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border ${getStatusColor(doc)}`}>
                         {getStatusIcon(doc)}
@@ -1169,9 +955,12 @@ const FileUploadPage = () => {
                       </span>
                     </div>
 
+                    {/* Actions */}
                     <div className="flex items-center gap-2">
+                      {/* Action Buttons */}
                       {renderActionButtons(doc)}
 
+                      {/* Delete Button */}
                       <TooltipDemo
                         trigger={
                           <button
@@ -1193,6 +982,7 @@ const FileUploadPage = () => {
         </motion.div>
       )}
 
+      {/* Alert Modals */}
       <AnimatePresence>
         {showDuplicateAlerts && (
           <motion.div
@@ -1216,8 +1006,10 @@ const FileUploadPage = () => {
             </motion.div>
           </motion.div>
         )}
+
       </AnimatePresence>
 
+      {/* Modal */}
       <Suspense fallback={
         <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
           <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl">
