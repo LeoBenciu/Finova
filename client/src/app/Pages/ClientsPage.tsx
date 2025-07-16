@@ -13,15 +13,6 @@ type Company = {
     ein: string
 };
 
-type clientCompany = {
-  clientCompany:{
-    current:{
-      name:string,
-      ein:string
-    }
-  }
-}
-
 const ClientsPage = () => {
     const [einNewCompany, setEinNewCompany] = useState<string>('');
     const [currentClientCompanyEin, setCurrentClientCompanyEin] = useState<string>('');
