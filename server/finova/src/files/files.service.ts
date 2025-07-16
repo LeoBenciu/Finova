@@ -1,9 +1,29 @@
 import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { ArticleType, User, CorrectionType, DuplicateStatus } from '@prisma/client';
+import { ArticleType, User, CorrectionType, DuplicateStatus, VatRate, UnitOfMeasure } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataExtractionService } from '../data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
+
+interface ArticleSimilarity {
+    code: string;
+    name: string;
+    vat: VatRate;
+    unitOfMeasure: UnitOfMeasure;
+    type: ArticleType;
+    similarity: number;
+}
+
+interface SmartArticleResult {
+    articleCode: string;
+    name: string;
+    vat: VatRate;
+    unitOfMeasure: UnitOfMeasure;
+    type: ArticleType;
+    isNew: boolean;
+    isMatched: boolean;
+    originalName?: string;
+}
 
 @Injectable()
 export class FilesService {
@@ -12,6 +32,256 @@ export class FilesService {
         private prisma: PrismaService,
         private dataExtractionService: DataExtractionService
     ) {}
+
+    private mapVatRate(vatString: string): VatRate {
+        const mapping: Record<string, VatRate> = {
+            'NINETEEN': VatRate.NINETEEN,
+            'NINE': VatRate.NINE,
+            'FIVE': VatRate.FIVE,
+            'ZERO': VatRate.ZERO
+        };
+        return mapping[vatString?.toUpperCase()] || VatRate.NINETEEN;
+    }
+
+    private mapUnitOfMeasure(unitString: string): UnitOfMeasure {
+        const mapping: Record<string, UnitOfMeasure> = {
+            'BUCATA': UnitOfMeasure.BUCATA,
+            'KILOGRAM': UnitOfMeasure.KILOGRAM,
+            'LITRU': UnitOfMeasure.LITRU,
+            'METRU': UnitOfMeasure.METRU,
+            'GRAM': UnitOfMeasure.GRAM,
+            'CUTIE': UnitOfMeasure.CUTIE,
+            'PACHET': UnitOfMeasure.PACHET,
+            'PUNGA': UnitOfMeasure.PUNGA,
+            'SET': UnitOfMeasure.SET,
+            'METRU_PATRAT': UnitOfMeasure.METRU_PATRAT,
+            'METRU_CUB': UnitOfMeasure.METRU_CUB,
+        };
+        return mapping[unitString?.toUpperCase()] || UnitOfMeasure.BUCATA;
+    }
+
+    private calculateSimilarity(text1: string, text2: string): number {
+        const str1 = text1.toLowerCase().trim();
+        const str2 = text2.toLowerCase().trim();
+        
+        if (str1 === str2) return 1.0;
+        
+        const maxLength = Math.max(str1.length, str2.length);
+        if (maxLength === 0) return 1.0;
+        
+        let matches = 0;
+        for (let i = 0; i < Math.min(str1.length, str2.length); i++) {
+            if (str1[i] === str2[i]) matches++;
+        }
+        
+        let similarity = matches / maxLength;
+        
+        const words1 = str1.split(/\s+/);
+        const words2 = str2.split(/\s+/);
+        const commonWords = words1.filter(word => words2.includes(word));
+        
+        if (commonWords.length > 0) {
+            const wordSimilarity = commonWords.length / Math.max(words1.length, words2.length);
+            similarity = Math.max(similarity, wordSimilarity * 0.9);
+        }
+        
+        return similarity;
+    }
+
+    private findSimilarArticle(newArticleName: string, existingArticles: any[], similarityThreshold: number = 0.6): ArticleSimilarity | null {
+        const wordMappings: Record<string, string[]> = {
+            'transport': ['shipping', 'shipment', 'delivery', 'freight', 'livrare', 'expediere'],
+            'shipping': ['transport', 'shipment', 'delivery', 'freight', 'livrare'],
+            'shipment': ['transport', 'shipping', 'delivery', 'freight', 'livrare'],
+            'delivery': ['transport', 'shipping', 'shipment', 'freight', 'livrare'],
+            'livrare': ['transport', 'shipping', 'shipment', 'delivery', 'freight'],
+            'expediere': ['transport', 'shipping', 'shipment', 'delivery'],
+            'service': ['servicii', 'services', 'prestari'],
+            'servicii': ['service', 'services', 'prestari'],
+            'services': ['service', 'servicii', 'prestari'],
+            'prestari': ['service', 'servicii', 'services'],
+            'product': ['produs', 'produse', 'marfa', 'marfuri'],
+            'produs': ['product', 'produse', 'marfa', 'marfuri'],
+            'produse': ['product', 'produs', 'marfa', 'marfuri'],
+            'marfa': ['product', 'produs', 'marfuri', 'goods'],
+            'marfuri': ['product', 'produs', 'marfa', 'goods'],
+            'goods': ['marfa', 'marfuri', 'product', 'produs']
+        };
+        
+        let bestMatch: ArticleSimilarity | null = null;
+        let bestSimilarity = 0;
+        
+        const newArticleLower = newArticleName.toLowerCase();
+        
+        for (const article of existingArticles) {
+            const articleNameLower = article.name.toLowerCase();
+            
+            let similarity = this.calculateSimilarity(newArticleLower, articleNameLower);
+            
+            for (const [word, synonyms] of Object.entries(wordMappings)) {
+                if (newArticleLower.includes(word)) {
+                    for (const synonym of synonyms) {
+                        if (articleNameLower.includes(synonym)) {
+                            similarity = Math.max(similarity, 0.8); 
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            const wordsNew = newArticleLower.split(/\s+/).filter(w => w.length > 2);
+            const wordsExisting = articleNameLower.split(/\s+/).filter(w => w.length > 2);
+            
+            if (wordsNew.length > 0 && wordsExisting.length > 0) {
+                const commonWords = wordsNew.filter(word => 
+                    wordsExisting.some(existingWord => 
+                        word.includes(existingWord) || existingWord.includes(word)
+                    )
+                );
+                
+                if (commonWords.length > 0) {
+                    const wordSimilarity = commonWords.length / Math.max(wordsNew.length, wordsExisting.length);
+                    similarity = Math.max(similarity, wordSimilarity * 0.85);
+                }
+            }
+            
+            if (similarity > bestSimilarity && similarity >= similarityThreshold) {
+                bestSimilarity = similarity;
+                bestMatch = {
+                    code: article.code,
+                    name: article.name,
+                    vat: article.vat,
+                    unitOfMeasure: article.unitOfMeasure,
+                    type: article.type,
+                    similarity: similarity
+                };
+            }
+        }
+        
+        if (bestMatch) {
+            console.log(`[SMART_MATCHING] Article matching: '${newArticleName}' -> '${bestMatch.name}' (similarity: ${bestSimilarity.toFixed(2)})`);
+        } else {
+            console.log(`[SMART_MATCHING] No similar article found for: '${newArticleName}'`);
+        }
+        
+        return bestMatch;
+    }
+
+    private determineInvoiceDirection(extractedData: any, clientCompanyEin: string): 'incoming' | 'outgoing' | 'unknown' {
+        const buyerEin = extractedData.buyer_ein?.replace(/^RO/i, '');
+        const vendorEin = extractedData.vendor_ein?.replace(/^RO/i, '');
+        const cleanClientEin = clientCompanyEin.replace(/^RO/i, '');
+
+        if (buyerEin === cleanClientEin) return 'incoming';
+        if (vendorEin === cleanClientEin) return 'outgoing';
+        return 'unknown';
+    }
+
+    private async smartArticleProcessing(
+        lineItems: any[], 
+        existingArticles: any[], 
+        direction: 'incoming' | 'outgoing' | 'unknown',
+        accountingClientId: number
+    ): Promise<SmartArticleResult[]> {
+        const processedItems: SmartArticleResult[] = [];
+        let nextArticleCode = Math.max(...existingArticles.map(a => parseInt(a.code.replace('ART', '')) || 0), 0) + 1;
+        
+        const typeMapping: Record<string, ArticleType> = {
+            'Marfuri': ArticleType.MARFURI,
+            'Produse finite': ArticleType.PRODUSE_FINITE,
+            'Ambalaje': ArticleType.AMBALAJE,
+            'Semifabricate': ArticleType.SEMIFABRICATE,
+            'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
+            'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
+            'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
+            'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
+            'Servicii vandute': ArticleType.SERVICII_VANDUTE,
+            'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
+            'Taxa verde': ArticleType.TAXA_VERDE,
+            'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
+            'Materii prime': ArticleType.MATERII_PRIME,
+            'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
+            'Combustibili': ArticleType.COMBUSTIBILI,
+            'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
+            'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
+            'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
+            'Amenajari provizorii': ArticleType.AMENAJARI_PROVIZORII,
+            'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
+            'Mat. in pastrare/consig.': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
+        };
+        
+        for (const item of lineItems) {
+            const articleName = item.name?.trim();
+            if (!articleName) {
+                console.warn('[SMART_MATCHING] Skipping line item with empty name');
+                continue;
+            }
+            
+            let result: SmartArticleResult;
+            
+            if (direction === 'outgoing') {
+                const similarArticle = this.findSimilarArticle(articleName, existingArticles, 0.5);
+                
+                if (similarArticle) {
+                    result = {
+                        articleCode: similarArticle.code,
+                        name: similarArticle.name, 
+                        vat: this.mapVatRate(item.vat) || similarArticle.vat,
+                        unitOfMeasure: this.mapUnitOfMeasure(item.um) || similarArticle.unitOfMeasure,
+                        type: typeMapping[item.type] || similarArticle.type,
+                        isNew: false,
+                        isMatched: true,
+                        originalName: articleName
+                    };
+                    console.log(`[SMART_MATCHING] Outgoing: Matched '${articleName}' with existing '${similarArticle.name}'`);
+                } else {
+                    console.warn(`[SMART_MATCHING] WARNING: Outgoing invoice contains unknown article '${articleName}' - creating new article anyway`);
+                    result = {
+                        articleCode: `ART${nextArticleCode.toString().padStart(3, '0')}`,
+                        name: articleName,
+                        vat: this.mapVatRate(item.vat) || VatRate.NINETEEN,
+                        unitOfMeasure: this.mapUnitOfMeasure(item.um) || UnitOfMeasure.BUCATA,
+                        type: typeMapping[item.type] || ArticleType.MARFURI,
+                        isNew: true,
+                        isMatched: false
+                    };
+                    nextArticleCode++;
+                }
+            } else {
+                const similarArticle = this.findSimilarArticle(articleName, existingArticles, 0.7);
+                
+                if (similarArticle) {
+                    result = {
+                        articleCode: similarArticle.code,
+                        name: similarArticle.name, 
+                        vat: this.mapVatRate(item.vat) || similarArticle.vat,
+                        unitOfMeasure: this.mapUnitOfMeasure(item.um) || similarArticle.unitOfMeasure,
+                        type: typeMapping[item.type] || similarArticle.type,
+                        isNew: false,
+                        isMatched: true,
+                        originalName: articleName
+                    };
+                    console.log(`[SMART_MATCHING] Incoming: Matched '${articleName}' with existing '${similarArticle.name}'`);
+                } else {
+                    result = {
+                        articleCode: `ART${nextArticleCode.toString().padStart(3, '0')}`,
+                        name: articleName,
+                        vat: this.mapVatRate(item.vat) || VatRate.NINETEEN,
+                        unitOfMeasure: this.mapUnitOfMeasure(item.um) || UnitOfMeasure.BUCATA,
+                        type: typeMapping[item.type] || ArticleType.MARFURI,
+                        isNew: true,
+                        isMatched: false
+                    };
+                    nextArticleCode++;
+                    console.log(`[SMART_MATCHING] Incoming: Creating new article '${articleName}'`);
+                }
+            }
+            
+            processedItems.push(result);
+        }
+        
+        return processedItems;
+    }
     
     async getFiles(ein: string, user: User) {
         try {
@@ -182,270 +452,305 @@ export class FilesService {
     }
 
     async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
-    let uploadResult;
-    let fileKey;
-    
-    const s3 = new AWS.S3({
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-        region: process.env.AWS_REGION
-    });
-
-    try {
-        const currentUser = await this.prisma.user.findUnique({
-            where: { id: user.id },
-            include: { accountingCompany: true }
+        let uploadResult;
+        let fileKey;
+        
+        const s3 = new AWS.S3({
+            accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+            secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+            region: process.env.AWS_REGION
         });
 
-        if (!currentUser) {
-            throw new NotFoundException('User not found in the database');
-        }
+        try {
+            const currentUser = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                include: { accountingCompany: true }
+            });
 
-        const clientCompany = await this.prisma.clientCompany.findUnique({
-            where: { ein: clientEin }
-        });
-
-        if (!clientCompany) {
-            throw new NotFoundException('Client company doesn\'t exist in the database');
-        }
-
-        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-            where: {
-                accountingCompanyId: currentUser.accountingCompanyId,
-                clientCompanyId: clientCompany.id
+            if (!currentUser) {
+                throw new NotFoundException('User not found in the database');
             }
-        });
 
-        if (!accountingClientRelation) {
-            throw new UnauthorizedException('You don\'t have access to this client company');
-        }
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientEin }
+            });
 
-        const documentHash = this.generateDocumentHash(file.buffer);
+            if (!clientCompany) {
+                throw new NotFoundException('Client company doesn\'t exist in the database');
+            }
 
-        fileKey = `${currentUser.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
-
-        uploadResult = await s3.upload({
-            Bucket: process.env.AWS_S3_BUCKET_NAME,
-            Key: fileKey,
-            Body: file.buffer,
-            ContentType: file.mimetype
-        }).promise();
-
-        const result = await this.prisma.$transaction(async (prisma) => {
-            const document = await prisma.document.create({
-                data: {
-                    name: file.originalname,
-                    type: processedData.result.document_type,
-                    path: uploadResult.Location,
-                    s3Key: fileKey,
-                    contentType: file.mimetype,
-                    fileSize: file.size,
-                    documentHash: documentHash,
-                    accountingClientId: accountingClientRelation.id
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    accountingCompanyId: currentUser.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
                 }
             });
 
-            const processedDataDb = await prisma.processedData.create({
-                data: {
-                    documentId: document.id,
-                    extractedFields: processedData
-                }
-            });
+            if (!accountingClientRelation) {
+                throw new UnauthorizedException('You don\'t have access to this client company');
+            }
 
-            if (processedData.result.duplicate_detection) {
-                try {
-                    const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
-                    for (const match of duplicateMatches) {
-                        if (match.document_id && match.document_id !== document.id) {
-                            await prisma.documentDuplicateCheck.create({
+            const documentHash = this.generateDocumentHash(file.buffer);
+
+            fileKey = `${currentUser.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
+
+            uploadResult = await s3.upload({
+                Bucket: process.env.AWS_S3_BUCKET_NAME,
+                Key: fileKey,
+                Body: file.buffer,
+                ContentType: file.mimetype
+            }).promise();
+
+            const result = await this.prisma.$transaction(async (prisma) => {
+                const document = await prisma.document.create({
+                    data: {
+                        name: file.originalname,
+                        type: processedData.result.document_type,
+                        path: uploadResult.Location,
+                        s3Key: fileKey,
+                        contentType: file.mimetype,
+                        fileSize: file.size,
+                        documentHash: documentHash,
+                        accountingClientId: accountingClientRelation.id
+                    }
+                });
+
+                const processedDataDb = await prisma.processedData.create({
+                    data: {
+                        documentId: document.id,
+                        extractedFields: processedData
+                    }
+                });
+
+                if (processedData.result.duplicate_detection) {
+                    try {
+                        const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
+                        for (const match of duplicateMatches) {
+                            if (match.document_id && match.document_id !== document.id) {
+                                await prisma.documentDuplicateCheck.create({
+                                    data: {
+                                        originalDocumentId: document.id,
+                                        duplicateDocumentId: match.document_id,
+                                        similarityScore: match.similarity_score || 0.0,
+                                        matchingFields: match.matching_fields || {},
+                                        duplicateType: this.mapDuplicateType(match.duplicate_type),
+                                        status: 'PENDING'
+                                    }
+                                });
+                            }
+                        }
+                    } catch (duplicateError) {
+                        console.warn('[DUPLICATE_DETECTION_WARNING]', duplicateError);
+                    }
+                }
+
+                if (processedData.result.compliance_validation) {
+                    try {
+                        const compliance = processedData.result.compliance_validation;
+                        
+                        let validationRules, errors, warnings;
+                        
+                        if (compliance.validation_rules?.ro && compliance.validation_rules?.en) {
+                            validationRules = compliance.validation_rules;
+                            errors = compliance.errors;
+                            warnings = compliance.warnings;
+                        } else {
+                            validationRules = {
+                                ro: compliance.validation_rules || [],
+                                en: compliance.validation_rules || []
+                            };
+                            errors = {
+                                ro: compliance.errors || [],
+                                en: compliance.errors || []
+                            };
+                            warnings = {
+                                ro: compliance.warnings || [],
+                                en: compliance.warnings || []
+                            };
+                        }
+
+                        await prisma.complianceValidation.create({
+                            data: {
+                                documentId: document.id,
+                                overallStatus: this.mapComplianceStatus(compliance.compliance_status),
+                                validationRules: validationRules,
+                                errors: errors,
+                                warnings: warnings,
+                                overallScore: compliance.overall_score || null,
+                                validatedAt: new Date()
+                            }
+                        });
+                    } catch (complianceError) {
+                        console.warn('[COMPLIANCE_VALIDATION_WARNING]', complianceError);
+                    }
+                }
+
+                if (processedData.userCorrections && processedData.userCorrections.length > 0) {
+                    try {
+                        for (const correction of processedData.userCorrections) {
+                            await prisma.userCorrection.create({
                                 data: {
-                                    originalDocumentId: document.id,
-                                    duplicateDocumentId: match.document_id,
-                                    similarityScore: match.similarity_score || 0.0,
-                                    matchingFields: match.matching_fields || {},
-                                    duplicateType: this.mapDuplicateType(match.duplicate_type),
-                                    status: 'PENDING'
+                                    documentId: document.id,
+                                    userId: user.id,
+                                    correctionType: this.mapCorrectionType(correction.field),
+                                    originalValue: correction.originalValue,
+                                    correctedValue: correction.newValue,
+                                    confidence: null,
+                                    applied: false
                                 }
                             });
                         }
+                    } catch (correctionError) {
+                        console.warn('[USER_CORRECTION_WARNING]', correctionError);
                     }
-                } catch (duplicateError) {
-                    console.warn('[DUPLICATE_DETECTION_WARNING]', duplicateError);
                 }
-            }
 
-            if (processedData.result.compliance_validation) {
-                try {
-                    const compliance = processedData.result.compliance_validation;
+                if (processedData.result.line_items && processedData.result.line_items.length > 0) {
+                    console.log(`[SMART_MATCHING] Processing ${processedData.result.line_items.length} line items for intelligent article matching`);
+
+                    const existingArticles = await prisma.article.findMany({
+                        where: { accountingClientId: accountingClientRelation.id }
+                    });
+
+                    const direction = this.determineInvoiceDirection(processedData.result, clientEin);
+                    console.log(`[SMART_MATCHING] Invoice direction determined: ${direction}`);
+
+                    const smartArticleResults = await this.smartArticleProcessing(
+                        processedData.result.line_items,
+                        existingArticles,
+                        direction,
+                        accountingClientRelation.id
+                    );
+
+                    const newArticlesToCreate = smartArticleResults.filter(result => result.isNew);
                     
-                    let validationRules, errors, warnings;
-                    
-                    if (compliance.validation_rules?.ro && compliance.validation_rules?.en) {
-                        validationRules = compliance.validation_rules;
-                        errors = compliance.errors;
-                        warnings = compliance.warnings;
+                    if (newArticlesToCreate.length > 0) {
+                        console.log(`[SMART_MATCHING] Creating ${newArticlesToCreate.length} new articles`);
+
+                        const articlePromises = newArticlesToCreate.map(async (result) => {
+                            console.log(`[SMART_MATCHING] Creating article: ${result.name} (code: ${result.articleCode})`);
+
+                            try {
+                                return await prisma.article.upsert({
+                                    where: {
+                                        code_accountingClientId: {
+                                            code: result.articleCode,
+                                            accountingClientId: accountingClientRelation.id
+                                        }
+                                    },
+                                    update: {
+                                        name: result.name,
+                                        vat: result.vat,
+                                        unitOfMeasure: result.unitOfMeasure,
+                                        type: result.type,
+                                    },
+                                    create: {
+                                        code: result.articleCode,
+                                        name: result.name,
+                                        vat: result.vat,
+                                        unitOfMeasure: result.unitOfMeasure,
+                                        type: result.type,
+                                        clientCompanyId: clientCompany.id,
+                                        accountingClientId: accountingClientRelation.id 
+                                    }
+                                });
+                            } catch (error) {
+                                console.warn(`[SMART_MATCHING] Failed to upsert article ${result.articleCode}: ${error.message}`);
+                                return null;
+                            }
+                        });
+
+                        const createdArticles = (await Promise.all(articlePromises)).filter(Boolean);
+                        console.log(`[SMART_MATCHING] Successfully processed ${createdArticles.length} articles`);
+
+                        processedData.result.line_items = processedData.result.line_items.map((item: any, index: number) => {
+                            const smartResult = smartArticleResults[index];
+                            if (smartResult) {
+                                return {
+                                    ...item,
+                                    articleCode: smartResult.articleCode,
+                                    name: smartResult.name, 
+                                    vat: smartResult.vat,
+                                    um: smartResult.unitOfMeasure,
+                                    isNew: smartResult.isNew,
+                                    isMatched: smartResult.isMatched,
+                                    originalName: smartResult.originalName
+                                };
+                            }
+                            return item;
+                        });
+
+                        await prisma.processedData.update({
+                            where: { id: processedDataDb.id },
+                            data: { extractedFields: processedData }
+                        });
                     } else {
-                        validationRules = {
-                            ro: compliance.validation_rules || [],
-                            en: compliance.validation_rules || []
-                        };
-                        errors = {
-                            ro: compliance.errors || [],
-                            en: compliance.errors || []
-                        };
-                        warnings = {
-                            ro: compliance.warnings || [],
-                            en: compliance.warnings || []
-                        };
+                        console.log(`[SMART_MATCHING] All articles were matched with existing ones - no new articles to create`);
                     }
-
-                    await prisma.complianceValidation.create({
-                        data: {
-                            documentId: document.id,
-                            overallStatus: this.mapComplianceStatus(compliance.compliance_status),
-                            validationRules: validationRules,
-                            errors: errors,
-                            warnings: warnings,
-                            overallScore: compliance.overall_score || null,
-                            validatedAt: new Date()
-                        }
-                    });
-                } catch (complianceError) {
-                    console.warn('[COMPLIANCE_VALIDATION_WARNING]', complianceError);
+                } else {
+                    console.log(`[SMART_MATCHING] No line items found or no new articles to create`);
                 }
-            }
 
-            if (processedData.userCorrections && processedData.userCorrections.length > 0) {
+                console.log(`[AUDIT] Document ${document.id} created by user ${user.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
+
+                return { savedDocument: document, savedProcessedData: processedDataDb };
+            }, {
+                timeout: 30000, 
+                isolationLevel: 'ReadCommitted'
+            });
+
+            return result;
+
+        } catch (e) {
+            if (uploadResult && fileKey) {
                 try {
-                    for (const correction of processedData.userCorrections) {
-                        await prisma.userCorrection.create({
-                            data: {
-                                documentId: document.id,
-                                userId: user.id,
-                                correctionType: this.mapCorrectionType(correction.field),
-                                originalValue: correction.originalValue,
-                                correctedValue: correction.newValue,
-                                confidence: null,
-                                applied: false
-                            }
-                        });
-                    }
-                } catch (correctionError) {
-                    console.warn('[USER_CORRECTION_WARNING]', correctionError);
+                    await s3.deleteObject({
+                        Bucket: process.env.AWS_S3_BUCKET_NAME,
+                        Key: fileKey
+                    }).promise();
+                    console.log(`[CLEANUP] Deleted S3 file ${fileKey} after database error`);
+                } catch (s3Error) {
+                    console.error('Failed to cleanup S3 file after database error:', s3Error);
                 }
             }
-
-            if (processedData.result.line_items && processedData.result.line_items.length > 0) {
-                console.log(`[DEBUG] Creating articles from ${processedData.result.line_items.length} line items`);
-
-                const articlePromises = processedData.result.line_items
-                    .filter(item => item.isNew && item.type !== "Nedefinit")
-                    .map(async (item) => {
-                        const typeMapping = {
-                            'Marfuri': ArticleType.MARFURI,
-                            'Produse finite': ArticleType.PRODUSE_FINITE,
-                            'Ambalaje': ArticleType.AMBALAJE,
-                            'Semifabricate': ArticleType.SEMIFABRICATE,
-                            'Discount financiar iesiri': ArticleType.DISCOUNT_FINANCIAR_IESIRI,
-                            'Discount financiar intrari': ArticleType.DISCOUNT_FINANCIAR_INTRARI,
-                            'Discount comercial iesiri': ArticleType.DISCOUNT_COMERCIAL_IESIRI,
-                            'Discount comercial intrari': ArticleType.DISCOUNT_COMERCIAL_INTRARI,
-                            'Servicii vandute': ArticleType.SERVICII_VANDUTE,
-                            'Ambalaje SGR': ArticleType.AMBALAJE_SGR,
-                            'Taxa verde': ArticleType.TAXA_VERDE,
-                            'Produse reziduale': ArticleType.PRODUSE_REZIDUALE,
-                            'Materii prime': ArticleType.MATERII_PRIME,
-                            'Materiale auxiliare': ArticleType.MATERIALE_AUXILIARE,
-                            'Combustibili': ArticleType.COMBUSTIBILI,
-                            'Piese de schimb': ArticleType.PIESE_DE_SCHIMB,
-                            'Alte mat. consumabile': ArticleType.ALTE_MATERIALE_CONSUMABILE,
-                            'Obiecte de inventar': ArticleType.OBIECTE_DE_INVENTAR,
-                            'Amenajarii provizorii': ArticleType.AMENAJARI_PROVIZORII,
-                            'Mat. spre prelucrare': ArticleType.MATERIALE_SPRE_PRELUCRARE,
-                            'Mat. in pastrare/consig': ArticleType.MATERIALE_IN_PASTRARE_SAU_CONSIGNATIE
-                        };
-
-                        console.log(`[DEBUG] Creating article: ${item.name} (code: ${item.articleCode}) for accounting relationship ${accountingClientRelation.id}`);
-
-                        return prisma.article.create({
-                            data: {
-                                code: item.articleCode,
-                                name: item.name,
-                                vat: item.vat,
-                                unitOfMeasure: item.um,
-                                type: typeMapping[item.type] || ArticleType.MARFURI,
-                                clientCompanyId: clientCompany.id,
-                                accountingClientId: accountingClientRelation.id 
-                            }
-                        });
-                    });
-
-                const createdArticles = await Promise.all(articlePromises);
-                console.log(`[DEBUG] Successfully created ${createdArticles.length} articles for accounting relationship ${accountingClientRelation.id}`);
-            } else {
-                console.log(`[DEBUG] No line items found or no new articles to create`);
-            }
-
-            console.log(`[AUDIT] Document ${document.id} created by user ${user.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
-
-            return { savedDocument: document, savedProcessedData: processedDataDb };
-        }, {
-            timeout: 30000, // 30 second timeout
-            isolationLevel: 'ReadCommitted'
-        });
-
-        return result;
-
-    } catch (e) {
-        if (uploadResult && fileKey) {
-            try {
-                await s3.deleteObject({
-                    Bucket: process.env.AWS_S3_BUCKET_NAME,
-                    Key: fileKey
-                }).promise();
-                console.log(`[CLEANUP] Deleted S3 file ${fileKey} after database error`);
-            } catch (s3Error) {
-                console.error('Failed to cleanup S3 file after database error:', s3Error);
-            }
+            
+            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+            console.error('[POST_FILE_ERROR]', e);
+            throw new InternalServerErrorException("Failed to save document and processed data in the database!");
         }
-        
-        if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
-        console.error('[POST_FILE_ERROR]', e);
-        throw new InternalServerErrorException("Failed to save document and processed data in the database!");
     }
-}
 
-private mapDuplicateType(type: string): any {
-    const mapping = {
-        'exact_match': 'EXACT_MATCH',
-        'content_match': 'CONTENT_MATCH', 
-        'similar_content': 'SIMILAR_CONTENT'
-    };
-    return mapping[type?.toLowerCase()] || 'SIMILAR_CONTENT';
-}
+    private mapDuplicateType(type: string): any {
+        const mapping = {
+            'exact_match': 'EXACT_MATCH',
+            'content_match': 'CONTENT_MATCH', 
+            'similar_content': 'SIMILAR_CONTENT'
+        };
+        return mapping[type?.toLowerCase()] || 'SIMILAR_CONTENT';
+    }
 
-private mapComplianceStatus(status: string): any {
-    const mapping = {
-        'compliant': 'COMPLIANT',
-        'non_compliant': 'NON_COMPLIANT',
-        'warning': 'WARNING',
-        'pending': 'PENDING'
-    };
-    return mapping[status?.toLowerCase()] || 'PENDING';
-}
+    private mapComplianceStatus(status: string): any {
+        const mapping = {
+            'compliant': 'COMPLIANT',
+            'non_compliant': 'NON_COMPLIANT',
+            'warning': 'WARNING',
+            'pending': 'PENDING'
+        };
+        return mapping[status?.toLowerCase()] || 'PENDING';
+    }
 
-private mapCorrectionType(field: string): any {
-    const mapping = {
-        'document_type': 'DOCUMENT_TYPE',
-        'direction': 'INVOICE_DIRECTION',
-        'vendor_information': 'VENDOR_INFORMATION',
-        'buyer_information': 'BUYER_INFORMATION',
-        'amounts': 'AMOUNTS',
-        'dates': 'DATES',
-        'line_items': 'LINE_ITEMS'
-    };
-    return mapping[field] || 'OTHER';
-}
+    private mapCorrectionType(field: string): any {
+        const mapping = {
+            'document_type': 'DOCUMENT_TYPE',
+            'direction': 'INVOICE_DIRECTION',
+            'vendor_information': 'VENDOR_INFORMATION',
+            'buyer_information': 'BUYER_INFORMATION',
+            'amounts': 'AMOUNTS',
+            'dates': 'DATES',
+            'line_items': 'LINE_ITEMS'
+        };
+        return mapping[field] || 'OTHER';
+    }
 
     async updateFiles(processedData: any, clientCompanyEin: string, user: User, docId: number) {
         try {
@@ -778,12 +1083,25 @@ private mapCorrectionType(field: string): any {
         }
     }
 
-    async getServiceHealth() {
+    async getServiceHealth(): Promise<{
+        status: string;
+        timestamp: string;
+        [key: string]: any;
+    }> {
         try {
-            return await this.dataExtractionService.getServiceHealth();
+            const healthData = await this.dataExtractionService.getServiceHealth();
+            return {
+                status: 'healthy',
+                timestamp: new Date().toISOString(),
+                ...(healthData || {})
+            };
         } catch (e) {
             console.error('[GET_SERVICE_HEALTH_ERROR]', e);
-            throw new InternalServerErrorException('Failed to get service health');
+            return {
+                status: 'unhealthy',
+                timestamp: new Date().toISOString(),
+                error: 'Failed to get service health'
+            };
         }
     }
 }

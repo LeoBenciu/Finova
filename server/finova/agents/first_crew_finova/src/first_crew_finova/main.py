@@ -15,6 +15,7 @@ from typing import Dict, Any, Optional, List
 from io import StringIO
 from contextlib import redirect_stdout, redirect_stderr
 from datetime import datetime
+from difflib import SequenceMatcher
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -34,6 +35,119 @@ except Exception as e:
     print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
     sys.exit(1)
 
+def calculate_similarity(text1: str, text2: str) -> float:
+    """Calculate similarity between two strings using SequenceMatcher."""
+    return SequenceMatcher(None, text1.lower(), text2.lower()).ratio()
+
+def find_similar_article(new_article_name: str, existing_articles: Dict, similarity_threshold: float = 0.6) -> Optional[Dict]:
+    """Find similar article in existing articles database."""
+    best_match = None
+    best_similarity = 0.0
+    
+    word_mappings = {
+        'transport': ['shipping', 'shipment', 'delivery', 'freight'],
+        'shipping': ['transport', 'shipment', 'delivery', 'freight'],
+        'shipment': ['transport', 'shipping', 'delivery', 'freight'],
+        'delivery': ['transport', 'shipping', 'shipment', 'freight'],
+        'freight': ['transport', 'shipping', 'shipment', 'delivery'],
+        'service': ['servicii', 'services'],
+        'servicii': ['service', 'services'],
+        'product': ['produs', 'produse', 'marfa', 'marfuri'],
+        'produs': ['product', 'produse', 'marfa', 'marfuri'],
+        'marfa': ['product', 'produs', 'marfuri', 'goods'],
+        'goods': ['marfa', 'marfuri', 'product', 'produs']
+    }
+    
+    new_article_lower = new_article_name.lower()
+    
+    for code, article in existing_articles.items():
+        article_name_lower = article['name'].lower()
+        
+        similarity = calculate_similarity(new_article_lower, article_name_lower)
+        
+        for word, synonyms in word_mappings.items():
+            if word in new_article_lower:
+                for synonym in synonyms:
+                    if synonym in article_name_lower:
+                        similarity = max(similarity, 0.8)
+        
+        words_new = set(new_article_lower.split())
+        words_existing = set(article_name_lower.split())
+        
+        if len(words_new) > 0 and len(words_existing) > 0:
+            common_words = words_new.intersection(words_existing)
+            if common_words:
+                word_similarity = len(common_words) / max(len(words_new), len(words_existing))
+                similarity = max(similarity, word_similarity * 0.9)
+        
+        if similarity > best_similarity and similarity >= similarity_threshold:
+            best_similarity = similarity
+            best_match = {
+                'code': code,
+                'name': article['name'],
+                'vat': article['vat'],
+                'unitOfMeasure': article['unitOfMeasure'],
+                'type': article['type'],
+                'similarity': similarity
+            }
+    
+    print(f"Article matching: '{new_article_name}' -> {best_match['name'] if best_match else 'No match'} (similarity: {best_similarity:.2f})", file=sys.stderr)
+    return best_match
+
+def smart_article_processing(line_items: List[Dict], existing_articles: Dict, direction: str) -> List[Dict]:
+    """Process line items with intelligent article matching."""
+    processed_items = []
+    next_article_code = len(existing_articles) + 1
+    
+    for item in line_items:
+        article_name = item.get('name', '').strip()
+        if not article_name:
+            continue
+            
+        if direction == 'outgoing':
+            similar_article = find_similar_article(article_name, existing_articles, similarity_threshold=0.5)
+            if similar_article:
+                item.update({
+                    'articleCode': similar_article['code'],
+                    'name': similar_article['name'], 
+                    'vat': similar_article['vat'],
+                    'um': similar_article['unitOfMeasure'],
+                    'type': similar_article['type'],
+                    'isNew': False
+                })
+                print(f"Outgoing: Matched '{article_name}' with existing '{similar_article['name']}'", file=sys.stderr)
+            else:
+                print(f"WARNING: Outgoing invoice contains unknown article '{article_name}' - this shouldn't happen in normal business flow", file=sys.stderr)
+                item.update({
+                    'articleCode': f'ART{next_article_code:03d}',
+                    'isNew': True
+                })
+                next_article_code += 1
+        
+        else:  
+            similar_article = find_similar_article(article_name, existing_articles, similarity_threshold=0.7)
+            if similar_article:
+                item.update({
+                    'articleCode': similar_article['code'],
+                    'name': similar_article['name'],
+                    'vat': item.get('vat', similar_article['vat']),  
+                    'um': item.get('um', similar_article['unitOfMeasure']), 
+                    'type': item.get('type', similar_article['type']), 
+                    'isNew': False
+                })
+                print(f"Incoming: Matched '{article_name}' with existing '{similar_article['name']}'", file=sys.stderr)
+            else:
+                item.update({
+                    'articleCode': f'ART{next_article_code:03d}',
+                    'isNew': True
+                })
+                next_article_code += 1
+                print(f"Incoming: Creating new article '{article_name}'", file=sys.stderr)
+        
+        processed_items.append(item)
+    
+    return processed_items
+
 def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[bool, list[str]]:
     """Validate that processed data contains minimum required fields."""
     errors = []
@@ -49,7 +163,7 @@ def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[
     return True, errors
 
 def create_fallback_response(doc_type: str = "Unknown") -> dict:
-    """Create a minimal fallback response when processing fails."""
+    """Create a minimal fallback response when processing fails completely."""
     return {
         "document_type": doc_type,
         "document_date": "",
@@ -71,6 +185,96 @@ def create_fallback_response(doc_type: str = "Unknown") -> dict:
         "confidence": 0.1,
         "processing_status": "FALLBACK"
     }
+
+def enhanced_duplicate_detection(current_doc: dict, existing_documents: List[Dict]) -> dict:
+    """Enhanced duplicate detection with document-type specific logic."""
+    doc_type = current_doc.get('document_type', '').lower()
+    duplicates = []
+    
+    for existing_doc in existing_documents:
+        existing_type = existing_doc.get('document_type', '').lower()
+        
+        if doc_type != existing_type:
+            continue
+            
+        similarity_score = 0.0
+        matching_fields = []
+        
+        if doc_type == 'receipt':
+            if (current_doc.get('receipt_number') and existing_doc.get('receipt_number') and
+                current_doc['receipt_number'] == existing_doc['receipt_number']):
+                similarity_score += 0.4
+                matching_fields.append('receipt_number')
+                
+            if (current_doc.get('vendor') and existing_doc.get('vendor') and
+                current_doc['vendor'].lower() == existing_doc['vendor'].lower()):
+                similarity_score += 0.3
+                matching_fields.append('vendor')
+                
+            if (current_doc.get('document_date') and existing_doc.get('document_date') and
+                current_doc['document_date'] == existing_doc['document_date']):
+                similarity_score += 0.3
+                matching_fields.append('document_date')
+                
+        elif doc_type == 'invoice':
+            if (current_doc.get('document_number') and existing_doc.get('document_number') and
+                current_doc['document_number'] == existing_doc['document_number']):
+                similarity_score += 0.4
+                matching_fields.append('document_number')
+                
+            if (current_doc.get('vendor_ein') and existing_doc.get('vendor_ein') and
+                current_doc['vendor_ein'] == existing_doc['vendor_ein']):
+                similarity_score += 0.2
+                matching_fields.append('vendor_ein')
+                
+            if (current_doc.get('total_amount') and existing_doc.get('total_amount') and
+                abs(float(current_doc['total_amount']) - float(existing_doc['total_amount'])) < 0.01):
+                similarity_score += 0.2
+                matching_fields.append('total_amount')
+                
+            if (current_doc.get('document_date') and existing_doc.get('document_date') and
+                current_doc['document_date'] == existing_doc['document_date']):
+                similarity_score += 0.2
+                matching_fields.append('document_date')
+                
+        elif doc_type == 'bank statement':
+            if (current_doc.get('account_number') and existing_doc.get('account_number') and
+                current_doc['account_number'] == existing_doc['account_number']):
+                similarity_score += 0.5
+                matching_fields.append('account_number')
+                
+            if (current_doc.get('statement_period_start') and existing_doc.get('statement_period_start') and
+                current_doc['statement_period_start'] == existing_doc['statement_period_start']):
+                similarity_score += 0.25
+                matching_fields.append('statement_period_start')
+                
+            if (current_doc.get('statement_period_end') and existing_doc.get('statement_period_end') and
+                current_doc['statement_period_end'] == existing_doc['statement_period_end']):
+                similarity_score += 0.25
+                matching_fields.append('statement_period_end')
+        
+        if similarity_score >= 0.9:
+            duplicate_type = "EXACT_MATCH"
+        elif similarity_score >= 0.7:
+            duplicate_type = "CONTENT_MATCH"
+        elif similarity_score >= 0.5:
+            duplicate_type = "SIMILAR_CONTENT"
+        else:
+            continue 
+        
+        duplicates.append({
+            "document_id": existing_doc.get('id'),
+            "similarity_score": similarity_score,
+            "matching_fields": matching_fields,
+            "duplicate_type": duplicate_type
+        })
+    
+    return {
+        "is_duplicate": len(duplicates) > 0,
+        "duplicate_matches": duplicates,
+        "confidence": 1.0 if duplicates else 0.0
+    }
+
 
 def test_openai_connection():
     """Test direct OpenAI connection to verify API key."""
@@ -389,8 +593,8 @@ def extract_json_from_text(text: str) -> dict:
     print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)
     return {}
 
-def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tuple[dict, bool]:
-    """Process document with retry logic and validation."""
+def process_with_retry(crew_instance, inputs: dict, max_retries: int = 1) -> tuple[dict, bool]:
+    """Process document with retry logic and validation - reduced retries to prevent fallbacks."""
     for attempt in range(max_retries + 1):
         try:
             print(f"Processing attempt {attempt + 1}/{max_retries + 1}", file=sys.stderr)
@@ -417,7 +621,7 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                             output_length = len(task_output.raw)
                             print(f"Task {i} output length: {output_length}", file=sys.stderr)
 
-                            if i == 0:  
+                            if i == 0:
                                 categorization_data = extract_json_from_text(task_output.raw)
                                 if categorization_data and isinstance(categorization_data, dict):
                                     combined_data.update(categorization_data)
@@ -431,7 +635,7 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                     combined_data.update(extraction_data)
                                     print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
 
-                            elif i == 2: 
+                            elif i == 2:
                                 doc_type = combined_data.get('document_type', '').lower()
                                 if doc_type != 'invoice' and doc_type:
                                     try:
@@ -442,16 +646,15 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                     except Exception as task2_error:
                                         print(f"ERROR: Task 2 processing failed: {str(task2_error)}", file=sys.stderr)
 
-                            elif i == 3: 
+                            elif i == 3:  
                                 try:
-                                    duplicate_data = extract_json_from_text(task_output.raw)
-                                    if duplicate_data and isinstance(duplicate_data, dict):
-                                        combined_data['duplicate_detection'] = duplicate_data
-                                        print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
+                                    duplicate_data = enhanced_duplicate_detection(combined_data, inputs.get('existing_documents', []))
+                                    combined_data['duplicate_detection'] = duplicate_data
+                                    print(f"Enhanced duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
                                 except Exception as task3_error:
                                     print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
 
-                            elif i == 4: 
+                            elif i == 4:  
                                 try:
                                     compliance_data = extract_json_from_text(task_output.raw)
                                     if compliance_data and isinstance(compliance_data, dict):
@@ -464,6 +667,17 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                         print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
                         continue
             
+            if combined_data.get('document_type', '').lower() == 'invoice' and combined_data.get('line_items'):
+                direction = combined_data.get('direction', 'incoming')
+                existing_articles = inputs.get('existing_articles', {})
+                
+                print(f"Applying smart article processing for {direction} invoice with {len(combined_data['line_items'])} items", file=sys.stderr)
+                combined_data['line_items'] = smart_article_processing(
+                    combined_data['line_items'], 
+                    existing_articles, 
+                    direction
+                )
+            
             is_valid, validation_errors = validate_processed_data(combined_data)
             
             if is_valid:
@@ -473,16 +687,11 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                 print(f"Validation failed on attempt {attempt + 1}: {validation_errors}", file=sys.stderr)
                 if attempt < max_retries:
                     print(f"Retrying processing (attempt {attempt + 2})", file=sys.stderr)
-                    time.sleep(2)  
+                    time.sleep(2) 
                     continue
                 else:
-                    print("Max retries reached, returning fallback response", file=sys.stderr)
-                    fallback = create_fallback_response(combined_data.get('document_type', 'Unknown'))
-                    if combined_data.get('document_type'):
-                        fallback['document_type'] = combined_data['document_type']
-                    if combined_data.get('duplicate_detection'):
-                        fallback['duplicate_detection'] = combined_data['duplicate_detection']
-                    return fallback, False
+                    print("Max retries reached, throwing error instead of fallback", file=sys.stderr)
+                    raise Exception(f"Processing validation failed: {validation_errors}")
                     
         except Exception as e:
             print(f"Processing attempt {attempt + 1} failed with error: {str(e)}", file=sys.stderr)
@@ -491,10 +700,11 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                 time.sleep(3)  
                 continue
             else:
-                print("Max retries reached after errors, returning fallback response", file=sys.stderr)
-                return create_fallback_response(), False
+                print("Max retries reached after errors, throwing final error", file=sys.stderr)
+                raise e
     
-    return create_fallback_response(), False
+    raise Exception("Processing failed after all retries")
+
 
 def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
@@ -603,9 +813,6 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         log_memory_usage("Before crew kickoff")
         
         combined_data, success = process_with_retry(crew_instance, inputs)
-        
-        if not success:
-            print("Processing completed with fallback response", file=sys.stderr)
         
         del crew_instance
         del existing_articles

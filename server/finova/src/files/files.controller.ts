@@ -71,7 +71,7 @@ export class FilesController {
     }
 
     @Get('service/health')
-    getServiceHealth() {
+    getServiceHealth(): any {
         return this.fileMangementService.getServiceHealth();
     }
 }
