@@ -378,26 +378,7 @@ export class DataExtractionService {
         }
 
         return duplicateChecks;
-    }
-
-    async saveComplianceValidation(documentId: number, complianceData: any) {
-        try {
-            const compliance = await this.prisma.complianceValidation.create({
-                data: {
-                    documentId: documentId,
-                    overallStatus: complianceData.compliance_status as ComplianceStatus,
-                    validationRules: complianceData.validation_rules || [],
-                    errors: complianceData.errors || [],
-                    warnings: complianceData.warnings || []
-                }
-            });
-
-            return compliance;
-        } catch (error) {
-            this.logger.error(`Failed to save compliance validation: ${error.message}`);
-            throw error;
-        }
-    }
+    } 
 
     async saveUserCorrection(documentId: number, userId: number, correctionData: {
         correctionType: CorrectionType;
@@ -790,24 +771,86 @@ export class DataExtractionService {
 }
 
 async saveComplianceValidationWithTransaction(
-    prisma: any, // PrismaTransaction type
+    prisma: any,
     documentId: number, 
     complianceValidation: any
 ): Promise<void> {
     try {
+        let validationRules, errors, warnings;
+        
+        if (complianceValidation.validation_rules?.ro && complianceValidation.validation_rules?.en) {
+            validationRules = complianceValidation.validation_rules;
+            errors = complianceValidation.errors;
+            warnings = complianceValidation.warnings;
+        } else {
+            validationRules = {
+                ro: complianceValidation.validation_rules || [],
+                en: complianceValidation.validation_rules || []
+            };
+            errors = {
+                ro: complianceValidation.errors || [],
+                en: complianceValidation.errors || []
+            };
+            warnings = {
+                ro: complianceValidation.warnings || [],
+                en: complianceValidation.warnings || []
+            };
+        }
+
         await prisma.complianceValidation.create({
             data: {
                 documentId: documentId,
                 overallStatus: this.mapComplianceStatus(complianceValidation.compliance_status),
-                validationRules: complianceValidation.validation_rules || [],
-                errors: complianceValidation.errors || null,
-                warnings: complianceValidation.warnings || null,
+                validationRules: validationRules,
+                errors: errors,
+                warnings: warnings,
+                overallScore: complianceValidation.overall_score || null,
                 validatedAt: new Date()
             }
         });
     } catch (error) {
         console.error('[COMPLIANCE_VALIDATION_ERROR]', error);
-        // Don't throw - let the transaction continue
+    }
+}
+
+async saveComplianceValidation(documentId: number, complianceData: any) {
+    try {
+        let validationRules, errors, warnings;
+        
+        if (complianceData.validation_rules?.ro && complianceData.validation_rules?.en) {
+            validationRules = complianceData.validation_rules;
+            errors = complianceData.errors;
+            warnings = complianceData.warnings;
+        } else {
+            validationRules = {
+                ro: complianceData.validation_rules || [],
+                en: complianceData.validation_rules || []
+            };
+            errors = {
+                ro: complianceData.errors || [],
+                en: complianceData.errors || []
+            };
+            warnings = {
+                ro: complianceData.warnings || [],
+                en: complianceData.warnings || []
+            };
+        }
+
+        const compliance = await this.prisma.complianceValidation.create({
+            data: {
+                documentId: documentId,
+                overallStatus: complianceData.compliance_status as ComplianceStatus,
+                validationRules: validationRules,
+                errors: errors,
+                warnings: warnings,
+                overallScore: complianceData.overall_score || null
+            }
+        });
+
+        return compliance;
+    } catch (error) {
+        this.logger.error(`Failed to save compliance validation: ${error.message}`);
+        throw error;
     }
 }
 

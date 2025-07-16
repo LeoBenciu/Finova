@@ -277,13 +277,36 @@ export class FilesService {
             if (processedData.result.compliance_validation) {
                 try {
                     const compliance = processedData.result.compliance_validation;
+                    
+                    let validationRules, errors, warnings;
+                    
+                    if (compliance.validation_rules?.ro && compliance.validation_rules?.en) {
+                        validationRules = compliance.validation_rules;
+                        errors = compliance.errors;
+                        warnings = compliance.warnings;
+                    } else {
+                        validationRules = {
+                            ro: compliance.validation_rules || [],
+                            en: compliance.validation_rules || []
+                        };
+                        errors = {
+                            ro: compliance.errors || [],
+                            en: compliance.errors || []
+                        };
+                        warnings = {
+                            ro: compliance.warnings || [],
+                            en: compliance.warnings || []
+                        };
+                    }
+
                     await prisma.complianceValidation.create({
                         data: {
                             documentId: document.id,
                             overallStatus: this.mapComplianceStatus(compliance.compliance_status),
-                            validationRules: compliance.validation_rules || [],
-                            errors: compliance.errors || null,
-                            warnings: compliance.warnings || null,
+                            validationRules: validationRules,
+                            errors: errors,
+                            warnings: warnings,
+                            overallScore: compliance.overall_score || null,
                             validatedAt: new Date()
                         }
                     });

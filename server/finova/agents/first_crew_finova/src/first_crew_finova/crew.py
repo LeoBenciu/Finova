@@ -89,6 +89,53 @@ class DocumentHashTool(BaseTool):
         except Exception as e:
             print(f"Failed to generate hash: {str(e)}")
             return ""
+        
+class ComplianceMessageTranslator:
+    """Helper class for generating bilingual compliance messages"""
+    
+    @staticmethod
+    def get_bilingual_message(key, **kwargs):
+        """Get bilingual message for a specific validation rule/error/warning"""
+        messages = {
+            'invalid_vat': {
+                'ro': f"Numărul de TVA invalid: {kwargs.get('vat', 'N/A')}",
+                'en': f"Invalid VAT number: {kwargs.get('vat', 'N/A')}"
+            },
+            'future_date': {
+                'ro': f"Dată în viitor detectată: {kwargs.get('date', 'N/A')}",
+                'en': f"Future date detected: {kwargs.get('date', 'N/A')}"
+            },
+            'invalid_iban': {
+                'ro': "Format IBAN invalid (trebuie RO + 22 cifre)",
+                'en': "Invalid IBAN format (must be RO + 22 digits)"
+            },
+            'missing_field': {
+                'ro': f"Câmp obligatoriu lipsă: {kwargs.get('field', 'N/A')}",
+                'en': f"Missing required field: {kwargs.get('field', 'N/A')}"
+            },
+            'vat_calculation_error': {
+                'ro': "Eroare în calculul TVA",
+                'en': "VAT calculation error"
+            },
+            'foreign_currency': {
+                'ro': f"Document în valută străină ({kwargs.get('currency', 'N/A')}) - verificați declararea",
+                'en': f"Foreign currency document ({kwargs.get('currency', 'N/A')}) - verify declaration"
+            },
+            'vat_format_rule': {
+                'ro': "Numărul de TVA trebuie să aibă format valid (RO + 2-10 cifre)",
+                'en': "VAT number must have valid format (RO + 2-10 digits)"
+            },
+            'date_validation_rule': {
+                'ro': "Data facturii nu poate fi în viitor",
+                'en': "Invoice date cannot be in the future"
+            },
+            'iban_format_rule': {
+                'ro': "IBAN-ul trebuie să aibă formatul RO + 22 cifre",
+                'en': "IBAN must have format RO + 22 digits"
+            }
+        }
+        return messages.get(key, {'ro': 'Mesaj necunoscut', 'en': 'Unknown message'})
+
 
 class DuplicateDetectionTool(BaseTool):
     name: str = "duplicate_detector"
@@ -286,8 +333,10 @@ class FirstCrewFinova:
     def compliance_validator_agent(self) -> Agent:
         agent_config = {
             'role': self.agents_config['compliance_validator_agent']['role'],
-            'goal': self.agents_config['compliance_validator_agent']['goal'],
-            'backstory': self.agents_config['compliance_validator_agent']['backstory'],
+            'goal': self.agents_config['compliance_validator_agent']['goal'] + 
+                    " Always output validation results in BOTH Romanian and English using the specified JSON format.",
+            'backstory': self.agents_config['compliance_validator_agent']['backstory'] + 
+                        " You are fluent in both Romanian and English and always provide bilingual compliance reports.",
             'verbose': True,
             'tools': [get_text_extractor_tool()],
         }

@@ -8,7 +8,6 @@ import { useSelector } from "react-redux";
 import { useUpdateFileAndExtractedDataMutation } from "@/redux/slices/apiSlice";
 import LoadingComponent from "./LoadingComponent";
 import DocumentTypeFields from "./EditExtractedData/Fields/DocumentTypeFields";
-import { translateComplianceMessages } from "./EditExtractedData/ComplianceTranslation";
 
 interface EditExtractedDataManagementProps{
       setIsModalOpen: (val: boolean) => void;
@@ -510,121 +509,85 @@ const EditExtractedDataManagement = ({ setProcessedFiles, processedFiles, setIsM
                   )}
 
                   {(editFile?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT' || 
-                      editFile?.result?.compliance_validation?.compliance_status === 'WARNING') && (
-                      <motion.div 
-                        className={`mx-6 mt-4 p-4 rounded-2xl border ${
-                          editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                            ? 'bg-red-50 border-red-200 text-red-800'
-                            : 'bg-orange-50 border-orange-200 text-orange-800'
-                        }`}
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <AlertTriangle 
-                            size={20} 
-                            className={`flex-shrink-0 mt-0.5 ${
-                              editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                                ? 'text-red-600'
-                                : 'text-orange-600'
-                            }`} 
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-3">
-                              <span className="text-sm font-semibold">
-                                {editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                                  ? (language === 'ro' ? 'Probleme de Conformitate' : 'Compliance Issues')
-                                  : (language === 'ro' ? 'Avertismente de Conformitate' : 'Compliance Warnings')
-                                }
-                              </span>
-                              {editFile.result.compliance_validation.overall_score && (
-                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                                  editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                                    ? 'bg-red-200 text-red-800'
-                                    : 'bg-orange-200 text-orange-800'
-                                }`}>
-                                  {language === 'ro' ? 'Scor: ' : 'Score: '}
-                                  {Math.round(editFile.result.compliance_validation.overall_score * 100)}%
-                                </span>
-                              )}
-                            </div>
-                            
-                            {editFile.result.compliance_validation.errors && 
-                             editFile.result.compliance_validation.errors.length > 0 && (
-                              <div className="mb-3">
-                                <h4 className="text-xs font-semibold mb-2 text-red-700 uppercase tracking-wide">
-                                  {language === 'ro' ? 'Erori găsite:' : 'Issues Found:'}
-                                </h4>
-                                <ul className="space-y-2">
-                                  {translateComplianceMessages(editFile.result.compliance_validation.errors, language)
-                                    .map((error: string, index: number) => (
-                                    <li key={index} className="text-sm flex items-start gap-3">
-                                      <span className="text-red-500 mt-1 flex-shrink-0">•</span>
-                                      <span className="text-red-700 leading-relaxed">{error}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-      
-                            {editFile.result.compliance_validation.warnings && 
-                             editFile.result.compliance_validation.warnings.length > 0 && (
-                              <div className="mb-3">
-                                <h4 className="text-xs font-semibold mb-2 text-orange-700 uppercase tracking-wide">
-                                  {language === 'ro' ? 'Avertismente:' : 'Warnings:'}
-                                </h4>
-                                <ul className="space-y-2">
-                                  {translateComplianceMessages(editFile.result.compliance_validation.warnings, language)
-                                    .map((warning: string, index: number) => (
-                                    <li key={index} className="text-sm flex items-start gap-3">
-                                      <span className="text-orange-500 mt-1 flex-shrink-0">⚠</span>
-                                      <span className="text-orange-700 leading-relaxed">{warning}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-      
-                            {editFile.result.compliance_validation.validation_rules && 
-                             editFile.result.compliance_validation.validation_rules.length > 0 && (
-                              <details className="mt-3">
-                                <summary className="text-xs font-medium cursor-pointer hover:underline text-gray-600 select-none">
-                                  {language === 'ro' ? 'Vezi regulile de validare' : 'View validation rules'} 
-                                  <span className="ml-1 opacity-70">({editFile.result.compliance_validation.validation_rules.length})</span>
-                                </summary>
-                                <div className="mt-2 pl-4 border-l-2 border-gray-300">
-                                  <ul className="space-y-1">
-                                    {translateComplianceMessages(editFile.result.compliance_validation.validation_rules, language)
-                                      .map((rule: string, index: number) => (
-                                      <li key={index} className="text-xs text-gray-600 flex items-start gap-2">
-                                        <span className="text-gray-400 mt-0.5 flex-shrink-0">→</span>
-                                        <span className="leading-relaxed">{rule}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </details>
-                            )}
-      
-                            <div className={`text-xs mt-4 pt-3 border-t border-current/20 font-medium ${
-                              editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                                ? 'text-red-700'
-                                : 'text-orange-700'
-                            }`}>
+                    editFile?.result?.compliance_validation?.compliance_status === 'WARNING') && (
+                    <motion.div 
+                      className={`mx-6 mt-4 p-4 rounded-2xl border ${
+                        editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                          ? 'bg-red-50 border-red-200 text-red-800'
+                          : 'bg-orange-50 border-orange-200 text-orange-800'
+                      }`}
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle 
+                          size={20} 
+                          className={`flex-shrink-0 mt-0.5 ${
+                            editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                              ? 'text-red-600'
+                              : 'text-orange-600'
+                          }`} 
+                        />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-sm font-semibold">
                               {editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
-                                ? (language === 'ro' 
-                                    ? '⚠️ Documentul necesită corecții pentru a respecta standardele ANAF'
-                                    : '⚠️ Document requires corrections to meet ANAF standards')
-                                : (language === 'ro'
-                                    ? '⚠️ Documentul are probleme minore care ar trebui verificate'
-                                    : '⚠️ Document has minor issues that should be reviewed')
+                                ? (language === 'ro' ? 'Probleme de Conformitate' : 'Compliance Issues')
+                                : (language === 'ro' ? 'Avertismente de Conformitate' : 'Compliance Warnings')
                               }
-                            </div>
+                            </span>
+                            {editFile.result.compliance_validation.overall_score && (
+                              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                                editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                                  ? 'bg-red-200 text-red-800'
+                                  : 'bg-orange-200 text-orange-800'
+                              }`}>
+                                {language === 'ro' ? 'Scor: ' : 'Score: '}
+                                {Math.round(editFile.result.compliance_validation.overall_score * 100)}%
+                              </span>
+                            )}
                           </div>
+                          
+                          {/* Errors Section */}
+                          {editFile.result.compliance_validation.errors && 
+                           editFile.result.compliance_validation.errors.length > 0 && (
+                            <div className="mb-3">
+                              <h4 className="text-xs font-semibold mb-2 text-red-700 uppercase tracking-wide">
+                                {language === 'ro' ? 'Erori găsite:' : 'Issues Found:'}
+                              </h4>
+                              <ul className="space-y-2">
+                                {editFile.result.compliance_validation.errors.map((error: string, index: number) => (
+                                  <li key={index} className="text-sm flex items-start gap-3">
+                                    <span className="text-red-500 mt-1 flex-shrink-0">•</span>
+                                    <span className="text-red-700 leading-relaxed">{error}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Warnings Section */}
+                          {editFile.result.compliance_validation.warnings && 
+                           editFile.result.compliance_validation.warnings.length > 0 && (
+                            <div className="mb-3">
+                              <h4 className="text-xs font-semibold mb-2 text-orange-700 uppercase tracking-wide">
+                                {language === 'ro' ? 'Avertismente:' : 'Warnings:'}
+                              </h4>
+                              <ul className="space-y-2">
+                                {editFile.result.compliance_validation.warnings.map((warning: string, index: number) => (
+                                  <li key={index} className="text-sm flex items-start gap-3">
+                                    <span className="text-orange-500 mt-1 flex-shrink-0">⚠</span>
+                                    <span className="text-orange-700 leading-relaxed">{warning}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                         </div>
-                      </motion.div>
-                    )}
+                      </div>
+                    </motion.div>
+                  )}
 
                   {/* Content Section */}
                   <div className="p-6">

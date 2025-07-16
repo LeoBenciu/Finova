@@ -9,7 +9,6 @@ import AreYouSureModal from '../AreYouSureModal';
 import DocumentViewer from './DocumentViewer';
 import { useSelector } from 'react-redux';
 import DocumentTypeFields from './Fields/DocumentTypeFields';
-import { translateComplianceMessages } from './ComplianceTranslation';
 
 interface EditExtractedDataProps {
   isLoading: boolean;
@@ -528,61 +527,88 @@ const EditExtractedDataComponent = ({
                         )}
                       </div>
                       
-                      {editFile.result.compliance_validation.errors && 
-                       editFile.result.compliance_validation.errors.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-xs font-semibold mb-2 text-red-700 uppercase tracking-wide">
-                            {language === 'ro' ? 'Erori găsite:' : 'Issues Found:'}
-                          </h4>
-                          <ul className="space-y-2">
-                            {translateComplianceMessages(editFile.result.compliance_validation.errors, language)
-                              .map((error: string, index: number) => (
-                              <li key={index} className="text-sm flex items-start gap-3">
-                                <span className="text-red-500 mt-1 flex-shrink-0">•</span>
-                                <span className="text-red-700 leading-relaxed">{error}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                      {editFile.result.compliance_validation.errors && (
+                        (() => {
+                          let errorMessages = [];
+                          if (editFile.result.compliance_validation.errors[language]) {
+                            errorMessages = editFile.result.compliance_validation.errors[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation.errors)) {
+                            errorMessages = editFile.result.compliance_validation.errors;
+                          }
+
+                          return errorMessages.length > 0 && (
+                            <div className="mb-3">
+                              <h4 className="text-xs font-semibold mb-2 text-red-700 uppercase tracking-wide">
+                                {language === 'ro' ? 'Erori găsite:' : 'Issues Found:'}
+                              </h4>
+                              <ul className="space-y-2">
+                                {errorMessages.map((error: string, index: number) => (
+                                  <li key={index} className="text-sm flex items-start gap-3">
+                                    <span className="text-red-500 mt-1 flex-shrink-0">•</span>
+                                    <span className="text-red-700 leading-relaxed">{error}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })()
                       )}
 
-                      {editFile.result.compliance_validation.warnings && 
-                       editFile.result.compliance_validation.warnings.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-xs font-semibold mb-2 text-orange-700 uppercase tracking-wide">
-                            {language === 'ro' ? 'Avertismente:' : 'Warnings:'}
-                          </h4>
-                          <ul className="space-y-2">
-                            {translateComplianceMessages(editFile.result.compliance_validation.warnings, language)
-                              .map((warning: string, index: number) => (
-                              <li key={index} className="text-sm flex items-start gap-3">
-                                <span className="text-orange-500 mt-1 flex-shrink-0">⚠</span>
-                                <span className="text-orange-700 leading-relaxed">{warning}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                      {editFile.result.compliance_validation.warnings && (
+                        (() => {
+                          let warningMessages = [];
+                          if (editFile.result.compliance_validation.warnings[language]) {
+                            warningMessages = editFile.result.compliance_validation.warnings[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation.warnings)) {
+                            warningMessages = editFile.result.compliance_validation.warnings;
+                          }
+
+                          return warningMessages.length > 0 && (
+                            <div className="mb-3">
+                              <h4 className="text-xs font-semibold mb-2 text-orange-700 uppercase tracking-wide">
+                                {language === 'ro' ? 'Avertismente:' : 'Warnings:'}
+                              </h4>
+                              <ul className="space-y-2">
+                                {warningMessages.map((warning: string, index: number) => (
+                                  <li key={index} className="text-sm flex items-start gap-3">
+                                    <span className="text-orange-500 mt-1 flex-shrink-0">⚠</span>
+                                    <span className="text-orange-700 leading-relaxed">{warning}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          );
+                        })()
                       )}
 
-                      {editFile.result.compliance_validation.validation_rules && 
-                       editFile.result.compliance_validation.validation_rules.length > 0 && (
-                        <details className="mt-3">
-                          <summary className="text-xs font-medium cursor-pointer hover:underline text-gray-600 select-none">
-                            {language === 'ro' ? 'Vezi regulile de validare' : 'View validation rules'} 
-                            <span className="ml-1 opacity-70">({editFile.result.compliance_validation.validation_rules.length})</span>
-                          </summary>
-                          <div className="mt-2 pl-4 border-l-2 border-gray-300">
-                            <ul className="space-y-1">
-                              {translateComplianceMessages(editFile.result.compliance_validation.validation_rules, language)
-                                .map((rule: string, index: number) => (
-                                <li key={index} className="text-xs text-gray-600 flex items-start gap-2">
-                                  <span className="text-gray-400 mt-0.5 flex-shrink-0">→</span>
-                                  <span className="leading-relaxed">{rule}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        </details>
+                      {editFile.result.compliance_validation.validation_rules && (
+                        (() => {
+                          let ruleMessages = [];
+                          if (editFile.result.compliance_validation.validation_rules[language]) {
+                            ruleMessages = editFile.result.compliance_validation.validation_rules[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation.validation_rules)) {
+                            ruleMessages = editFile.result.compliance_validation.validation_rules;
+                          }
+
+                          return ruleMessages.length > 0 && (
+                            <details className="mt-3">
+                              <summary className="text-xs font-medium cursor-pointer hover:underline text-gray-600 select-none">
+                                {language === 'ro' ? 'Vezi regulile de validare' : 'View validation rules'} 
+                                <span className="ml-1 opacity-70">({ruleMessages.length})</span>
+                              </summary>
+                              <div className="mt-2 pl-4 border-l-2 border-gray-300">
+                                <ul className="space-y-1">
+                                  {ruleMessages.map((rule: string, index: number) => (
+                                    <li key={index} className="text-xs text-gray-600 flex items-start gap-2">
+                                      <span className="text-gray-400 mt-0.5 flex-shrink-0">→</span>
+                                      <span className="leading-relaxed">{rule}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </details>
+                          );
+                        })()
                       )}
 
                       <div className={`text-xs mt-4 pt-3 border-t border-current/20 font-medium ${

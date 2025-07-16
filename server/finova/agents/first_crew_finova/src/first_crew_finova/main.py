@@ -193,8 +193,55 @@ def save_temp_file(base64_data: str) -> str:
         print(f"ERROR: Error saving temporary file: {str(e)}", file=sys.stderr)
         raise
 
+def validate_compliance_output(result):
+    """Validate and fix compliance data to ensure bilingual structure"""
+    if not result or not isinstance(result, dict):
+        return False
+    
+    compliance_data = result.get('compliance_validation')
+    if not compliance_data:
+        return True 
+    
+    if not isinstance(compliance_data, dict):
+        return False
+    
+    if 'compliance_status' not in compliance_data:
+        return False
+    
+    bilingual_fields = ['validation_rules', 'errors', 'warnings']
+    
+    for field in bilingual_fields:
+        field_data = compliance_data.get(field)
+        
+        if field_data is None:
+            compliance_data[field] = {'ro': [], 'en': []}
+        elif isinstance(field_data, list):
+            compliance_data[field] = {'ro': field_data, 'en': field_data}
+            print(f"Converted legacy {field} format to bilingual", file=sys.stderr)
+        elif isinstance(field_data, dict):
+            if 'ro' not in field_data or 'en' not in field_data:
+                ro_data = field_data.get('ro', [])
+                en_data = field_data.get('en', [])
+                compliance_data[field] = {
+                    'ro': ro_data if isinstance(ro_data, list) else [],
+                    'en': en_data if isinstance(en_data, list) else []
+                }
+                print(f"Fixed incomplete bilingual structure for {field}", file=sys.stderr)
+        else:
+            compliance_data[field] = {'ro': [], 'en': []}
+            print(f"Reset invalid {field} format to empty bilingual structure", file=sys.stderr)
+    
+    if 'overall_score' in compliance_data:
+        try:
+            compliance_data['overall_score'] = float(compliance_data['overall_score'])
+        except (ValueError, TypeError):
+            print("Fixed invalid overall_score format", file=sys.stderr)
+            compliance_data['overall_score'] = 0.0
+    
+    return True
+
 def extract_json_from_text(text: str) -> dict:
-    """Extract JSON from text with optimized parsing."""
+    """Extract JSON from text with optimized parsing and compliance validation."""
     if not text:
         return {}
     
@@ -204,7 +251,12 @@ def extract_json_from_text(text: str) -> dict:
     text = text.strip()
     
     try:
-        return json.loads(text)
+        result = json.loads(text)
+        if 'compliance_validation' in result:
+            if not validate_compliance_output(result):
+                print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
+                validate_compliance_output(result)
+        return result
     except json.JSONDecodeError:
         pass
     
@@ -237,16 +289,26 @@ def extract_json_from_text(text: str) -> dict:
     
     if json_objects:
         json_objects.sort(key=lambda x: len(x.keys()), reverse=True)
-        return json_objects[0]
+        result = json_objects[0]
+        if 'compliance_validation' in result:
+            if not validate_compliance_output(result):
+                print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
+                validate_compliance_output(result)
+        return result
     
     json_in_code = re.search(r'```(?:json)?\s*(\{[^`]+\})\s*```', text, re.DOTALL)
     if json_in_code:
         try:
-            return json.loads(json_in_code.group(1))
+            result = json.loads(json_in_code.group(1))
+            if 'compliance_validation' in result:
+                if not validate_compliance_output(result):
+                    print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
+                    validate_compliance_output(result)
+            return result
         except json.JSONDecodeError:
             pass
     
-    if any(keyword in text.lower() for keyword in ["document_type", "vendor", "buyer", "company"]):
+    if any(keyword in text.lower() for keyword in ["document_type", "vendor", "buyer", "company", "compliance_validation"]):
         result = {}
         patterns = [
             (r'"document_type"\s*:\s*"([^"]+)"', 'document_type'),
@@ -264,8 +326,24 @@ def extract_json_from_text(text: str) -> dict:
             if match:
                 result[key] = match.group(1)
         
+        if 'compliance_validation' in text.lower():
+            status_match = re.search(r'"compliance_status"\s*:\s*"([^"]+)"', text, re.IGNORECASE)
+            if status_match:
+                result['compliance_validation'] = {
+                    'compliance_status': status_match.group(1),
+                    'overall_score': 0.0,
+                    'validation_rules': {'ro': [], 'en': []},
+                    'errors': {'ro': [], 'en': []},
+                    'warnings': {'ro': [], 'en': []}
+                }
+                print("Extracted basic compliance validation structure from patterns", file=sys.stderr)
+        
         if result:
             print(f"Extracted structured data using patterns: {list(result.keys())}", file=sys.stderr)
+            if 'compliance_validation' in result:
+                if not validate_compliance_output(result):
+                    print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
+                    validate_compliance_output(result)
             return result
     
     print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)

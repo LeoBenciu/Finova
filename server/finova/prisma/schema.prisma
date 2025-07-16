@@ -93,6 +93,7 @@ model ComplianceValidation {
   documentId      Int
   document        Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
   overallStatus   ComplianceStatus
+  overallScore    Float?
   validationRules Json
   errors          Json?
   warnings        Json?

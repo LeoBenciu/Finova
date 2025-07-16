@@ -80,9 +80,9 @@ validate_compliance_task:
     Check compliance with Romanian ANAF regulations:
 
     FOR INVOICES:
-    - VAT number format: Must be 'RO' followed by 2-10 digits for Romanian entities
+    - VAT number format: Must be 2-10 digits for Romanian entities
     - Invoice series and number: Must be continuous and follow ANAF format
-    - Required fields: Vendor name/address, buyer name/address, invoice date, due date, amounts
+    - Required fields: Vendor name/address, buyer name/address, invoice date, amounts
     - VAT rates: Must be 0%, 5%, 9%, or 19% (current Romanian rates)
     - Currency declaration: Foreign currency transactions must be properly declared
     - Amount calculations: VAT calculations must be accurate
@@ -117,7 +117,27 @@ validate_compliance_task:
     IMPORTANT: When validating dates, compare against the current date {current_date}. 
     A date is only "future" if it comes AFTER {current_date}.
 
-    Output JSON with: {{'compliance_status': 'COMPLIANT|NON_COMPLIANT|WARNING', 'validation_rules': [array], 'errors': [array], 'warnings': [array], 'overall_score': float}}
+    CRITICAL: Generate ALL messages in BOTH languages. Structure your response as follows:
+    {{
+      "compliance_validation": {{
+        "compliance_status": "COMPLIANT|NON_COMPLIANT|WARNING",
+        "overall_score": 0.0-1.0,
+        "validation_rules": {{
+          "ro": ["lista de reguli în română"],
+          "en": ["list of rules in english"]
+        }},
+        "errors": {{
+          "ro": ["lista de erori în română"],
+          "en": ["list of errors in english"]
+        }},
+        "warnings": {{
+          "ro": ["lista de avertismente în română"],
+          "en": ["list of warnings in english"]
+        }}
+      }}
+    }}
+
+    Output JSON with compliance validation results in both Romanian and English.
   expected_output: >
-    A JSON string with comprehensive compliance validation results.
+    A JSON string with comprehensive compliance validation results in both Romanian and English.
   agent: compliance_validator_agent
