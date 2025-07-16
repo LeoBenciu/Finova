@@ -161,140 +161,28 @@ export class DataExtractionService {
     }
 
     private validateProcessedData(data: any): ProcessedDataValidation {
-        const validation: ProcessedDataValidation = {
-            isValid: true,
-            errors: [],
-            warnings: []
-        };
+    const validation: ProcessedDataValidation = {
+        isValid: true,
+        errors: [],
+        warnings: []
+    };
 
-        if (!data || typeof data !== 'object') {
-            validation.isValid = false;
-            validation.errors.push('Invalid data structure received');
-            return validation;
-        }
-
-        const result = data.result || data;
-
-        if (!result.document_type) {
-            validation.isValid = false;
-            validation.errors.push('Missing document_type');
-            return validation;
-        }
-
-        const docType = result.document_type.toLowerCase();
-
-        switch (docType) {
-            case 'invoice':
-                const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
-                const missingInvoiceFields = requiredInvoiceFields.filter(field => !result[field]);
-                
-                if (missingInvoiceFields.length > 0) {
-                    validation.isValid = false;
-                    validation.errors.push(`Missing required invoice fields: ${missingInvoiceFields.join(', ')}`);
-                }
-
-                if (!Array.isArray(result.line_items)) {
-                    validation.warnings.push('Invoice line_items should be an array');
-                    result.line_items = [];
-                }
-                break;
-
-            case 'receipt':
-                const requiredReceiptFields = ['vendor', 'total_amount', 'document_date'];
-                const missingReceiptFields = requiredReceiptFields.filter(field => !result[field]);
-                
-                if (missingReceiptFields.length > 0) {
-                    validation.isValid = false;
-                    validation.errors.push(`Missing required receipt fields: ${missingReceiptFields.join(', ')}`);
-                }
-                break;
-
-            case 'bank statement':
-                const requiredBankFields = ['company_name', 'bank_name', 'account_number'];
-                const missingBankFields = requiredBankFields.filter(field => !result[field]);
-                
-                if (missingBankFields.length > 0) {
-                    validation.isValid = false;
-                    validation.errors.push(`Missing required bank statement fields: ${missingBankFields.join(', ')}`);
-                }
-
-                if (!Array.isArray(result.transactions)) {
-                    validation.warnings.push('Bank statement transactions should be an array');
-                    result.transactions = [];
-                }
-                break;
-
-            case 'contract':
-                const requiredContractFields = ['contract_number', 'contract_date'];
-                const missingContractFields = requiredContractFields.filter(field => !result[field]);
-                
-                if (missingContractFields.length > 0) {
-                    validation.isValid = false;
-                    validation.errors.push(`Missing required contract fields: ${missingContractFields.join(', ')}`);
-                }
-                break;
-
-            default:
-                if (!result.document_date) {
-                    validation.warnings.push('Missing document_date for document type: ' + docType);
-                }
-        }
-
-        if (result.duplicate_detection) {
-            if (typeof result.duplicate_detection !== 'object') {
-                validation.warnings.push('duplicate_detection should be an object');
-                result.duplicate_detection = {
-                    is_duplicate: false,
-                    duplicate_matches: [],
-                    confidence: 0.0
-                };
-            } else {
-                if (typeof result.duplicate_detection.is_duplicate !== 'boolean') {
-                    result.duplicate_detection.is_duplicate = false;
-                }
-                if (!Array.isArray(result.duplicate_detection.duplicate_matches)) {
-                    result.duplicate_detection.duplicate_matches = [];
-                }
-            }
-        }
-
-        // Validate compliance_validation structure
-        if (result.compliance_validation) {
-            if (typeof result.compliance_validation !== 'object') {
-                validation.warnings.push('compliance_validation should be an object');
-                result.compliance_validation = {
-                    compliance_status: 'PENDING',
-                    overall_score: 0.0,
-                    validation_rules: { ro: [], en: [] },
-                    errors: { ro: [], en: [] },
-                    warnings: { ro: [], en: [] }
-                };
-            } else {
-                if (!result.compliance_validation.compliance_status) {
-                    result.compliance_validation.compliance_status = 'PENDING';
-                }
-                if (typeof result.compliance_validation.overall_score !== 'number') {
-                    result.compliance_validation.overall_score = 0.0;
-                }
-                
-                const bilingualFields = ['validation_rules', 'errors', 'warnings'];
-                bilingualFields.forEach(field => {
-                    if (!result.compliance_validation[field] || typeof result.compliance_validation[field] !== 'object') {
-                        result.compliance_validation[field] = { ro: [], en: [] };
-                    } else {
-                        if (!Array.isArray(result.compliance_validation[field].ro)) {
-                            result.compliance_validation[field].ro = [];
-                        }
-                        if (!Array.isArray(result.compliance_validation[field].en)) {
-                            result.compliance_validation[field].en = [];
-                        }
-                    }
-                });
-            }
-        }
-
+    if (!data || typeof data !== 'object') {
+        validation.isValid = false;
+        validation.errors.push('Invalid data structure received');
         return validation;
     }
+
+    const result = data.result || data;
+
+    if (!result.document_type) {
+        validation.isValid = false;
+        validation.errors.push('Missing document_type');
+        return validation;
+    }
+
+    return validation;
+}
 
     private createFallbackResponse(docType: string = 'Unknown', documentHash: string = ''): FallbackResponse {
         return {
@@ -551,23 +439,13 @@ export class DataExtractionService {
             const extractedData = result.data || result;
             
             const validation = this.validateProcessedData(extractedData);
-            
+
             if (!validation.isValid) {
                 this.logger.warn(`Data validation failed: ${validation.errors.join(', ')}`);
-                
-                const fallbackResponse = this.createFallbackResponse(
-                    extractedData.document_type || 'Unknown'
-                );
-                
-                if (extractedData.duplicate_detection && typeof extractedData.duplicate_detection === 'object') {
-                    fallbackResponse.duplicate_detection = {
-                        ...fallbackResponse.duplicate_detection,
-                        ...extractedData.duplicate_detection
-                    };
+                if (!extractedData.document_type) {
+                    const fallbackResponse = this.createFallbackResponse('Unknown');
+                    return fallbackResponse;
                 }
-                
-                this.logger.warn('Using enhanced fallback response due to validation failure');
-                return fallbackResponse;
             }
             
             if (validation.warnings.length > 0) {

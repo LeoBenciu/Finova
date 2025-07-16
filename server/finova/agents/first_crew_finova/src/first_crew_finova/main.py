@@ -35,7 +35,7 @@ except Exception as e:
     sys.exit(1)
 
 def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[bool, list[str]]:
-    """Validate that processed data contains all required fields based on document type."""
+    """Validate that processed data contains minimum required fields."""
     errors = []
     
     if not data or not isinstance(data, dict):
@@ -44,62 +44,9 @@ def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[
     
     if not data.get('document_type'):
         errors.append("Missing document_type")
+        return False, errors
     
-    doc_type = data.get('document_type', '').lower()
-    
-    if doc_type == 'invoice':
-        required_fields = ['vendor', 'buyer', 'document_date', 'total_amount']
-        for field in required_fields:
-            if not data.get(field):
-                errors.append(f"Missing required invoice field: {field}")
-        
-        if 'line_items' not in data:
-            errors.append("Missing line_items for invoice")
-        elif not isinstance(data['line_items'], list):
-            errors.append("line_items must be an array")
-            
-    elif doc_type == 'receipt':
-        required_fields = ['vendor', 'total_amount', 'document_date']
-        for field in required_fields:
-            if not data.get(field):
-                errors.append(f"Missing required receipt field: {field}")
-                
-    elif doc_type == 'bank statement':
-        required_fields = ['company_name', 'bank_name', 'account_number']
-        for field in required_fields:
-            if not data.get(field):
-                errors.append(f"Missing required bank statement field: {field}")
-        
-        if 'transactions' not in data:
-            errors.append("Missing transactions for bank statement")
-        elif not isinstance(data['transactions'], list):
-            errors.append("transactions must be an array")
-            
-    elif doc_type == 'contract':
-        required_fields = ['contract_number', 'contract_date']
-        for field in required_fields:
-            if not data.get(field):
-                errors.append(f"Missing required contract field: {field}")
-    
-    if 'duplicate_detection' in data:
-        dup_data = data['duplicate_detection']
-        if not isinstance(dup_data, dict):
-            errors.append("duplicate_detection must be an object")
-        else:
-            if 'is_duplicate' not in dup_data:
-                errors.append("Missing is_duplicate in duplicate_detection")
-            if 'duplicate_matches' not in dup_data:
-                errors.append("Missing duplicate_matches in duplicate_detection")
-    
-    if 'compliance_validation' in data:
-        comp_data = data['compliance_validation']
-        if not isinstance(comp_data, dict):
-            errors.append("compliance_validation must be an object")
-        else:
-            if 'compliance_status' not in comp_data:
-                errors.append("Missing compliance_status in compliance_validation")
-    
-    return len(errors) == 0, errors
+    return True, errors
 
 def create_fallback_response(doc_type: str = "Unknown") -> dict:
     """Create a minimal fallback response when processing fails."""
