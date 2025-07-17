@@ -309,6 +309,8 @@ export class DataExtractionService {
     }
 
     private async getExistingDocuments(accountingClientId: number) {
+        console.log('🔍 getExistingDocuments called with ID:', accountingClientId);
+        
         const documents = await this.prisma.document.findMany({
             where: {
                 accountingClientId: accountingClientId
@@ -321,22 +323,26 @@ export class DataExtractionService {
             },
             take: 200 
         });
-    
-        return documents.map(doc => {
+
+        console.log('🔍 Raw documents found:', documents.length);
+
+        const processedDocuments = documents.map(doc => {
             const extractedFields = doc.processedData?.extractedFields;
             let result: any = {};
+
             if (typeof extractedFields === 'string') {
                 try {
                     const parsed = JSON.parse(extractedFields);
                     result = parsed.result || parsed || {};
-                } catch {
+                } catch (e) {
+                    console.log(`🔍 Failed to parse extracted fields for doc ${doc.id}:`, e.message);
                     result = {};
                 }
             } else if (extractedFields && typeof extractedFields === 'object') {
                 result = (extractedFields as any).result || extractedFields || {};
             }
-            
-            return {
+
+            const processedDoc = {
                 id: doc.id,
                 name: doc.name,
                 documentHash: doc.documentHash,
@@ -352,7 +358,14 @@ export class DataExtractionService {
                 currency: result.currency || 'RON',
                 created_at: doc.createdAt.toISOString()
             };
+
+            console.log(`🔍 Processed doc ${doc.id}: type=${processedDoc.document_type}, hash=${processedDoc.documentHash}`);
+
+            return processedDoc;
         });
+
+        console.log('🔍 Processed documents returned:', processedDocuments.length);
+        return processedDocuments;
     }
 
     private async getExistingArticles(accountingClientId: number) {
@@ -405,215 +418,109 @@ export class DataExtractionService {
         const startTime = Date.now();
         const memoryBefore = process.memoryUsage();
         
-        try {
-            const estimatedSize = (fileBase64.length * 3) / 4; 
-            if (estimatedSize > this.maxFileSize) {
-                throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
+  try {
+        console.log('🔍 DUPLICATE DETECTION DEBUG START');
+        console.log('📋 Client Company EIN:', clientCompanyEin);
+        
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein: clientCompanyEin },
+        });
+        
+        console.log('🏢 Found Client Company:', clientCompany ? 'YES' : 'NO');
+        if (clientCompany) {
+            console.log('🏢 Client Company ID:', clientCompany.id);
+            console.log('🏢 Client Company Name:', clientCompany.name);
+        }
+
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+            where: {
+                clientCompanyId: clientCompany.id
             }
-        
-            const currentPhase = this.processingPhases[processingPhase];
-            this.logger.log(`Starting document processing in phase ${processingPhase} (${currentPhase?.name}). Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
-            this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
-        
-            if (!fs.existsSync(this.pythonScriptPath)) {
-                const alternativePaths = [
-                    path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
-                    '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
-                    path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-                    path.join(process.cwd(), 'src', 'server', 'finova', 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-                ];
+        });
+
+        console.log('🔗 Found Accounting Relation:', accountingClientRelation ? 'YES' : 'NO');
+        if (accountingClientRelation) {
+            console.log('🔗 Accounting Client ID:', accountingClientRelation.id);
+        }
+
+        const totalDocsCount = await this.prisma.document.count({
+            where: {
+                accountingClientId: accountingClientRelation.id
+            }
+        });
+        console.log('📄 Total documents in database for this client:', totalDocsCount);
+
+        const docsWithProcessedData = await this.prisma.document.count({
+            where: {
+                accountingClientId: accountingClientRelation.id,
+                processedData: {
+                    isNot: null
+                }
+            }
+        });
+        console.log('📄 Documents with processed data:', docsWithProcessedData);
+
+        const sampleDocs = await this.prisma.document.findMany({
+            where: {
+                accountingClientId: accountingClientRelation.id
+            },
+            include: {
+                processedData: true
+            },
+            take: 3,
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+
+        console.log('📄 Sample documents found:', sampleDocs.length);
+        sampleDocs.forEach((doc, index) => {
+            console.log(`📄 Sample Doc ${index + 1}:`);
+            console.log(`   - ID: ${doc.id}`);
+            console.log(`   - Name: ${doc.name}`);
+            console.log(`   - Accounting Client ID: ${doc.accountingClientId}`);
+            console.log(`   - Document Hash: ${doc.documentHash}`);
+            console.log(`   - Has Processed Data: ${doc.processedData ? 'YES' : 'NO'}`);
+            
+            if (doc.processedData) {
+                console.log(`   - Processed Data ID: ${doc.processedData.id}`);
+                console.log(`   - Extracted Fields Type: ${typeof doc.processedData.extractedFields}`);
                 
-                let foundPath = null;
-                for (const altPath of alternativePaths) {
-                    this.logger.debug(`Checking alternative path: ${altPath}`);
-                    if (fs.existsSync(altPath)) {
-                        foundPath = altPath;
-                        this.logger.log(`Found Python script at alternative path: ${altPath}`);
-                        break;
+                let extractedData = null;
+                if (typeof doc.processedData.extractedFields === 'string') {
+                    try {
+                        extractedData = JSON.parse(doc.processedData.extractedFields);
+                        console.log(`   - Document Type: ${extractedData?.result?.document_type || extractedData?.document_type || 'N/A'}`);
+                        console.log(`   - Document Number: ${extractedData?.result?.document_number || extractedData?.document_number || 'N/A'}`);
+                    } catch (e) {
+                        console.log(`   - Failed to parse extracted fields: ${e.message}`);
                     }
-                }
-                
-                if (!foundPath) {
-                    throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
-                }
-                
-                this.pythonScriptPath = foundPath;
-            }
-        
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: clientCompanyEin },
-            });
-            if (!clientCompany) {
-                throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
-            }
-        
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    clientCompanyId: clientCompany.id
-                }
-            });
-        
-            if (!accountingClientRelation) {
-                throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
-            }
-        
-            const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
-            const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
-            const existingArticles = await this.getExistingArticles(accountingClientRelation.id);
-        
-            const timestamp = Date.now();
-            const randomId = randomBytes(8).toString('hex');
-            const tempFileName = `base64_${randomId}_${timestamp}.txt`;
-            const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
-            const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
-            const existingArticlesFileName = `existing_articles_${randomId}_${timestamp}.json`;
-            
-            tempBase64File = path.join(this.tempDir, tempFileName);
-            tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
-            tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
-            tempExistingArticlesFile = path.join(this.tempDir, existingArticlesFileName);
-        
-            await Promise.all([
-                writeFilePromise(tempBase64File, fileBase64),
-                writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
-                writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2)),
-                writeFilePromise(tempExistingArticlesFile, JSON.stringify(existingArticles, null, 2))
-            ]);
-            
-            this.logger.debug(`Created temporary files for phase ${processingPhase}: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}, ${tempExistingArticlesFile}`);
-        
-            if (!this.dependenciesChecked) {
-                try {
-                    await this.installDependencies();
-                    this.dependenciesChecked = true;
-                } catch (installError) {
-                    this.logger.warn('Failed to install Python dependencies, they might already be installed');
+                } else if (doc.processedData.extractedFields && typeof doc.processedData.extractedFields === 'object') {
+                    extractedData = doc.processedData.extractedFields;
+                    console.log(`   - Document Type: ${(extractedData as any)?.result?.document_type || (extractedData as any)?.document_type || 'N/A'}`);
+                    console.log(`   - Document Number: ${(extractedData as any)?.result?.document_number || (extractedData as any)?.document_number || 'N/A'}`);
                 }
             }
+            console.log('');
+        });
+
+        const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
+        console.log('📄 Existing documents returned by getExistingDocuments:', existingDocuments.length);
         
-            const args = [
-                clientCompanyEin,
-                tempBase64File,
-                tempExistingDocsFile,
-                tempUserCorrectionsFile,
-                tempExistingArticlesFile,
-                processingPhase.toString()
-            ];
-            
-            this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
-            
-            const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
-            });
-        
-            const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
-                const { spawn } = require('child_process');
-                
-                const child = spawn('python3', [this.pythonScriptPath, ...args], {
-                    cwd: path.dirname(this.pythonScriptPath),
-                    env: {
-                        ...process.env,
-                        PYTHONPATH: path.dirname(this.pythonScriptPath),
-                        PYTHONUNBUFFERED: '1',
-                        MALLOC_ARENA_MAX: '2',
-                        PROCESSING_PHASE: processingPhase.toString()
-                    },
-                    stdio: ['pipe', 'pipe', 'pipe']
-                });
-            
-                let stdout = '';
-                let stderr = '';
-            
-                child.stdout.on('data', (data) => {
-                    stdout += data.toString();
-                });
-            
-                child.stderr.on('data', (data) => {
-                    stderr += data.toString();
-                });
-            
-                child.on('close', (code) => {
-                    if (code === 0) {
-                        resolve({ stdout, stderr });
-                    } else {
-                        reject(new Error(`Python process exited with code ${code}. stderr: ${stderr}`));
-                    }
-                });
-            
-                child.on('error', (error) => {
-                    reject(error);
-                });
-            });
-        
-            const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
-            
-            if (stderr) {
-                this.logger.warn(`Python stderr output: ${stderr}`);
-            }
-        
-            let result;
-            try {
-                const jsonOutput = this.extractJsonFromOutput(stdout);
-                result = JSON.parse(jsonOutput);
-            } catch (parseError) {
-                this.logger.error(`Failed to parse Python output in phase ${processingPhase}. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
-                throw new Error(`Failed to parse processing results in phase ${processingPhase}: ${parseError.message}`);
-            }
-        
-            if (result.error) {
-                this.logger.error(`Python script returned error in phase ${processingPhase}: ${result.error}`);
-                throw new Error(`Processing failed in phase ${processingPhase}: ${result.error}`);
-            }
-        
-            const extractedData = result.data || result;
-            
-            const validation = this.validateProcessedData(extractedData, processingPhase);
-            
-            if (!validation.isValid) {
-                this.logger.error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
-                throw new Error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
-            }
-            
-            if (validation.warnings.length > 0) {
-                this.logger.warn(`Data validation warnings in phase ${processingPhase}: ${validation.warnings.join(', ')}`);
-            }
-        
-            if (processingPhase === 0) {
-                this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
-                if (extractedData.document_type === 'Invoice') {
-                    this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
-                }
-            } else {
-                if (extractedData.duplicate_detection) {
-                    this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
-                }
-        
-                if (extractedData.compliance_validation) {
-                    this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
-                }
-            }
-        
-            if (currentPhase?.requiresFullExtraction) {
-                this.validateInvoiceDirection(extractedData, clientCompanyEin);
-                this.validateDocumentRelevance(extractedData, clientCompanyEin);
-                this.validateAndNormalizeCurrency(extractedData);
-                this.validateExtractedData(extractedData, [], [], clientCompanyEin);
-            }
-        
-            const processingTime = Date.now() - startTime;
-            const memoryAfter = process.memoryUsage();
-            const memoryDiff = {
-                rss: memoryAfter.rss - memoryBefore.rss,
-                heapUsed: memoryAfter.heapUsed - memoryBefore.heapUsed,
-                external: memoryAfter.external - memoryBefore.external
-            };
-        
-            this.logger.log(`Document processing completed in phase ${processingPhase} (${currentPhase?.name}) in ${processingTime}ms`);
-            this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
-        
-            return extractedData;
-            
-        } catch (error) {
+        existingDocuments.slice(0, 3).forEach((doc, index) => {
+            console.log(`📄 Existing Doc ${index + 1} (processed):`);
+            console.log(`   - ID: ${doc.id}`);
+            console.log(`   - Name: ${doc.name}`);
+            console.log(`   - Document Type: ${doc.document_type}`);
+            console.log(`   - Document Number: ${doc.document_number}`);
+            console.log(`   - Document Hash: ${doc.documentHash}`);
+            console.log(`   - Total Amount: ${doc.total_amount}`);
+            console.log(`   - Document Date: ${doc.document_date}`);
+            console.log('');
+        });
+
+        console.log('🔍 DUPLICATE DETECTION DEBUG END');
+        }catch (error) {
             const processingTime = Date.now() - startTime;
             this.logger.error(`Error extracting data for EIN ${clientCompanyEin} in phase ${processingPhase} after ${processingTime}ms: ${error.message}`, error.stack);
             
