@@ -52,24 +52,105 @@ extract_other_document_data_task:
 
 detect_duplicates_task:
   description: >
-    Compare the current document data with existing documents from {existing_documents} to detect potential duplicates.
-    For the document at {document_path}, analyze the extracted data and compare with existing documents based on:
-    - Exact file hash match (highest priority)
-    - Invoice/document number match
-    - Same vendor, amount, and date combination
-    - Similar content with high similarity score
+    Perform enhanced duplicate detection for the document at {document_path} against existing documents from {existing_documents}.
 
-    Generate a hash for the current document using the document_hash_generator tool.
-    Use the duplicate_detector tool to compare extracted data with existing documents.
+    CRITICAL DUPLICATE DETECTION RULES:
+    1. DOCUMENT TYPE FILTERING: ONLY compare documents of the SAME TYPE
+       - Invoice with Invoice only
+       - Receipt with Receipt only  
+       - Bank Statement with Bank Statement only
+       - Contract with Contract only
+       - NEVER compare different document types (this was causing false positives)
 
-    Classify duplicates as:
-    - EXACT_MATCH: Same file content (hash match) or identical invoice number + vendor + amount + date
-    - CONTENT_MATCH: Same invoice number OR (same vendor + amount + date)
-    - SIMILAR_CONTENT: High similarity in multiple fields but not exact match
+    2. PRIMARY DUPLICATE INDICATORS (in order of priority):
+       a) EXACT FILE HASH MATCH = 100% duplicate (identical file content)
+       b) DOCUMENT NUMBER + VENDOR EIN + TOTAL AMOUNT + DATE (for invoices)
+       c) VENDOR + TOTAL AMOUNT + DATE (for receipts, allow ±7 days date variance)
+       d) ACCOUNT NUMBER + STATEMENT PERIOD (for bank statements)
 
-    Output JSON with: {{'is_duplicate': boolean, 'duplicate_matches': [array of matches], 'document_hash': 'hash_string', 'confidence': float}}
+    3. FIELD NORMALIZATION REQUIREMENTS:
+       - Remove 'RO' prefix from EIN numbers before comparison
+       - Normalize document numbers: remove spaces, dashes, leading zeros
+       - Round amounts to 2 decimal places for precise comparison
+       - Standardize dates to DD-MM-YYYY format
+       - Normalize company names: remove suffixes (SRL, SA, PFA, etc.)
+       - Convert all text to uppercase for case-insensitive comparison
+
+    4. ENHANCED SIMILARITY THRESHOLDS (stricter to avoid false positives):
+       - EXACT_MATCH: ≥85% similarity score
+       - CONTENT_MATCH: ≥70% similarity score  
+       - SIMILAR_CONTENT: ≥60% similarity score
+       - Below 60% = NOT considered duplicate
+
+    5. DOCUMENT TYPE SPECIFIC SCORING WEIGHTS:
+       
+       For INVOICES (stricter matching):
+       - Document number match: 50% weight (critical for invoices)
+       - Total amount exact match: 30% weight
+       - Document date exact match: 15% weight (no date variance allowed)
+       - Vendor EIN match: 15% weight
+       - Currency match: 5% weight
+       - Bonus: +10% for multiple exact field matches
+       
+       For RECEIPTS (more flexible):
+       - Vendor name/EIN match: 40% weight
+       - Total amount exact match: 30% weight  
+       - Document date match: 15% weight (allow ±7 days variance)
+       - Document number match: 15% weight (less critical)
+       - Currency match: 5% weight
+       
+       For BANK STATEMENTS:
+       - Account number + statement period: 60% weight
+       - Bank name + company EIN: 40% weight
+       
+       For OTHER DOCUMENTS:
+       - Use document-specific key fields with balanced weights
+
+    6. DEBUGGING AND LOGGING:
+       Always log the following for troubleshooting:
+       - Current document type being checked
+       - Number of existing documents of the same type found
+       - Detailed similarity score calculations for each comparison
+       - Specific reasons for duplicate classification
+       - Field-by-field comparison results
+
+    7. VALIDATION CHECKS:
+       - Verify document_hash is generated correctly
+       - Ensure existing_documents contains properly normalized data
+       - Confirm similarity scores are between 0.0 and 1.0
+       - Validate duplicate_type is one of: EXACT_MATCH, CONTENT_MATCH, SIMILAR_CONTENT
+
+    EXECUTION STEPS:
+    1. Generate document hash using document_hash_generator tool
+    2. Use enhanced_duplicate_detector tool for intelligent comparison
+    3. Apply document-type specific similarity calculations
+    4. Return comprehensive results with detailed explanations
+
+    OUTPUT FORMAT:
+    Return JSON with:
+    {
+      "is_duplicate": boolean,
+      "duplicate_matches": [
+        {
+          "document_id": number,
+          "similarity_score": float,
+          "matching_fields": [strings],
+          "duplicate_type": "EXACT_MATCH|CONTENT_MATCH|SIMILAR_CONTENT",
+          "reason": "detailed explanation"
+        }
+      ],
+      "document_hash": "string",
+      "confidence": float,
+      "debug_info": {
+        "document_type": "string", 
+        "existing_documents_count": number,
+        "same_type_documents_count": number,
+        "comparison_details": "string"
+      }
+    }
+
   expected_output: >
-    A JSON string with duplicate detection results including matches, hash, and confidence score.
+    A comprehensive JSON string with enhanced duplicate detection results, including detailed similarity analysis, document type filtering, and debugging information to prevent false positives.
   agent: duplicate_detector_agent
 
 validate_compliance_task:

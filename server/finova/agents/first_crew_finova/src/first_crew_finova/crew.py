@@ -9,6 +9,7 @@ import sys
 from pydantic import BaseModel, Field
 import logging
 import hashlib
+import re
 
 try:
     from crewai import Process
@@ -136,59 +137,246 @@ class ComplianceMessageTranslator:
         }
         return messages.get(key, {'ro': 'Mesaj necunoscut', 'en': 'Unknown message'})
 
-
-class DuplicateDetectionTool(BaseTool):
-    name: str = "duplicate_detector"
-    description: str = "Compare current document with existing documents to detect duplicates"
+class EnhancedDuplicateDetectionTool(BaseTool):
+    name: str = "enhanced_duplicate_detector"
+    description: str = "Advanced duplicate document detection with improved accuracy and document type filtering"
     args_schema: Type[BaseModel] = DuplicateCheckInput
     
     def _run(self, document_data: dict, existing_documents: List[dict]) -> str:
-        """Check for duplicates based on key fields."""
+        """Enhanced duplicate detection with better accuracy."""
         current_doc = document_data
         duplicates = []
         
+        current_normalized = self._normalize_document(current_doc)
+        
+        print(f"[DUPLICATE_DETECTION] Checking document type: {current_normalized.get('document_type')}")
+        print(f"[DUPLICATE_DETECTION] Against {len(existing_documents)} existing documents")
+        
+        same_type_docs = []
         for existing_doc in existing_documents:
-            similarity_score = 0.0
-            matching_fields = []
+            existing_normalized = self._normalize_document(existing_doc)
             
-            if current_doc.get('document_number') and existing_doc.get('document_number'):
-                if current_doc['document_number'] == existing_doc['document_number']:
-                    similarity_score += 0.4
-                    matching_fields.append('document_number')
+            if (current_normalized.get('document_type') and existing_normalized.get('document_type') and
+                current_normalized['document_type'] == existing_normalized['document_type']):
+                same_type_docs.append((existing_doc, existing_normalized))
+        
+        print(f"[DUPLICATE_DETECTION] Found {len(same_type_docs)} documents of same type to compare")
+        
+        for existing_doc, existing_normalized in same_type_docs:
+            if (current_doc.get('document_hash') and existing_doc.get('document_hash') and
+                current_doc['document_hash'] == existing_doc['document_hash']):
+                duplicates.append({
+                    "document_id": existing_doc.get('id'),
+                    "similarity_score": 1.0,
+                    "matching_fields": ['document_hash'],
+                    "duplicate_type": "EXACT_MATCH",
+                    "reason": "Identical file content (hash match)"
+                })
+                continue
             
-            if current_doc.get('total_amount') and existing_doc.get('total_amount'):
-                if abs(float(current_doc['total_amount']) - float(existing_doc['total_amount'])) < 0.01:
-                    similarity_score += 0.3
-                    matching_fields.append('total_amount')
+            similarity_result = self._calculate_similarity(current_normalized, existing_normalized)
             
-            if current_doc.get('document_date') and existing_doc.get('document_date'):
-                if current_doc['document_date'] == existing_doc['document_date']:
-                    similarity_score += 0.2
-                    matching_fields.append('document_date')
-            
-            if current_doc.get('vendor_ein') and existing_doc.get('vendor_ein'):
-                if current_doc['vendor_ein'] == existing_doc['vendor_ein']:
-                    similarity_score += 0.1
-                    matching_fields.append('vendor_ein')
-            
-            if similarity_score >= 0.9:
+            if similarity_result['score'] >= 0.85: 
                 duplicate_type = "EXACT_MATCH"
-            elif similarity_score >= 0.7:
+            elif similarity_result['score'] >= 0.70:  
                 duplicate_type = "CONTENT_MATCH"
-            elif similarity_score >= 0.5:
+            elif similarity_result['score'] >= 0.60:  
                 duplicate_type = "SIMILAR_CONTENT"
             else:
-                continue
+                continue 
             
             duplicates.append({
                 "document_id": existing_doc.get('id'),
-                "similarity_score": similarity_score,
-                "matching_fields": matching_fields,
-                "duplicate_type": duplicate_type
+                "similarity_score": similarity_result['score'],
+                "matching_fields": similarity_result['fields'],
+                "duplicate_type": duplicate_type,
+                "reason": similarity_result['reason']
             })
         
-        return json.dumps({"duplicates": duplicates})
-
+        is_duplicate = len(duplicates) > 0
+        
+        print(f"[DUPLICATE_DETECTION] Result: {len(duplicates)} potential duplicates found")
+        if duplicates:
+            for dup in duplicates:
+                print(f"  - {dup['duplicate_type']}: {dup['reason']} (score: {dup['similarity_score']:.2f})")
+        
+        return json.dumps({
+            "is_duplicate": is_duplicate,
+            "duplicate_matches": duplicates,
+            "document_hash": current_doc.get('document_hash', ''),
+            "confidence": max([d['similarity_score'] for d in duplicates]) if duplicates else 0.0
+        })
+    
+    def _normalize_document(self, doc: dict) -> dict:
+        """Normalize document fields for consistent comparison."""
+        normalized = {}
+        
+        normalized['document_type'] = doc.get('document_type', '').lower().strip()
+        
+        doc_num = doc.get('document_number', '')
+        if doc_num:
+            normalized['document_number'] = str(doc_num).strip().upper().replace(' ', '').replace('-', '').lstrip('0')
+        else:
+            normalized['document_number'] = ''
+        
+        for field in ['total_amount', 'vat_amount']:
+            amount = doc.get(field)
+            if amount is not None:
+                try:
+                    normalized[field] = round(float(amount), 2)
+                except (ValueError, TypeError):
+                    normalized[field] = 0.0
+            else:
+                normalized[field] = 0.0
+        
+        date_str = doc.get('document_date', '')
+        normalized['document_date'] = self._normalize_date(date_str)
+        
+        for field in ['vendor_ein', 'buyer_ein']:
+            ein = doc.get(field, '')
+            if ein:
+                normalized[field] = str(ein).strip().upper().replace('RO', '').replace(' ', '')
+            else:
+                normalized[field] = ''
+        
+        for field in ['vendor', 'buyer']:
+            name = doc.get(field, '')
+            if name:
+                normalized[field] = self._normalize_company_name(str(name))
+            else:
+                normalized[field] = ''
+        
+        normalized['currency'] = doc.get('currency', 'RON').upper()
+        
+        return normalized
+    
+    def _normalize_date(self, date_str: str) -> str:
+        """Normalize date to DD-MM-YYYY format."""
+        if not date_str:
+            return ''
+        
+        date_str = str(date_str).strip()
+        
+        if re.match(r'^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$', date_str):
+            parts = re.split(r'[\/\-]', date_str)
+            return f"{parts[0].zfill(2)}-{parts[1].zfill(2)}-{parts[2]}"
+        
+        if re.match(r'^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$', date_str):
+            parts = re.split(r'[\/\-]', date_str)
+            return f"{parts[2].zfill(2)}-{parts[1].zfill(2)}-{parts[0]}"
+        
+        return date_str
+    
+    def _normalize_company_name(self, name: str) -> str:
+        """Normalize company name for comparison."""
+        name = name.upper().strip()
+        suffixes = ['SRL', 'SA', 'SRA', 'PFA', 'II', 'IF', 'LLC', 'LTD', 'INC']
+        for suffix in suffixes:
+            name = re.sub(rf'\b{suffix}\.?\b$', '', name).strip()
+        name = re.sub(r'\s+', ' ', name)
+        return name
+    
+    def _calculate_similarity(self, current: dict, existing: dict) -> dict:
+        """Calculate detailed similarity between documents with document-type specific logic."""
+        score = 0.0
+        matching_fields = []
+        reasons = []
+        
+        doc_type = current.get('document_type', '')
+        
+        doc_num_weight = 0.5 if doc_type == 'invoice' else 0.4  # Higher weight for invoices
+        if (current.get('document_number') and existing.get('document_number') and
+            current['document_number'] == existing['document_number']):
+            score += doc_num_weight
+            matching_fields.append('document_number')
+            reasons.append(f"Same document number: {current['document_number']}")
+        
+        if (current.get('total_amount') and existing.get('total_amount')):
+            amount_diff = abs(current['total_amount'] - existing['total_amount'])
+            if amount_diff < 0.01:  # Exact match
+                score += 0.3
+                matching_fields.append('total_amount')
+                reasons.append(f"Exact amount match: {current['total_amount']}")
+            elif amount_diff < 1.0:  # Very close amounts
+                score += 0.15
+                matching_fields.append('total_amount_close')
+                reasons.append(f"Similar amounts: {current['total_amount']} vs {existing['total_amount']}")
+        
+        if (current.get('document_date') and existing.get('document_date')):
+            if current['document_date'] == existing['document_date']:
+                score += 0.15
+                matching_fields.append('document_date')
+                reasons.append(f"Same date: {current['document_date']}")
+            else:
+                if doc_type != 'invoice':
+                    date_diff = self._calculate_date_difference(current['document_date'], existing['document_date'])
+                    if date_diff <= 7:  # Within a week
+                        score += 0.05
+                        matching_fields.append('document_date_close')
+                        reasons.append(f"Close dates: {current['document_date']} vs {existing['document_date']}")
+        
+        if doc_type in ['invoice', 'receipt']:
+            vendor_weight = 0.15
+            if (current.get('vendor_ein') and existing.get('vendor_ein') and
+                current['vendor_ein'] == existing['vendor_ein']):
+                score += vendor_weight
+                matching_fields.append('vendor_ein')
+                reasons.append(f"Same vendor EIN: {current['vendor_ein']}")
+            elif (current.get('vendor') and existing.get('vendor') and
+                  self._company_names_similar(current['vendor'], existing['vendor'])):
+                score += vendor_weight * 0.7  # Partial match for name similarity
+                matching_fields.append('vendor_name')
+                reasons.append(f"Similar vendor names: {current['vendor']} vs {existing['vendor']}")
+        
+        if current.get('currency') == existing.get('currency'):
+            score += 0.05
+            matching_fields.append('currency')
+        
+        if doc_type == 'invoice' and len([f for f in matching_fields if not f.endswith('_close')]) >= 3:
+            score += 0.1
+            reasons.append("Multiple exact field matches bonus")
+        
+        return {
+            'score': min(score, 1.0),  # Cap at 1.0
+            'fields': matching_fields,
+            'reason': '; '.join(reasons) if reasons else 'Field similarities detected'
+        }
+    
+    def _company_names_similar(self, name1: str, name2: str) -> bool:
+        """Check if company names are similar enough."""
+        if not name1 or not name2:
+            return False
+        
+        if name1 == name2:
+            return True
+        
+        if len(name1) > 5 and len(name2) > 5:
+            shorter = name1 if len(name1) < len(name2) else name2
+            longer = name2 if len(name1) < len(name2) else name1
+            if shorter in longer:
+                return True
+        
+        words1 = set(name1.split())
+        words2 = set(name2.split())
+        common_words = words1.intersection(words2)
+        
+        if len(common_words) >= 2 and len(common_words) >= min(len(words1), len(words2)) * 0.6:
+            return True
+        
+        return False
+    
+    def _calculate_date_difference(self, date1: str, date2: str) -> int:
+        """Calculate difference in days between two dates."""
+        try:
+            from datetime import datetime
+            
+            d1 = datetime.strptime(date1, '%d-%m-%Y')
+            d2 = datetime.strptime(date2, '%d-%m-%Y')
+            
+            return abs((d1 - d2).days)
+        except:
+            return 999  
+        
 def get_text_extractor_tool():
     if LLM_VISION_AVAILABLE:
         print("Using LLM Vision Text Extractor")
@@ -321,7 +509,7 @@ class FirstCrewFinova:
             'goal': self.agents_config['duplicate_detector_agent']['goal'],
             'backstory': self.agents_config['duplicate_detector_agent']['backstory'],
             'verbose': True,
-            'tools': [get_text_extractor_tool(), DuplicateDetectionTool(), DocumentHashTool()],
+            'tools': [get_text_extractor_tool(), EnhancedDuplicateDetectionTool(), DocumentHashTool()],
         }
         
         if self.llm:

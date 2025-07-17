@@ -254,6 +254,60 @@ export class DataExtractionService {
         return validation;
     }
 
+    private normalizeDocumentNumber(docNumber: any): string {
+        if (!docNumber) return '';
+        return String(docNumber)
+            .trim()
+            .toUpperCase()
+            .replace(/[\s\-_]+/g, '') 
+            .replace(/^0+/, '');
+    }
+
+    private normalizeAmount(amount: any): number {
+        if (!amount) return 0;
+        const numAmount = Number(amount);
+        return isNaN(numAmount) ? 0 : Math.round(numAmount * 100) / 100;
+    }
+
+    private normalizeDate(date: any): string {
+        if (!date) return '';
+
+        const dateStr = String(date).trim();
+
+        const ddmmyyyy = dateStr.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (ddmmyyyy) {
+            const [, day, month, year] = ddmmyyyy;
+            return `${day.padStart(2, '0')}-${month.padStart(2, '0')}-${year}`;
+        }
+
+        const yyyymmdd = dateStr.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+        if (yyyymmdd) {
+            const [, year, month, day] = yyyymmdd;
+            return `${day.padStart(2, '0')}-${month.padStart(2, '0')}-${year}`;
+        }
+
+        return dateStr;
+    }
+
+    private normalizeEIN(ein: any): string {
+        if (!ein) return '';
+        return String(ein)
+            .trim()
+            .toUpperCase()
+            .replace(/^RO/, '') 
+            .replace(/\s+/g, ''); 
+    }
+
+    private normalizeCompanyName(name: any): string {
+        if (!name) return '';
+        return String(name)
+            .trim()
+            .toUpperCase()
+            .replace(/\s+/g, ' ') 
+            .replace(/[SRL|SA|SRA|PFA|II|IF]\.?$/gi, '')
+            .trim();
+    }
+
     private async getExistingDocuments(accountingClientId: number) {
         const documents = await this.prisma.document.findMany({
             where: {
@@ -265,17 +319,40 @@ export class DataExtractionService {
             orderBy: {
                 createdAt: 'desc'
             },
-            take: 100 
+            take: 200 
         });
-
-        return documents.map(doc => ({
-            id: doc.id,
-            name: doc.name,
-            documentHash: doc.documentHash,
-            ...(typeof doc.processedData?.extractedFields === 'object' && doc.processedData?.extractedFields !== null
-                ? doc.processedData.extractedFields
-                : {})
-        }));
+    
+        return documents.map(doc => {
+            const extractedFields = doc.processedData?.extractedFields;
+            let result: any = {};
+            if (typeof extractedFields === 'string') {
+                try {
+                    const parsed = JSON.parse(extractedFields);
+                    result = parsed.result || parsed || {};
+                } catch {
+                    result = {};
+                }
+            } else if (extractedFields && typeof extractedFields === 'object') {
+                result = (extractedFields as any).result || extractedFields || {};
+            }
+            
+            return {
+                id: doc.id,
+                name: doc.name,
+                documentHash: doc.documentHash,
+                document_type: result.document_type?.toLowerCase(),
+                document_number: this.normalizeDocumentNumber(result.document_number),
+                total_amount: this.normalizeAmount(result.total_amount),
+                vat_amount: this.normalizeAmount(result.vat_amount),
+                document_date: this.normalizeDate(result.document_date),
+                vendor_ein: this.normalizeEIN(result.vendor_ein),
+                buyer_ein: this.normalizeEIN(result.buyer_ein),
+                vendor: this.normalizeCompanyName(result.vendor),
+                buyer: this.normalizeCompanyName(result.buyer),
+                currency: result.currency || 'RON',
+                created_at: doc.createdAt.toISOString()
+            };
+        });
     }
 
     private async getExistingArticles(accountingClientId: number) {
