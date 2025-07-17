@@ -1,32 +1,20 @@
 categorize_document_task:
   description: >
-    Read the document at {document_path} and classify it as 'Invoice', 'Receipt', 'Contract', 'Bank Statement', 'Z Report', 'Payment Order', 'Collection Order' (set to null if neither).
-
-    For invoices, determine the invoice direction using these CRITICAL rules:
-    - Extract buyer_ein and vendor_ein from the document (remove 'RO' prefix)
-    - If buyer_ein = '{client_company_ein}', this is an INCOMING INVOICE (we are buying)
-    - If vendor_ein = '{client_company_ein}', this is an OUTGOING INVOICE (we are selling)
-    - If neither matches, set direction as 'unknown' and add a warning
-
+    Read the document at {document_path} and classify it as 'Invoice', 'Receipt', 'Contract', 'Bank Statement', 'Z Report' (set to null if neither).
+    Determine the invoice direction using these rules:
+    - If buyer_ein = '{client_company_ein}', this is an INCOMING INVOICE.
+    - If vendor_ein = '{client_company_ein}', this is an OUTGOING INVOICE.
     Use these labels to identify parties:
     - Vendor labels: {vendor_labels}
     - Buyer labels: {buyer_labels}
-
     If labels are missing, use hierarchy: company with CUI/bank details (vendor), header position, invoice number prefix, logo, contact details.
 
     IMPORTANT: Learn from previous user corrections if available. Apply the patterns from corrections to improve accuracy.
 
-    For other document types, extract basic identifying information:
-    - Receipt: vendor_ein and buyer_ein if available
-    - Bank Statement: company_ein
-    - Contract: party EINs
-
-    CRITICAL: Always extract EIN information to verify document relevance to client company.
-
-    Output a JSON string with 'document_type', 'direction' (for invoices), 'confidence' (0.0-1.0), and relevant EINs.
-    Example: {'document_type': 'Invoice', 'direction': 'incoming', 'vendor_ein': '12345678', 'buyer_ein': '87654321', 'confidence': 0.95}
+    Output a JSON string with 'document_type', 'direction' (for factură), and 'confidence' (0.0-1.0).
+    Example: {'document_type': 'Invoice', 'direction': 'incoming', 'confidence': 0.95}
   expected_output: >
-    A JSON string with document type, direction (for invoices), relevant EINs, and confidence score.
+    A JSON string with document type, direction (for factură), and confidence score.
   agent: document_categorizer
 
 extract_invoice_data_task:
@@ -34,134 +22,54 @@ extract_invoice_data_task:
     For a document at {document_path} classified as 'Invoice', extract:
     CURRENT DATE: {current_date} (use as reference - dates should not be after this)
 
-    CRITICAL FIELDS TO EXTRACT:
-    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO')
-    - document_number (MUST be extracted - this is critical for duplicate detection)
-    - document_date (DD-MM-YYYY, must not be after {current_date})
-    - due_date (DD-MM-YYYY, null if absent, must not be after {current_date})
-    - total_amount (numeric), vat_amount (numeric)
-    - currency (detect from document or default to RON)
-
-    Determine direction: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
-
-    FOR LINE ITEMS - INTELLIGENT PROCESSING:
-    Direction: {direction} (incoming/outgoing)
-
-    If INCOMING invoice:
-    - Compare each line item with existing articles: {existing_articles}
-    - Use fuzzy matching for article names (e.g., "transport" ≈ "shipping", "servicii" ≈ "services")
-    - If similar article exists (>70% similarity), use its code and name
-    - If no match, create new article with next available code
-    - Set appropriate type from {incoming_types}
-
-    If OUTGOING invoice:
-    - Articles MUST match existing ones from {existing_articles}
-    - Use fuzzy matching but be more strict (>50% similarity)
-    - If article doesn't exist, still extract but flag as 'unknown_article': true
-    - Outgoing invoices should not create new articles
-
-    Line item structure:
-    - description (original from invoice)
-    - name (matched article name or new name)
-    - articleCode (existing or new)
-    - quantity, unit_price, vat_amount, total
-    - type (from appropriate list)
-    - vat (from {vat_rates})
-    - um (from {units_of_measure})
-    - isNew (boolean)
-    - isMatched (boolean)
-    - unknown_article (boolean, only for outgoing unmatched)
-
-    IMPORTANT: Always check if buyer_ein or vendor_ein matches '{client_company_ein}' - if neither matches, add validation_warning.
+    - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY, must not be after {current_date}), due_date (DD-MM-YYYY, null if absent, must not be after {current_date}), total_amount (numeric), vat_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    Determine direction using: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
+    Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
+    Compare articles with {existing_articles}: match by name/code (case-insensitive), set isNew false if matched, assign next articleCode if new.
+    For 'Nedefinit' type, set management to null, suggest account_code (e.g., '623' for software).
+    IMPORTANT: Always check if buyer_ein or vendor_ein matches '{client_company_ein}' - if neither matches, add validation_warning about document relevance.
     Output as a JSON string.
   expected_output: >
-    A JSON string with invoice details, intelligently processed line_items, and currency information.
+    A JSON string with invoice details, line_items, and currency information.
   agent: invoice_data_extractor
 
 extract_other_document_data_task:
   description: >
-    For non-invoice documents at {document_path} of type {doc_type}, extract relevant data:
+    For non-factură documents at {document_path} of type {doc_type}, extract relevant data:
     CURRENT DATE: {current_date} (use as reference - dates should not be after this)
 
-    CRITICAL: Always extract document numbers and EINs for duplicate detection and relevance checking.
-
-    -For Receipts: 
-      - receipt_number (CRITICAL for duplicate detection)
-      - vendor, vendor_ein (number only, remove 'RO')
-      - buyer, buyer_ein (number only, remove 'RO') 
-      - total_amount, document_date (DD-MM-YYYY)
-      - invoice_reference, payment_method, currency
-      
-    -For Bank Statements: 
-      - company_name, company_ein (CRITICAL - must match '{client_company_ein}')
-      - bank_name, account_number (Romanian IBAN: RO + 22 digits)
-      - statement_number, statement_period_start/end
-      - opening_balance, closing_balance, currency
-      - transactions array with all details
-      
-    -For Contracts: 
-      - contract_number (CRITICAL for duplicate detection)
-      - contract_type, parties array with EINs
-      - contract_date, start_date, end_date
-      - total_value, currency, payment_terms
-      
-    -For Payment/Collection Orders:
-      - order_number (CRITICAL)
-      - order_type, payer/payee with EINs
-      - amount, currency, dates
-      - bank_details
-      
-    -For Z report:
-      - report_number (CRITICAL)
-      - register_id, business_date
-      - sales data, VAT breakdown
-      
-    IMPORTANT: Always verify relevance - check if any EIN matches '{client_company_ein}'.
-    Add validation_warning if document doesn't belong to client company.
-
-    Output as a JSON string.
+    -For Receipts: receipt_number, vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), total_amount (paid/received), document_date (DD-MM-YYYY, must not be after {current_date}), invoice_reference (The number of the invoice, if available), payment_method(cash/card/bank), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    -For Bank Statements: company_name, company_ein (number only, remove 'RO'), bank_name, account_number (ex: RO70BTRLRONCRT0CL4098501), statement_number, statement_period_start (DD-MM-YYYY, must not be after {current_date}), statement_period_end (DD-MM-YYYY, must not be after {current_date}), opening_balance (numeric, just the number without currency), closing_balance (numeric, just the number without currency), currency, transactions array with: transaction_date (DD-MM-YYYY, must not be after {current_date}), description, reference_number, debit_amount (numeric, null if none, just the number without currency), credit_amount (numeric, null if none, just the number without currency), balance_after_transaction (numeric, just the number without currency), transaction_type (transfer/payment/deposit/withdrawal).
+    -For Contracts: contract_number, contract_type, parties array with: name, ein (number only, remove 'RO'), role (client/vendor/contractor), contract_date (DD-MM-YYYY, must not be after {current_date}), start_date (DD-MM-YYYY, must not be after {current_date}), end_date (DD-MM-YYYY), total_value (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), payment_terms, deliverables array with: description, due_date (DD-MM-YYYY), amount (numeric), status (pending/completed).
+    -For Payment/Collection Orders: order_number, order_type (payment/collection), payer, payer_ein (number only, remove 'RO'), payee, payee_ein (number only, remove 'RO'), amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), order_date (DD-MM-YYYY, must not be after {current_date}), execution_date (DD-MM-YYYY), reference_invoice, payment_method (bank_transfer/cash/check), bank_details with: account_number, bank_name, swift_code.
+    -For Z report: report_number, register_id, business_date (DD-MM-YYYY, must not be after {current_date}), opening_time, closing_time, total_sales (numeric), total_transactions, vat_breakdown array with: vat_rate, net_amount (numeric), vat_amount (numeric), total_amount (numeric), payment_methods array with: method (cash/card), amount (numeric), transaction_count, cancelled_transactions, refunds_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON).
+    IMPORTANT: For receipts, always check if buyer_ein or vendor_ein matches '{client_company_ein}' - if neither matches, add validation_warning about document relevance.
+    For other documents, check if company_ein matches '{client_company_ein}' - if not, add validation_warning.
+    Use Romanian date (DD/MM/YYYY) and number formatting (e.g., 1.234,56 RON). Output as a JSON string.
   expected_output: >
-    A JSON string with extracted document details including critical identifiers for duplicate detection.
+    A JSON string with extracted document details including currency information and validation warnings if applicable.
   agent: other_document_data_extractor
 
 detect_duplicates_task:
   description: >
     Compare the current document data with existing documents from {existing_documents} to detect potential duplicates.
-
-    CRITICAL: Only compare documents of the SAME TYPE. Never compare invoices with receipts, etc.
-
-    Document type: {document_type}
-
-    DUPLICATE DETECTION RULES BY DOCUMENT TYPE:
-
-    FOR INVOICES:
-    - EXACT_MATCH: Same invoice_number + same vendor_ein + same document_date
-    - CONTENT_MATCH: Same vendor_ein + same total_amount + same document_date (within 1 day)
-    - SIMILAR_CONTENT: Similar vendor + similar amount (±5%) + date within 7 days
-
-    FOR RECEIPTS:
-    - EXACT_MATCH: Same receipt_number + same vendor_ein + same document_date
-    - CONTENT_MATCH: Same vendor_ein + same total_amount + same document_date
-    - Never mark as duplicate without matching receipt number unless vendor+amount+date all match
-
-    FOR BANK STATEMENTS:
-    - EXACT_MATCH: Same statement_number + same account_number + same period
-    - CONTENT_MATCH: Same account + overlapping date periods
-
-    FOR CONTRACTS:
-    - EXACT_MATCH: Same contract_number + same parties
-    - CONTENT_MATCH: Same parties + same dates + same value
+    For the document at {document_path}, analyze the extracted data and compare with existing documents based on:
+    - Exact file hash match (highest priority)
+    - Invoice/document number match
+    - Same vendor, amount, and date combination
+    - Similar content with high similarity score
 
     Generate a hash for the current document using the document_hash_generator tool.
+    Use the duplicate_detector tool to compare extracted data with existing documents.
 
-    IMPORTANT: 
-    - Filter existing_documents to only include same document_type before comparison
-    - Be strict with duplicate detection - avoid false positives
-    - Consider business logic (e.g., multiple valid receipts from same vendor on same day)
+    Classify duplicates as:
+    - EXACT_MATCH: Same file content (hash match) or identical invoice number + vendor + amount + date
+    - CONTENT_MATCH: Same invoice number OR (same vendor + amount + date)
+    - SIMILAR_CONTENT: High similarity in multiple fields but not exact match
 
-    Output JSON with: {{'is_duplicate': boolean, 'duplicate_matches': [array of matches with reasons], 'document_hash': 'hash_string', 'confidence': float}}
+    Output JSON with: {{'is_duplicate': boolean, 'duplicate_matches': [array of matches], 'document_hash': 'hash_string', 'confidence': float}}
   expected_output: >
-    A JSON string with duplicate detection results including matches, hash, confidence score, and clear reasoning.
+    A JSON string with duplicate detection results including matches, hash, and confidence score.
   agent: duplicate_detector_agent
 
 validate_compliance_task:
@@ -169,48 +77,42 @@ validate_compliance_task:
     Validate the Romanian compliance of the document at {document_path} with extracted data.
     CURRENT DATE: {current_date} (use this as reference for date validation)
 
-    Document type: {document_type}
-
     Check compliance with Romanian ANAF regulations:
 
     FOR INVOICES:
     - VAT number format: Must be 2-10 digits for Romanian entities
-    - Invoice series and number: Must be present and follow ANAF format
+    - Invoice series and number: Must be continuous and follow ANAF format
     - Required fields: Vendor name/address, buyer name/address, invoice date, amounts
     - VAT rates: Must be 0%, 5%, 9%, or 19% (current Romanian rates)
     - Currency declaration: Foreign currency transactions must be properly declared
-    - Amount calculations: VAT calculations must be accurate (total = subtotal + VAT)
+    - Amount calculations: VAT calculations must be accurate
     - Invoice date: Must not be after {current_date}, must be within reasonable timeframe
-    - Line items: Each must have description, quantity, unit price, VAT rate
 
     FOR RECEIPTS:
     - Must contain vendor information with valid CUI/EIN
-    - Must have receipt number and clear transaction date (not after {current_date})
+    - Must have clear transaction date and amount (not after {current_date})
     - Payment method should be specified
-    - Amount must be clearly stated
 
     FOR CONTRACTS:
     - Must have valid CUI/EIN for all parties
     - Contract dates must be logical (start <= end, not after {current_date})
-    - Must contain essential contract elements (object, value, duration)
-    - Signatures and stamps requirements
+    - Must contain essential contract elements
 
     FOR BANK STATEMENTS:
-    - Account number must follow Romanian IBAN format: exactly 'RO' + 22 digits (total 24 characters)
+    - Account number must follow Romanian IBAN format: exactly 'RO' + 22 digits (total 24 characters). Example: RO70BTRLRONCRT0CL4097501 is CORRECT format.
     - Transactions must have proper format and sequence
-    - Balances must be mathematically correct (opening + transactions = closing)
+    - Balances must be mathematically correct  
     - Transaction dates must not be after {current_date}
-    - Each transaction needs clear description and amount
+    - Statement period dates must not be after {current_date}
 
     Check for common compliance issues:
-    - Missing or invalid VAT numbers (format: RO + 2-10 digits)
-    - Incorrect VAT calculations (verify: VAT = subtotal * rate)
-    - Missing mandatory fields per document type
-    - Invalid date formats (must be DD-MM-YYYY)
+    - Missing or invalid VAT numbers
+    - Incorrect VAT calculations  
+    - Missing mandatory fields
+    - Invalid date formats
     - Currency compliance for foreign transactions
     - ANAF-specific format requirements
-    - Future dates (any date after {current_date})
-    - Mathematical inconsistencies in totals
+    - Future dates (dates after {current_date})
 
     IMPORTANT: When validating dates, compare against the current date {current_date}. 
     A date is only "future" if it comes AFTER {current_date}.
@@ -221,16 +123,16 @@ validate_compliance_task:
         "compliance_status": "COMPLIANT|NON_COMPLIANT|WARNING",
         "overall_score": 0.0-1.0,
         "validation_rules": {{
-          "ro": ["lista de reguli validate"],
-          "en": ["list of validated rules"]
+          "ro": ["lista de reguli în română"],
+          "en": ["list of rules in english"]
         }},
         "errors": {{
-          "ro": ["lista de erori găsite"],
-          "en": ["list of errors found"]
+          "ro": ["lista de erori în română"],
+          "en": ["list of errors in english"]
         }},
         "warnings": {{
-          "ro": ["lista de avertismente"],
-          "en": ["list of warnings"]
+          "ro": ["lista de avertismente în română"],
+          "en": ["list of warnings in english"]
         }}
       }}
     }}

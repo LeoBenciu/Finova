@@ -137,234 +137,57 @@ class ComplianceMessageTranslator:
         return messages.get(key, {'ro': 'Mesaj necunoscut', 'en': 'Unknown message'})
 
 
-
 class DuplicateDetectionTool(BaseTool):
     name: str = "duplicate_detector"
     description: str = "Compare current document with existing documents to detect duplicates"
     args_schema: Type[BaseModel] = DuplicateCheckInput
     
     def _run(self, document_data: dict, existing_documents: List[dict]) -> str:
-        """Check for duplicates based on key fields with document-type specific logic."""
+        """Check for duplicates based on key fields."""
         current_doc = document_data
-        current_type = current_doc.get('document_type', '').lower()
         duplicates = []
         
-        same_type_docs = [doc for doc in existing_documents if doc.get('document_type', '').lower() == current_type]
-        
-        print(f"Checking for duplicates among {len(same_type_docs)} {current_type} documents", file=sys.stderr)
-        
-        for existing_doc in same_type_docs:
+        for existing_doc in existing_documents:
             similarity_score = 0.0
             matching_fields = []
-            duplicate_type = None
             
-            if current_type == 'invoice':
-                if (current_doc.get('document_number') and existing_doc.get('document_number') and
-                    current_doc['document_number'] == existing_doc['document_number'] and
-                    current_doc.get('vendor_ein') == existing_doc.get('vendor_ein')):
-                    similarity_score = 1.0
-                    matching_fields = ['document_number', 'vendor_ein']
-                    duplicate_type = "EXACT_MATCH"
-                elif (current_doc.get('vendor_ein') == existing_doc.get('vendor_ein') and
-                      current_doc.get('total_amount') and existing_doc.get('total_amount') and
-                      abs(float(current_doc['total_amount']) - float(existing_doc['total_amount'])) < 0.01 and
-                      current_doc.get('document_date') == existing_doc.get('document_date')):
-                    similarity_score = 0.9
-                    matching_fields = ['vendor_ein', 'total_amount', 'document_date']
-                    duplicate_type = "CONTENT_MATCH"
-                elif (current_doc.get('vendor_ein') == existing_doc.get('vendor_ein') and
-                      current_doc.get('total_amount') and existing_doc.get('total_amount')):
-                    amount_diff = abs(float(current_doc['total_amount']) - float(existing_doc['total_amount']))
-                    amount_avg = (float(current_doc['total_amount']) + float(existing_doc['total_amount'])) / 2
-                    if amount_diff / amount_avg < 0.05:  # Within 5%
-                        similarity_score = 0.6
-                        matching_fields = ['vendor_ein', 'total_amount_similar']
-                        duplicate_type = "SIMILAR_CONTENT"
-                        
-            elif current_type == 'receipt':
-                if (current_doc.get('receipt_number') and existing_doc.get('receipt_number') and
-                    current_doc['receipt_number'] == existing_doc['receipt_number'] and
-                    current_doc.get('vendor_ein') == existing_doc.get('vendor_ein') and
-                    current_doc.get('document_date') == existing_doc.get('document_date')):
-                    similarity_score = 1.0
-                    matching_fields = ['receipt_number', 'vendor_ein', 'document_date']
-                    duplicate_type = "EXACT_MATCH"
-                elif (current_doc.get('vendor_ein') == existing_doc.get('vendor_ein') and
-                      current_doc.get('total_amount') == existing_doc.get('total_amount') and
-                      current_doc.get('document_date') == existing_doc.get('document_date')):
-                    similarity_score = 0.8
-                    matching_fields = ['vendor_ein', 'total_amount', 'document_date']
-                    duplicate_type = "CONTENT_MATCH"
-                    
-            elif current_type == 'bank statement':
-                if (current_doc.get('statement_number') and existing_doc.get('statement_number') and
-                    current_doc['statement_number'] == existing_doc['statement_number'] and
-                    current_doc.get('account_number') == existing_doc.get('account_number')):
-                    similarity_score = 1.0
-                    matching_fields = ['statement_number', 'account_number']
-                    duplicate_type = "EXACT_MATCH"
-                elif (current_doc.get('account_number') == existing_doc.get('account_number') and
-                      current_doc.get('statement_period_start') and existing_doc.get('statement_period_start')):
-                    if (current_doc.get('statement_period_start') == existing_doc.get('statement_period_start') or
-                        current_doc.get('statement_period_end') == existing_doc.get('statement_period_end')):
-                        similarity_score = 0.9
-                        matching_fields = ['account_number', 'overlapping_period']
-                        duplicate_type = "CONTENT_MATCH"
-                        
-            elif current_type == 'contract':
-                if (current_doc.get('contract_number') and existing_doc.get('contract_number') and
-                    current_doc['contract_number'] == existing_doc['contract_number']):
-                    similarity_score = 1.0
-                    matching_fields = ['contract_number']
-                    duplicate_type = "EXACT_MATCH"
-                    
+            if current_doc.get('document_number') and existing_doc.get('document_number'):
+                if current_doc['document_number'] == existing_doc['document_number']:
+                    similarity_score += 0.4
+                    matching_fields.append('document_number')
+            
+            if current_doc.get('total_amount') and existing_doc.get('total_amount'):
+                if abs(float(current_doc['total_amount']) - float(existing_doc['total_amount'])) < 0.01:
+                    similarity_score += 0.3
+                    matching_fields.append('total_amount')
+            
+            if current_doc.get('document_date') and existing_doc.get('document_date'):
+                if current_doc['document_date'] == existing_doc['document_date']:
+                    similarity_score += 0.2
+                    matching_fields.append('document_date')
+            
+            if current_doc.get('vendor_ein') and existing_doc.get('vendor_ein'):
+                if current_doc['vendor_ein'] == existing_doc['vendor_ein']:
+                    similarity_score += 0.1
+                    matching_fields.append('vendor_ein')
+            
+            if similarity_score >= 0.9:
+                duplicate_type = "EXACT_MATCH"
+            elif similarity_score >= 0.7:
+                duplicate_type = "CONTENT_MATCH"
+            elif similarity_score >= 0.5:
+                duplicate_type = "SIMILAR_CONTENT"
             else:
-                if (current_doc.get('document_number') and existing_doc.get('document_number') and
-                    current_doc['document_number'] == existing_doc['document_number']):
-                    similarity_score = 0.9
-                    matching_fields = ['document_number']
-                    duplicate_type = "CONTENT_MATCH"
-            
-            if duplicate_type and similarity_score >= 0.6:
-                duplicates.append({
-                    "document_id": existing_doc.get('id'),
-                    "document_name": existing_doc.get('name', 'Unknown'),
-                    "similarity_score": similarity_score,
-                    "matching_fields": matching_fields,
-                    "duplicate_type": duplicate_type,
-                    "reason": f"Matched on: {', '.join(matching_fields)}"
-                })
-        
-        duplicates.sort(key=lambda x: x['similarity_score'], reverse=True)
-        
-        return json.dumps({
-            "duplicates": duplicates[:5],  
-            "total_checked": len(same_type_docs),
-            "document_type": current_type
-        })
-    
-
-class ArticleMatchingInput(BaseModel):
-    """Input schema for article matching."""
-    article_name: str = Field(..., description="Name of the article to match")
-    existing_articles: List[dict] = Field(..., description="List of existing articles to match against")
-    similarity_threshold: float = Field(0.7, description="Minimum similarity score for matching")
-
-class ArticleMatchingTool(BaseTool):
-    name: str = "article_matcher"
-    description: str = "Match article names with existing articles using fuzzy matching"
-    args_schema: Type[BaseModel] = ArticleMatchingInput
-    
-    def _run(self, article_name: str, existing_articles: List[dict], similarity_threshold: float = 0.7) -> str:
-        """Find similar articles using fuzzy matching with business logic."""
-        
-        word_mappings = {
-            'transport': ['shipping', 'shipment', 'delivery', 'freight', 'livrare', 'expediere', 'transportare'],
-            'shipping': ['transport', 'shipment', 'delivery', 'freight', 'livrare', 'transportare'],
-            'livrare': ['transport', 'shipping', 'shipment', 'delivery', 'freight', 'expediere'],
-            'expediere': ['transport', 'shipping', 'shipment', 'delivery', 'livrare'],
-            'service': ['servicii', 'services', 'prestari', 'serviciu'],
-            'servicii': ['service', 'services', 'prestari', 'serviciu'],
-            'services': ['service', 'servicii', 'prestari'],
-            'prestari': ['service', 'servicii', 'services'],
-            'product': ['produs', 'produse', 'marfa', 'marfuri', 'articol'],
-            'produs': ['product', 'produse', 'marfa', 'marfuri', 'articol'],
-            'produse': ['product', 'produs', 'marfa', 'marfuri'],
-            'marfa': ['product', 'produs', 'marfuri', 'goods', 'merchandise'],
-            'marfuri': ['product', 'produs', 'marfa', 'goods', 'merchandise'],
-            'goods': ['marfa', 'marfuri', 'product', 'produs', 'merchandise']
-        }
-        
-        def calculate_similarity(str1: str, str2: str) -> float:
-            """Calculate similarity between two strings."""
-            s1 = str1.lower().strip()
-            s2 = str2.lower().strip()
-            
-            if s1 == s2:
-                return 1.0
-            
-            if s1 in s2 or s2 in s1:
-                return 0.9
-            
-            max_len = max(len(s1), len(s2))
-            if max_len == 0:
-                return 1.0
-            
-            matches = 0
-            for i in range(min(len(s1), len(s2))):
-                if s1[i] == s2[i]:
-                    matches += 1
-            
-            char_similarity = matches / max_len
-            
-            words1 = set(s1.split())
-            words2 = set(s2.split())
-            
-            if words1 and words2:
-                common_words = words1.intersection(words2)
-                word_similarity = len(common_words) / max(len(words1), len(words2))
-                
-                synonym_matches = 0
-                for w1 in words1:
-                    if w1 in word_mappings:
-                        for synonym in word_mappings[w1]:
-                            if synonym in words2:
-                                synonym_matches += 1
-                                break
-                
-                if synonym_matches > 0:
-                    word_similarity = max(word_similarity, 0.8)
-                
-                return max(char_similarity * 0.4 + word_similarity * 0.6, char_similarity)
-            
-            return char_similarity
-
-        best_match = None
-        best_score = 0
-        
-        article_lower = article_name.lower()
-        
-        for existing in existing_articles:
-            if not existing.get('name'):
                 continue
-                
-            score = calculate_similarity(article_name, existing['name'])
             
-            for word, synonyms in word_mappings.items():
-                if word in article_lower:
-                    for synonym in synonyms:
-                        if synonym in existing['name'].lower():
-                            score = max(score, 0.8)
-                            break
-            
-            if score > best_score and score >= similarity_threshold:
-                best_score = score
-                best_match = existing
+            duplicates.append({
+                "document_id": existing_doc.get('id'),
+                "similarity_score": similarity_score,
+                "matching_fields": matching_fields,
+                "duplicate_type": duplicate_type
+            })
         
-        result = {
-            "found_match": best_match is not None,
-            "similarity_score": best_score,
-            "matched_article": best_match if best_match else None,
-            "original_name": article_name
-        }
-        
-        return json.dumps(result)
-
-
-@agent
-def invoice_data_extractor(self) -> Agent:
-    agent_config = {
-        'role': self.agents_config['invoice_data_extractor']['role'],
-        'goal': self.agents_config['invoice_data_extractor']['goal'],
-        'backstory': self.agents_config['invoice_data_extractor']['backstory'],
-        'verbose': True,
-        'tools': [get_text_extractor_tool(), ArticleMatchingTool()], 
-    }
-    
-    if self.llm:
-        agent_config['llm'] = self.llm
-        
-    return Agent(**agent_config)
+        return json.dumps({"duplicates": duplicates})
 
 def get_text_extractor_tool():
     if LLM_VISION_AVAILABLE:
@@ -439,7 +262,7 @@ class FirstCrewFinova:
             categorization_corrections = [c for c in self.user_corrections if c.get('correctionType') == 'DOCUMENT_TYPE']
             if categorization_corrections:
                 learning_context = f"\n\nLearning from previous corrections:\n"
-                for correction in categorization_corrections[-5:]: 
+                for correction in categorization_corrections[-5:]:  # Use last 5 corrections
                     learning_context += f"- Original prediction: {correction.get('originalValue')}, Correct answer: {correction.get('correctedValue')}\n"
         
         print(f"Trying to access document_categorizer config...", file=sys.stderr)

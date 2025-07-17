@@ -45,19 +45,18 @@ export const finovaApi = createApi({
         }),
 
         extractData: build.mutation({
-            query:({file, clientCompanyEin, categorizationOnly})=>{
+            query:({file, clientCompanyEin})=>{
                 const formData: FormData = new FormData();
                 formData.append('file', file);
                 formData.append('ein', clientCompanyEin);
-                if (categorizationOnly) {
-                    formData.append('categorizationOnly', 'true');
-                }
-            
+
                 return{
                     url:'/data-extraction',
                     method: 'POST',
                     body: formData,
-                    formData: true
+                    headers: {
+
+                    }
                 }
             }
         }),
