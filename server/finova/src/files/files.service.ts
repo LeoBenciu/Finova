@@ -120,11 +120,8 @@ export class FilesService {
             throw new NotFoundException('Document not found');
         }
 
-        const accountingClient = await this.prisma.accountingClients.findUnique({ 
-            where: { id: document.accountingClientId } 
-        });
-        
-        if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+        const hasAccess = await this.verifyDocumentAccess(docId, user);
+        if (!hasAccess) {
             console.error(`⛔ Unauthorized access attempt: User ${user.id} tried to access document ${docId}`);
             throw new UnauthorizedException('No access to this document');
         }
