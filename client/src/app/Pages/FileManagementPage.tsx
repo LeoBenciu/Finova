@@ -799,7 +799,7 @@ const FileManagementPage = () => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`bg-[var(--background)] rounded-2xl px-4 py-4 border transition-all duration-200 mb-1 ${
+                    className={`bg-[var(--background)] rounded-2xl px-1 py-1 border transition-all duration-200 mb-1 ${
                       isSelected 
                         ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
                         : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
@@ -844,6 +844,11 @@ const FileManagementPage = () => {
                               <Calendar size={14} />
                               <span>{getDocumentDate(file)}</span>
                             </div>
+                            {file.type === 'Invoice' && paymentSummary && (
+                              <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
+                                {language === 'ro' ? 'Plătit' : 'Paid'}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
+                              </span>
+                            )}
                           </div>
 
                           {/* Payment Information for Invoices */}
@@ -912,17 +917,14 @@ const FileManagementPage = () => {
                           </button>
                         }/>
 
-                        {/* Related Documents Button - Only show for invoices */}
-                        {file.type === 'Invoice' && (
-                          <MyTooltip content={language==='ro'?'Documente asociate':'Related documents'} trigger={
-                            <button
-                              onClick={() => handleShowRelatedDocs(file)}
-                              className="p-2 text-purple-600 bg-purple-600/20 hover:text-white hover:bg-purple-600 rounded-lg transition-colors"
-                            >
-                              <Link size={18} />
-                            </button>
-                          }/>
-                        )}
+                        <MyTooltip content={language==='ro'?'Documente asociate':'Related documents'} trigger={
+                          <button
+                            onClick={() => handleShowRelatedDocs(file)}
+                            className="p-2 text-purple-600 bg-purple-600/20 hover:text-white hover:bg-purple-600 rounded-lg transition-colors"
+                          >
+                            <Link size={18} />
+                          </button>
+                        }/>
                         
                         <MyTooltip content={getBotButtonTooltip(file)} trigger={
                           <button

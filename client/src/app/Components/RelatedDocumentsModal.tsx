@@ -1,44 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { useSelector } from 'react-redux';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  X, Plus, Receipt, FileText, CreditCard, 
-  CheckCircle, AlertCircle, Clock, DollarSign,
-  Link, Unlink, Eye
+  X, Link, FileText, Receipt, CreditCard, FileSignature, 
+  BarChart3, Send, Download, Calendar, ExternalLink,
+  Search, Filter, RefreshCw
 } from 'lucide-react';
-import { MyTooltip } from './MyTooltip';
-
-interface PaymentSummary {
-  totalAmount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  paymentStatus: 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PAID' | 'OVERPAID';
-  lastPaymentDate?: string;
-}
-
-interface RelatedDocument {
-  id: number;
-  name: string;
-  type: string;
-  relationshipType: 'PAYMENT' | 'CORRECTION' | 'ATTACHMENT';
-  paymentAmount?: number;
-  notes?: string;
-  createdAt: string;
-  signedUrl?: string;
-}
-
-interface DocumentWithRelations {
-  id: number;
-  name: string;
-  type: string;
-  totalAmount?: number;
-  paymentSummary?: PaymentSummary;
-  relatedDocuments: {
-    payments: RelatedDocument[];
-    attachments: RelatedDocument[];
-    corrections: RelatedDocument[];
-  };
-}
+import { useSelector } from 'react-redux';
 
 interface RelatedDocumentsModalProps {
   isOpen: boolean;
@@ -47,148 +14,214 @@ interface RelatedDocumentsModalProps {
   onRefresh: () => void;
 }
 
+type DocumentType = 'Invoice' | 'Receipt' | 'Bank Statement' | 'Contract' | 'Z Report' | 'Payment Order' | 'Collection Order';
+
 const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   isOpen,
   onClose,
   document,
   onRefresh
 }) => {
-  const [documentWithRelations, setDocumentWithRelations] = useState<DocumentWithRelations | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [showAddPayment, setShowAddPayment] = useState(false);
-  const [availableDocuments, setAvailableDocuments] = useState<any[]>([]);
-  const [selectedPaymentDoc, setSelectedPaymentDoc] = useState<number | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState<string>('');
-  const [paymentNotes, setPaymentNotes] = useState<string>('');
+  const [relatedDocuments, setRelatedDocuments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState<DocumentType | ''>('');
+  const [filteredDocs, setFilteredDocs] = useState<any[]>([]);
 
   const language = useSelector((state: {user: {language: string}}) => state.user.language);
-  const clientCompanyEin = useSelector((state: any) => state.clientCompany.current.ein);
+
+  const docTypeTranslations = {
+    "Invoice": "Factura",
+    "Receipt": "Chitanta", 
+    "Bank Statement": "Extras De Cont",
+    "Contract": "Contract",
+    "Z Report": "Raport Z",
+    "Payment Order": "Dispozitie De Plata",
+    "Collection Order": "Dispozitie De Incasare"
+  };
+
+  const getFileIcon = (fileType: string) => {
+    switch (fileType) {
+      case 'Invoice': return FileText;
+      case 'Receipt': return Receipt;
+      case 'Bank Statement': return CreditCard;
+      case 'Contract': return FileSignature;
+      case 'Z Report': return BarChart3;
+      case 'Payment Order': return Send;
+      case 'Collection Order': return Download;
+      default: return FileText;
+    }
+  };
+
+  const getFileIconColor = (fileType: string) => {
+    switch (fileType) {
+      case 'Invoice': return { text: 'text-blue-500', bg: 'bg-blue-500/10' };
+      case 'Receipt': return { text: 'text-orange-500', bg: 'bg-orange-500/10' };
+      case 'Bank Statement': return { text: 'text-red-500', bg: 'bg-red-500/10' };
+      case 'Contract': return { text: 'text-teal-500', bg: 'bg-teal-500/10' };
+      case 'Z Report': return { text: 'text-yellow-500', bg: 'bg-yellow-500/10' };
+      case 'Payment Order': return { text: 'text-purple-500', bg: 'bg-purple-500/10' };
+      case 'Collection Order': return { text: 'text-green-500', bg: 'bg-green-500/10' };
+      default: return { text: 'text-gray-500', bg: 'bg-gray-500/10' };
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  const getDocumentDate = (file: any): string => {
+    try {
+      const extractedData = file.processedData?.[0]?.extractedFields?.result;
+      
+      if (!extractedData) {
+        return formatDate(file.createdAt);
+      }
+
+      let documentDate = null;
+
+      switch (file.type) {
+        case 'Invoice':
+        case 'Receipt':
+          documentDate = extractedData.document_date;
+          break;
+        case 'Bank Statement':
+          documentDate = extractedData.statement_period_start || extractedData.statement_period_end;
+          break;
+        case 'Contract':
+          documentDate = extractedData.contract_date || extractedData.start_date;
+          break;
+        case 'Z Report':
+          documentDate = extractedData.business_date;
+          break;
+        case 'Payment Order':
+        case 'Collection Order':
+          documentDate = extractedData.order_date;
+          break;
+        default:
+          documentDate = extractedData.document_date || extractedData.date || extractedData.transaction_date;
+          break;
+      }
+
+      if (documentDate) {
+        const dateStr = String(documentDate);
+        if (dateStr.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/)) {
+          const parts = dateStr.split(/[\/\-]/);
+          return `${parts[0]}-${parts[1]}-${parts[2]}`;
+        }
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          return formatDate(dateStr);
+        }
+        return dateStr;
+      }
+
+      return formatDate(file.createdAt);
+    } catch (error) {
+      console.error('Error extracting document date:', error);
+      return formatDate(file.createdAt);
+    }
+  };
+
+  // Mock function to fetch related documents - replace with actual API call
+  const fetchRelatedDocuments = async () => {
+    setLoading(true);
+    try {
+      // This is a mock implementation
+      // Replace with actual API call like:
+      // const response = await getRelatedDocuments({ documentId: document.id, clientCompanyEin });
+      
+      // Mock data for demonstration
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const mockRelatedDocs = [
+        {
+          id: 2,
+          name: "Receipt_001.pdf",
+          type: "Receipt",
+          createdAt: "2024-01-15T10:00:00Z",
+          signedUrl: "#",
+          processedData: [{
+            extractedFields: {
+              result: {
+                document_date: "15-01-2024",
+                total_amount: 500
+              }
+            }
+          }]
+        },
+        {
+          id: 3,
+          name: "Bank_Statement_Jan.pdf", 
+          type: "Bank Statement",
+          createdAt: "2024-01-20T14:30:00Z",
+          signedUrl: "#",
+          processedData: [{
+            extractedFields: {
+              result: {
+                statement_period_start: "01-01-2024"
+              }
+            }
+          }]
+        },
+        {
+          id: 4,
+          name: "Contract_Service_2024.pdf",
+          type: "Contract",
+          createdAt: "2024-01-25T09:15:00Z",
+          signedUrl: "#",
+          processedData: [{
+            extractedFields: {
+              result: {
+                contract_date: "25-01-2024",
+                total_amount: 15000
+              }
+            }
+          }]
+        }
+      ];
+      
+      setRelatedDocuments(mockRelatedDocs);
+    } catch (error) {
+      console.error('Failed to fetch related documents:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filter documents based on search and type
+  useEffect(() => {
+    let filtered = relatedDocuments;
+
+    if (searchTerm) {
+      filtered = filtered.filter(doc => 
+        doc.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    if (selectedType) {
+      filtered = filtered.filter(doc => doc.type === selectedType);
+    }
+
+    setFilteredDocs(filtered);
+  }, [relatedDocuments, searchTerm, selectedType]);
 
   useEffect(() => {
-    if (isOpen && document) {
-      fetchDocumentWithRelations();
+    if (isOpen) {
+      fetchRelatedDocuments();
     }
-  }, [isOpen, document]);
+  }, [isOpen, document.id]);
 
-  const fetchDocumentWithRelations = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(`/api/files/document/${document.id}/relations`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setDocumentWithRelations(data);
-      } else {
-        console.error('Failed to fetch document relations');
-      }
-    } catch (error) {
-      console.error('Error fetching document relations:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchAvailableDocuments = async () => {
-    try {
-      const response = await fetch(`/api/files/${clientCompanyEin}/available-payments/${document.id}`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableDocuments(data);
-      }
-    } catch (error) {
-      console.error('Error fetching available documents:', error);
-    }
-  };
-
-  const handleAddPayment = async () => {
-    if (!selectedPaymentDoc || !paymentAmount) return;
-
-    try {
-      const response = await fetch('/api/files/relations', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          parentDocumentId: document.id,
-          childDocumentId: selectedPaymentDoc,
-          relationshipType: 'PAYMENT',
-          paymentAmount: parseFloat(paymentAmount),
-          notes: paymentNotes || undefined
-        })
-      });
-
-      if (response.ok) {
-        await fetchDocumentWithRelations();
-        setShowAddPayment(false);
-        setSelectedPaymentDoc(null);
-        setPaymentAmount('');
-        setPaymentNotes('');
-        onRefresh();
-      } else {
-        console.error('Failed to add payment relation');
-      }
-    } catch (error) {
-      console.error('Error adding payment relation:', error);
-    }
-  };
-
-  const handleRemoveRelation = async (relationId: number) => {
-    try {
-      const response = await fetch(`/api/files/relations/${relationId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        await fetchDocumentWithRelations();
-        onRefresh();
-      } else {
-        console.error('Failed to remove relation');
-      }
-    } catch (error) {
-      console.error('Error removing relation:', error);
-    }
-  };
-
-  const getPaymentStatusIcon = (status: string) => {
-    switch (status) {
-      case 'UNPAID':
-        return <AlertCircle className="text-red-500" size={20} />;
-      case 'PARTIALLY_PAID':
-        return <Clock className="text-yellow-500" size={20} />;
-      case 'FULLY_PAID':
-        return <CheckCircle className="text-green-500" size={20} />;
-      case 'OVERPAID':
-        return <CheckCircle className="text-blue-500" size={20} />;
-      default:
-        return <Clock className="text-gray-500" size={20} />;
-    }
-  };
-
-  const getPaymentStatusText = (status: string) => {
-    const statusMap = {
-      'UNPAID': language === 'ro' ? 'Neplatită' : 'Unpaid',
-      'PARTIALLY_PAID': language === 'ro' ? 'Parțial plătită' : 'Partially paid',
-      'FULLY_PAID': language === 'ro' ? 'Plătită complet' : 'Fully paid',
-      'OVERPAID': language === 'ro' ? 'Supraplatită' : 'Overpaid'
-    };
-    return statusMap[status as keyof typeof statusMap] || status;
+  const handleTooLongString = (str: string): string => {
+    if (str.length > 30) return str.slice(0, 30) + '...';
+    return str;
   };
 
   const formatCurrency = (amount: number) => {
@@ -198,335 +231,196 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }).format(amount);
   };
 
-  const getDocumentIcon = (type: string) => {
-    switch (type.toLowerCase()) {
-      case 'receipt':
-        return <Receipt size={16} className="text-orange-500" />;
-      case 'bank statement':
-        return <CreditCard size={16} className="text-blue-500" />;
-      default:
-        return <FileText size={16} className="text-gray-500" />;
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+        onClick={onClose}
+      >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
+          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 20 }}
           className="bg-[var(--foreground)] rounded-3xl shadow-2xl border border-[var(--text4)] w-full max-w-4xl max-h-[90vh] overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between p-6 border-b border-[var(--text4)]">
-            <div className="flex items-center gap-3">
-              <Link size={24} className="text-[var(--primary)]" />
-              <div>
-                <h2 className="text-xl font-bold text-[var(--text1)]">
-                  {language === 'ro' ? 'Documente Asociate' : 'Related Documents'}
-                </h2>
-                <p className="text-[var(--text2)] text-sm">
-                  {document?.name}
-                </p>
+          {/* Header */}
+          <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                  <Link size={24} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-[var(--text1)]">
+                    {language === 'ro' ? 'Documente Asociate' : 'Related Documents'}
+                  </h2>
+                  <p className="text-[var(--text2)] text-sm">
+                    {language === 'ro' ? 'Pentru' : 'For'}: {handleTooLongString(document.name)}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    fetchRelatedDocuments();
+                    onRefresh();
+                  }}
+                  className="p-2 text-[var(--text2)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                  disabled={loading}
+                >
+                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                </button>
+                
+                <button
+                  onClick={onClose}
+                  className="p-2 text-[var(--text2)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                >
+                  <X size={18} />
+                </button>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="p-2 hover:bg-[var(--text4)]/20 rounded-lg transition-colors"
-            >
-              <X size={20} className="text-[var(--text2)]" />
-            </button>
           </div>
 
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-            {isLoading ? (
+          {/* Search and Filters */}
+          <div className="p-6 border-b border-[var(--text4)] bg-[var(--background)]">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text3)]" />
+                <input
+                  type="text"
+                  placeholder={language === 'ro' ? 'Caută documente...' : 'Search documents...'}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 bg-[var(--foreground)] border border-[var(--text4)] rounded-xl text-[var(--text1)] placeholder-[var(--text3)] focus:outline-none focus:border-[var(--primary)] transition-colors"
+                />
+              </div>
+              
+              <div className="relative">
+                <Filter size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text3)]" />
+                <select
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value as DocumentType | '')}
+                  className="pl-10 pr-8 py-2 bg-[var(--foreground)] border border-[var(--text4)] rounded-xl text-[var(--text1)] focus:outline-none focus:border-[var(--primary)] transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="">{language === 'ro' ? 'Toate tipurile' : 'All types'}</option>
+                  {Object.entries(docTypeTranslations).map(([key, value]) => (
+                    <option key={key} value={key}>
+                      {language === 'ro' ? value : key}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-6 max-h-[60vh] overflow-y-auto">
+            {loading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]"></div>
+                <div className="flex items-center gap-3 text-[var(--text2)]">
+                  <RefreshCw size={20} className="animate-spin" />
+                  <span>{language === 'ro' ? 'Se încarcă documentele...' : 'Loading documents...'}</span>
+                </div>
+              </div>
+            ) : filteredDocs.length === 0 ? (
+              <div className="text-center py-12">
+                <FileText size={48} className="mx-auto text-[var(--text3)] mb-4" />
+                <p className="text-[var(--text2)] text-lg mb-2">
+                  {language === 'ro' ? 'Nu s-au găsit documente asociate' : 'No related documents found'}
+                </p>
+                <p className="text-[var(--text3)] text-sm">
+                  {language === 'ro' 
+                    ? 'Documentele asociate se bazează pe date comune sau relații identificate automat.'
+                    : 'Related documents are based on common data or automatically identified relationships.'
+                  }
+                </p>
               </div>
             ) : (
-              <div className="space-y-6">
-                {document?.type === 'Invoice' && documentWithRelations?.paymentSummary && (
-                  <div className="bg-[var(--background)] rounded-2xl p-6 border border-[var(--text4)]">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold text-[var(--text1)] flex items-center gap-2">
-                        <DollarSign size={20} className="text-[var(--primary)]" />
-                        {language === 'ro' ? 'Sumar Plăți' : 'Payment Summary'}
-                      </h3>
-                      <div className="flex items-center gap-2">
-                        {getPaymentStatusIcon(documentWithRelations.paymentSummary.paymentStatus)}
-                        <span className="font-medium text-[var(--text1)]">
-                          {getPaymentStatusText(documentWithRelations.paymentSummary.paymentStatus)}
-                        </span>
-                      </div>
-                    </div>
+              <div className="space-y-3">
+                {filteredDocs.map((relatedDoc, index) => {
+                  const FileIcon = getFileIcon(relatedDoc.type);
+                  const iconColors = getFileIconColor(relatedDoc.type);
+                  
+                  return (
+                    <motion.div
+                      key={relatedDoc.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className="bg-[var(--background)] rounded-xl p-4 border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 ${iconColors.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
+                          <FileIcon size={24} className={iconColors.text} />
+                        </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="bg-[var(--foreground)] rounded-lg p-4">
-                        <p className="text-[var(--text3)] text-sm">
-                          {language === 'ro' ? 'Total factură' : 'Invoice total'}
-                        </p>
-                        <p className="text-[var(--text1)] font-bold text-lg">
-                          {formatCurrency(documentWithRelations.paymentSummary.totalAmount)}
-                        </p>
-                      </div>
-                      <div className="bg-[var(--foreground)] rounded-lg p-4">
-                        <p className="text-[var(--text3)] text-sm">
-                          {language === 'ro' ? 'Suma plătită' : 'Amount paid'}
-                        </p>
-                        <p className="text-green-600 font-bold text-lg">
-                          {formatCurrency(documentWithRelations.paymentSummary.paidAmount)}
-                        </p>
-                      </div>
-                      <div className="bg-[var(--foreground)] rounded-lg p-4">
-                        <p className="text-[var(--text3)] text-sm">
-                          {language === 'ro' ? 'Rămas de plată' : 'Remaining amount'}
-                        </p>
-                        <p className="text-red-600 font-bold text-lg">
-                          {formatCurrency(documentWithRelations.paymentSummary.remainingAmount)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4">
-                      <div className="flex justify-between text-sm text-[var(--text2)] mb-2">
-                        <span>{language === 'ro' ? 'Progres plată' : 'Payment progress'}</span>
-                        <span>
-                          {Math.round((documentWithRelations.paymentSummary.paidAmount / documentWithRelations.paymentSummary.totalAmount) * 100)}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-[var(--text4)] rounded-full h-2">
-                        <div
-                          className="bg-gradient-to-r from-green-500 to-green-600 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${Math.min(100, (documentWithRelations.paymentSummary.paidAmount / documentWithRelations.paymentSummary.totalAmount) * 100)}%`
-                          }}
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-[var(--background)] rounded-2xl p-6 border border-[var(--text4)]">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-[var(--text1)] flex items-center gap-2">
-                      <Receipt size={20} className="text-green-500" />
-                      {language === 'ro' ? 'Documente de Plată' : 'Payment Documents'}
-                      <span className="text-sm text-[var(--text3)] bg-[var(--text4)]/20 px-2 py-1 rounded-full">
-                        {documentWithRelations?.relatedDocuments?.payments?.length || 0}
-                      </span>
-                    </h3>
-                    {document?.type === 'Invoice' && (
-                      <button
-                        onClick={() => {
-                          setShowAddPayment(true);
-                          fetchAvailableDocuments();
-                        }}
-                        className="flex items-center gap-2 px-3 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary)]/90 transition-colors"
-                      >
-                        <Plus size={16} />
-                        {language === 'ro' ? 'Adaugă Plată' : 'Add Payment'}
-                      </button>
-                    )}
-                  </div>
-
-                  {!documentWithRelations?.relatedDocuments?.payments?.length ? (
-                    <div className="text-center py-8 text-[var(--text3)]">
-                      <Receipt size={48} className="mx-auto mb-2 opacity-50" />
-                      <p>{language === 'ro' ? 'Nu există documente de plată asociate' : 'No payment documents found'}</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {documentWithRelations.relatedDocuments.payments.map((payment) => (
-                        <div key={payment.id} className="flex items-center justify-between p-4 bg-[var(--foreground)] rounded-lg border border-[var(--text4)]">
-                          <div className="flex items-center gap-3">
-                            {getDocumentIcon(payment.type)}
-                            <div>
-                              <p className="font-medium text-[var(--text1)]">{payment.name}</p>
-                              <p className="text-sm text-[var(--text3)]">{payment.type}</p>
-                              {payment.paymentAmount && (
-                                <p className="text-sm text-green-600 font-medium">
-                                  {formatCurrency(payment.paymentAmount)}
-                                </p>
-                              )}
-                              {payment.notes && (
-                                <p className="text-xs text-[var(--text3)] italic">{payment.notes}</p>
-                              )}
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-[var(--text1)] text-lg truncate">
+                            {relatedDoc.name}
+                          </h3>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="text-[var(--text2)] font-medium">
+                              {language === 'ro'
+                                ? docTypeTranslations[relatedDoc.type as keyof typeof docTypeTranslations] || 'Tip necunoscut'
+                                : relatedDoc.type || 'Unknown type'
+                              }
+                            </span>
+                            <div className="flex items-center gap-1 text-[var(--text3)]">
+                              <Calendar size={14} />
+                              <span>{getDocumentDate(relatedDoc)}</span>
                             </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {payment.signedUrl && (
-                              <MyTooltip content={language === 'ro' ? 'Vezi document' : 'View document'} trigger={
-                                <a
-                                  href={payment.signedUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 text-[var(--primary)] bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 rounded-lg transition-colors"
-                                >
-                                  <Eye size={16} />
-                                </a>
-                              }/>
+                            {relatedDoc.processedData?.[0]?.extractedFields?.result?.total_amount && (
+                              <span className="text-[var(--text2)] font-medium">
+                                {formatCurrency(relatedDoc.processedData[0].extractedFields.result.total_amount)}
+                              </span>
                             )}
-                            <MyTooltip content={language === 'ro' ? 'Elimină asocierea' : 'Remove relation'} trigger={
-                              <button
-                                onClick={() => handleRemoveRelation(payment.id)}
-                                className="p-2 text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
-                              >
-                                <Unlink size={16} />
-                              </button>
-                            }/>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
-                {((documentWithRelations?.relatedDocuments?.attachments?.length ?? 0) > 0 || 
-                  (documentWithRelations?.relatedDocuments?.corrections?.length ?? 0) > 0) && (
-                  <div className="bg-[var(--background)] rounded-2xl p-6 border border-[var(--text4)]">
-                    <h3 className="text-lg font-semibold text-[var(--text1)] mb-4 flex items-center gap-2">
-                      <FileText size={20} className="text-[var(--primary)]" />
-                      {language === 'ro' ? 'Alte Documente' : 'Other Documents'}
-                    </h3>
-
-                    {(documentWithRelations?.relatedDocuments?.attachments?.length ?? 0) > 0 && (
-                      <div className="mb-4">
-                        <h4 className="font-medium text-[var(--text1)] mb-2">
-                          {language === 'ro' ? 'Atașamente' : 'Attachments'}
-                        </h4>
-                        <div className="space-y-2">
-                          {documentWithRelations?.relatedDocuments?.attachments?.map((attachment) => (
-                            <div key={attachment.id} className="flex items-center justify-between p-3 bg-[var(--foreground)] rounded-lg">
-                              <div className="flex items-center gap-2">
-                                {getDocumentIcon(attachment.type)}
-                                <span className="text-[var(--text1)]">{attachment.name}</span>
-                              </div>
-                              {attachment.signedUrl && (
-                                <a
-                                  href={attachment.signedUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1 text-[var(--primary)] hover:text-[var(--primary)]/80"
-                                >
-                                  <Eye size={16} />
-                                </a>
-                              )}
-                            </div>
-                          ))}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => window.open(relatedDoc.signedUrl, '_blank')}
+                            className="p-2 text-[var(--primary)] bg-[var(--primary)]/10 hover:bg-[var(--primary)] hover:text-white rounded-lg transition-colors"
+                            title={language === 'ro' ? 'Deschide document' : 'Open document'}
+                          >
+                            <ExternalLink size={16} />
+                          </button>
                         </div>
                       </div>
-                    )}
-
-                    {(documentWithRelations?.relatedDocuments?.corrections?.length ?? 0) > 0 && (
-                      <div>
-                        <h4 className="font-medium text-[var(--text1)] mb-2">
-                          {language === 'ro' ? 'Corecții' : 'Corrections'}
-                        </h4>
-                        <div className="space-y-2">
-                          {documentWithRelations?.relatedDocuments?.corrections?.map((correction) => (
-                            <div key={correction.id} className="flex items-center justify-between p-3 bg-[var(--foreground)] rounded-lg">
-                              <div className="flex items-center gap-2">
-                                {getDocumentIcon(correction.type)}
-                                <span className="text-[var(--text1)]">{correction.name}</span>
-                              </div>
-                              {correction.signedUrl && (
-                                <a
-                                  href={correction.signedUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1 text-[var(--primary)] hover:text-[var(--primary)]/80"
-                                >
-                                  <Eye size={16} />
-                                </a>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                    </motion.div>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {showAddPayment && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center p-4">
-              <div className="bg-[var(--foreground)] rounded-2xl p-6 w-full max-w-md">
-                <h3 className="text-lg font-semibold text-[var(--text1)] mb-4">
-                  {language === 'ro' ? 'Adaugă Document de Plată' : 'Add Payment Document'}
-                </h3>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Selectează document' : 'Select document'}
-                    </label>
-                    <select
-                      value={selectedPaymentDoc || ''}
-                      onChange={(e) => setSelectedPaymentDoc(Number(e.target.value))}
-                      className="w-full p-3 border border-[var(--text4)] rounded-lg bg-[var(--background)] text-[var(--text1)]"
-                    >
-                      <option value="">
-                        {language === 'ro' ? 'Alege un document...' : 'Choose a document...'}
-                      </option>
-                      {availableDocuments.map((doc) => (
-                        <option key={doc.id} value={doc.id}>
-                          {doc.name} ({doc.type})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Suma plătită' : 'Payment amount'}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={paymentAmount}
-                      onChange={(e) => setPaymentAmount(e.target.value)}
-                      className="w-full p-3 border border-[var(--text4)] rounded-lg bg-[var(--background)] text-[var(--text1)]"
-                      placeholder="0.00"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Notițe (opțional)' : 'Notes (optional)'}
-                    </label>
-                    <textarea
-                      value={paymentNotes}
-                      onChange={(e) => setPaymentNotes(e.target.value)}
-                      className="w-full p-3 border border-[var(--text4)] rounded-lg bg-[var(--background)] text-[var(--text1)]"
-                      rows={3}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 mt-6">
-                  <button
-                    onClick={handleAddPayment}
-                    disabled={!selectedPaymentDoc || !paymentAmount}
-                    className="flex-1 bg-[var(--primary)] text-white py-2 px-4 rounded-lg hover:bg-[var(--primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {language === 'ro' ? 'Adaugă' : 'Add'}
-                  </button>
-                  <button
-                    onClick={() => setShowAddPayment(false)}
-                    className="flex-1 bg-[var(--text4)] text-[var(--text1)] py-2 px-4 rounded-lg hover:bg-[var(--text4)]/80 transition-colors"
-                  >
-                    {language === 'ro' ? 'Anulează' : 'Cancel'}
-                  </button>
-                </div>
-              </div>
+          {/* Footer */}
+          <div className="p-6 border-t border-[var(--text4)] bg-[var(--background)]">
+            <div className="flex items-center justify-between">
+              <p className="text-[var(--text3)] text-sm">
+                {language === 'ro' 
+                  ? `${filteredDocs.length} documente găsite`
+                  : `${filteredDocs.length} documents found`
+                }
+              </p>
+              
+              <button
+                onClick={onClose}
+                className="px-6 py-2 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors font-medium"
+              >
+                {language === 'ro' ? 'Închide' : 'Close'}
+              </button>
             </div>
-          )}
+          </div>
         </motion.div>
-      </div>
+      </motion.div>
     </AnimatePresence>
   );
 };
