@@ -417,23 +417,36 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                             output_length = len(task_output.raw)
                             print(f"Task {i} output length: {output_length}", file=sys.stderr)
 
-                            if i == 0:  
+                            print(f"🐍 DEBUG Task {i} first 200 chars: {task_output.raw[:200]}", file=sys.stderr)
+
+                            if i == 0: 
                                 categorization_data = extract_json_from_text(task_output.raw)
                                 if categorization_data and isinstance(categorization_data, dict):
                                     combined_data.update(categorization_data)
                                     doc_type = categorization_data.get('document_type', 'Unknown')
                                     print(f"Document categorized as: {doc_type}", file=sys.stderr)
                                     inputs['doc_type'] = doc_type
+                                else:
+                                    print(f"🐍 DEBUG: Task 0 extraction failed or empty", file=sys.stderr)
 
-                            elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice':  # Invoice extraction
+                            elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice': 
+                                print(f"🐍 DEBUG: Processing Task 1 (Invoice extraction)", file=sys.stderr)
+                                print(f"🐍 DEBUG: Task 1 raw output: {task_output.raw}", file=sys.stderr)
+
                                 extraction_data = extract_json_from_text(task_output.raw)
+                                print(f"🐍 DEBUG: Task 1 extracted data: {extraction_data}", file=sys.stderr)
+
                                 if extraction_data and isinstance(extraction_data, dict):
+                                    print(f"🐍 DEBUG: Task 1 extracted keys: {list(extraction_data.keys())}", file=sys.stderr)
                                     combined_data.update(extraction_data)
                                     print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
+                                else:
+                                    print(f"🐍 DEBUG: Task 1 extraction FAILED - no valid data returned", file=sys.stderr)
 
-                            elif i == 2: 
+                            elif i == 2:
                                 doc_type = combined_data.get('document_type', '').lower()
                                 if doc_type != 'invoice' and doc_type:
+                                    print(f"🐍 DEBUG: Processing Task 2 (Other document: {doc_type})", file=sys.stderr)
                                     try:
                                         other_data = extract_json_from_text(task_output.raw)
                                         if other_data and isinstance(other_data, dict):
@@ -451,7 +464,7 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                 except Exception as task3_error:
                                     print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
 
-                            elif i == 4: 
+                            elif i == 4:
                                 try:
                                     compliance_data = extract_json_from_text(task_output.raw)
                                     if compliance_data and isinstance(compliance_data, dict):
@@ -459,6 +472,8 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                         print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
                                 except Exception as task4_error:
                                     print(f"ERROR: Task 4 processing failed: {str(task4_error)}", file=sys.stderr)
+                        else:
+                            print(f"🐍 DEBUG: Task {i} has no output or empty raw data", file=sys.stderr)
 
                     except Exception as e:
                         print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
