@@ -3,7 +3,7 @@ import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClien
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
-  Link, CheckCircle, AlertCircle, Clock
+  Link
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -27,14 +27,6 @@ type clientCompanyName = {
 
 export type documentType = 'Invoice' | 'Receipt' | 'Bank Statement' | 'Contract' | 'Z Report' | 'Payment Order' | 'Collection Order';
 type paymentStatusType = 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PAID' | 'OVERPAID' | undefined;
-
-interface PaymentSummary {
-  totalAmount: number;
-  paidAmount: number;
-  remainingAmount: number;
-  paymentStatus: paymentStatusType;
-  lastPaymentDate?: string;
-}
 
 const FileManagementPage = () => {
 
@@ -234,43 +226,11 @@ const FileManagementPage = () => {
     { skip: !processingDocId }
   );
 
-  // Payment status helpers
-  const getPaymentStatusIcon = (status?: paymentStatusType) => {
-    switch (status) {
-      case 'UNPAID':
-        return <AlertCircle size={16} className="text-red-500" />;
-      case 'PARTIALLY_PAID':
-        return <Clock size={16} className="text-yellow-500" />;
-      case 'FULLY_PAID':
-        return <CheckCircle size={16} className="text-green-500" />;
-      case 'OVERPAID':
-        return <CheckCircle size={16} className="text-blue-500" />;
-      default:
-        return null;
-    }
-  };
-
-  const getPaymentStatusText = (status?: paymentStatusType) => {
-    if (!status) return '';
-    const statusMap = {
-      'UNPAID': language === 'ro' ? 'Neplatită' : 'Unpaid',
-      'PARTIALLY_PAID': language === 'ro' ? 'Parțial plătită' : 'Partially paid',
-      'FULLY_PAID': language === 'ro' ? 'Plătită complet' : 'Fully paid',
-      'OVERPAID': language === 'ro' ? 'Supraplatită' : 'Overpaid'
-    };
-    return statusMap[status] || status;
-  };
-
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ro-RO', {
       style: 'currency',
       currency: 'RON'
     }).format(amount);
-  };
-
-  const getPaymentProgress = (paymentSummary?: PaymentSummary) => {
-    if (!paymentSummary || paymentSummary.totalAmount === 0) return 0;
-    return Math.min(100, (paymentSummary.paidAmount / paymentSummary.totalAmount) * 100);
   };
 
   // Bulk selection functions
@@ -869,7 +829,7 @@ const FileManagementPage = () => {
                             </div>
                             {file.type === 'Invoice' && paymentSummary && (
                               <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-                                {language === 'ro' ? (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Incasat:':'Platit:') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed:':'Paid:')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
+                                {language === 'ro' ? (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Incasat':'Platit') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
                               </span>
                             )}
                           </div>
