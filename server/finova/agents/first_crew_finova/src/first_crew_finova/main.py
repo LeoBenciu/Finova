@@ -729,11 +729,28 @@ def main():
         
         existing_documents = []
         if len(sys.argv) > 3:
-            try:
-                existing_documents = json.loads(sys.argv[3])
-            except json.JSONDecodeError:
-                print("Warning: Invalid existing documents JSON, proceeding without duplicate detection", file=sys.stderr)
-        
+            existing_documents_file = sys.argv[3].strip()
+
+            print(f"🐍 PYTHON DEBUG: existing_documents_file path: {existing_documents_file}", file=sys.stderr)
+            print(f"🐍 PYTHON DEBUG: File exists: {os.path.exists(existing_documents_file)}", file=sys.stderr)
+
+            if os.path.exists(existing_documents_file):
+                try:
+                    with open(existing_documents_file, 'r') as f:
+                        file_content = f.read()
+                        print(f"🐍 PYTHON DEBUG: File size: {len(file_content)} bytes", file=sys.stderr)
+                        print(f"🐍 PYTHON DEBUG: First 500 chars: {file_content[:500]}", file=sys.stderr)
+
+                        existing_docs = json.loads(file_content)
+                        existing_documents = existing_docs
+                        print(f"🐍 PYTHON DEBUG: Parsed JSON, found {len(existing_documents)} documents", file=sys.stderr)
+                        if len(existing_documents) > 0:
+                            print(f"🐍 PYTHON DEBUG: First doc: {existing_documents[0]}", file=sys.stderr)
+                except Exception as e:
+                    print(f"🐍 PYTHON DEBUG: Error reading existing documents file: {e}", file=sys.stderr)
+            else:
+                print("🐍 PYTHON DEBUG: Existing documents file does not exist", file=sys.stderr)
+
         if not client_company_ein:
             result = {"error": "Client company EIN is required"}
             print(json.dumps(result, ensure_ascii=False))
