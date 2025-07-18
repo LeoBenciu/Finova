@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Post, Patch, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Post, Patch, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req, ParseIntPipe } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -83,5 +83,14 @@ export class FilesController {
     @Get('service/health')
     getServiceHealth(): any {
         return this.fileMangementService.getServiceHealth();
+    }
+
+    @Get(':docId/related')
+    async getRelatedDocuments(
+        @Param('docId', ParseIntPipe) docId: number,
+        @Req() req: Request & { user: User }
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.getRelatedDocuments(docId, user);
     }
 }

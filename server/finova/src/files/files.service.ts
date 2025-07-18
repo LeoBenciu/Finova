@@ -35,12 +35,9 @@ export class FilesService {
         if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
             throw new UnauthorizedException('No access to this document');
         }
-        // Normalize references
         const newRefs = Array.from(new Set((references || []).filter(id => typeof id === 'number' && id !== docId)));
         const oldRefs = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number' && id !== docId) : [];
-        // Update this document
         await this.prisma.document.update({ where: { id: docId }, data: { references: newRefs } });
-        // Add docId to each new referenced doc
         await Promise.all(newRefs.map(async refId => {
             const refDoc = await this.prisma.document.findUnique({ where: { id: refId } });
             if (refDoc) {
@@ -48,7 +45,6 @@ export class FilesService {
                 await this.prisma.document.update({ where: { id: refId }, data: { references: updatedRefs } });
             }
         }));
-        // Remove docId from docs no longer referenced
         const removedRefs = oldRefs.filter(id => !newRefs.includes(id));
         await Promise.all(removedRefs.map(async refId => {
             const refDoc = await this.prisma.document.findUnique({ where: { id: refId } });
@@ -61,25 +57,86 @@ export class FilesService {
     }
 
     async getRelatedDocuments(docId: number, user: User) {
-        const document = await this.prisma.document.findUnique({ where: { id: docId } });
-        if (!document) throw new NotFoundException('Document not found');
+        console.log(`🔍 Fetching related documents for docId: ${docId}`);
+        
+        const document = await this.prisma.document.findUnique({ 
+            where: { id: docId },
+            include: { processedData: true }
+        });
+        
+        if (!document) {
+            console.error(`❌ Document not found with ID: ${docId}`);
+            throw new NotFoundException('Document not found');
+        }
 
-        const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: document.accountingClientId } });
+        const accountingClient = await this.prisma.accountingClients.findUnique({ 
+            where: { id: document.accountingClientId } 
+        });
+        
         if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+            console.error(`⛔ Unauthorized access attempt: User ${user.id} tried to access document ${docId}`);
             throw new UnauthorizedException('No access to this document');
         }
 
-        const referenceIds: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
-        if (referenceIds.length === 0) return [];
+        const referenceIds: number[] = Array.isArray(document.references) 
+            ? document.references.filter((id: any): id is number => typeof id === 'number' && id !== docId) 
+            : [];
+            
+        console.log(`📄 Found ${referenceIds.length} references for document ${docId}`);
+
+        if (referenceIds.length === 0) {
+            console.log('ℹ️ No references found for document, returning empty array');
+            return [];
+        }
 
         const relatedDocs = await this.prisma.document.findMany({
-            where: { id: { in: referenceIds } },
+            where: { 
+                id: { in: referenceIds },
+                accountingClientId: document.accountingClientId
+            },
             include: {
                 processedData: true
+            },
+            orderBy: {
+                createdAt: 'desc'
             }
         });
 
-        return relatedDocs;
+        console.log(`✅ Found ${relatedDocs.length} related documents`);
+        
+        const formattedDocs = relatedDocs.map(doc => {
+            let extractedData = {};
+            
+            if (doc.processedData?.extractedFields) {
+                try {
+                    const parsedFields = typeof doc.processedData.extractedFields === 'string'
+                        ? JSON.parse(doc.processedData.extractedFields)
+                        : doc.processedData.extractedFields;
+                    
+                    if (parsedFields && typeof parsedFields === 'object' && 'result' in parsedFields) {
+                        extractedData = parsedFields.result || {};
+                    } else if (parsedFields && typeof parsedFields === 'object') {
+                        extractedData = parsedFields;
+                    }
+                } catch (e) {
+                    console.error(`❌ Error parsing extracted fields for doc ${doc.id}:`, e);
+                }
+            }
+            
+            return {
+                id: doc.id,
+                name: doc.name,
+                type: doc.type,
+                createdAt: doc.createdAt,
+                updatedAt: doc.updatedAt,
+                ...extractedData,
+                processedData: [{
+                    extractedFields: doc.processedData?.extractedFields || {}
+                }]
+            };
+        });
+
+        return formattedDocs;
     }
 
 
@@ -564,45 +621,150 @@ export class FilesService {
                         .filter((id: any) => typeof id === 'number')
                         .filter((id: number) => id !== undefined && id !== null);
                 } else {
-                    // Auto-detect references if not provided
+                    console.log('🔍 Starting auto-detection of document references');
+                    
                     // Fetch all other documents for the same accounting client
                     const allDocs = await prisma.document.findMany({
                         where: {
-                            accountingClientId: accountingClientRelation.id
+                            accountingClientId: accountingClientRelation.id,
+                            // Only get documents that have processed data
+                            processedData: { isNot: null }
                         },
-                        include: { processedData: true }
+                        include: { 
+                            processedData: true 
+                        }
                     });
-                    // Compute similarity based on date, amount, counterparty, etc.
-                    // Example: match by document_type, close date, similar amount
+                    
+                    console.log(`🔍 Found ${allDocs.length} existing documents to check for references`);
+                    
+                    // Extract relevant data from the new document
                     const newDocType = processedData.result?.document_type;
+                    const newDocNumber = processedData.result?.document_number || processedData.result?.invoice_number || processedData.result?.receipt_number;
                     const newDocDate = processedData.result?.document_date || processedData.result?.date;
                     const newDocAmount = processedData.result?.total_amount || processedData.result?.amount;
-                    const SIMILARITY_THRESHOLD = 0.7;
-                    const scoredDocs = allDocs
-                        .filter(d => d.processedData && d.id !== undefined)
-                        .map(doc => {
-                            let score = 0;
-                            const docType = doc.type;
-                            let extractedFields: any = doc.processedData?.extractedFields;
-                            if (typeof extractedFields === 'string') {
-                                try {
-                                    extractedFields = JSON.parse(extractedFields);
-                                } catch {
-                                    extractedFields = {};
+                    const newDocCounterparty = processedData.result?.counterparty_name || processedData.result?.supplier_name || processedData.result?.customer_name;
+                    
+                    console.log(`📄 New document details - Type: ${newDocType}, Number: ${newDocNumber}, Date: ${newDocDate}, Amount: ${newDocAmount}`);
+                    
+                    // Define document type relationships (which types can reference each other)
+                    const documentRelationships: Record<string, string[]> = {
+                        'Invoice': ['Receipt', 'Payment Order'],
+                        'Receipt': ['Invoice', 'Payment Order'],
+                        'Payment Order': ['Invoice', 'Receipt'],
+                        'Contract': ['Invoice', 'Receipt']
+                    };
+                    
+                    const SIMILARITY_THRESHOLD = 0.6; // Slightly lower threshold to catch more potential references
+                    
+                    // Score documents based on multiple factors
+                    const scoredDocs = await Promise.all(
+                        allDocs
+                            .filter(d => d.processedData && d.id !== undefined)
+                            .map(async (doc) => {
+                                let score = 0;
+                                const reasons: string[] = [];
+                                
+                                // Extract document data
+                                const docType = doc.type;
+                                let extractedFields: any = doc.processedData?.extractedFields;
+                                
+                                // Parse extracted fields if it's a string
+                                if (typeof extractedFields === 'string') {
+                                    try {
+                                        extractedFields = JSON.parse(extractedFields);
+                                    } catch (e) {
+                                        console.warn(`⚠️ Could not parse extracted fields for doc ${doc.id}:`, e);
+                                        extractedFields = {};
+                                    }
                                 }
-                            }
-                            const docResult = extractedFields?.result || extractedFields;
-                            const docDate = docResult?.document_date || docResult?.date;
-                            const docAmount = docResult?.total_amount || docResult?.amount;
-                            if (docType && newDocType && docType === newDocType) score += 0.4;
-                            if (docDate && newDocDate && docDate === newDocDate) score += 0.3;
-                            if (docAmount && newDocAmount && Math.abs(Number(docAmount) - Number(newDocAmount)) < 5) score += 0.3;
-                            return { id: doc.id, score };
-                        })
+                                
+                                const docResult = extractedFields?.result || extractedFields || {};
+                                const docNumber = docResult.document_number || docResult.invoice_number || docResult.receipt_number;
+                                const docDate = docResult.document_date || docResult.date;
+                                const docAmount = docResult.total_amount || docResult.amount;
+                                const docCounterparty = docResult.counterparty_name || docResult.supplier_name || docResult.customer_name;
+                                
+                                // 1. Check if document types are related
+                                const relatedTypes = documentRelationships[newDocType] || [];
+                                const isRelatedType = relatedTypes.includes(docType) || docType === newDocType;
+                                
+                                if (isRelatedType) {
+                                    score += 0.3;
+                                    reasons.push(`Type match (${docType})`);
+                                }
+                                
+                                // 2. Check document numbers (if available)
+                                if (newDocNumber && docNumber) {
+                                    const normalizedNewNumber = String(newDocNumber).toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                                    const normalizedDocNumber = String(docNumber).toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+                                    
+                                    if (normalizedNewNumber && normalizedDocNumber && normalizedNewNumber === normalizedDocNumber) {
+                                        score += 0.5;
+                                        reasons.push(`Document number match (${docNumber})`);
+                                    }
+                                }
+                                
+                                // 3. Check dates (if available)
+                                if (newDocDate && docDate) {
+                                    // Simple date equality check - could be enhanced to check date ranges
+                                    if (newDocDate === docDate) {
+                                        score += 0.3;
+                                        reasons.push(`Date match (${docDate})`);
+                                    }
+                                }
+                                
+                                // 4. Check amounts (if available)
+                                if (newDocAmount && docAmount) {
+                                    const amountDiff = Math.abs(Number(newDocAmount) - Number(docAmount));
+                                    if (amountDiff < 0.01) { // Exact match
+                                        score += 0.5;
+                                        reasons.push(`Exact amount match (${docAmount})`);
+                                    } else if (amountDiff < 5) { // Close match (within 5 units)
+                                        score += 0.3;
+                                        reasons.push(`Close amount match (${docAmount}, diff: ${amountDiff.toFixed(2)})`);
+                                    }
+                                }
+                                
+                                // 5. Check counterparty (if available)
+                                if (newDocCounterparty && docCounterparty) {
+                                    const similarity = this.calculateSimilarity(newDocCounterparty, docCounterparty);
+                                    if (similarity > 0.8) {
+                                        score += 0.4;
+                                        reasons.push(`Counterparty match (${docCounterparty}, similarity: ${similarity.toFixed(2)})`);
+                                    }
+                                }
+                                
+                                // If we have a document number match, boost the score significantly
+                                if (reasons.some(r => r.includes('Document number match'))) {
+                                    score = Math.max(score, 0.9); // Ensure high score for doc number matches
+                                }
+                                
+                                // Log scoring details for debugging
+                                if (score > 0.5) {
+                                    console.log(`📊 Document ${doc.id} (${docType}) score: ${score.toFixed(2)} - ${reasons.join(', ')}`);
+                                }
+                                
+                                return { 
+                                    id: doc.id, 
+                                    score,
+                                    type: docType,
+                                    reasons
+                                };
+                            })
+                    );
+                    
+                    // Filter, sort and limit results
+                    const relevantDocs = scoredDocs
                         .filter(d => d.score >= SIMILARITY_THRESHOLD)
                         .sort((a, b) => b.score - a.score)
-                        .slice(0, 5); // top 5 similar
-                    references = scoredDocs.map(d => d.id);
+                        .slice(0, 5); // Top 5 matches
+                    
+                    console.log(`🔍 Found ${relevantDocs.length} potential references with score >= ${SIMILARITY_THRESHOLD}`);
+                    relevantDocs.forEach(doc => {
+                        console.log(`   - Document ${doc.id} (${doc.type}): ${doc.score.toFixed(2)} - ${doc.reasons.join(', ')}`);
+                    });
+                    
+                    references = relevantDocs.map(d => d.id);
                 }
                 // Remove self-referencing (will not have docId yet, but will after creation)
                 // We'll update this doc's references after creation to ensure no self-reference
