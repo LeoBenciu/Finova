@@ -1,6 +1,7 @@
 import {createApi, fetchBaseQuery} from '@reduxjs/toolkit/query/react'
 import { logout } from '@/app/helper/authHelpers';
 
+
 const baseQuery = fetchBaseQuery({
     baseUrl: 'https://finova-6eeu.onrender.com',
     prepareHeaders: (headers)=>{
@@ -25,16 +26,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: [
-        'UserAgreements', 
-        'Files', 
-        'DuplicateAlerts', 
-        'ComplianceAlerts', 
-        'DocumentRelations', 
-        'PaymentSummaries',
-        'AvailablePayments',
-        'RelationshipSuggestions'
-    ],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -49,25 +41,6 @@ export const finovaApi = createApi({
                 url:'/auth/login',
                 method: 'POST',
                 body: credentials
-            })
-        }),
-
-        forgotPassword: build.mutation({
-            query:(email)=>({
-                url:'/auth/forgot-password',
-                method:'POST',
-                body:email
-            })
-        }),
-
-        resetPassword: build.mutation({
-            query:({token, newPassword})=>({
-                url:'auth/reset-password',
-                method:'POST',
-                body: {
-                    token,
-                    newPassword
-                }
             })
         }),
 
@@ -102,15 +75,7 @@ export const finovaApi = createApi({
                     formData: true
                 }
             },
-            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts', 'PaymentSummaries', 'DocumentRelations']
-        }),
-
-        getFiles: build.query({
-            query:({company})=>({
-                url:`/files/${company}`,
-                method:'GET'
-            }),
-            providesTags: ['Files', 'PaymentSummaries', 'DocumentRelations']
+            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts']
         }),
 
         updateFileAndExtractedData: build.mutation({
@@ -125,8 +90,8 @@ export const finovaApi = createApi({
                 }
               };
             },
-            invalidatesTags: ['Files', 'PaymentSummaries']
-        }),
+            invalidatesTags: ['Files']
+          }),
 
         deleteFileAndExtractedData: build.mutation({
             query:({docId, clientCompanyEin})=>({
@@ -136,108 +101,7 @@ export const finovaApi = createApi({
                     clientCompanyEin,
                     docId
                 }}),
-            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts', 'DocumentRelations', 'PaymentSummaries']
-        }),
-
-        getDocumentWithRelations: build.query({
-            query: (documentId) => `/files/document/${documentId}/relations`,
-            providesTags: (_, __, documentId) => [
-                { type: 'DocumentRelations', id: documentId },
-                { type: 'PaymentSummaries', id: documentId }
-            ]
-        }),
-
-        createDocumentRelation: build.mutation({
-            query: (data) => ({
-                url: '/files/relations',
-                method: 'POST', 
-                body: data
-            }),
-            invalidatesTags: ['Files', 'DocumentRelations', 'PaymentSummaries', 'AvailablePayments']
-        }),
-
-        updateDocumentRelation: build.mutation({
-            query: ({ relationId, data }) => ({
-                url: `/files/relations/${relationId}`,
-                method: 'PUT',
-                body: data
-            }),
-            invalidatesTags: ['Files', 'DocumentRelations', 'PaymentSummaries']
-        }),
-
-        deleteDocumentRelation: build.mutation({
-            query: (relationId) => ({
-                url: `/files/relations/${relationId}`,
-                method: 'DELETE'
-            }),
-            invalidatesTags: ['Files', 'DocumentRelations', 'PaymentSummaries', 'AvailablePayments']
-        }),
-
-        refreshPaymentSummaries: build.mutation({
-            query: (company) => ({
-                url: `/files/${company}/refresh-payments`,
-                method: 'POST'
-            }),
-            invalidatesTags: ['Files', 'PaymentSummaries']
-        }),
-
-        updatePaymentStatus: build.mutation({
-            query: ({ documentId, manualPaidAmount }) => ({
-                url: `/files/document/${documentId}/payment-status`,
-                method: 'PUT',
-                body: { manualPaidAmount }
-            }),
-            invalidatesTags: ['Files', 'PaymentSummaries', 'DocumentRelations']
-        }),
-
-        getPaymentSummaryStats: build.query({
-            query: (company) => ({
-                url: `/files/${company}/payment-stats`,
-                method: 'GET'
-            }),
-            providesTags: ['PaymentSummaries']
-        }),
-
-        getAvailablePaymentDocuments: build.query({
-            query: ({ company, invoiceId }) => ({
-                url: `/files/${company}/available-payments/${invoiceId}`,
-                method: 'GET'
-            }),
-            providesTags: ['AvailablePayments']
-        }),
-
-        suggestDocumentRelationships: build.query({
-            query: ({ company, documentId }) => ({
-                url: `/files/${company}/suggest-relationships/${documentId}`,
-                method: 'GET'
-            }),
-            providesTags: ['RelationshipSuggestions']
-        }),
-
-        createAutomaticRelationships: build.mutation({
-            query: ({ company, documentId, suggestions }) => ({
-                url: `/files/${company}/auto-relationships/${documentId}`,
-                method: 'POST',
-                body: { suggestions }
-            }),
-            invalidatesTags: ['Files', 'DocumentRelations', 'PaymentSummaries', 'AvailablePayments']
-        }),
-
-        getUnlinkedDocuments: build.query({
-            query: (company) => ({
-                url: `/files/${company}/unlinked`,
-                method: 'GET'
-            }),
-            providesTags: ['Files', 'DocumentRelations']
-        }),
-
-        bulkCreateRelationships: build.mutation({
-            query: ({ company, relationships }) => ({
-                url: `/files/${company}/bulk-relationships`,
-                method: 'POST',
-                body: { relationships }
-            }),
-            invalidatesTags: ['Files', 'DocumentRelations', 'PaymentSummaries', 'AvailablePayments']
+            invalidatesTags: ['Files', 'DuplicateAlerts', 'ComplianceAlerts']
         }),
 
         getClientCompanies: build.mutation({
@@ -280,6 +144,13 @@ export const finovaApi = createApi({
             })
         }),
 
+        getRpaData: build.query({
+            query:()=>({
+                url: '/uipath/data',
+                method:'GET',
+            })
+        }),
+
         deleteUserAccount: build.mutation({
             query:()=>({
                 url:'/users/me',
@@ -310,33 +181,6 @@ export const finovaApi = createApi({
             })
         }),
 
-        getUserAgreements: build.query({
-            query: () => ({
-                url: '/users/me/agreements',
-                method: 'GET',
-            }),
-            providesTags: ['UserAgreements']
-        }),
-        
-        updateUserConsent: build.mutation({
-            query: ({ agreementType, accepted }) => ({
-                url: '/users/me/consent',
-                method: 'PUT',
-                body: {
-                    agreementType,
-                    accepted
-                }
-            }),
-            invalidatesTags: ['UserAgreements']
-        }),
-
-        getRpaData: build.query({
-            query:()=>({
-                url: '/uipath/data',
-                method:'GET',
-            })
-        }),
-
         modifyRpaCredentials: build.mutation({
             query:({uipathSubfolder,clientInvoiceRk,supplierInvoiceRk,
                 clientReceiptRk,supplierReceiptRk})=>({
@@ -348,6 +192,67 @@ export const finovaApi = createApi({
                     supplierInvoiceRk,
                     clientReceiptRk,
                     supplierReceiptRk
+                }
+            })
+        }),
+
+        getFiles: build.query({
+            query:({company})=>({
+                url:`/files/${company}`,
+                method:'GET'
+            }),
+            providesTags: ['Files']
+        }),
+
+        getDuplicateAlerts: build.query({
+            query:({company})=>({
+                url:`/files/${company}/duplicate-alerts`,
+                method:'GET'
+            }),
+            providesTags: ['DuplicateAlerts']
+        }),
+
+        getComplianceAlerts: build.query({
+            query:({company})=>({
+                url:`/files/${company}/compliance-alerts`,
+                method:'GET'
+            }),
+            providesTags: ['ComplianceAlerts']
+        }),
+
+        updateDuplicateStatus: build.mutation({
+            query:({duplicateCheckId, status})=>({
+                url:`/files/duplicate-status/${duplicateCheckId}`,
+                method:'PUT',
+                body: {
+                    status
+                }
+            }),
+            invalidatesTags: ['DuplicateAlerts', 'Files']
+        }),
+
+        getServiceHealth: build.query({
+            query:()=>({
+                url:'/files/service/health',
+                method:'GET'
+            })
+        }),
+
+        forgotPassword: build.mutation({
+            query:(email)=>({
+                url:'/auth/forgot-password',
+                method:'POST',
+                body:email
+            })
+        }),
+
+        resetPassword: build.mutation({
+            query:({token, newPassword})=>({
+                url:'auth/reset-password',
+                method:'POST',
+                body: {
+                    token,
+                    newPassword
                 }
             })
         }),
@@ -427,108 +332,39 @@ export const finovaApi = createApi({
             })
         }),
 
-        getDuplicateAlerts: build.query({
-            query:({company})=>({
-                url:`/files/${company}/duplicate-alerts`,
-                method:'GET'
+        getUserAgreements: build.query({
+            query: () => ({
+                url: '/users/me/agreements',
+                method: 'GET',
             }),
-            providesTags: ['DuplicateAlerts']
+            providesTags: ['UserAgreements']
         }),
-
-        getComplianceAlerts: build.query({
-            query:({company})=>({
-                url:`/files/${company}/compliance-alerts`,
-                method:'GET'
-            }),
-            providesTags: ['ComplianceAlerts']
-        }),
-
-        updateDuplicateStatus: build.mutation({
-            query:({duplicateCheckId, status})=>({
-                url:`/files/duplicate-status/${duplicateCheckId}`,
-                method:'PUT',
+        
+        updateUserConsent: build.mutation({
+            query: ({ agreementType, accepted }) => ({
+                url: '/users/me/consent',
+                method: 'PUT',
                 body: {
-                    status
+                    agreementType,
+                    accepted
                 }
             }),
-            invalidatesTags: ['DuplicateAlerts', 'Files']
+            invalidatesTags: ['UserAgreements']
         }),
 
-        getServiceHealth: build.query({
-            query:()=>({
-                url:'/files/service/health',
-                method:'GET'
-            })
-        }),
     })
 })
 
-export const {
-    // Authentication hooks
-    useLoginMutation, 
-    useSignupMutation, 
-    useForgotPasswordMutation,
-    useResetPasswordMutation,
-
-    // Data extraction hooks
-    useExtractDataMutation, 
-    useSaveFileAndExtractedDataMutation,
-
-    // Enhanced file management hooks
-    useGetFilesQuery, 
-    useUpdateFileAndExtractedDataMutation,
-    useDeleteFileAndExtractedDataMutation,
-
-    // NEW: Document relationship hooks
-    useGetDocumentWithRelationsQuery,
-    useCreateDocumentRelationMutation,
-    useUpdateDocumentRelationMutation,
-    useDeleteDocumentRelationMutation,
-
-    // NEW: Payment tracking hooks
-    useRefreshPaymentSummariesMutation,
-    useUpdatePaymentStatusMutation,
-    useGetPaymentSummaryStatsQuery,
-
-    // NEW: Relationship suggestion hooks
-    useGetAvailablePaymentDocumentsQuery,
-    useSuggestDocumentRelationshipsQuery,
-    useCreateAutomaticRelationshipsMutation,
-    useGetUnlinkedDocumentsQuery,
-    useBulkCreateRelationshipsMutation,
-
-    // Client company hooks
-    useGetClientCompaniesMutation,
-    useCreateClientCompanyMutation,
-    useDeleteClientCompanyMutation,
-
-    // User management hooks
-    useGetUserDataQuery,
-    useDeleteUserAccountMutation,
-    useModifyUserAccountMutation,
-    useModifyUserPasswordMutation,
-    useGetUserAgreementsQuery, 
-    useUpdateUserConsentMutation,
-
-    // RPA/UiPath hooks
-    useGetRpaDataQuery,
-    useModifyRpaCredentialsMutation,
-    useInsertClientInvoiceMutation,
-    useGetJobStatusQuery,
-
-    // Management & Articles hooks
-    useGetManagementQuery, 
-    useSaveNewManagementMutation,
-    useGetArticlesQuery,
-    useDeleteManagementMutation, 
-    useDeleteArticleMutation,
-    useGetCompanyDataQuery,
-
-    // Alerts & Compliance hooks
-    useGetDuplicateAlertsQuery,
-    useGetComplianceAlertsQuery, 
-    useUpdateDuplicateStatusMutation,
-
-    // Service health hook
-    useGetServiceHealthQuery
-} = finovaApi;
+export const {useLoginMutation, useSignupMutation, useExtractDataMutation, 
+    useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
+useCreateClientCompanyMutation,useGetUserDataQuery,
+useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
+useModifyUserAccountMutation,useModifyUserPasswordMutation,
+useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
+useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
+useResetPasswordMutation, useInsertClientInvoiceMutation,
+useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
+useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
+useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
+useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
+useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery} = finovaApi;

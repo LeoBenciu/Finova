@@ -1,13 +1,5 @@
-import { 
-    CreateDocumentRelationDto, 
-    UpdateDocumentRelationDto, 
-    DocumentWithRelations,
-    RelatedDocumentInfo,
-    PaymentSummaryInfo,
-    PaymentFilterDto 
-} from './dto/files.dto';
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { ArticleType, User, CorrectionType, DuplicateStatus, VatRate, UnitOfMeasure, DocumentRelationType, PaymentStatus } from '@prisma/client';
+import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { ArticleType, User, CorrectionType, DuplicateStatus, VatRate, UnitOfMeasure } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataExtractionService } from '../data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
@@ -290,558 +282,39 @@ export class FilesService {
         
         return processedItems;
     }
-
-    async createDocumentRelation(dto: CreateDocumentRelationDto, user: User) {
-        try {
-            const [parentDoc, childDoc] = await Promise.all([
-                this.verifyDocumentAccess(dto.parentDocumentId, user),
-                this.verifyDocumentAccess(dto.childDocumentId, user)
-            ]);
-
-            if (!parentDoc || !childDoc) {
-                throw new UnauthorizedException('Access denied to one or both documents');
-            }
-
-            const existingRelation = await this.prisma.documentRelationship.findFirst({
-                where: {
-                    OR: [
-                        { parentDocumentId: dto.childDocumentId, childDocumentId: dto.parentDocumentId },
-                        { parentDocumentId: dto.parentDocumentId, childDocumentId: dto.childDocumentId }
-                    ]
-                }
-            });
-
-            if (existingRelation) {
-                throw new BadRequestException('Relationship already exists between these documents');
-            }
-
-            const relationship = await this.prisma.documentRelationship.create({
-                data: {
-                    parentDocumentId: dto.parentDocumentId,
-                    childDocumentId: dto.childDocumentId,
-                    relationshipType: dto.relationshipType,
-                    paymentAmount: dto.paymentAmount,
-                    notes: dto.notes,
-                    createdById: user.id
-                },
-                include: {
-                    parentDocument: true,
-                    childDocument: true
-                }
-            });
-
-            if (dto.relationshipType === DocumentRelationType.PAYMENT && dto.paymentAmount) {
-                await this.updatePaymentSummary(dto.parentDocumentId);
-            }
-
-            console.log(`[AUDIT] Document relationship created: ${dto.parentDocumentId} -> ${dto.childDocumentId} by user ${user.id}`);
-
-            return relationship;
-
-        } catch (e) {
-            if (e instanceof NotFoundException || e instanceof UnauthorizedException || e instanceof BadRequestException) throw e;
-            console.error('[CREATE_DOCUMENT_RELATION_ERROR]', e);
-            throw new InternalServerErrorException('Failed to create document relationship');
-        }
-    }
-
-    async updatePaymentSummary(documentId: number) {
-        try {
-            const document = await this.prisma.document.findUnique({
-                where: { id: documentId },
-                include: { 
-                    processedData: true,
-                    parentRelations: {
-                        where: { relationshipType: DocumentRelationType.PAYMENT },
-                        include: { childDocument: true }
-                    }
-                }
-            });
-
-            if (!document) {
-                throw new NotFoundException('Document not found');
-            }
-
-            let totalAmount = 0;
-            if (document.processedData?.extractedFields) {
-                const extractedData = typeof document.processedData.extractedFields === 'string' 
-                    ? JSON.parse(document.processedData.extractedFields)
-                    : document.processedData.extractedFields;
-
-                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
-            }
-
-            const paidAmount = document.parentRelations.reduce((sum, relation) => {
-                return sum + (relation.paymentAmount || 0);
-            }, 0);
-
-            const remainingAmount = Math.max(0, totalAmount - paidAmount);
-
-            let paymentStatus: PaymentStatus;
-            if (paidAmount === 0) {
-                paymentStatus = PaymentStatus.UNPAID;
-            } else if (paidAmount >= totalAmount) {
-                paymentStatus = paidAmount > totalAmount ? PaymentStatus.OVERPAID : PaymentStatus.FULLY_PAID;
-            } else {
-                paymentStatus = PaymentStatus.PARTIALLY_PAID;
-            }
-
-            const lastPaymentDate = document.parentRelations.length > 0 
-                ? new Date(Math.max(...document.parentRelations.map(r => r.createdAt.getTime())))
-                : null;
-
-            await this.prisma.paymentSummary.upsert({
-                where: { documentId: documentId },
-                update: {
-                    totalAmount,
-                    paidAmount,
-                    remainingAmount,
-                    paymentStatus,
-                    lastPaymentDate
-                },
-                create: {
-                    documentId,
-                    totalAmount,
-                    paidAmount,
-                    remainingAmount,
-                    paymentStatus,
-                    lastPaymentDate
-                }
-            });
-
-            console.log(`[PAYMENT_TRACKING] Updated payment summary for document ${documentId}: ${paidAmount}/${totalAmount} (${paymentStatus})`);
-
-        } catch (e) {
-            console.error('[UPDATE_PAYMENT_SUMMARY_ERROR]', e);
-            throw new InternalServerErrorException('Failed to update payment summary');
-        }
-    }
-
-    async getDocumentWithRelations(documentId: number, user: User): Promise<DocumentWithRelations> {
-        try {
-            if (!(await this.verifyDocumentAccess(documentId, user))) {
-                throw new UnauthorizedException('Access denied to this document');
-            }
-
-            const document = await this.prisma.document.findUnique({
-                where: { id: documentId },
-                include: {
-                    processedData: true,
-                    paymentSummary: true,
-                    parentRelations: {
-                        include: {
-                            childDocument: {
-                                include: { processedData: true }
-                            }
-                        },
-                        orderBy: { createdAt: 'desc' }
-                    },
-                    childRelations: {
-                        include: {
-                            parentDocument: {
-                                include: { processedData: true }
-                            }
-                        },
-                        orderBy: { createdAt: 'desc' }
-                    }
-                }
-            });
-
-            if (!document) {
-                throw new NotFoundException('Document not found');
-            }
-
-            const s3 = new AWS.S3({
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-                region: process.env.AWS_REGION
-            });
-
-            const relatedDocuments = {
-                payments: [] as RelatedDocumentInfo[],
-                attachments: [] as RelatedDocumentInfo[],
-                corrections: [] as RelatedDocumentInfo[]
-            };
-
-            for (const relation of document.parentRelations) {
-                const signedUrl = await s3.getSignedUrlPromise('getObject', {
-                    Bucket: process.env.AWS_S3_BUCKET_NAME,
-                    Key: relation.childDocument.s3Key,
-                    Expires: 60 * 60,
-                });
-
-                const relatedDocInfo: RelatedDocumentInfo = {
-                    id: relation.childDocument.id,
-                    name: relation.childDocument.name,
-                    type: relation.childDocument.type,
-                    relationshipType: relation.relationshipType,
-                    paymentAmount: relation.paymentAmount,
-                    notes: relation.notes,
-                    createdAt: relation.createdAt.toISOString(),
-                    signedUrl
-                };
-
-                switch (relation.relationshipType) {
-                    case DocumentRelationType.PAYMENT:
-                        relatedDocuments.payments.push(relatedDocInfo);
-                        break;
-                    case DocumentRelationType.CORRECTION:
-                        relatedDocuments.corrections.push(relatedDocInfo);
-                        break;
-                    default:
-                        relatedDocuments.attachments.push(relatedDocInfo);
-                        break;
-                }
-            }
-
-            let totalAmount = 0;
-            if (document.processedData?.extractedFields) {
-                const extractedData = typeof document.processedData.extractedFields === 'string' 
-                    ? JSON.parse(document.processedData.extractedFields)
-                    : document.processedData.extractedFields;
-
-                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
-            }
-
-            return {
-                id: document.id,
-                name: document.name,
-                type: document.type,
-                totalAmount,
-                paymentSummary: document.paymentSummary ? {
-                    totalAmount: document.paymentSummary.totalAmount,
-                    paidAmount: document.paymentSummary.paidAmount,
-                    remainingAmount: document.paymentSummary.remainingAmount,
-                    paymentStatus: document.paymentSummary.paymentStatus,
-                    lastPaymentDate: document.paymentSummary.lastPaymentDate?.toISOString()
-                } : undefined,
-                relatedDocuments
-            };
-
-        } catch (e) {
-            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
-            console.error('[GET_DOCUMENT_WITH_RELATIONS_ERROR]', e);
-            throw new InternalServerErrorException('Failed to get document with relations');
-        }
-    }
-
-
-    async deleteDocumentRelation(relationId: number, user: User) {
-        try {
-            const relation = await this.prisma.documentRelationship.findUnique({
-                where: { id: relationId },
-                include: {
-                    parentDocument: {
-                        include: {
-                            accountingClient: true
-                        }
-                    }
-                }
-            });
-
-            if (!relation) {
-                throw new NotFoundException('Document relationship not found');
-            }
-
-            if (relation.parentDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
-                throw new UnauthorizedException('Access denied to this document relationship');
-            }
-
-            const parentDocumentId = relation.parentDocumentId;
-            const wasPayment = relation.relationshipType === DocumentRelationType.PAYMENT;
-
-            await this.prisma.documentRelationship.delete({
-                where: { id: relationId }
-            });
-
-            if (wasPayment) {
-                await this.updatePaymentSummary(parentDocumentId);
-            }
-
-            console.log(`[AUDIT] Document relationship deleted: ${relationId} by user ${user.id}`);
-
-            return { success: true };
-
-        } catch (e) {
-            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
-            console.error('[DELETE_DOCUMENT_RELATION_ERROR]', e);
-            throw new InternalServerErrorException('Failed to delete document relationship');
-        }
-    }
-
-    async refreshAllPaymentSummaries(ein: string, user: User) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: ein }
-            });
-
-            if (!clientCompany) {
-                throw new NotFoundException('Client Company not found');
-            }
-
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId: clientCompany.id
-                }
-            });
-
-            if (!accountingClientRelation) {
-                throw new NotFoundException('No authorized relationship found');
-            }
-
-            const documents = await this.prisma.document.findMany({
-                where: {
-                    accountingClientId: accountingClientRelation.id,
-                    type: 'Invoice' 
-                },
-                select: { id: true }
-            });
-
-            let updatedCount = 0;
-            for (const doc of documents) {
-                try {
-                    await this.updatePaymentSummary(doc.id);
-                    updatedCount++;
-                } catch (error) {
-                    console.warn(`Failed to update payment summary for document ${doc.id}:`, error);
-                }
-            }
-
-            console.log(`[PAYMENT_REFRESH] Updated ${updatedCount} payment summaries for company ${ein}`);
-
-            return { 
-                success: true, 
-                updatedDocuments: updatedCount,
-                totalDocuments: documents.length 
-            };
-
-        } catch (e) {
-            if (e instanceof NotFoundException) throw e;
-            console.error('[REFRESH_PAYMENT_SUMMARIES_ERROR]', e);
-            throw new InternalServerErrorException('Failed to refresh payment summaries');
-        }
-    }
-
-    async updateDocumentRelation(relationId: number, dto: UpdateDocumentRelationDto, user: User) {
-        try {
-            const relation = await this.prisma.documentRelationship.findUnique({
-                where: { id: relationId },
-                include: {
-                    parentDocument: {
-                        include: {
-                            accountingClient: true
-                        }
-                    }
-                }
-            });
-
-            if (!relation) {
-                throw new NotFoundException('Document relationship not found');
-            }
-
-            if (relation.parentDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
-                throw new UnauthorizedException('Access denied to this document relationship');
-            }
-
-            const oldPaymentAmount = relation.paymentAmount;
-            const parentDocumentId = relation.parentDocumentId;
-
-            const updatedRelation = await this.prisma.documentRelationship.update({
-                where: { id: relationId },
-                data: {
-                    relationshipType: dto.relationshipType || relation.relationshipType,
-                    paymentAmount: dto.paymentAmount !== undefined ? dto.paymentAmount : relation.paymentAmount,
-                    notes: dto.notes !== undefined ? dto.notes : relation.notes
-                },
-                include: {
-                    parentDocument: true,
-                    childDocument: true
-                }
-            });
-
-            if (relation.relationshipType === DocumentRelationType.PAYMENT || 
-                dto.relationshipType === DocumentRelationType.PAYMENT) {
-                if (oldPaymentAmount !== dto.paymentAmount) {
-                    await this.updatePaymentSummary(parentDocumentId);
-                }
-            }
-
-            console.log(`[AUDIT] Document relationship updated: ${relationId} by user ${user.id}`);
-
-            return updatedRelation;
-
-        } catch (e) {
-            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
-            console.error('[UPDATE_DOCUMENT_RELATION_ERROR]', e);
-            throw new InternalServerErrorException('Failed to update document relationship');
-        }
-    }
-
-    async getAvailablePaymentDocuments(ein: string, invoiceId: number, user: User) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: ein }
-            });
-
-            if (!clientCompany) {
-                throw new NotFoundException('Client Company not found');
-            }
-
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId: clientCompany.id
-                }
-            });
-
-            if (!accountingClientRelation) {
-                throw new NotFoundException('No authorized relationship found');
-            }
-
-            const invoice = await this.prisma.document.findUnique({
-                where: { 
-                    id: invoiceId,
-                    accountingClientId: accountingClientRelation.id
-                }
-            });
-
-            if (!invoice) {
-                throw new NotFoundException('Invoice not found or access denied');
-            }
-
-            const alreadyLinkedIds = await this.prisma.documentRelationship.findMany({
-                where: {
-                    parentDocumentId: invoiceId,
-                    relationshipType: DocumentRelationType.PAYMENT
-                },
-                select: { childDocumentId: true }
-            });
-
-            const excludeIds = [invoiceId, ...alreadyLinkedIds.map(rel => rel.childDocumentId)];
-
-            const availableDocuments = await this.prisma.document.findMany({
-                where: {
-                    accountingClientId: accountingClientRelation.id,
-                    id: { notIn: excludeIds },
-                    type: {
-                        in: ['Receipt', 'Bank Statement', 'Payment Order']
-                    }
-                },
-                include: {
-                    processedData: true
-                },
-                orderBy: { createdAt: 'desc' },
-                take: 50 
-            });
-
-            const s3 = new AWS.S3({
-                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-                region: process.env.AWS_REGION
-            });
-
-            const documentsWithDetails = await Promise.all(
-                availableDocuments.map(async (doc) => {
-                    const signedUrl = await s3.getSignedUrlPromise('getObject', {
-                        Bucket: process.env.AWS_S3_BUCKET_NAME,
-                        Key: doc.s3Key,
-                        Expires: 60 * 60,
-                    });
-
-                    let extractedAmount = null;
-                    if (doc.processedData?.extractedFields) {
-                        const extractedData = typeof doc.processedData.extractedFields === 'string' 
-                            ? JSON.parse(doc.processedData.extractedFields)
-                            : doc.processedData.extractedFields;
-
-                        extractedAmount = extractedData?.result?.total_amount || extractedData?.total_amount || null;
-                    }
-
-                    return {
-                        id: doc.id,
-                        name: doc.name,
-                        type: doc.type,
-                        createdAt: doc.createdAt.toISOString(),
-                        signedUrl,
-                        extractedAmount
-                    };
-                })
-            );
-
-            return documentsWithDetails;
-
-        } catch (e) {
-            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
-            console.error('[GET_AVAILABLE_PAYMENT_DOCUMENTS_ERROR]', e);
-            throw new InternalServerErrorException('Failed to get available payment documents');
-        }
-    }
-
-    private async createInitialPaymentSummary(documentId: number) {
-        try {
-            const document = await this.prisma.document.findUnique({
-                where: { id: documentId },
-                include: { processedData: true }
-            });
-
-            if (!document || document.type !== 'Invoice') return;
-
-            let totalAmount = 0;
-            if (document.processedData?.extractedFields) {
-                const extractedData = typeof document.processedData.extractedFields === 'string' 
-                    ? JSON.parse(document.processedData.extractedFields)
-                    : document.processedData.extractedFields;
-
-                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
-            }
-
-            await this.prisma.paymentSummary.create({
-                data: {
-                    documentId,
-                    totalAmount,
-                    paidAmount: 0,
-                    remainingAmount: totalAmount,
-                    paymentStatus: PaymentStatus.UNPAID
-                }
-            });
-
-            console.log(`[PAYMENT_SUMMARY] Created initial payment summary for invoice ${documentId} with total ${totalAmount}`);
-        } catch (error) {
-            console.error(`[PAYMENT_SUMMARY] Failed to create initial payment summary for document ${documentId}:`, error);
-        }
-    }
-
+    
     async getFiles(ein: string, user: User) {
         try {
             const currentUser = await this.prisma.user.findUnique({
                 where: { id: user.id },
-                include: { accountingCompany: true }
+                include: {
+                    accountingCompany: true
+                }
             });
-
+    
             if (!currentUser) {
                 throw new NotFoundException('User not found in the database!');
             }
-
+    
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: ein }
             });
-
+    
             if (!clientCompany) {
                 throw new NotFoundException('Client Company not found in the database!');
             }
-
+    
             const accountingClientRelation = await this.prisma.accountingClients.findFirst({
                 where: {
                     accountingCompanyId: currentUser.accountingCompanyId,
                     clientCompanyId: clientCompany.id
                 }
             });
-
+    
             if (!accountingClientRelation) {
                 throw new NotFoundException('No authorized relationship found between your accounting company and this client!');
             }
-
+    
             const documents = await this.prisma.document.findMany({
                 where: {
                     accountingClientId: accountingClientRelation.id 
@@ -854,36 +327,42 @@ export class FilesService {
                             }
                         }
                     },
-                    paymentSummary: true, 
-                    parentRelations: {
-                        where: { relationshipType: DocumentRelationType.PAYMENT },
-                        include: { childDocument: true }
-                    },
-                    childRelations: {
-                        where: { relationshipType: DocumentRelationType.PAYMENT },
-                        include: { parentDocument: true }
-                    },
                     duplicateChecks: {
-                        include: { originalDocument: true }
+                        include: {
+                            originalDocument: true
+                        }
                     },
                     duplicateMatches: {
-                        include: { duplicateDocument: true }
+                        include: {
+                            duplicateDocument: true
+                        }
                     },
                     complianceValidations: {
-                        orderBy: { createdAt: 'desc' },
+                        orderBy: {
+                            createdAt: 'desc'
+                        },
                         take: 1
                     }
                 }
             });
-
+    
             console.log(`[DEBUG] User ${user.id} from company ${currentUser.accountingCompanyId} accessing ${documents.length} documents for client ${ein}`);
-
+    
+            const unauthorizedDocs = documents.filter(doc => 
+                doc.accountingClient.accountingCompanyId !== currentUser.accountingCompanyId
+            );
+    
+            if (unauthorizedDocs.length > 0) {
+                console.error(`[SECURITY ALERT] Found ${unauthorizedDocs.length} unauthorized documents for user ${user.id}`);
+                throw new UnauthorizedException('Unauthorized access to documents detected');
+            }
+    
             const s3 = new AWS.S3({
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
                 region: process.env.AWS_REGION
             });
-
+    
             const documentIds = documents.map(doc => doc.id);
             
             const [processedData, rpaActions] = await Promise.all([
@@ -894,7 +373,7 @@ export class FilesService {
                     where: { documentId: { in: documentIds } }
                 })
             ]);
-
+    
             const documentsWithData = await Promise.all(
                 documents.map(async (document) => {
                     const signedUrl = await s3.getSignedUrlPromise('getObject', {
@@ -909,41 +388,19 @@ export class FilesService {
                     const latestCompliance = document.complianceValidations[0];
                     const hasComplianceIssues = latestCompliance && 
                         (latestCompliance.overallStatus === 'NON_COMPLIANT' || latestCompliance.overallStatus === 'WARNING');
-
-                    const docProcessedData = processedData.filter(pd => pd.documentId === document.id);
-
+    
                     return {
                         ...document,
-                        processedData: docProcessedData,
+                        processedData: processedData.filter(pd => pd.documentId === document.id),
                         signedUrl,
                         rpa: rpaActions.filter(rp => rp.documentId === document.id),
                         hasDuplicateAlert,
                         hasComplianceIssues,
-                        complianceStatus: latestCompliance?.overallStatus || 'PENDING',
-                        paymentSummary: document.paymentSummary ? {
-                            totalAmount: document.paymentSummary.totalAmount,
-                            paidAmount: document.paymentSummary.paidAmount,
-                            remainingAmount: document.paymentSummary.remainingAmount,
-                            paymentStatus: document.paymentSummary.paymentStatus,
-                            lastPaymentDate: document.paymentSummary.lastPaymentDate,
-                            paymentProgress: document.paymentSummary.totalAmount > 0 
-                                ? (document.paymentSummary.paidAmount / document.paymentSummary.totalAmount) * 100 
-                                : 0
-                        } : null,
-                        relatedPayments: document.parentRelations.length,
-                        isPaymentFor: document.childRelations.length
+                        complianceStatus: latestCompliance?.overallStatus || 'PENDING'
                     };
                 })
             );
-
-            const invoiceDocuments = documentsWithData.filter(doc => doc.type === 'Invoice' && !doc.paymentSummary);
-            if (invoiceDocuments.length > 0) {
-                console.log(`[PAYMENT_SUMMARY] Creating missing payment summaries for ${invoiceDocuments.length} invoices`);
-                await Promise.all(invoiceDocuments.map(doc => this.createInitialPaymentSummary(doc.id)));
-                
-                return this.getFiles(ein, user);
-            }
-
+    
             return {
                 documents: documentsWithData,
                 accountingCompany: {
@@ -957,7 +414,7 @@ export class FilesService {
                     ein: clientCompany.ein
                 }
             };
-
+    
         } catch (e) {
             if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
             console.error('[FILES_SERVICE_ERROR]', e);
@@ -993,165 +450,8 @@ export class FilesService {
     private generateDocumentHash(fileBuffer: Buffer): string {
         return crypto.createHash('md5').update(fileBuffer).digest('hex');
     }
-    
 
-    private async updatePaymentSummaryInTransaction(documentId: number, prisma: any) {
-        try {
-            const document = await prisma.document.findUnique({
-                where: { id: documentId },
-                include: { 
-                    processedData: true,
-                    parentRelations: {
-                        where: { relationshipType: DocumentRelationType.PAYMENT },
-                        include: { childDocument: true }
-                    }
-                }
-            });
-
-            if (!document) return;
-
-            let totalAmount = 0;
-            if (document.processedData?.extractedFields) {
-                const extractedData = typeof document.processedData.extractedFields === 'string' 
-                    ? JSON.parse(document.processedData.extractedFields)
-                    : document.processedData.extractedFields;
-
-                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
-            }
-
-            const paidAmount = document.parentRelations.reduce((sum, relation) => {
-                return sum + (relation.paymentAmount || 0);
-            }, 0);
-
-            const remainingAmount = Math.max(0, totalAmount - paidAmount);
-
-            let paymentStatus: PaymentStatus;
-            if (paidAmount === 0) {
-                paymentStatus = PaymentStatus.UNPAID;
-            } else if (paidAmount >= totalAmount) {
-                paymentStatus = paidAmount > totalAmount ? PaymentStatus.OVERPAID : PaymentStatus.FULLY_PAID;
-            } else {
-                paymentStatus = PaymentStatus.PARTIALLY_PAID;
-            }
-
-            const lastPaymentDate = document.parentRelations.length > 0 
-                ? new Date(Math.max(...document.parentRelations.map(r => r.createdAt.getTime())))
-                : null;
-
-            await prisma.paymentSummary.upsert({
-                where: { documentId: documentId },
-                update: {
-                    totalAmount,
-                    paidAmount,
-                    remainingAmount,
-                    paymentStatus,
-                    lastPaymentDate
-                },
-                create: {
-                    documentId,
-                    totalAmount,
-                    paidAmount,
-                    remainingAmount,
-                    paymentStatus,
-                    lastPaymentDate
-                }
-            });
-
-            console.log(`[PAYMENT_TRACKING] Updated payment summary for document ${documentId}: ${paidAmount}/${totalAmount} (${paymentStatus})`);
-
-        } catch (e) {
-            console.error('[UPDATE_PAYMENT_SUMMARY_ERROR]', e);
-            throw new InternalServerErrorException('Failed to update payment summary');
-        }
-    }
-
-
-    private compareVendors(vendor1: string, vendor2: string): boolean {
-        if (!vendor1 || !vendor2) return false;
-        
-        const normalize = (str: string) => str.toString().toLowerCase().trim()
-            .replace(/\s+/g, ' ')
-            .replace(/[^\w\s]/g, '');
-        
-        const norm1 = normalize(vendor1);
-        const norm2 = normalize(vendor2);
-        
-        if (norm1 === norm2) return true;
-        
-        if (norm1.length > 3 && norm2.length > 3) {
-            return norm1.includes(norm2) || norm2.includes(norm1);
-        }
-        
-        return false;
-    }
-
-    private async suggestReceiptInvoiceRelationships(receiptId: number, receiptData: any, accountingClientId: number, prisma: any) {
-        try {
-            const receiptAmount = receiptData.total_amount;
-            const receiptDate = receiptData.document_date;
-            const receiptVendor = receiptData.vendor || receiptData.vendor_ein;
-
-            if (!receiptAmount || !receiptVendor) {
-                console.log(`[AUTO_RELATIONSHIP] Insufficient receipt data for automatic relationship suggestion`);
-                return;
-            }
-
-            const potentialInvoices = await prisma.document.findMany({
-                where: {
-                    accountingClientId: accountingClientId,
-                    type: 'Invoice',
-                    id: { not: receiptId }
-                },
-                include: {
-                    processedData: true,
-                    paymentSummary: true,
-                    parentRelations: {
-                        where: { relationshipType: DocumentRelationType.PAYMENT }
-                    }
-                }
-            });
-
-            for (const invoice of potentialInvoices) {
-                if (!invoice.processedData?.extractedFields) continue;
-
-                const invoiceData = typeof invoice.processedData.extractedFields === 'string' 
-                    ? JSON.parse(invoice.processedData.extractedFields)
-                    : invoice.processedData.extractedFields;
-
-                const extractedInvoiceData = invoiceData?.result || invoiceData;
-                const invoiceAmount = extractedInvoiceData.total_amount;
-                const invoiceVendor = extractedInvoiceData.vendor || extractedInvoiceData.vendor_ein;
-
-                const amountMatch = Math.abs(receiptAmount - invoiceAmount) <= (invoiceAmount * 0.01);
-                
-                const vendorMatch = this.compareVendors(receiptVendor, invoiceVendor);
-
-                const remainingAmount = invoice.paymentSummary?.remainingAmount || invoiceAmount;
-                const canAcceptPayment = remainingAmount >= receiptAmount;
-
-                if (amountMatch && vendorMatch && canAcceptPayment) {
-                    await prisma.documentRelationship.create({
-                        data: {
-                            parentDocumentId: invoice.id,
-                            childDocumentId: receiptId,
-                            relationshipType: DocumentRelationType.PAYMENT,
-                            paymentAmount: receiptAmount,
-                            notes: 'Automatically linked based on matching amount and vendor'
-                        }
-                    });
-
-                    await this.updatePaymentSummaryInTransaction(invoice.id, prisma);
-
-                    console.log(`[AUTO_RELATIONSHIP] Automatically linked receipt ${receiptId} to invoice ${invoice.id} (amount: ${receiptAmount})`);
-                    break; 
-                }
-            }
-        } catch (error) {
-            console.error(`[AUTO_RELATIONSHIP] Failed to suggest relationships for receipt ${receiptId}:`, error);
-        }
-    }
-
-async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
+    async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
         let uploadResult;
         let fileKey;
         
@@ -1222,20 +522,6 @@ async postFile(clientEin: string, processedData: any, file: Express.Multer.File,
                     }
                 });
 
-                if (processedData.result.document_type === 'Invoice') {
-                    const totalAmount = processedData.result.total_amount || 0;
-                    await prisma.paymentSummary.create({
-                        data: {
-                            documentId: document.id,
-                            totalAmount,
-                            paidAmount: 0,
-                            remainingAmount: totalAmount,
-                            paymentStatus: PaymentStatus.UNPAID
-                        }
-                    });
-                    console.log(`[PAYMENT_SUMMARY] Created payment summary for new invoice ${document.id} with total ${totalAmount}`);
-                }
-
                 if (processedData.result.duplicate_detection) {
                     try {
                         const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
@@ -1299,8 +585,24 @@ async postFile(clientEin: string, processedData: any, file: Express.Multer.File,
                     }
                 }
 
-                if (processedData.result.document_type === 'Receipt') {
-                    await this.suggestReceiptInvoiceRelationships(document.id, processedData.result, accountingClientRelation.id, prisma);
+                if (processedData.userCorrections && processedData.userCorrections.length > 0) {
+                    try {
+                        for (const correction of processedData.userCorrections) {
+                            await prisma.userCorrection.create({
+                                data: {
+                                    documentId: document.id,
+                                    userId: user.id,
+                                    correctionType: this.mapCorrectionType(correction.field),
+                                    originalValue: correction.originalValue,
+                                    correctedValue: correction.newValue,
+                                    confidence: null,
+                                    applied: false
+                                }
+                            });
+                        }
+                    } catch (correctionError) {
+                        console.warn('[USER_CORRECTION_WARNING]', correctionError);
+                    }
                 }
 
                 if (processedData.result.line_items && processedData.result.line_items.length > 0) {

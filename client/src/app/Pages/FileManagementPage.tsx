@@ -3,8 +3,7 @@ import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClien
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
-  Link, CheckCircle, AlertCircle, Clock, DollarSign, TrendingUp, TrendingDown,
-  Plus, Minus, Info
+  Link, CheckCircle, AlertCircle, Clock
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -35,10 +34,10 @@ interface PaymentSummary {
   remainingAmount: number;
   paymentStatus: paymentStatusType;
   lastPaymentDate?: string;
-  paymentProgress?: number;
 }
 
 const FileManagementPage = () => {
+
   const [isModalOpen,setIsModalOpen] = useState<boolean>(false);
   const [files, setFiles] = useState<Record<string,any>>({});
   const [filteredFiles, setFilteredFiles] = useState<Record<string,any>>({});
@@ -49,13 +48,16 @@ const FileManagementPage = () => {
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
 
+  // Related Documents Modal
   const [showRelatedDocs, setShowRelatedDocs] = useState<boolean>(false);
   const [selectedDocForRelations, setSelectedDocForRelations] = useState<any>(null);
 
+  // Bulk selection state
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [showBulkActions, setShowBulkActions] = useState<boolean>(false);
   const [bulkAction, setBulkAction] = useState<'delete' | 'process' | null>(null);
 
+  // Search and filter states
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
   const [paymentStatus, setPaymentStatus] = useState<paymentStatusType>();
@@ -66,8 +68,6 @@ const FileManagementPage = () => {
     from: undefined,
     to:undefined,
   });
-
-  const [showPaymentSummary, setShowPaymentSummary] = useState<boolean>(true);
 
   if (false){
     console.log(pollingAttempts)
@@ -82,18 +82,6 @@ const FileManagementPage = () => {
     "Payment Order":"Dispozitie De Plata",
     "Collection Order":"Dispozitie De Incasare"
   };
-
-  const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
-  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery({company:clientCompanyEin});
-  const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
-  const [ processAutomation ] = useInsertClientInvoiceMutation();
-  const language = useSelector((state:{user:{language:string}})=>state.user.language);
-  const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name);
-  
-  const { data: jobStatus, error: jobStatusError, refetch: refetchJobStatus } = useGetJobStatusQuery(
-    processingDocId || 0, 
-    { skip: !processingDocId }
-  );
 
   const getDocumentDate = (file: any): string => {
     try {
@@ -170,23 +158,27 @@ const FileManagementPage = () => {
     console.log('IntervalDateFitler:', filteredFiles);
   },[filteredFiles])
 
+  // Enhanced filtering logic with payment status
   useEffect(()=>{
     if(!files?.documents) return;
     
     let newFilteredFiles = files.documents;
     
+    // Name search filter
     if(nameSearch.length>0){
        newFilteredFiles = newFilteredFiles.filter((file:any)=>(
         file.name.toLowerCase().includes(nameSearch.toLowerCase())
       ))
     };
     
+    // Document type filter
     if(typeFilter){
       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
         file.type===typeFilter
       ))
     };
     
+    // Payment status filter
     if(paymentStatus){
       newFilteredFiles = newFilteredFiles.filter((file:any)=>{
         const filePaymentStatus = file.paymentSummary?.paymentStatus;
@@ -194,6 +186,7 @@ const FileManagementPage = () => {
       });
     }
     
+    // Date range filters
     if(intervalDateFilter.from !== undefined){
       const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
       newFilteredFiles = newFilteredFiles.filter((file:any)=>{
@@ -229,51 +222,19 @@ const FileManagementPage = () => {
     })
   },[typeFilter, setTypeFilter, nameSearch, setNameSearch, intervalDateFilter, setIntervalDateFilter, paymentStatus, files]);
 
-  const calculatePaymentSummaryStats = () => {
-    if (!filteredFiles?.documents) return null;
+  const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
+  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery({company:clientCompanyEin});
+  const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
+  const [ processAutomation ] = useInsertClientInvoiceMutation();
+  const language = useSelector((state:{user:{language:string}})=>state.user.language);
+  const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name);
+  
+  const { data: jobStatus, error: jobStatusError, refetch: refetchJobStatus } = useGetJobStatusQuery(
+    processingDocId || 0, 
+    { skip: !processingDocId }
+  );
 
-    const invoices = filteredFiles.documents.filter((doc: any) => doc.type === 'Invoice' && doc.paymentSummary);
-    
-    if (invoices.length === 0) return null;
-
-    const stats = {
-      totalInvoices: invoices.length,
-      totalValue: 0,
-      totalPaid: 0,
-      totalRemaining: 0,
-      unpaidCount: 0,
-      partiallyPaidCount: 0,
-      fullyPaidCount: 0,
-      overpaidCount: 0
-    };
-
-    invoices.forEach((invoice: any) => {
-      const summary = invoice.paymentSummary;
-      stats.totalValue += summary.totalAmount;
-      stats.totalPaid += summary.paidAmount;
-      stats.totalRemaining += summary.remainingAmount;
-
-      switch (summary.paymentStatus) {
-        case 'UNPAID':
-          stats.unpaidCount++;
-          break;
-        case 'PARTIALLY_PAID':
-          stats.partiallyPaidCount++;
-          break;
-        case 'FULLY_PAID':
-          stats.fullyPaidCount++;
-          break;
-        case 'OVERPAID':
-          stats.overpaidCount++;
-          break;
-      }
-    });
-
-    return stats;
-  };
-
-  const paymentStats = calculatePaymentSummaryStats();
-
+  // Payment status helpers
   const getPaymentStatusIcon = (status?: paymentStatusType) => {
     switch (status) {
       case 'UNPAID':
@@ -312,6 +273,7 @@ const FileManagementPage = () => {
     return Math.min(100, (paymentSummary.paidAmount / paymentSummary.totalAmount) * 100);
   };
 
+  // Bulk selection functions
   const toggleFileSelection = (fileId: number) => {
     const newSelected = new Set(selectedFiles);
     if (newSelected.has(fileId)) {
@@ -339,6 +301,7 @@ const FileManagementPage = () => {
   const isAllSelected = filteredFiles?.documents && selectedFiles.size === filteredFiles.documents.length && filteredFiles.documents.length > 0;
   const isPartiallySelected = selectedFiles.size > 0 && selectedFiles.size < (filteredFiles?.documents?.length || 0);
 
+  // Bulk actions
   const handleBulkDelete = async () => {
     setBulkAction('delete');
     setIsSureModal(true);
@@ -712,125 +675,6 @@ const FileManagementPage = () => {
         </div>
       </div>
 
-      {paymentStats && showPaymentSummary && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-r from-[var(--foreground)] to-[var(--background)] rounded-3xl border border-[var(--text4)] shadow-lg p-6 mb-6"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <DollarSign size={24} className="text-[var(--primary)]" />
-              <h2 className="text-xl font-bold text-[var(--text1)]">
-                {language === 'ro' ? 'Sumar Plăți' : 'Payment Summary'}
-              </h2>
-              <MyTooltip content={language === 'ro' ? 'Informații despre statusul plăților pentru facturile din această companie' : 'Payment status information for invoices in this company'} trigger={
-                <Info size={18} className="text-[var(--text3)] hover:text-[var(--primary)] cursor-help" />
-              }/>
-            </div>
-            <button
-              onClick={() => setShowPaymentSummary(false)}
-              className="p-2 text-[var(--text3)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-            >
-              <Minus size={18} />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-            <div className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)]">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText size={20} className="text-blue-500" />
-                <span className="text-[var(--text2)] text-sm font-medium">
-                  {language === 'ro' ? 'Total Facturi' : 'Total Invoices'}
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-[var(--text1)]">{paymentStats.totalInvoices}</p>
-              <p className="text-[var(--text3)] text-sm">
-                {formatCurrency(paymentStats.totalValue)}
-              </p>
-            </div>
-
-            <div className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)]">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp size={20} className="text-green-500" />
-                <span className="text-[var(--text2)] text-sm font-medium">
-                  {language === 'ro' ? 'Total Plătit' : 'Total Paid'}
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-green-600">{formatCurrency(paymentStats.totalPaid)}</p>
-              <p className="text-[var(--text3)] text-sm">
-                {paymentStats.totalValue > 0 ? Math.round((paymentStats.totalPaid / paymentStats.totalValue) * 100) : 0}%
-              </p>
-            </div>
-
-            <div className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)]">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown size={20} className="text-red-500" />
-                <span className="text-[var(--text2)] text-sm font-medium">
-                  {language === 'ro' ? 'Rămas de Plată' : 'Remaining'}
-                </span>
-              </div>
-              <p className="text-2xl font-bold text-red-600">{formatCurrency(paymentStats.totalRemaining)}</p>
-              <p className="text-[var(--text3)] text-sm">
-                {paymentStats.unpaidCount + paymentStats.partiallyPaidCount} {language === 'ro' ? 'facturi' : 'invoices'}
-              </p>
-            </div>
-
-            <div className="bg-[var(--background)] rounded-2xl p-4 border border-[var(--text4)]">
-              <div className="flex items-center gap-2 mb-2">
-                <CheckCircle size={20} className="text-[var(--primary)]" />
-                <span className="text-[var(--text2)] text-sm font-medium">
-                  {language === 'ro' ? 'Status Plăți' : 'Payment Status'}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">{language === 'ro' ? 'Plătite' : 'Paid'}</span>
-                  <span className="font-medium">{paymentStats.fullyPaidCount}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-yellow-600">{language === 'ro' ? 'Parțial' : 'Partial'}</span>
-                  <span className="font-medium">{paymentStats.partiallyPaidCount}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-red-600">{language === 'ro' ? 'Neplătite' : 'Unpaid'}</span>
-                  <span className="font-medium">{paymentStats.unpaidCount}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <div className="flex justify-between text-sm text-[var(--text2)] mb-2">
-              <span>{language === 'ro' ? 'Progres plăți total' : 'Overall payment progress'}</span>
-              <span>
-                {paymentStats.totalValue > 0 ? Math.round((paymentStats.totalPaid / paymentStats.totalValue) * 100) : 0}%
-              </span>
-            </div>
-            <div className="w-full bg-[var(--text4)] rounded-full h-3">
-              <div
-                className="bg-gradient-to-r from-green-500 to-green-600 h-3 rounded-full transition-all duration-300"
-                style={{
-                  width: `${paymentStats.totalValue > 0 ? Math.min(100, (paymentStats.totalPaid / paymentStats.totalValue) * 100) : 0}%`
-                }}
-              ></div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {!showPaymentSummary && paymentStats && (
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          onClick={() => setShowPaymentSummary(true)}
-          className="mb-6 flex items-center gap-2 px-4 py-2 bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 text-[var(--primary)] rounded-xl transition-colors"
-        >
-          <Plus size={18} />
-          {language === 'ro' ? 'Arată Sumarul Plăților' : 'Show Payment Summary'}
-        </motion.button>
-      )}
-
       <FilesSearchFiltersComponent 
         nameSearch={nameSearch}
         setNameSearch={setNameSearch}
@@ -841,6 +685,7 @@ const FileManagementPage = () => {
         setPaymentStatus={setPaymentStatus}
       />
 
+      {/* Bulk Actions Bar */}
       <AnimatePresence>
         {showBulkActions && (
           <motion.div
@@ -857,7 +702,7 @@ const FileManagementPage = () => {
                 <button
                   onClick={deselectAllFiles}
                   className="text-[var(--primary)] bg-[var(--primary)]/10 
-                  hover:bg-[var(--primary)]/20 transition-colors text-sm px-3 py-1 rounded-lg"
+                  hover:bg-[var(--primary)]/20 transition-colors text-sm"
                 >
                   {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
                 </button>
@@ -897,6 +742,7 @@ const FileManagementPage = () => {
       </AnimatePresence>
 
       <div className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
+        {/* Header */}
         <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -908,11 +754,12 @@ const FileManagementPage = () => {
               </span>
             </div>
             
+            {/* Select All Checkbox */}
             {filteredFiles?.documents?.length > 0 && (
               <button
                 onClick={isAllSelected ? deselectAllFiles : selectAllFiles}
                 className="flex items-center gap-2 text-[var(--text2)] hover:text-[var(--primary)] transition-colors
-                bg-[var(--primary)]/20 px-3 py-1 rounded-lg"
+                bg-[var(--primary)]/20"
               >
                 {isAllSelected ? (
                   <CheckSquare size={20} className="text-[var(--primary)]" />
@@ -929,6 +776,7 @@ const FileManagementPage = () => {
           </div>
         </div>
 
+        {/* Files List */}
         <div className="p-6">
           {filteredFiles?.documents?.length === 0 ? (
             <div className="text-center py-12">
@@ -996,89 +844,34 @@ const FileManagementPage = () => {
                               <Calendar size={14} />
                               <span>{getDocumentDate(file)}</span>
                             </div>
-                            
-                            {(file.relatedPayments > 0 || file.isPaymentFor > 0) && (
-                              <div className="flex items-center gap-1 text-[var(--primary)]">
-                                <Link size={14} />
-                                <span className="text-xs">
-                                  {file.relatedPayments > 0 && `${file.relatedPayments} ${language === 'ro' ? 'plăți' : 'payments'}`}
-                                  {file.relatedPayments > 0 && file.isPaymentFor > 0 && ' • '}
-                                  {file.isPaymentFor > 0 && `${language === 'ro' ? 'plată pentru' : 'payment for'} ${file.isPaymentFor}`}
-                                </span>
-                              </div>
-                            )}
                           </div>
 
+                          {/* Payment Information for Invoices */}
                           {file.type === 'Invoice' && paymentSummary && (
-                            <div className="mt-2 bg-[var(--foreground)] rounded-lg p-3">
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2 text-sm">
-                                  {getPaymentStatusIcon(paymentSummary.paymentStatus)}
-                                  <span className="text-[var(--text2)] font-medium">
-                                    {formatCurrency(paymentSummary.paidAmount)} / {formatCurrency(paymentSummary.totalAmount)}
-                                  </span>
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                    paymentSummary.paymentStatus === 'FULLY_PAID' ? 'bg-green-100 text-green-800' :
-                                    paymentSummary.paymentStatus === 'PARTIALLY_PAID' ? 'bg-yellow-100 text-yellow-800' :
-                                    paymentSummary.paymentStatus === 'OVERPAID' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {getPaymentStatusText(paymentSummary.paymentStatus)}
-                                  </span>
-                                </div>
-                                
-                                <div className="text-right">
-                                  <div className="text-sm font-bold text-[var(--text1)]">
-                                    {formatCurrency(paymentSummary.remainingAmount)}
-                                  </div>
-                                  <div className="text-xs text-[var(--text3)]">
-                                    {language === 'ro' ? 'rămas' : 'remaining'}
-                                  </div>
-                                </div>
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2 text-sm">
+                                {getPaymentStatusIcon(paymentSummary.paymentStatus)}
+                                <span className="text-[var(--text2)]">
+                                  {formatCurrency(paymentSummary.paidAmount)} / {formatCurrency(paymentSummary.totalAmount)}
+                                </span>
+                                <span className="text-[var(--text3)]">
+                                  ({getPaymentStatusText(paymentSummary.paymentStatus)})
+                                </span>
                               </div>
                               
-                              <div className="mb-2">
-                                <div className="flex justify-between text-xs text-[var(--text2)] mb-1">
-                                  <span>{language === 'ro' ? 'Progres plată' : 'Payment progress'}</span>
-                                  <span>
-                                    {Math.round(getPaymentProgress(paymentSummary))}%
-                                  </span>
-                                </div>
-                                <div className="w-full bg-[var(--text4)] rounded-full h-2">
-                                  <div
-                                    className={`h-2 rounded-full transition-all duration-300 ${
-                                      paymentSummary.paymentStatus === 'FULLY_PAID' ? 'bg-gradient-to-r from-green-500 to-green-600' :
-                                      paymentSummary.paymentStatus === 'PARTIALLY_PAID' ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
-                                      paymentSummary.paymentStatus === 'OVERPAID' ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
-                                      'bg-gradient-to-r from-red-500 to-red-600'
-                                    }`}
-                                    style={{ width: `${getPaymentProgress(paymentSummary)}%` }}
-                                  ></div>
-                                </div>
-                              </div>
-
-                              {paymentSummary.lastPaymentDate && (
-                                <div className="text-xs text-[var(--text3)]">
-                                  {language === 'ro' ? 'Ultima plată: ' : 'Last payment: '}
-                                  {format(new Date(paymentSummary.lastPaymentDate), 'dd.MM.yyyy')}
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {file.type === 'Receipt' && file.isPaymentFor > 0 && (
-                            <div className="mt-2 bg-[var(--foreground)] rounded-lg p-2">
-                              <div className="flex items-center gap-2 text-sm text-[var(--primary)]">
-                                <Link size={14} />
-                                <span>
-                                  {language === 'ro' ? 'Plată pentru factură' : 'Payment for invoice'}
-                                </span>
+                              {/* Payment Progress Bar */}
+                              <div className="mt-1 w-full bg-[var(--text4)] rounded-full h-1.5">
+                                <div
+                                  className="bg-gradient-to-r from-green-500 to-green-600 h-1.5 rounded-full transition-all duration-300"
+                                  style={{ width: `${getPaymentProgress(paymentSummary)}%` }}
+                                ></div>
                               </div>
                             </div>
                           )}
                         </div>
                       </div>
                             
+                      {/* Status */}
                       <div className="flex items-center gap-2">
                         <span className={`text-sm font-medium ${getStatusColor(file)}`}>
                           {getStatusDisplay(file)}
@@ -1105,6 +898,7 @@ const FileManagementPage = () => {
                         )}
                       </div>
 
+                      {/* Actions */}
                       <div className="flex items-center gap-2">
                         <MyTooltip content={language==='ro'?'Vezi date':'View data'} trigger={
                           <button
@@ -1118,18 +912,17 @@ const FileManagementPage = () => {
                           </button>
                         }/>
 
-                        <MyTooltip content={language==='ro'?'Documente asociate':'Related documents'} trigger={
-                          <button
-                            onClick={() => handleShowRelatedDocs(file)}
-                            className={`p-2 rounded-lg transition-colors ${
-                              file.relatedPayments > 0 || file.isPaymentFor > 0
-                                ? 'text-[var(--primary)] bg-[var(--primary)]/20 hover:text-white hover:bg-[var(--primary)] ring-2 ring-[var(--primary)]/30'
-                                : 'text-purple-600 bg-purple-600/20 hover:text-white hover:bg-purple-600'
-                            }`}
-                          >
-                            <Link size={18} />
-                          </button>
-                        }/>
+                        {/* Related Documents Button - Only show for invoices */}
+                        {file.type === 'Invoice' && (
+                          <MyTooltip content={language==='ro'?'Documente asociate':'Related documents'} trigger={
+                            <button
+                              onClick={() => handleShowRelatedDocs(file)}
+                              className="p-2 text-purple-600 bg-purple-600/20 hover:text-white hover:bg-purple-600 rounded-lg transition-colors"
+                            >
+                              <Link size={18} />
+                            </button>
+                          }/>
+                        )}
                         
                         <MyTooltip content={getBotButtonTooltip(file)} trigger={
                           <button
@@ -1170,6 +963,7 @@ const FileManagementPage = () => {
         </div>
       </div>
 
+      {/* Modals */}
       {isModalOpen&&(<EditExtractedDataManagement
         setIsModalOpen={setIsModalOpen}
         isOpen={isModalOpen}

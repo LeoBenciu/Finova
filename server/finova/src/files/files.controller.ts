@@ -1,12 +1,4 @@
-import { Controller, Get, Put, Delete, Post, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req, Query, Res } from '@nestjs/common';
-import { 
-    CreateDocumentRelationDto, 
-    UpdateDocumentRelationDto, 
-    DeleteDocumentRelationDto,
-    PaymentFilterDto,
-    GetRelatedDocumentsDto,
-    UpdatePaymentStatusDto
-} from './dto/files.dto';
+import { Controller, Get, Put, Delete, Post, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -81,75 +73,5 @@ export class FilesController {
     @Get('service/health')
     getServiceHealth(): any {
         return this.fileMangementService.getServiceHealth();
-    }
-
-
-    @Get('document/:documentId/relations')
-    getDocumentWithRelations(
-        @Param('documentId') documentId: string,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.getDocumentWithRelations(parseInt(documentId), user);
-    }
-
-    @Post('relations')
-    createDocumentRelation(
-        @Body() dto: CreateDocumentRelationDto,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.createDocumentRelation(dto, user);
-    }
-
-    @Put('relations/:relationId')
-    updateDocumentRelation(
-        @Param('relationId') relationId: string,
-        @Body() dto: UpdateDocumentRelationDto,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.updateDocumentRelation(parseInt(relationId), dto, user);
-    }
-
-    @Delete('relations/:relationId')
-    deleteDocumentRelation(
-        @Param('relationId') relationId: string,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.deleteDocumentRelation(parseInt(relationId), user);
-    }
-
-
-    @Put('document/:documentId/payment-status')
-    updatePaymentStatus(
-        @Param('documentId') documentId: string,
-        @Body() dto: UpdatePaymentStatusDto,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.updatePaymentSummary(parseInt(documentId));
-    }
-
-    @Post(':company/refresh-payments')
-    refreshPaymentSummaries(
-        @Param('company') company: string,
-        @Req() req: Request & { user: User }
-    ) {
-        const ein = company;
-        const user = req.user as User;
-        return this.fileMangementService.refreshAllPaymentSummaries(ein, user);
-    }
-
-    @Get(':company/available-payments/:invoiceId')
-    getAvailablePaymentDocuments(
-        @Param('company') company: string,
-        @Param('invoiceId') invoiceId: string,
-        @Req() req: Request & { user: User }
-    ) {
-        const ein = company;
-        const user = req.user as User;
-        return this.fileMangementService.getAvailablePaymentDocuments(ein, parseInt(invoiceId), user);
     }
 }
