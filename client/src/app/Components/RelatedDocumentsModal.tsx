@@ -196,7 +196,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }
   };
 
-  // Filter documents based on search and type
   useEffect(() => {
     let filtered = relatedDocuments;
 
@@ -224,13 +223,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     return str;
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ro-RO', {
-      style: 'currency',
-      currency: 'RON'
-    }).format(amount);
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -250,10 +242,10 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+          <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--primary)]/10 to-blue-500/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-blue-500 rounded-xl flex items-center justify-center">
+                <div className="w-12 h-12 bg-[var(--primary)] rounded-xl flex items-center justify-center">
                   <Link size={24} className="text-white" />
                 </div>
                 <div>
@@ -272,7 +264,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                     fetchRelatedDocuments();
                     onRefresh();
                   }}
-                  className="p-2 text-[var(--text2)] hover:text-[var(--primary)] hover:bg-[var(--primary)]/10 rounded-lg transition-colors"
+                  className="p-2 text-[var(--primary)] bg-[var(--primary)]/10 hover:bg-[var(--primary)] hover:text-white rounded-lg transition-colors"
                   disabled={loading}
                 >
                   <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
@@ -280,7 +272,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                 
                 <button
                   onClick={onClose}
-                  className="p-2 text-[var(--text2)] hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                  className="p-2 text-red-500 bg-red-200 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
                 >
                   <X size={18} />
                 </button>
@@ -362,7 +354,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                         </div>
 
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-[var(--text1)] text-lg truncate">
+                          <h3 className="font-semibold text-[var(--text1)] text-lg truncate text-left">
                             {relatedDoc.name}
                           </h3>
                           <div className="flex items-center gap-4 mt-1">
@@ -376,11 +368,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                               <Calendar size={14} />
                               <span>{getDocumentDate(relatedDoc)}</span>
                             </div>
-                            {relatedDoc.processedData?.[0]?.extractedFields?.result?.total_amount && (
-                              <span className="text-[var(--text2)] font-medium">
-                                {formatCurrency(relatedDoc.processedData[0].extractedFields.result.total_amount)}
-                              </span>
-                            )}
                           </div>
                         </div>
 

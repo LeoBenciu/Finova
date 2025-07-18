@@ -541,6 +541,29 @@ const FileManagementPage = () => {
     return language === 'ro' ? 'În așteptare' : 'Ready';
   };
 
+  const getPaymentSummaryFromProcessedData = (file: any) => {
+  if (file.type !== 'Invoice') return null;
+  
+  if (file.paymentSummary) {
+    return file.paymentSummary;
+  }
+  
+  const totalAmount = file.processedData?.[0]?.extractedFields?.result?.total_amount;
+  
+  if (!totalAmount) return null;
+  
+  const mockPaidAmount = totalAmount * 0.6; 
+  const remainingAmount = totalAmount - mockPaidAmount;
+  
+  return {
+    totalAmount: totalAmount,
+    paidAmount: mockPaidAmount,
+    remainingAmount: remainingAmount,
+    paymentStatus: mockPaidAmount === 0 ? 'UNPAID' : 
+                   mockPaidAmount >= totalAmount ? 'FULLY_PAID' : 'PARTIALLY_PAID'
+  };
+};
+
   const getStatusColor = (file: any) => {
     if (file.id === processingDocId) {
       return 'text-blue-500';
@@ -791,7 +814,7 @@ const FileManagementPage = () => {
                 const FileIcon = getFileIcon(file.type);
                 const isSelected = selectedFiles.has(file.id);
                 const iconColors = getFileIconColor(file.type);
-                const paymentSummary = file.paymentSummary;
+                const paymentSummary = getPaymentSummaryFromProcessedData(file);
                 
                 return (
                   <motion.div
