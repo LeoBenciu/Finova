@@ -869,33 +869,10 @@ const FileManagementPage = () => {
                             </div>
                             {file.type === 'Invoice' && paymentSummary && (
                               <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-                                {language === 'ro' ? 'Plătit' : 'Paid'}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
+                                {language === 'ro' ? (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Incasat:':'Platit:') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed:':'Paid:')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
                               </span>
                             )}
                           </div>
-
-                          {/* Payment Information for Invoices */}
-                          {file.type === 'Invoice' && paymentSummary && (
-                            <div className="mt-2">
-                              <div className="flex items-center gap-2 text-sm">
-                                {getPaymentStatusIcon(paymentSummary.paymentStatus)}
-                                <span className="text-[var(--text2)]">
-                                  {formatCurrency(paymentSummary.paidAmount)} / {formatCurrency(paymentSummary.totalAmount)}
-                                </span>
-                                <span className="text-[var(--text3)]">
-                                  ({getPaymentStatusText(paymentSummary.paymentStatus)})
-                                </span>
-                              </div>
-                              
-                              {/* Payment Progress Bar */}
-                              <div className="mt-1 w-full bg-[var(--text4)] rounded-full h-1.5">
-                                <div
-                                  className="bg-gradient-to-r from-green-500 to-green-600 h-1.5 rounded-full transition-all duration-300"
-                                  style={{ width: `${getPaymentProgress(paymentSummary)}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
                             
