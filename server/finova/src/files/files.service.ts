@@ -1,9 +1,55 @@
-import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { ArticleType, User, CorrectionType, DuplicateStatus, VatRate, UnitOfMeasure } from '@prisma/client';
+import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
+import { ArticleType, User, CorrectionType, DuplicateStatus, DuplicateType, VatRate, UnitOfMeasure, Document, ComplianceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataExtractionService } from '../data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
+
+// Extended interfaces for type safety
+interface ProcessedDataResult {
+    document_type?: string;
+    receipt_number?: string;
+    document_number?: string;
+    duplicate_detection?: {
+        duplicate_matches?: Array<{
+            document_id: number;
+            similarity_score?: number;
+            matching_fields?: Record<string, unknown>;
+            duplicate_type?: string;
+        }>;
+    };
+    compliance_validation?: {
+        validation_rules?: any;
+        errors?: any;
+        warnings?: any;
+        compliance_status?: string;
+        overall_score?: number;
+    };
+    line_items?: Array<{
+        articleCode?: string;
+        name?: string;
+        vat?: VatRate;
+        um?: UnitOfMeasure;
+        isNew?: boolean;
+        isMatched?: boolean;
+        originalName?: string;
+    }>;
+    [key: string]: any;
+}
+
+interface ProcessedData {
+    result?: ProcessedDataResult;
+    receipt_number?: string;
+    userCorrections?: Array<{
+        field: string;
+        originalValue: any;
+        newValue: any;
+    }>;
+    references?: number[];
+    [key: string]: any;
+}
+
+type InvoiceDirection = 'incoming' | 'outgoing' | 'unknown';
 
 interface ArticleSimilarity {
     code: string;
@@ -27,6 +73,11 @@ interface SmartArticleResult {
 
 @Injectable()
 export class FilesService {
+    constructor(
+        private prisma: PrismaService,
+        private dataExtractionService: DataExtractionService
+    ) {}
+
     async updateReferences(docId: number, references: number[], user: User) {
         // Validate access
         const document = await this.prisma.document.findUnique({ where: { id: docId } });
@@ -139,12 +190,6 @@ export class FilesService {
         return formattedDocs;
     }
 
-
-    constructor(
-        private prisma: PrismaService,
-        private dataExtractionService: DataExtractionService
-    ) {}
-
     private mapVatRate(vatString: string): VatRate {
         const mapping: Record<string, VatRate> = {
             'NINETEEN': VatRate.NINETEEN,
@@ -198,6 +243,41 @@ export class FilesService {
         }
         
         return similarity;
+    }
+
+    private mapDuplicateType(type: string): DuplicateType {
+        const mapping: Record<string, DuplicateType> = {
+            'exact': DuplicateType.EXACT_MATCH,
+            'exact_match': DuplicateType.EXACT_MATCH,
+            'content_match': DuplicateType.CONTENT_MATCH,
+            'similar': DuplicateType.SIMILAR_CONTENT,
+            'similar_content': DuplicateType.SIMILAR_CONTENT,
+            'partial': DuplicateType.SIMILAR_CONTENT
+        };
+        return mapping[type?.toLowerCase()] || DuplicateType.SIMILAR_CONTENT;
+    }
+
+    private mapComplianceStatus(status: string): ComplianceStatus {
+        const mapping: Record<string, ComplianceStatus> = {
+            'compliant': ComplianceStatus.COMPLIANT,
+            'non_compliant': ComplianceStatus.NON_COMPLIANT,
+            'warning': ComplianceStatus.WARNING,
+            'error': ComplianceStatus.NON_COMPLIANT,
+            'pending': ComplianceStatus.PENDING
+        };
+        return mapping[status.toLowerCase()] || ComplianceStatus.PENDING;
+    }
+
+    private mapCorrectionType(field: string): CorrectionType {
+        const mapping: Record<string, CorrectionType> = {
+            'amount': CorrectionType.AMOUNTS,
+            'date': CorrectionType.DATES,
+            'vat': CorrectionType.VENDOR_INFORMATION,
+            'description': CorrectionType.LINE_ITEMS,
+            'quantity': CorrectionType.LINE_ITEMS,
+            'unit_price': CorrectionType.LINE_ITEMS
+        };
+        return mapping[field.toLowerCase()] || CorrectionType.OTHER;
     }
 
     private findSimilarArticle(newArticleName: string, existingArticles: any[], similarityThreshold: number = 0.6): ArticleSimilarity | null {
@@ -616,12 +696,37 @@ export class FilesService {
             const result = await this.prisma.$transaction(async (prisma) => {
                 // --- AI/logic-based auto-detect references ---
                 let references: number[] = [];
+                
+                // Initialize references array if not provided
                 if (Array.isArray(processedData.references) && processedData.references.length > 0) {
                     references = processedData.references
                         .filter((id: any) => typeof id === 'number')
                         .filter((id: number) => id !== undefined && id !== null);
+                    console.log(`📝 Using provided references: ${references.join(', ')}`);
                 } else {
                     console.log('🔍 Starting auto-detection of document references');
+                    
+                    // Ensure processedData has a result object
+                    if (!processedData.result) {
+                        processedData.result = {};
+                    }
+                    
+                    // Ensure we have the correct document number based on type
+                    const docType = (processedData.result?.document_type || '').toLowerCase();
+                    
+                    // Handle receipt number fallback logic
+                    if (docType === 'receipt') {
+                        // If receipt_number is missing but document_number exists, use it as fallback
+                        if (!processedData.result.receipt_number && processedData.result.document_number) {
+                            processedData.result.receipt_number = processedData.result.document_number;
+                            console.log(`🔄 Using document_number as receipt_number for receipt: ${processedData.result.receipt_number}`);
+                        }
+                        // Ensure receipt_number is set in the root of processedData for consistency
+                        if (processedData.result.receipt_number && !processedData.receipt_number) {
+                            processedData.receipt_number = processedData.result.receipt_number;
+                            console.log(`✅ Set root-level receipt_number: ${processedData.receipt_number}`);
+                        }
+                    }
                     
                     // Fetch all other documents for the same accounting client
                     const allDocs = await prisma.document.findMany({
@@ -766,8 +871,7 @@ export class FilesService {
                     
                     references = relevantDocs.map(d => d.id);
                 }
-                // Remove self-referencing (will not have docId yet, but will after creation)
-                // We'll update this doc's references after creation to ensure no self-reference
+                
                 // Create the document
                 const document = await prisma.document.create({
                     data: {
@@ -782,19 +886,57 @@ export class FilesService {
                         references: [] // temporarily empty, will update after creation
                     }
                 });
-                // Now update bi-directional references
+                
+                // Now update bi-directional references with better error handling and logging
                 const docId = document.id;
                 const filteredReferences = [...new Set(references.filter((id: number) => id !== docId))];
-                // Add this docId to referenced docs
-                await Promise.all(filteredReferences.map(async (refId: number) => {
-                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
-                    if (refDoc) {
-                        const newRefs = refDoc.references ? Array.from(new Set([...refDoc.references, docId])) : [docId];
-                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
-                    }
-                }));
-                // Update this document's references
-                await prisma.document.update({ where: { id: docId }, data: { references: filteredReferences } });
+                
+                // Log the references being set
+                console.log(`🔗 Setting ${filteredReferences.length} references for document ${docId}:`, filteredReferences);
+                
+                // Update referenced documents to include this new document
+                try {
+                    await Promise.all(filteredReferences.map(async (refId: number) => {
+                        try {
+                            const refDoc = await prisma.document.findUnique({ 
+                                where: { id: refId },
+                                select: { references: true }
+                            });
+                            
+                            if (refDoc) {
+                                const currentRefs = Array.isArray(refDoc.references) ? refDoc.references : [];
+                                const newRefs = Array.from(new Set([...currentRefs, docId]));
+                                
+                                if (newRefs.length > currentRefs.length) {
+                                    await prisma.document.update({ 
+                                        where: { id: refId }, 
+                                        data: { 
+                                            references: { set: newRefs }
+                                        } 
+                                    });
+                                    console.log(`  ✅ Updated document ${refId} to reference ${docId}`);
+                                }
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error updating references for document ${refId}:`, error);
+                            // Continue with other references even if one fails
+                        }
+                    }));
+                    
+                    // Update this document's references
+                    await prisma.document.update({ 
+                        where: { id: docId }, 
+                        data: { 
+                            references: { set: filteredReferences }
+                        } 
+                    });
+                    console.log(`✅ Successfully set references for document ${docId}`);
+                    
+                } catch (error) {
+                    console.error('❌ Error in reference update process:', error);
+                    // Re-throw to ensure the transaction is rolled back on critical errors
+                    throw new Error(`Failed to update document references: ${error.message}`);
+                }
 
                 const processedDataDb = await prisma.processedData.create({
                     data: {
@@ -815,7 +957,7 @@ export class FilesService {
                                         similarityScore: match.similarity_score || 0.0,
                                         matchingFields: match.matching_fields || {},
                                         duplicateType: this.mapDuplicateType(match.duplicate_type),
-                                        status: 'PENDING'
+                                        status: DuplicateStatus.PENDING
                                     }
                                 });
                             }
@@ -905,45 +1047,8 @@ export class FilesService {
 
                     const newArticlesToCreate = smartArticleResults.filter(result => result.isNew);
                     
-                    if (newArticlesToCreate.length > 0) {
-                        console.log(`[SMART_MATCHING] Creating ${newArticlesToCreate.length} new articles`);
-
-                        const articlePromises = newArticlesToCreate.map(async (result) => {
-                            console.log(`[SMART_MATCHING] Creating article: ${result.name} (code: ${result.articleCode})`);
-
-                            try {
-                                return await prisma.article.upsert({
-                                    where: {
-                                        code_accountingClientId: {
-                                            code: result.articleCode,
-                                            accountingClientId: accountingClientRelation.id
-                                        }
-                                    },
-                                    update: {
-                                        name: result.name,
-                                        vat: result.vat,
-                                        unitOfMeasure: result.unitOfMeasure,
-                                        type: result.type,
-                                    },
-                                    create: {
-                                        code: result.articleCode,
-                                        name: result.name,
-                                        vat: result.vat,
-                                        unitOfMeasure: result.unitOfMeasure,
-                                        type: result.type,
-                                        clientCompanyId: clientCompany.id,
-                                        accountingClientId: accountingClientRelation.id 
-                                    }
-                                });
-                            } catch (error) {
-                                console.warn(`[SMART_MATCHING] Failed to upsert article ${result.articleCode}: ${error.message}`);
-                                return null;
-                            }
-                        });
-
-                        const createdArticles = (await Promise.all(articlePromises)).filter(Boolean);
-                        console.log(`[SMART_MATCHING] Successfully processed ${createdArticles.length} articles`);
-
+                    // Update line items with smart matching results
+                    if (processedData.result.line_items) {
                         processedData.result.line_items = processedData.result.line_items.map((item: any, index: number) => {
                             const smartResult = smartArticleResults[index];
                             if (smartResult) {
@@ -960,11 +1065,10 @@ export class FilesService {
                             }
                             return item;
                         });
+                    }
 
-                        await prisma.processedData.update({
-                            where: { id: processedDataDb.id },
-                            data: { extractedFields: processedData }
-                        });
+                    if (newArticlesToCreate.length > 0) {
+                        console.log(`[SMART_MATCHING] Creating ${newArticlesToCreate.length} new articles`);
                     } else {
                         console.log(`[SMART_MATCHING] All articles were matched with existing ones - no new articles to create`);
                     }
@@ -972,19 +1076,20 @@ export class FilesService {
                     console.log(`[SMART_MATCHING] No line items found or no new articles to create`);
                 }
 
-                console.log(`[AUDIT] Document ${document.id} created by user ${user.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
+                console.log(`[AUDIT] Document ${document.id} created by user ${currentUser.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
 
                 return { savedDocument: document, savedProcessedData: processedDataDb };
             }, {
-                timeout: 30000, 
-                isolationLevel: 'ReadCommitted'
+                timeout: 30000
             });
 
             return result;
 
         } catch (e) {
-            if (uploadResult && fileKey) {
+            // Cleanup S3 file if upload succeeded but database operation failed
+            if (typeof uploadResult !== 'undefined' && typeof fileKey !== 'undefined') {
                 try {
+                    const s3 = new AWS.S3();
                     await s3.deleteObject({
                         Bucket: process.env.AWS_S3_BUCKET_NAME,
                         Key: fileKey
@@ -1001,109 +1106,85 @@ export class FilesService {
         }
     }
 
-    private mapDuplicateType(type: string): any {
-        const mapping = {
-            'exact_match': 'EXACT_MATCH',
-            'content_match': 'CONTENT_MATCH', 
-            'similar_content': 'SIMILAR_CONTENT'
-        };
-        return mapping[type?.toLowerCase()] || 'SIMILAR_CONTENT';
-    }
-
-    private mapComplianceStatus(status: string): any {
-        const mapping = {
-            'compliant': 'COMPLIANT',
-            'non_compliant': 'NON_COMPLIANT',
-            'warning': 'WARNING',
-            'pending': 'PENDING'
-        };
-        return mapping[status?.toLowerCase()] || 'PENDING';
-    }
-
-    private mapCorrectionType(field: string): any {
-        const mapping = {
-            'document_type': 'DOCUMENT_TYPE',
-            'direction': 'INVOICE_DIRECTION',
-            'vendor_information': 'VENDOR_INFORMATION',
-            'buyer_information': 'BUYER_INFORMATION',
-            'amounts': 'AMOUNTS',
-            'dates': 'DATES',
-            'line_items': 'LINE_ITEMS'
-        };
-        return mapping[field] || 'OTHER';
-    }
-
     async updateFiles(processedData: any, clientCompanyEin: string, user: User, docId: number) {
-    try {
-        const clientCompany = await this.prisma.clientCompany.findUnique({
-            where: { ein: clientCompanyEin }
-        });
-        if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
-        const accountingClientRelation = await this.prisma.accountingClients.findMany({
-            where: {
-                accountingCompanyId: user.accountingCompanyId,
-                clientCompanyId: clientCompany.id
-            }
-        });
-        if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
-        // --- BEGIN TRANSACTION ---
-        return await this.prisma.$transaction(async (prisma) => {
-            const document = await prisma.document.findUnique({
-                where: { id: docId, accountingClientId: accountingClientRelation[0].id },
-                include: { processedData: true }
+        try {
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
             });
-            if (!document) throw new NotFoundException('Document doesn\'t exist in the database');
-            // --- Bi-directional reference update logic ---
-            const oldReferences: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
-            const newReferences: number[] = Array.isArray(processedData.references)
-                ? (processedData.references as unknown[]).filter((id: unknown): id is number => typeof id === 'number' && id !== docId)
-                : [];
-            const uniqueNewReferences: number[] = [...new Set(newReferences)];
-            // Find added and removed references
-            const addedRefs = uniqueNewReferences.filter(id => !oldReferences.includes(id));
-            const removedRefs = oldReferences.filter(id => !uniqueNewReferences.includes(id));
-            // Add this docId to added referenced docs
-            await Promise.all(addedRefs.map(async (refId) => {
-                const refDoc = await prisma.document.findUnique({ where: { id: refId } });
-                if (refDoc) {
-                    const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
-                    const newRefs: number[] = Array.from(new Set([...currentRefs, docId]));
-                    await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+            if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
+            
+            const accountingClientRelation = await this.prisma.accountingClients.findMany({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
                 }
-            }));
-            // Remove this docId from removed referenced docs
-            await Promise.all(removedRefs.map(async (refId) => {
-                const refDoc = await prisma.document.findUnique({ where: { id: refId } });
-                if (refDoc) {
-                    const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
-                    const newRefs: number[] = currentRefs.filter((id: number) => id !== docId);
-                    await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
-                }
-            }));
-            // Update the document's references
-            await prisma.document.update({ where: { id: docId }, data: { references: uniqueNewReferences } });
-            // --- Continue with processedData update and user corrections ---
-            if (document.processedData) {
-                await this.detectAndSaveUserCorrections(
-                    document.processedData.extractedFields,
-                    processedData,
-                    docId,
-                    user.id
-                );
-            }
-            const updatedProcessedData = await prisma.processedData.update({
-                where: { documentId: docId },
-                data: { extractedFields: processedData }
             });
-            return { document, updatedProcessedData };
-        });
-        // --- END TRANSACTION ---
-    } catch (e) {
-        if (e instanceof NotFoundException) throw e;
-        throw new InternalServerErrorException("Failed to update the file's data!")
+            if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
+            
+            return await this.prisma.$transaction(async (prisma) => {
+                const document = await prisma.document.findUnique({
+                    where: { id: docId, accountingClientId: accountingClientRelation[0].id },
+                    include: { processedData: true }
+                });
+                
+                if (!document) throw new NotFoundException('Document not found');
+                
+                // --- Bi-directional reference update logic ---
+                const oldReferences: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
+                const newReferences: number[] = Array.isArray(processedData.references)
+                    ? (processedData.references as unknown[]).filter((id: unknown): id is number => typeof id === 'number' && id !== docId)
+                    : [];
+                const uniqueNewReferences: number[] = [...new Set(newReferences)];
+                
+                // Find added and removed references
+                const addedRefs = uniqueNewReferences.filter(id => !oldReferences.includes(id));
+                const removedRefs = oldReferences.filter(id => !uniqueNewReferences.includes(id));
+                
+                // Add this docId to added referenced docs
+                await Promise.all(addedRefs.map(async (refId) => {
+                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
+                    if (refDoc) {
+                        const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
+                        const newRefs: number[] = Array.from(new Set([...currentRefs, docId]));
+                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+                    }
+                }));
+                
+                // Remove this docId from removed referenced docs
+                await Promise.all(removedRefs.map(async (refId) => {
+                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
+                    if (refDoc) {
+                        const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
+                        const newRefs: number[] = currentRefs.filter((id: number) => id !== docId);
+                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+                    }
+                }));
+                
+                // Update the document's references
+                await prisma.document.update({ where: { id: docId }, data: { references: uniqueNewReferences } });
+                
+                // --- Continue with processedData update and user corrections ---
+                if (document.processedData) {
+                    await this.detectAndSaveUserCorrections(
+                        document.processedData.extractedFields,
+                        processedData,
+                        docId,
+                        user.id
+                    );
+                }
+                
+                const updatedProcessedData = await prisma.processedData.update({
+                    where: { documentId: docId },
+                    data: { extractedFields: processedData }
+                });
+                
+                return { document, updatedProcessedData };
+            });
+        } catch (e) {
+            if (e instanceof NotFoundException) throw e;
+            throw new InternalServerErrorException("Failed to update the file's data!");
+        }
     }
-}
-
 
     private async detectAndSaveUserCorrections(originalData: any, newData: any, documentId: number, userId: number) {
         const corrections = [];
@@ -1204,90 +1285,6 @@ export class FilesService {
         }
     }
 
-    async getDuplicateAlerts(clientCompanyEin: string, user: User) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: clientCompanyEin }
-            });
-
-            if (!clientCompany) {
-                throw new NotFoundException('Client company not found');
-            }
-
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId: clientCompany.id
-                }
-            });
-
-            if (!accountingClientRelation) {
-                throw new UnauthorizedException('No access to this client company');
-            }
-
-            return await this.dataExtractionService.getDuplicateAlerts(accountingClientRelation.id);
-        } catch (e) {
-            console.error('[GET_DUPLICATE_ALERTS_ERROR]', e);
-            throw new InternalServerErrorException('Failed to get duplicate alerts');
-        }
-    }
-
-    async getComplianceAlerts(clientCompanyEin: string, user: User) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: { ein: clientCompanyEin }
-            });
-
-            if (!clientCompany) {
-                throw new NotFoundException('Client company not found');
-            }
-
-            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-                where: {
-                    accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId: clientCompany.id
-                }
-            });
-
-            if (!accountingClientRelation) {
-                throw new UnauthorizedException('No access to this client company');
-            }
-
-            return await this.dataExtractionService.getComplianceAlerts(accountingClientRelation.id);
-        } catch (e) {
-            console.error('[GET_COMPLIANCE_ALERTS_ERROR]', e);
-            throw new InternalServerErrorException('Failed to get compliance alerts');
-        }
-    }
-
-    async updateDuplicateStatus(duplicateCheckId: number, status: DuplicateStatus, user: User) {
-        try {
-            const duplicateCheck = await this.prisma.documentDuplicateCheck.findUnique({
-                where: { id: duplicateCheckId },
-                include: {
-                    originalDocument: {
-                        include: {
-                            accountingClient: true
-                        }
-                    }
-                }
-            });
-
-            if (!duplicateCheck) {
-                throw new NotFoundException('Duplicate check not found');
-            }
-
-            if (duplicateCheck.originalDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
-                throw new UnauthorizedException('No access to this duplicate check');
-            }
-
-            return await this.dataExtractionService.updateDuplicateStatus(duplicateCheckId, status);
-        } catch (e) {
-            console.error('[UPDATE_DUPLICATE_STATUS_ERROR]', e);
-            throw new InternalServerErrorException('Failed to update duplicate status');
-        }
-    }
-
     async deleteFiles(clientCompanyEin: string, docId: number, user: User) {
         try {
             const clientCompany = await this.prisma.clientCompany.findUnique({
@@ -1378,6 +1375,90 @@ export class FilesService {
                 throw new InternalServerErrorException("File not found in S3 storage, but database records were deleted.");
             }
             throw new InternalServerErrorException("Failed to delete the file and its data!");
+        }
+    }
+
+    async getDuplicateAlerts(clientCompanyEin: string, user: User) {
+        try {
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
+            });
+
+            if (!clientCompany) {
+                throw new NotFoundException('Client company not found');
+            }
+
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
+                }
+            });
+
+            if (!accountingClientRelation) {
+                throw new UnauthorizedException('No access to this client company');
+            }
+
+            return await this.dataExtractionService.getDuplicateAlerts(accountingClientRelation.id);
+        } catch (e) {
+            console.error('[GET_DUPLICATE_ALERTS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to get duplicate alerts');
+        }
+    }
+
+    async getComplianceAlerts(clientCompanyEin: string, user: User) {
+        try {
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin }
+            });
+
+            if (!clientCompany) {
+                throw new NotFoundException('Client company not found');
+            }
+
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    accountingCompanyId: user.accountingCompanyId,
+                    clientCompanyId: clientCompany.id
+                }
+            });
+
+            if (!accountingClientRelation) {
+                throw new UnauthorizedException('No access to this client company');
+            }
+
+            return await this.dataExtractionService.getComplianceAlerts(accountingClientRelation.id);
+        } catch (e) {
+            console.error('[GET_COMPLIANCE_ALERTS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to get compliance alerts');
+        }
+    }
+
+    async updateDuplicateStatus(duplicateCheckId: number, status: DuplicateStatus, user: User) {
+        try {
+            const duplicateCheck = await this.prisma.documentDuplicateCheck.findUnique({
+                where: { id: duplicateCheckId },
+                include: {
+                    originalDocument: {
+                        include: {
+                            accountingClient: true
+                        }
+                    }
+                }
+            });
+
+            if (!duplicateCheck) {
+                throw new NotFoundException('Duplicate check not found');
+            }
+
+            if (duplicateCheck.originalDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+                throw new UnauthorizedException('No access to this duplicate check');
+            }
+
+            return await this.dataExtractionService.updateDuplicateStatus(duplicateCheckId, status);
+        } catch (e) {
+            console.error('[UPDATE_DUPLICATE_STATUS_ERROR]', e);
+            throw new InternalServerErrorException('Failed to update duplicate status');
         }
     }
 
