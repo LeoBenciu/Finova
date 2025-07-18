@@ -2,7 +2,8 @@ import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompa
 import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery } from '@/redux/slices/apiSlice';
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
-  Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download 
+  Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
+  Link, CheckCircle, AlertCircle, Clock
 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
@@ -10,6 +11,7 @@ import EditExtractedDataManagement from '../Components/EditExtractedDataManageme
 import { MyTooltip } from '../Components/MyTooltip';
 import AreYouSureModalR from '../Components/AreYouSureModalR';
 import FilesSearchFiltersComponent from '../Components/FilesSearchFiltersComponent';
+import RelatedDocumentsModal from '../Components/RelatedDocumentsModal';
 import { format, parse, compareAsc, addDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import LoadingComponent from '../Components/LoadingComponent';
@@ -24,6 +26,15 @@ type clientCompanyName = {
 }
 
 export type documentType = 'Invoice' | 'Receipt' | 'Bank Statement' | 'Contract' | 'Z Report' | 'Payment Order' | 'Collection Order';
+type paymentStatusType = 'UNPAID' | 'PARTIALLY_PAID' | 'FULLY_PAID' | 'OVERPAID' | undefined;
+
+interface PaymentSummary {
+  totalAmount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  paymentStatus: paymentStatusType;
+  lastPaymentDate?: string;
+}
 
 const FileManagementPage = () => {
 
@@ -37,17 +48,19 @@ const FileManagementPage = () => {
   const [pollingAttempts, setPollingAttempts] = useState<number>(0);
   const [maxPollingAttempts] = useState<number>(100);
 
+  // Related Documents Modal
+  const [showRelatedDocs, setShowRelatedDocs] = useState<boolean>(false);
+  const [selectedDocForRelations, setSelectedDocForRelations] = useState<any>(null);
+
   // Bulk selection state
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [showBulkActions, setShowBulkActions] = useState<boolean>(false);
   const [bulkAction, setBulkAction] = useState<'delete' | 'process' | null>(null);
 
-  if (false){
-    console.log(pollingAttempts)
-  }
-
+  // Search and filter states
   const[nameSearch, setNameSearch] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<documentType>();
+  const [paymentStatus, setPaymentStatus] = useState<paymentStatusType>();
   const [intervalDateFilter, setIntervalDateFilter] = useState<{
     from: string|undefined,
     to:string|undefined
@@ -55,6 +68,10 @@ const FileManagementPage = () => {
     from: undefined,
     to:undefined,
   });
+
+  if (false){
+    console.log(pollingAttempts)
+  }
 
   const docType ={
     "Invoice":"Factura",
@@ -67,71 +84,71 @@ const FileManagementPage = () => {
   };
 
   const getDocumentDate = (file: any): string => {
-  try {
-    const extractedData = file.processedData?.[0]?.extractedFields?.result;
-    
-    if (!extractedData) {
+    try {
+      const extractedData = file.processedData?.[0]?.extractedFields?.result;
+      
+      if (!extractedData) {
+        return format(file.createdAt, 'dd-MM-yyyy');
+      }
+
+      let documentDate = null;
+
+      switch (file.type) {
+        case 'Invoice':
+        case 'Receipt':
+          documentDate = extractedData.document_date;
+          break;
+        
+        case 'Bank Statement':
+          documentDate = extractedData.statement_period_start || extractedData.statement_period_end;
+          break;
+        
+        case 'Contract':
+          documentDate = extractedData.contract_date || extractedData.start_date;
+          break;
+        
+        case 'Z Report':
+          documentDate = extractedData.business_date;
+          break;
+        
+        case 'Payment Order':
+        case 'Collection Order':
+          documentDate = extractedData.order_date;
+          break;
+        
+        default:
+          documentDate = extractedData.document_date || 
+                        extractedData.date || 
+                        extractedData.transaction_date;
+          break;
+      }
+
+      if (documentDate) {
+        const dateStr = String(documentDate);
+        
+        if (dateStr.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/)) {
+          const parts = dateStr.split(/[\/\-]/);
+          const day = parts[0];
+          const month = parts[1];
+          const year = parts[2];
+          return `${day}-${month}-${year}`;
+        }
+        
+        if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
+          const date = new Date(dateStr);
+          return format(date, 'dd-MM-yyyy');
+        }
+        
+        return dateStr;
+      }
+
+      return format(file.createdAt, 'dd-MM-yyyy');
+      
+    } catch (error) {
+      console.error('Error extracting document date:', error);
       return format(file.createdAt, 'dd-MM-yyyy');
     }
-
-    let documentDate = null;
-
-    switch (file.type) {
-      case 'Invoice':
-      case 'Receipt':
-        documentDate = extractedData.document_date;
-        break;
-      
-      case 'Bank Statement':
-        documentDate = extractedData.statement_period_start || extractedData.statement_period_end;
-        break;
-      
-      case 'Contract':
-        documentDate = extractedData.contract_date || extractedData.start_date;
-        break;
-      
-      case 'Z Report':
-        documentDate = extractedData.business_date;
-        break;
-      
-      case 'Payment Order':
-      case 'Collection Order':
-        documentDate = extractedData.order_date;
-        break;
-      
-      default:
-        documentDate = extractedData.document_date || 
-                      extractedData.date || 
-                      extractedData.transaction_date;
-        break;
-    }
-
-    if (documentDate) {
-      const dateStr = String(documentDate);
-      
-      if (dateStr.match(/^\d{2}[\/\-]\d{2}[\/\-]\d{4}$/)) {
-        const parts = dateStr.split(/[\/\-]/);
-        const day = parts[0];
-        const month = parts[1];
-        const year = parts[2];
-        return `${day}-${month}-${year}`;
-      }
-      
-      if (dateStr.match(/^\d{4}-\d{2}-\d{2}/)) {
-        const date = new Date(dateStr);
-        return format(date, 'dd-MM-yyyy');
-      }
-      
-      return dateStr;
-    }
-
-    return format(file.createdAt, 'dd-MM-yyyy');
-    
-  } catch (error) {
-    console.error('Error extracting document date:', error);
-    return format(file.createdAt, 'dd-MM-yyyy');
-  }
-};
+  };
 
   useEffect(()=>{
     console.log('files:',files);
@@ -141,59 +158,72 @@ const FileManagementPage = () => {
     console.log('IntervalDateFitler:', filteredFiles);
   },[filteredFiles])
 
+  // Enhanced filtering logic with payment status
   useEffect(()=>{
-  if(!files?.documents) return;
-  
-  let newFilteredFiles = files.documents;
-  if(nameSearch.length>0){
-     newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-      file.name.toLowerCase().includes(nameSearch.toLowerCase())
-    ))
-  };
-  if(typeFilter){
-    newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-      file.type===typeFilter
-    ))
-  };
-  
-  if(intervalDateFilter.from !== undefined){
-    const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
-    newFilteredFiles = newFilteredFiles.filter((file:any)=>{
-      try {
-        const documentDateStr = getDocumentDate(file);
-        const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
-        return compareAsc(documentDate, filterFromDate) >= 0;
-      } catch (error) {
-        console.error('Error parsing document date for filtering:', error);
-        return compareAsc(file.createdAt, filterFromDate) >= 0;
-      }
-    });
-  }
-  
-  if(intervalDateFilter.to !== undefined){
-    const filterToDate = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
-    const filterToDateEnd = addDays(filterToDate, 1);
-    newFilteredFiles = newFilteredFiles.filter((file:any)=>{
-      try {
-        const documentDateStr = getDocumentDate(file);
-        const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
-        return compareAsc(documentDate, filterToDateEnd) < 0;
-      } catch (error) {
-        console.error('Error parsing document date for filtering:', error);
-        return compareAsc(file.createdAt, filterToDateEnd) < 0;
-      }
-    });
-  }
+    if(!files?.documents) return;
+    
+    let newFilteredFiles = files.documents;
+    
+    // Name search filter
+    if(nameSearch.length>0){
+       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
+        file.name.toLowerCase().includes(nameSearch.toLowerCase())
+      ))
+    };
+    
+    // Document type filter
+    if(typeFilter){
+      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
+        file.type===typeFilter
+      ))
+    };
+    
+    // Payment status filter
+    if(paymentStatus){
+      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
+        const filePaymentStatus = file.paymentSummary?.paymentStatus;
+        return filePaymentStatus === paymentStatus;
+      });
+    }
+    
+    // Date range filters
+    if(intervalDateFilter.from !== undefined){
+      const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
+      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
+        try {
+          const documentDateStr = getDocumentDate(file);
+          const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
+          return compareAsc(documentDate, filterFromDate) >= 0;
+        } catch (error) {
+          console.error('Error parsing document date for filtering:', error);
+          return compareAsc(file.createdAt, filterFromDate) >= 0;
+        }
+      });
+    }
+    
+    if(intervalDateFilter.to !== undefined){
+      const filterToDate = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
+      const filterToDateEnd = addDays(filterToDate, 1);
+      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
+        try {
+          const documentDateStr = getDocumentDate(file);
+          const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
+          return compareAsc(documentDate, filterToDateEnd) < 0;
+        } catch (error) {
+          console.error('Error parsing document date for filtering:', error);
+          return compareAsc(file.createdAt, filterToDateEnd) < 0;
+        }
+      });
+    }
 
-  setFilteredFiles({
-    ...files,
-    documents: newFilteredFiles
-  })
-},[typeFilter, setTypeFilter,nameSearch, 
-  setNameSearch,intervalDateFilter,setIntervalDateFilter, files]);
+    setFilteredFiles({
+      ...files,
+      documents: newFilteredFiles
+    })
+  },[typeFilter, setTypeFilter, nameSearch, setNameSearch, intervalDateFilter, setIntervalDateFilter, paymentStatus, files]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
-  const { data: filesData, isLoading: isFilesLoading } = useGetFilesQuery({company:clientCompanyEin});
+  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery({company:clientCompanyEin});
   const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
   const [ processAutomation ] = useInsertClientInvoiceMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
@@ -203,6 +233,45 @@ const FileManagementPage = () => {
     processingDocId || 0, 
     { skip: !processingDocId }
   );
+
+  // Payment status helpers
+  const getPaymentStatusIcon = (status?: paymentStatusType) => {
+    switch (status) {
+      case 'UNPAID':
+        return <AlertCircle size={16} className="text-red-500" />;
+      case 'PARTIALLY_PAID':
+        return <Clock size={16} className="text-yellow-500" />;
+      case 'FULLY_PAID':
+        return <CheckCircle size={16} className="text-green-500" />;
+      case 'OVERPAID':
+        return <CheckCircle size={16} className="text-blue-500" />;
+      default:
+        return null;
+    }
+  };
+
+  const getPaymentStatusText = (status?: paymentStatusType) => {
+    if (!status) return '';
+    const statusMap = {
+      'UNPAID': language === 'ro' ? 'Neplatită' : 'Unpaid',
+      'PARTIALLY_PAID': language === 'ro' ? 'Parțial plătită' : 'Partially paid',
+      'FULLY_PAID': language === 'ro' ? 'Plătită complet' : 'Fully paid',
+      'OVERPAID': language === 'ro' ? 'Supraplatită' : 'Overpaid'
+    };
+    return statusMap[status] || status;
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('ro-RO', {
+      style: 'currency',
+      currency: 'RON'
+    }).format(amount);
+  };
+
+  const getPaymentProgress = (paymentSummary?: PaymentSummary) => {
+    if (!paymentSummary || paymentSummary.totalAmount === 0) return 0;
+    return Math.min(100, (paymentSummary.paidAmount / paymentSummary.totalAmount) * 100);
+  };
 
   // Bulk selection functions
   const toggleFileSelection = (fileId: number) => {
@@ -427,6 +496,15 @@ const FileManagementPage = () => {
     }
   };
 
+  const handleShowRelatedDocs = (file: any) => {
+    setSelectedDocForRelations(file);
+    setShowRelatedDocs(true);
+  };
+
+  const handleRefreshFiles = () => {
+    refetchFiles();
+  };
+
   useEffect(()=>{
     if(filesData) {
       setFiles(filesData);
@@ -506,78 +584,78 @@ const FileManagementPage = () => {
   };
 
   const getFileIcon = (fileType: string) => {
-  switch (fileType) {
-    case 'Invoice':
-      return FileText;
-    case 'Receipt':
-      return Receipt;
-    case 'Bank Statement':
-      return CreditCard;
-    case 'Contract':
-      return FileSignature;
-    case 'Z Report':
-      return BarChart3;
-    case 'Payment Order':
-      return Send;
-    case 'Collection Order':
-      return Download;
-    default:
-      return FileText;
-  }
-};
+    switch (fileType) {
+      case 'Invoice':
+        return FileText;
+      case 'Receipt':
+        return Receipt;
+      case 'Bank Statement':
+        return CreditCard;
+      case 'Contract':
+        return FileSignature;
+      case 'Z Report':
+        return BarChart3;
+      case 'Payment Order':
+        return Send;
+      case 'Collection Order':
+        return Download;
+      default:
+        return FileText;
+    }
+  };
 
-const getFileIconColor = (fileType: string) => {
-  switch (fileType) {
-    case 'Invoice':
-      return {
-        text: 'text-blue-500',
-        bg: 'bg-blue-500/10',
-        hover: 'hover:bg-blue-500/20'
-      };
-    case 'Receipt':
-      return {
-        text: 'text-orange-500',
-        bg: 'bg-orange-500/10',
-        hover: 'hover:bg-orange-500/20'
-      };
-    case 'Bank Statement':
-      return {
-        text: 'text-red-500',
-        bg: 'bg-red-500/10',
-        hover: 'hover:bg-red-500/20'
-      };
-    case 'Contract':
-      return {
-        text: 'text-teal-500',
-        bg: 'bg-teal-500/10',
-        hover: 'hover:bg-teal-500/20'
-      };
-    case 'Z Report':
-      return {
-        text: 'text-yellow-500',
-        bg: 'bg-yellow-500/10',
-        hover: 'hover:bg-yellow-500/20'
-      };
-    case 'Payment Order':
-      return {
-        text: 'text-purple-500',
-        bg: 'bg-purple-500/10',
-        hover: 'hover:bg-purple-500/20'
-      };
-    case 'Collection Order':
-      return {
-        text: 'text-green-500',
-        bg: 'bg-green-500/10',
-        hover: 'hover:bg-green-500/20'
-      };
-    default:
-      return {
-        text: 'text-gray-500',
-        bg: 'bg-gray-500/10',
-        hover: 'hover:bg-gray-500/20'
-      };
-  }
-};
+  const getFileIconColor = (fileType: string) => {
+    switch (fileType) {
+      case 'Invoice':
+        return {
+          text: 'text-blue-500',
+          bg: 'bg-blue-500/10',
+          hover: 'hover:bg-blue-500/20'
+        };
+      case 'Receipt':
+        return {
+          text: 'text-orange-500',
+          bg: 'bg-orange-500/10',
+          hover: 'hover:bg-orange-500/20'
+        };
+      case 'Bank Statement':
+        return {
+          text: 'text-red-500',
+          bg: 'bg-red-500/10',
+          hover: 'hover:bg-red-500/20'
+        };
+      case 'Contract':
+        return {
+          text: 'text-teal-500',
+          bg: 'bg-teal-500/10',
+          hover: 'hover:bg-teal-500/20'
+        };
+      case 'Z Report':
+        return {
+          text: 'text-yellow-500',
+          bg: 'bg-yellow-500/10',
+          hover: 'hover:bg-yellow-500/20'
+        };
+      case 'Payment Order':
+        return {
+          text: 'text-purple-500',
+          bg: 'bg-purple-500/10',
+          hover: 'hover:bg-purple-500/20'
+        };
+      case 'Collection Order':
+        return {
+          text: 'text-green-500',
+          bg: 'bg-green-500/10',
+          hover: 'hover:bg-green-500/20'
+        };
+      default:
+        return {
+          text: 'text-gray-500',
+          bg: 'bg-gray-500/10',
+          hover: 'hover:bg-gray-500/20'
+        };
+    }
+  };
 
   return (
     <div className="p-8">
@@ -591,7 +669,7 @@ const getFileIconColor = (fileType: string) => {
               {language==='ro'?'Management Documente':'File Management'}
             </h1>
             <p className="text-[var(--text2)] text-lg text-left">
-              {language === 'ro' ? 'Gestionează și procesează documentele tale' : 'Manage and process your documents'}
+              {language === 'ro' ? 'Gestionează și procesează documentele tale cu tracking plăți' : 'Manage and process your documents with payment tracking'}
             </p>
           </div>
         </div>
@@ -603,6 +681,8 @@ const getFileIconColor = (fileType: string) => {
         setTypeFilter={setTypeFilter}
         intervalDate={intervalDateFilter}
         setIntervalDate={setIntervalDateFilter}
+        paymentStatus={paymentStatus}
+        setPaymentStatus={setPaymentStatus}
       />
 
       {/* Bulk Actions Bar */}
@@ -711,6 +791,7 @@ const getFileIconColor = (fileType: string) => {
                 const FileIcon = getFileIcon(file.type);
                 const isSelected = selectedFiles.has(file.id);
                 const iconColors = getFileIconColor(file.type);
+                const paymentSummary = file.paymentSummary;
                 
                 return (
                   <motion.div
@@ -718,7 +799,7 @@ const getFileIconColor = (fileType: string) => {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className={`bg-[var(--background)] rounded-2xl px-4 py-0 border transition-all duration-200 mb-1 ${
+                    className={`bg-[var(--background)] rounded-2xl px-4 py-4 border transition-all duration-200 mb-1 ${
                       isSelected 
                         ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
                         : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
@@ -764,6 +845,29 @@ const getFileIconColor = (fileType: string) => {
                               <span>{getDocumentDate(file)}</span>
                             </div>
                           </div>
+
+                          {/* Payment Information for Invoices */}
+                          {file.type === 'Invoice' && paymentSummary && (
+                            <div className="mt-2">
+                              <div className="flex items-center gap-2 text-sm">
+                                {getPaymentStatusIcon(paymentSummary.paymentStatus)}
+                                <span className="text-[var(--text2)]">
+                                  {formatCurrency(paymentSummary.paidAmount)} / {formatCurrency(paymentSummary.totalAmount)}
+                                </span>
+                                <span className="text-[var(--text3)]">
+                                  ({getPaymentStatusText(paymentSummary.paymentStatus)})
+                                </span>
+                              </div>
+                              
+                              {/* Payment Progress Bar */}
+                              <div className="mt-1 w-full bg-[var(--text4)] rounded-full h-1.5">
+                                <div
+                                  className="bg-gradient-to-r from-green-500 to-green-600 h-1.5 rounded-full transition-all duration-300"
+                                  style={{ width: `${getPaymentProgress(paymentSummary)}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                             
@@ -807,6 +911,18 @@ const getFileIconColor = (fileType: string) => {
                             <Eye size={18} />
                           </button>
                         }/>
+
+                        {/* Related Documents Button - Only show for invoices */}
+                        {file.type === 'Invoice' && (
+                          <MyTooltip content={language==='ro'?'Documente asociate':'Related documents'} trigger={
+                            <button
+                              onClick={() => handleShowRelatedDocs(file)}
+                              className="p-2 text-purple-600 bg-purple-600/20 hover:text-white hover:bg-purple-600 rounded-lg transition-colors"
+                            >
+                              <Link size={18} />
+                            </button>
+                          }/>
+                        )}
                         
                         <MyTooltip content={getBotButtonTooltip(file)} trigger={
                           <button
@@ -847,6 +963,7 @@ const getFileIconColor = (fileType: string) => {
         </div>
       </div>
 
+      {/* Modals */}
       {isModalOpen&&(<EditExtractedDataManagement
         setIsModalOpen={setIsModalOpen}
         isOpen={isModalOpen}
@@ -855,6 +972,18 @@ const getFileIconColor = (fileType: string) => {
         currentFile={currentFile}
         setCurrentFile={setCurrentFile}
       />)}
+
+      {showRelatedDocs && selectedDocForRelations && (
+        <RelatedDocumentsModal
+          isOpen={showRelatedDocs}
+          onClose={() => {
+            setShowRelatedDocs(false);
+            setSelectedDocForRelations(null);
+          }}
+          document={selectedDocForRelations}
+          onRefresh={handleRefreshFiles}
+        />
+      )}
 
       {isSureModal&&(
         <AreYouSureModalR 

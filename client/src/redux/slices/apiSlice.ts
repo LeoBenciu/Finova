@@ -26,7 +26,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'DocumentRelations'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -179,6 +179,28 @@ export const finovaApi = createApi({
                     password
                 }
             })
+        }),
+
+        getDocumentWithRelations: build.query({
+            query: (documentId) => `/files/document/${documentId}/relations`,
+            providesTags: (_, __, documentId) => [{ type: 'DocumentRelations', id: documentId }]
+        }),
+
+        createDocumentRelation: build.mutation({
+            query: (data) => ({
+                url: '/files/relations',
+                method: 'POST', 
+                body: data
+            }),
+            invalidatesTags: ['Files', 'DocumentRelations']
+        }),
+
+        deleteDocumentRelation: build.mutation({
+            query: (relationId) => ({
+                url: `/files/relations/${relationId}`,
+                method: 'DELETE'
+            }),
+            invalidatesTags: ['Files', 'DocumentRelations']
         }),
 
         modifyRpaCredentials: build.mutation({

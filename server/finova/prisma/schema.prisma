@@ -9,19 +9,20 @@ datasource db {
 }
 
 model User {
-  id                  Int               @id @default(autoincrement())
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
-  email               String            @unique
-  role                Role              @default(ADMIN)
-  hashPassword        String
-  name                String
-  phoneNumber         String
-  accountingCompanyId Int
-  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
-  rpaActionsTriggered RpaAction[]       @relation("TriggeredByUser")
-  legalAgreements     LegalAgreement[]
-  userCorrections     UserCorrection[]
+  id                       Int                    @id @default(autoincrement())
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  email                    String                 @unique
+  role                     Role                   @default(ADMIN)
+  createdDocumentRelations DocumentRelationship[]
+  hashPassword             String
+  name                     String
+  phoneNumber              String
+  accountingCompanyId      Int
+  accountingCompany        AccountingCompany      @relation(fields: [accountingCompanyId], references: [id])
+  rpaActionsTriggered      RpaAction[]            @relation("TriggeredByUser")
+  legalAgreements          LegalAgreement[]
+  userCorrections          UserCorrection[]
 }
 
 model LegalAgreement {
@@ -50,6 +51,8 @@ model Document {
   contentType           String
   fileSize              Int?
   documentHash          String?
+  parentRelations       DocumentRelationship[]   @relation("ParentDocumentRelations")
+  childRelations        DocumentRelationship[]   @relation("ChildDocumentRelations")
   accountingClientId    Int
   accountingClient      AccountingClients        @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
   processedData         ProcessedData?
@@ -58,6 +61,7 @@ model Document {
   duplicateMatches      DocumentDuplicateCheck[] @relation("DuplicateDocument")
   complianceValidations ComplianceValidation[]
   userCorrections       UserCorrection[]
+  paymentSummary        PaymentSummary?
 
   @@index([documentHash])
   @@index([accountingClientId])
@@ -195,6 +199,42 @@ model Article {
   @@index([clientCompanyId])
 }
 
+model DocumentRelationship {
+  id               Int                  @id @default(autoincrement())
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  parentDocumentId Int
+  childDocumentId  Int
+  parentDocument   Document             @relation("ParentDocumentRelations", fields: [parentDocumentId], references: [id], onDelete: Cascade)
+  childDocument    Document             @relation("ChildDocumentRelations", fields: [childDocumentId], references: [id], onDelete: Cascade)
+  relationshipType DocumentRelationType
+  paymentAmount    Float?
+  notes            String?
+  createdById      Int?
+  createdBy        User?                @relation(fields: [createdById], references: [id])
+
+  @@unique([parentDocumentId, childDocumentId])
+  @@index([parentDocumentId])
+  @@index([childDocumentId])
+  @@index([relationshipType])
+}
+
+model PaymentSummary {
+  id              Int           @id @default(autoincrement())
+  documentId      Int           @unique
+  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  totalAmount     Float // Total invoice amount
+  paidAmount      Float         @default(0) // Total amount paid
+  remainingAmount Float // Calculated: totalAmount - paidAmount
+  paymentStatus   PaymentStatus @default(UNPAID)
+  lastPaymentDate DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([paymentStatus])
+  @@index([documentId])
+}
+
 model Management {
   id                 Int               @id @default(autoincrement())
   code               String
@@ -216,6 +256,21 @@ model Management {
   @@unique([code, accountingClientId])
   @@index([accountingClientId])
   @@index([clientCompanyId])
+}
+
+enum DocumentRelationType {
+  PAYMENT
+  CORRECTION
+  ATTACHMENT
+  CONTRACT_INVOICE
+  REFUND
+}
+
+enum PaymentStatus {
+  UNPAID
+  PARTIALLY_PAID
+  FULLY_PAID
+  OVERPAID
 }
 
 enum ManagementType {
