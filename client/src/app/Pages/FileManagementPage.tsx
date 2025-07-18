@@ -829,7 +829,7 @@ const FileManagementPage = () => {
                             </div>
                             {file.type === 'Invoice' && paymentSummary && (
                               <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-                                {language === 'ro' ? (file?.processed_data[0]?.extractedFields?.result.direction === 'outgoing'? 'Incasat':'Platit') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
+                                {language === 'ro' ? (file?.processedData[0]?.extractedFields?.result.direction === 'outgoing'? 'Incasat':'Platit') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
                               </span>
                             )}
                           </div>
