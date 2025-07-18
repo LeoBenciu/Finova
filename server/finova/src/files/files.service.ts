@@ -778,39 +778,70 @@ export class FilesService {
         }
     }
 
+    private async createInitialPaymentSummary(documentId: number) {
+        try {
+            const document = await this.prisma.document.findUnique({
+                where: { id: documentId },
+                include: { processedData: true }
+            });
+
+            if (!document || document.type !== 'Invoice') return;
+
+            let totalAmount = 0;
+            if (document.processedData?.extractedFields) {
+                const extractedData = typeof document.processedData.extractedFields === 'string' 
+                    ? JSON.parse(document.processedData.extractedFields)
+                    : document.processedData.extractedFields;
+
+                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
+            }
+
+            await this.prisma.paymentSummary.create({
+                data: {
+                    documentId,
+                    totalAmount,
+                    paidAmount: 0,
+                    remainingAmount: totalAmount,
+                    paymentStatus: PaymentStatus.UNPAID
+                }
+            });
+
+            console.log(`[PAYMENT_SUMMARY] Created initial payment summary for invoice ${documentId} with total ${totalAmount}`);
+        } catch (error) {
+            console.error(`[PAYMENT_SUMMARY] Failed to create initial payment summary for document ${documentId}:`, error);
+        }
+    }
 
     async getFiles(ein: string, user: User) {
         try {
             const currentUser = await this.prisma.user.findUnique({
                 where: { id: user.id },
-                include: {
-                    accountingCompany: true
-                }
+                include: { accountingCompany: true }
             });
-    
+
             if (!currentUser) {
                 throw new NotFoundException('User not found in the database!');
             }
-    
+
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: ein }
             });
-    
+
             if (!clientCompany) {
                 throw new NotFoundException('Client Company not found in the database!');
             }
-    
+
             const accountingClientRelation = await this.prisma.accountingClients.findFirst({
                 where: {
                     accountingCompanyId: currentUser.accountingCompanyId,
                     clientCompanyId: clientCompany.id
                 }
             });
-    
+
             if (!accountingClientRelation) {
                 throw new NotFoundException('No authorized relationship found between your accounting company and this client!');
             }
-    
+
             const documents = await this.prisma.document.findMany({
                 where: {
                     accountingClientId: accountingClientRelation.id 
@@ -823,42 +854,36 @@ export class FilesService {
                             }
                         }
                     },
+                    paymentSummary: true, 
+                    parentRelations: {
+                        where: { relationshipType: DocumentRelationType.PAYMENT },
+                        include: { childDocument: true }
+                    },
+                    childRelations: {
+                        where: { relationshipType: DocumentRelationType.PAYMENT },
+                        include: { parentDocument: true }
+                    },
                     duplicateChecks: {
-                        include: {
-                            originalDocument: true
-                        }
+                        include: { originalDocument: true }
                     },
                     duplicateMatches: {
-                        include: {
-                            duplicateDocument: true
-                        }
+                        include: { duplicateDocument: true }
                     },
                     complianceValidations: {
-                        orderBy: {
-                            createdAt: 'desc'
-                        },
+                        orderBy: { createdAt: 'desc' },
                         take: 1
                     }
                 }
             });
-    
+
             console.log(`[DEBUG] User ${user.id} from company ${currentUser.accountingCompanyId} accessing ${documents.length} documents for client ${ein}`);
-    
-            const unauthorizedDocs = documents.filter(doc => 
-                doc.accountingClient.accountingCompanyId !== currentUser.accountingCompanyId
-            );
-    
-            if (unauthorizedDocs.length > 0) {
-                console.error(`[SECURITY ALERT] Found ${unauthorizedDocs.length} unauthorized documents for user ${user.id}`);
-                throw new UnauthorizedException('Unauthorized access to documents detected');
-            }
-    
+
             const s3 = new AWS.S3({
                 accessKeyId: process.env.AWS_ACCESS_KEY_ID,
                 secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
                 region: process.env.AWS_REGION
             });
-    
+
             const documentIds = documents.map(doc => doc.id);
             
             const [processedData, rpaActions] = await Promise.all([
@@ -869,7 +894,7 @@ export class FilesService {
                     where: { documentId: { in: documentIds } }
                 })
             ]);
-    
+
             const documentsWithData = await Promise.all(
                 documents.map(async (document) => {
                     const signedUrl = await s3.getSignedUrlPromise('getObject', {
@@ -884,19 +909,41 @@ export class FilesService {
                     const latestCompliance = document.complianceValidations[0];
                     const hasComplianceIssues = latestCompliance && 
                         (latestCompliance.overallStatus === 'NON_COMPLIANT' || latestCompliance.overallStatus === 'WARNING');
-    
+
+                    const docProcessedData = processedData.filter(pd => pd.documentId === document.id);
+
                     return {
                         ...document,
-                        processedData: processedData.filter(pd => pd.documentId === document.id),
+                        processedData: docProcessedData,
                         signedUrl,
                         rpa: rpaActions.filter(rp => rp.documentId === document.id),
                         hasDuplicateAlert,
                         hasComplianceIssues,
-                        complianceStatus: latestCompliance?.overallStatus || 'PENDING'
+                        complianceStatus: latestCompliance?.overallStatus || 'PENDING',
+                        paymentSummary: document.paymentSummary ? {
+                            totalAmount: document.paymentSummary.totalAmount,
+                            paidAmount: document.paymentSummary.paidAmount,
+                            remainingAmount: document.paymentSummary.remainingAmount,
+                            paymentStatus: document.paymentSummary.paymentStatus,
+                            lastPaymentDate: document.paymentSummary.lastPaymentDate,
+                            paymentProgress: document.paymentSummary.totalAmount > 0 
+                                ? (document.paymentSummary.paidAmount / document.paymentSummary.totalAmount) * 100 
+                                : 0
+                        } : null,
+                        relatedPayments: document.parentRelations.length,
+                        isPaymentFor: document.childRelations.length
                     };
                 })
             );
-    
+
+            const invoiceDocuments = documentsWithData.filter(doc => doc.type === 'Invoice' && !doc.paymentSummary);
+            if (invoiceDocuments.length > 0) {
+                console.log(`[PAYMENT_SUMMARY] Creating missing payment summaries for ${invoiceDocuments.length} invoices`);
+                await Promise.all(invoiceDocuments.map(doc => this.createInitialPaymentSummary(doc.id)));
+                
+                return this.getFiles(ein, user);
+            }
+
             return {
                 documents: documentsWithData,
                 accountingCompany: {
@@ -910,7 +957,7 @@ export class FilesService {
                     ein: clientCompany.ein
                 }
             };
-    
+
         } catch (e) {
             if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
             console.error('[FILES_SERVICE_ERROR]', e);
@@ -946,8 +993,165 @@ export class FilesService {
     private generateDocumentHash(fileBuffer: Buffer): string {
         return crypto.createHash('md5').update(fileBuffer).digest('hex');
     }
+    
 
-    async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
+    private async updatePaymentSummaryInTransaction(documentId: number, prisma: any) {
+        try {
+            const document = await prisma.document.findUnique({
+                where: { id: documentId },
+                include: { 
+                    processedData: true,
+                    parentRelations: {
+                        where: { relationshipType: DocumentRelationType.PAYMENT },
+                        include: { childDocument: true }
+                    }
+                }
+            });
+
+            if (!document) return;
+
+            let totalAmount = 0;
+            if (document.processedData?.extractedFields) {
+                const extractedData = typeof document.processedData.extractedFields === 'string' 
+                    ? JSON.parse(document.processedData.extractedFields)
+                    : document.processedData.extractedFields;
+
+                totalAmount = extractedData?.result?.total_amount || extractedData?.total_amount || 0;
+            }
+
+            const paidAmount = document.parentRelations.reduce((sum, relation) => {
+                return sum + (relation.paymentAmount || 0);
+            }, 0);
+
+            const remainingAmount = Math.max(0, totalAmount - paidAmount);
+
+            let paymentStatus: PaymentStatus;
+            if (paidAmount === 0) {
+                paymentStatus = PaymentStatus.UNPAID;
+            } else if (paidAmount >= totalAmount) {
+                paymentStatus = paidAmount > totalAmount ? PaymentStatus.OVERPAID : PaymentStatus.FULLY_PAID;
+            } else {
+                paymentStatus = PaymentStatus.PARTIALLY_PAID;
+            }
+
+            const lastPaymentDate = document.parentRelations.length > 0 
+                ? new Date(Math.max(...document.parentRelations.map(r => r.createdAt.getTime())))
+                : null;
+
+            await prisma.paymentSummary.upsert({
+                where: { documentId: documentId },
+                update: {
+                    totalAmount,
+                    paidAmount,
+                    remainingAmount,
+                    paymentStatus,
+                    lastPaymentDate
+                },
+                create: {
+                    documentId,
+                    totalAmount,
+                    paidAmount,
+                    remainingAmount,
+                    paymentStatus,
+                    lastPaymentDate
+                }
+            });
+
+            console.log(`[PAYMENT_TRACKING] Updated payment summary for document ${documentId}: ${paidAmount}/${totalAmount} (${paymentStatus})`);
+
+        } catch (e) {
+            console.error('[UPDATE_PAYMENT_SUMMARY_ERROR]', e);
+            throw new InternalServerErrorException('Failed to update payment summary');
+        }
+    }
+
+
+    private compareVendors(vendor1: string, vendor2: string): boolean {
+        if (!vendor1 || !vendor2) return false;
+        
+        const normalize = (str: string) => str.toString().toLowerCase().trim()
+            .replace(/\s+/g, ' ')
+            .replace(/[^\w\s]/g, '');
+        
+        const norm1 = normalize(vendor1);
+        const norm2 = normalize(vendor2);
+        
+        if (norm1 === norm2) return true;
+        
+        if (norm1.length > 3 && norm2.length > 3) {
+            return norm1.includes(norm2) || norm2.includes(norm1);
+        }
+        
+        return false;
+    }
+
+    private async suggestReceiptInvoiceRelationships(receiptId: number, receiptData: any, accountingClientId: number, prisma: any) {
+        try {
+            const receiptAmount = receiptData.total_amount;
+            const receiptDate = receiptData.document_date;
+            const receiptVendor = receiptData.vendor || receiptData.vendor_ein;
+
+            if (!receiptAmount || !receiptVendor) {
+                console.log(`[AUTO_RELATIONSHIP] Insufficient receipt data for automatic relationship suggestion`);
+                return;
+            }
+
+            const potentialInvoices = await prisma.document.findMany({
+                where: {
+                    accountingClientId: accountingClientId,
+                    type: 'Invoice',
+                    id: { not: receiptId }
+                },
+                include: {
+                    processedData: true,
+                    paymentSummary: true,
+                    parentRelations: {
+                        where: { relationshipType: DocumentRelationType.PAYMENT }
+                    }
+                }
+            });
+
+            for (const invoice of potentialInvoices) {
+                if (!invoice.processedData?.extractedFields) continue;
+
+                const invoiceData = typeof invoice.processedData.extractedFields === 'string' 
+                    ? JSON.parse(invoice.processedData.extractedFields)
+                    : invoice.processedData.extractedFields;
+
+                const extractedInvoiceData = invoiceData?.result || invoiceData;
+                const invoiceAmount = extractedInvoiceData.total_amount;
+                const invoiceVendor = extractedInvoiceData.vendor || extractedInvoiceData.vendor_ein;
+
+                const amountMatch = Math.abs(receiptAmount - invoiceAmount) <= (invoiceAmount * 0.01);
+                
+                const vendorMatch = this.compareVendors(receiptVendor, invoiceVendor);
+
+                const remainingAmount = invoice.paymentSummary?.remainingAmount || invoiceAmount;
+                const canAcceptPayment = remainingAmount >= receiptAmount;
+
+                if (amountMatch && vendorMatch && canAcceptPayment) {
+                    await prisma.documentRelationship.create({
+                        data: {
+                            parentDocumentId: invoice.id,
+                            childDocumentId: receiptId,
+                            relationshipType: DocumentRelationType.PAYMENT,
+                            paymentAmount: receiptAmount,
+                            notes: 'Automatically linked based on matching amount and vendor'
+                        }
+                    });
+
+                    await this.updatePaymentSummaryInTransaction(invoice.id, prisma);
+
+                    console.log(`[AUTO_RELATIONSHIP] Automatically linked receipt ${receiptId} to invoice ${invoice.id} (amount: ${receiptAmount})`);
+                    break; 
+                }
+            }
+        } catch (error) {
+            console.error(`[AUTO_RELATIONSHIP] Failed to suggest relationships for receipt ${receiptId}:`, error);
+        }
+    }
+
+async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
         let uploadResult;
         let fileKey;
         
@@ -1018,6 +1222,20 @@ export class FilesService {
                     }
                 });
 
+                if (processedData.result.document_type === 'Invoice') {
+                    const totalAmount = processedData.result.total_amount || 0;
+                    await prisma.paymentSummary.create({
+                        data: {
+                            documentId: document.id,
+                            totalAmount,
+                            paidAmount: 0,
+                            remainingAmount: totalAmount,
+                            paymentStatus: PaymentStatus.UNPAID
+                        }
+                    });
+                    console.log(`[PAYMENT_SUMMARY] Created payment summary for new invoice ${document.id} with total ${totalAmount}`);
+                }
+
                 if (processedData.result.duplicate_detection) {
                     try {
                         const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
@@ -1081,24 +1299,8 @@ export class FilesService {
                     }
                 }
 
-                if (processedData.userCorrections && processedData.userCorrections.length > 0) {
-                    try {
-                        for (const correction of processedData.userCorrections) {
-                            await prisma.userCorrection.create({
-                                data: {
-                                    documentId: document.id,
-                                    userId: user.id,
-                                    correctionType: this.mapCorrectionType(correction.field),
-                                    originalValue: correction.originalValue,
-                                    correctedValue: correction.newValue,
-                                    confidence: null,
-                                    applied: false
-                                }
-                            });
-                        }
-                    } catch (correctionError) {
-                        console.warn('[USER_CORRECTION_WARNING]', correctionError);
-                    }
+                if (processedData.result.document_type === 'Receipt') {
+                    await this.suggestReceiptInvoiceRelationships(document.id, processedData.result, accountingClientRelation.id, prisma);
                 }
 
                 if (processedData.result.line_items && processedData.result.line_items.length > 0) {

@@ -121,6 +121,7 @@ export class FilesController {
         return this.fileMangementService.deleteDocumentRelation(parseInt(relationId), user);
     }
 
+
     @Put('document/:documentId/payment-status')
     updatePaymentStatus(
         @Param('documentId') documentId: string,
@@ -143,7 +144,7 @@ export class FilesController {
 
     @Get(':company/available-payments/:invoiceId')
     getAvailablePaymentDocuments(
-    @Param('company') company: string,
+        @Param('company') company: string,
         @Param('invoiceId') invoiceId: string,
         @Req() req: Request & { user: User }
     ) {
@@ -151,5 +152,4 @@ export class FilesController {
         const user = req.user as User;
         return this.fileMangementService.getAvailablePaymentDocuments(ein, parseInt(invoiceId), user);
     }
-
 }

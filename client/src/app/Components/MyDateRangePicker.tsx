@@ -59,7 +59,7 @@ export function MyDateRangePicker({ dateRange, setDateRange }: MyDateRangePicker
     } else if (range.from) {
       return `From: ${format(range.from, 'MMM dd, yyyy')}`;
     }
-    return language==='ro'?'Selecteaza interval date':'Select date range';
+    return language==='ro'?'Selecteaza date':'Select dates';
   };
   
   return (
