@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useGetRelatedDocumentsQuery, useGetFilesQuery, useUpdateDocumentReferencesMutation } from '@/redux/slices/apiSlice';
+import { skipToken } from '@reduxjs/toolkit/query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Link, FileText, Receipt, CreditCard, FileSignature, 
-  BarChart3, Send, Download, Calendar, ExternalLink,
-  Search, Filter, RefreshCw
+  BarChart3, Send, Download, Calendar, ExternalLink, RefreshCw, Search, Filter
 } from 'lucide-react';
 import { useSelector } from 'react-redux';
 
@@ -22,8 +23,21 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   document,
   onRefresh
 }) => {
+  const [manualMode, setManualMode] = useState(false);
+  const [selectedReferences, setSelectedReferences] = useState<number[]>([]);
+  const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const companyEin = document?.accountingClientEin || document?.clientCompanyEin || document?.companyEin || document?.accountingClientId || null;
+  const docId = document?.id;
+
+  const { data: allDocsData = [], isLoading: allDocsLoading } = useGetFilesQuery(
+    companyEin ? { company: companyEin } : skipToken,
+    { skip: !manualMode || !companyEin }
+  );
+  const [updateReferences, { isLoading: isSaving }] = useUpdateDocumentReferencesMutation();
   const [relatedDocuments, setRelatedDocuments] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<DocumentType | ''>('');
   const [filteredDocs, setFilteredDocs] = useState<any[]>([]);
@@ -130,71 +144,23 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }
   };
 
-  // Mock function to fetch related documents - replace with actual API call
-  const fetchRelatedDocuments = async () => {
-    setLoading(true);
-    try {
-      // This is a mock implementation
-      // Replace with actual API call like:
-      // const response = await getRelatedDocuments({ documentId: document.id, clientCompanyEin });
-      
-      // Mock data for demonstration
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockRelatedDocs = [
-        {
-          id: 2,
-          name: "Receipt_001.pdf",
-          type: "Receipt",
-          createdAt: "2024-01-15T10:00:00Z",
-          signedUrl: "#",
-          processedData: [{
-            extractedFields: {
-              result: {
-                document_date: "15-01-2024",
-                total_amount: 500
-              }
-            }
-          }]
-        },
-        {
-          id: 3,
-          name: "Bank_Statement_Jan.pdf", 
-          type: "Bank Statement",
-          createdAt: "2024-01-20T14:30:00Z",
-          signedUrl: "#",
-          processedData: [{
-            extractedFields: {
-              result: {
-                statement_period_start: "01-01-2024"
-              }
-            }
-          }]
-        },
-        {
-          id: 4,
-          name: "Contract_Service_2024.pdf",
-          type: "Contract",
-          createdAt: "2024-01-25T09:15:00Z",
-          signedUrl: "#",
-          processedData: [{
-            extractedFields: {
-              result: {
-                contract_date: "25-01-2024",
-                total_amount: 15000
-              }
-            }
-          }]
-        }
-      ];
-      
-      setRelatedDocuments(mockRelatedDocs);
-    } catch (error) {
-      console.error('Failed to fetch related documents:', error);
-    } finally {
-      setLoading(false);
+  const { data: relatedDocsData, isLoading: relatedDocsLoading } = useGetRelatedDocumentsQuery(
+    document && document.id ? { docId: document.id } : skipToken,
+    { skip: !isOpen || !document?.id }
+  );
+
+  useEffect(() => {
+    if (isOpen && document && document.id && relatedDocsData) {
+      setRelatedDocuments(relatedDocsData);
+      setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
+    } else if (!isOpen) {
+      setRelatedDocuments([]);
+      setSelectedReferences([]);
     }
-  };
+    setManualMode(false);
+    setSaveStatus('idle');
+    setSaveError(null);
+  }, [isOpen, document, relatedDocsData]);
 
   useEffect(() => {
     let filtered = relatedDocuments;
@@ -212,18 +178,32 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     setFilteredDocs(filtered);
   }, [relatedDocuments, searchTerm, selectedType]);
 
-  useEffect(() => {
-    if (isOpen) {
-      fetchRelatedDocuments();
-    }
-  }, [isOpen, document.id]);
-
   const handleTooLongString = (str: string): string => {
-    if (str.length > 30) return str.slice(0, 30) + '...';
+    if (str.length > 30) return str.slice(0, 30) + '...'; 
     return str;
   };
 
   if (!isOpen) return null;
+
+  const handleToggleReference = (docId: number) => {
+    setSelectedReferences((prev) =>
+      prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
+    );
+  };
+  const handleSaveReferences = async () => {
+    if (!document?.id) return;
+    setSaveStatus('saving');
+    setSaveError(null);
+    try {
+      await updateReferences({ docId: document.id, references: selectedReferences }).unwrap();
+      setSaveStatus('success');
+      onRefresh();
+      setManualMode(false);
+    } catch (e: any) {
+      setSaveStatus('error');
+      setSaveError(e?.data?.message || 'Failed to update references');
+    }
+  };
 
   return (
     <AnimatePresence>
@@ -260,14 +240,11 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
               
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => {
-                    fetchRelatedDocuments();
-                    onRefresh();
-                  }}
+                  onClick={onRefresh}
                   className="p-2 text-[var(--primary)] bg-[var(--primary)]/10 hover:bg-[var(--primary)] hover:text-white rounded-lg transition-colors"
-                  disabled={loading}
+                  disabled={relatedDocsLoading}
                 >
-                  <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                  <RefreshCw size={18} className={relatedDocsLoading ? 'animate-spin' : ''} />
                 </button>
                 
                 <button
@@ -314,7 +291,70 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
 
           {/* Content */}
           <div className="p-6 max-h-[60vh] overflow-y-auto">
-            {loading ? (
+            {/* Manual Picker Toggle */}
+            <div className="mb-4 flex items-center gap-4">
+              <button
+                className={`px-4 py-2 rounded-lg border font-medium transition-colors ${manualMode ? 'bg-[var(--primary)] text-white' : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'}`}
+                onClick={() => setManualMode((m) => !m)}
+                disabled={relatedDocsLoading || allDocsLoading}
+              >
+                {manualMode
+                  ? language === 'ro' ? 'Anulează editarea' : 'Cancel Edit'
+                  : language === 'ro' ? 'Editează referințele manual' : 'Edit References Manually'}
+              </button>
+              {manualMode && (
+                <span className="text-[var(--text3)] text-sm">
+                  {language === 'ro'
+                    ? 'Selectează manual documentele asociate. Modificările vor fi salvate doar după apăsarea butonului Salvează.'
+                    : 'Manually select related documents. Changes are saved only after pressing Save.'}
+                </span>
+              )}
+            </div>
+            {manualMode ? (
+              <div>
+                {allDocsLoading ? (
+                  <div className="flex items-center gap-2 text-[var(--text2)]"><RefreshCw className="animate-spin" /> {language === 'ro' ? 'Se încarcă lista...' : 'Loading list...'}</div>
+                ) : (
+                  <>
+                    <div className="mb-3">
+                      <span className="font-medium text-[var(--text2)]">{language === 'ro' ? 'Documente disponibile:' : 'Available documents:'}</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                      {allDocsData.filter((doc: any) => doc.id !== docId).map((doc: any) => {
+                        const FileIcon = getFileIcon(doc.type);
+                        const iconColors = getFileIconColor(doc.type);
+                        return (
+                          <label key={doc.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${selectedReferences.includes(doc.id) ? 'border-[var(--primary)] bg-[var(--primary)]/10' : 'border-[var(--text4)] bg-[var(--background)] hover:border-[var(--primary)]/40'}`}>
+                            <input
+                              type="checkbox"
+                              checked={selectedReferences.includes(doc.id)}
+                              onChange={() => handleToggleReference(doc.id)}
+                              className="accent-[var(--primary)] w-5 h-5"
+                            />
+                            <div className={`w-10 h-10 ${iconColors.bg} rounded-lg flex items-center justify-center`}><FileIcon size={18} className={iconColors.text} /></div>
+                            <div className="flex-1 min-w-0">
+                              <span className="block font-medium text-[var(--text1)] truncate">{doc.name}</span>
+                              <span className="block text-xs text-[var(--text2)]">{doc.type}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="mt-4 flex gap-3 items-center">
+                      <button
+                        className="px-6 py-2 rounded-xl bg-[var(--primary)] text-white font-medium hover:bg-[var(--primary)]/90 transition-colors"
+                        onClick={handleSaveReferences}
+                        disabled={isSaving || saveStatus === 'success'}
+                      >
+                        {isSaving ? (language === 'ro' ? 'Se salvează...' : 'Saving...') : (language === 'ro' ? 'Salvează referințele' : 'Save References')}
+                      </button>
+                      {saveStatus === 'success' && <span className="text-green-600 font-medium">{language === 'ro' ? 'Salvat!' : 'Saved!'}</span>}
+                      {saveStatus === 'error' && <span className="text-red-500 font-medium">{saveError}</span>}
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : relatedDocsLoading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="flex items-center gap-3 text-[var(--text2)]">
                   <RefreshCw size={20} className="animate-spin" />

@@ -27,6 +27,61 @@ interface SmartArticleResult {
 
 @Injectable()
 export class FilesService {
+    async updateReferences(docId: number, references: number[], user: User) {
+        // Validate access
+        const document = await this.prisma.document.findUnique({ where: { id: docId } });
+        if (!document) throw new NotFoundException('Document not found');
+        const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: document.accountingClientId } });
+        if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+            throw new UnauthorizedException('No access to this document');
+        }
+        // Normalize references
+        const newRefs = Array.from(new Set((references || []).filter(id => typeof id === 'number' && id !== docId)));
+        const oldRefs = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number' && id !== docId) : [];
+        // Update this document
+        await this.prisma.document.update({ where: { id: docId }, data: { references: newRefs } });
+        // Add docId to each new referenced doc
+        await Promise.all(newRefs.map(async refId => {
+            const refDoc = await this.prisma.document.findUnique({ where: { id: refId } });
+            if (refDoc) {
+                const updatedRefs = refDoc.references ? Array.from(new Set([...refDoc.references, docId])) : [docId];
+                await this.prisma.document.update({ where: { id: refId }, data: { references: updatedRefs } });
+            }
+        }));
+        // Remove docId from docs no longer referenced
+        const removedRefs = oldRefs.filter(id => !newRefs.includes(id));
+        await Promise.all(removedRefs.map(async refId => {
+            const refDoc = await this.prisma.document.findUnique({ where: { id: refId } });
+            if (refDoc && Array.isArray(refDoc.references)) {
+                const updatedRefs = refDoc.references.filter((id: number) => id !== docId);
+                await this.prisma.document.update({ where: { id: refId }, data: { references: updatedRefs } });
+            }
+        }));
+        return { success: true };
+    }
+
+    async getRelatedDocuments(docId: number, user: User) {
+        const document = await this.prisma.document.findUnique({ where: { id: docId } });
+        if (!document) throw new NotFoundException('Document not found');
+
+        const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: document.accountingClientId } });
+        if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+            throw new UnauthorizedException('No access to this document');
+        }
+
+        const referenceIds: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
+        if (referenceIds.length === 0) return [];
+
+        const relatedDocs = await this.prisma.document.findMany({
+            where: { id: { in: referenceIds } },
+            include: {
+                processedData: true
+            }
+        });
+
+        return relatedDocs;
+    }
+
 
     constructor(
         private prisma: PrismaService,
@@ -502,6 +557,56 @@ export class FilesService {
             }).promise();
 
             const result = await this.prisma.$transaction(async (prisma) => {
+                // --- AI/logic-based auto-detect references ---
+                let references: number[] = [];
+                if (Array.isArray(processedData.references) && processedData.references.length > 0) {
+                    references = processedData.references
+                        .filter((id: any) => typeof id === 'number')
+                        .filter((id: number) => id !== undefined && id !== null);
+                } else {
+                    // Auto-detect references if not provided
+                    // Fetch all other documents for the same accounting client
+                    const allDocs = await prisma.document.findMany({
+                        where: {
+                            accountingClientId: accountingClientRelation.id
+                        },
+                        include: { processedData: true }
+                    });
+                    // Compute similarity based on date, amount, counterparty, etc.
+                    // Example: match by document_type, close date, similar amount
+                    const newDocType = processedData.result?.document_type;
+                    const newDocDate = processedData.result?.document_date || processedData.result?.date;
+                    const newDocAmount = processedData.result?.total_amount || processedData.result?.amount;
+                    const SIMILARITY_THRESHOLD = 0.7;
+                    const scoredDocs = allDocs
+                        .filter(d => d.processedData && d.id !== undefined)
+                        .map(doc => {
+                            let score = 0;
+                            const docType = doc.type;
+                            let extractedFields: any = doc.processedData?.extractedFields;
+                            if (typeof extractedFields === 'string') {
+                                try {
+                                    extractedFields = JSON.parse(extractedFields);
+                                } catch {
+                                    extractedFields = {};
+                                }
+                            }
+                            const docResult = extractedFields?.result || extractedFields;
+                            const docDate = docResult?.document_date || docResult?.date;
+                            const docAmount = docResult?.total_amount || docResult?.amount;
+                            if (docType && newDocType && docType === newDocType) score += 0.4;
+                            if (docDate && newDocDate && docDate === newDocDate) score += 0.3;
+                            if (docAmount && newDocAmount && Math.abs(Number(docAmount) - Number(newDocAmount)) < 5) score += 0.3;
+                            return { id: doc.id, score };
+                        })
+                        .filter(d => d.score >= SIMILARITY_THRESHOLD)
+                        .sort((a, b) => b.score - a.score)
+                        .slice(0, 5); // top 5 similar
+                    references = scoredDocs.map(d => d.id);
+                }
+                // Remove self-referencing (will not have docId yet, but will after creation)
+                // We'll update this doc's references after creation to ensure no self-reference
+                // Create the document
                 const document = await prisma.document.create({
                     data: {
                         name: file.originalname,
@@ -511,9 +616,23 @@ export class FilesService {
                         contentType: file.mimetype,
                         fileSize: file.size,
                         documentHash: documentHash,
-                        accountingClientId: accountingClientRelation.id
+                        accountingClientId: accountingClientRelation.id,
+                        references: [] // temporarily empty, will update after creation
                     }
                 });
+                // Now update bi-directional references
+                const docId = document.id;
+                const filteredReferences = [...new Set(references.filter((id: number) => id !== docId))];
+                // Add this docId to referenced docs
+                await Promise.all(filteredReferences.map(async (refId: number) => {
+                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
+                    if (refDoc) {
+                        const newRefs = refDoc.references ? Array.from(new Set([...refDoc.references, docId])) : [docId];
+                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+                    }
+                }));
+                // Update this document's references
+                await prisma.document.update({ where: { id: docId }, data: { references: filteredReferences } });
 
                 const processedDataDb = await prisma.processedData.create({
                     data: {
@@ -753,35 +872,55 @@ export class FilesService {
     }
 
     async updateFiles(processedData: any, clientCompanyEin: string, user: User, docId: number) {
-        try {
-            const clientCompany = await this.prisma.clientCompany.findUnique({
-                where: {
-                    ein: clientCompanyEin
-                }
+    try {
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein: clientCompanyEin }
+        });
+        if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
+        const accountingClientRelation = await this.prisma.accountingClients.findMany({
+            where: {
+                accountingCompanyId: user.accountingCompanyId,
+                clientCompanyId: clientCompany.id
+            }
+        });
+        if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
+        // --- BEGIN TRANSACTION ---
+        return await this.prisma.$transaction(async (prisma) => {
+            const document = await prisma.document.findUnique({
+                where: { id: docId, accountingClientId: accountingClientRelation[0].id },
+                include: { processedData: true }
             });
-
-            if (!clientCompany) throw new NotFoundException('Failed to find client company in the database');
-
-            const accountingClientRelation = await this.prisma.accountingClients.findMany({
-                where: {
-                    accountingCompanyId: user.accountingCompanyId,
-                    clientCompanyId: clientCompany.id
-                }
-            });
-            if (accountingClientRelation.length === 0) throw new NotFoundException('You don\'t have access to this client company');
-
-            const document = await this.prisma.document.findUnique({
-                where: {
-                    id: docId,
-                    accountingClientId: accountingClientRelation[0].id
-                },
-                include: {
-                    processedData: true
-                }
-            });
-
             if (!document) throw new NotFoundException('Document doesn\'t exist in the database');
-
+            // --- Bi-directional reference update logic ---
+            const oldReferences: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
+            const newReferences: number[] = Array.isArray(processedData.references)
+                ? (processedData.references as unknown[]).filter((id: unknown): id is number => typeof id === 'number' && id !== docId)
+                : [];
+            const uniqueNewReferences: number[] = [...new Set(newReferences)];
+            // Find added and removed references
+            const addedRefs = uniqueNewReferences.filter(id => !oldReferences.includes(id));
+            const removedRefs = oldReferences.filter(id => !uniqueNewReferences.includes(id));
+            // Add this docId to added referenced docs
+            await Promise.all(addedRefs.map(async (refId) => {
+                const refDoc = await prisma.document.findUnique({ where: { id: refId } });
+                if (refDoc) {
+                    const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
+                    const newRefs: number[] = Array.from(new Set([...currentRefs, docId]));
+                    await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+                }
+            }));
+            // Remove this docId from removed referenced docs
+            await Promise.all(removedRefs.map(async (refId) => {
+                const refDoc = await prisma.document.findUnique({ where: { id: refId } });
+                if (refDoc) {
+                    const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
+                    const newRefs: number[] = currentRefs.filter((id: number) => id !== docId);
+                    await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
+                }
+            }));
+            // Update the document's references
+            await prisma.document.update({ where: { id: docId }, data: { references: uniqueNewReferences } });
+            // --- Continue with processedData update and user corrections ---
             if (document.processedData) {
                 await this.detectAndSaveUserCorrections(
                     document.processedData.extractedFields,
@@ -790,22 +929,19 @@ export class FilesService {
                     user.id
                 );
             }
-
-            const updatedProcessedData = await this.prisma.processedData.update({
-                where: {
-                    documentId: docId
-                },
-                data: {
-                    extractedFields: processedData
-                }
+            const updatedProcessedData = await prisma.processedData.update({
+                where: { documentId: docId },
+                data: { extractedFields: processedData }
             });
-
-            return { document, updatedProcessedData }
-        } catch (e) {
-            if (e instanceof NotFoundException) throw e;
-            throw new InternalServerErrorException("Failed to update the file's data!")
-        }
+            return { document, updatedProcessedData };
+        });
+        // --- END TRANSACTION ---
+    } catch (e) {
+        if (e instanceof NotFoundException) throw e;
+        throw new InternalServerErrorException("Failed to update the file's data!")
     }
+}
+
 
     private async detectAndSaveUserCorrections(originalData: any, newData: any, documentId: number, userId: number) {
         const corrections = [];

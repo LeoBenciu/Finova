@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Delete, Post, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Post, Patch, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -9,6 +9,16 @@ import { Request } from 'express';
 @UseGuards(JwtGuard)
 @Controller('files')
 export class FilesController {
+
+    @Patch(':docId/references')
+    async updateReferences(
+        @Param('docId') docId: string,
+        @Body('references') references: number[],
+        @Req() req: Request & { user: User }
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.updateReferences(Number(docId), references, user);
+    }
     constructor(private fileMangementService: FilesService){}
 
     @Get(':company')

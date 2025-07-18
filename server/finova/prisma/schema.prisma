@@ -53,6 +53,7 @@ model Document {
   documentHash          String?
   parentRelations       DocumentRelationship[]   @relation("ParentDocumentRelations")
   childRelations        DocumentRelationship[]   @relation("ChildDocumentRelations")
+  references            Int[]
   accountingClientId    Int
   accountingClient      AccountingClients        @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
   processedData         ProcessedData?

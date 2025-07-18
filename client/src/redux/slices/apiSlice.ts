@@ -220,6 +220,22 @@ export const finovaApi = createApi({
             providesTags: ['ComplianceAlerts']
         }),
 
+        getRelatedDocuments: build.query({
+            query: ({ docId }) => ({
+                url: `/files/${docId}/related`,
+                method: 'GET',
+            }),
+        }),
+
+        updateDocumentReferences: build.mutation({
+            query: ({ docId, references }) => ({
+                url: `/files/${docId}/references`,
+                method: 'PATCH',
+                body: { references },
+            }),
+            invalidatesTags: ['Files']
+        }),
+
         updateDuplicateStatus: build.mutation({
             query:({duplicateCheckId, status})=>({
                 url:`/files/duplicate-status/${duplicateCheckId}`,
@@ -358,6 +374,8 @@ export const finovaApi = createApi({
 export const {useLoginMutation, useSignupMutation, useExtractDataMutation, 
     useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
 useCreateClientCompanyMutation,useGetUserDataQuery,
+useGetRelatedDocumentsQuery,
+useUpdateDocumentReferencesMutation,
 useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
 useModifyUserAccountMutation,useModifyUserPasswordMutation,
 useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
