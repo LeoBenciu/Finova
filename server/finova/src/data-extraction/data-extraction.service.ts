@@ -739,6 +739,100 @@ export class DataExtractionService {
     
         if (processingPhase === 0) {
             this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
+            if (processingPhase === 0) {
+                this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
+                
+                // Special handling for receipts - resolve references even in categorization phase
+                if (extractedData.document_type === 'Receipt' && 
+                    Array.isArray(extractedData.referenced_numbers) && 
+                    extractedData.referenced_numbers.length > 0) {
+                    
+                    console.log('🔗 REFERENCE RESOLUTION DEBUG (Categorization Phase):');
+                    console.log(`   - Document Type: ${extractedData.document_type}`);
+                    console.log(`   - Referenced numbers found: ${JSON.stringify(extractedData.referenced_numbers)}`);
+                    
+                    const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
+                        .map(n => String(n).trim())
+                        .filter(Boolean))];
+            
+                    if (refNumbers.length > 0) {
+                        const candidateDocs = await this.prisma.document.findMany({
+                            where: {
+                                accountingClientId: accountingClientRelation.id,
+                                processedData: { isNot: null }
+                            },
+                            include: { processedData: true }
+                        });
+            
+                        console.log(`   - Candidate documents found: ${candidateDocs.length}`);
+            
+                        const referenceIds: number[] = [];
+                        const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
+            
+                        for (const doc of candidateDocs) {
+                            let fields: any = doc.processedData?.extractedFields;
+                            if (!fields) {
+                                console.log(`   - Doc ${doc.id} (${doc.name}): No processed fields`);
+                                continue;
+                            }
+                            
+                            if (typeof fields === 'string') {
+                                try { 
+                                    fields = JSON.parse(fields); 
+                                } catch { 
+                                    console.log(`   - Doc ${doc.id} (${doc.name}): Failed to parse fields`);
+                                    continue; 
+                                }
+                            }
+                            
+                            const res = fields.result ?? fields;
+                            const possibleNumbers = [
+                                res.document_number,
+                                res.invoice_number,
+                                res.receipt_number,
+                                res.contract_number,
+                                res.order_number,
+                                res.report_number,
+                                res.statement_number
+                            ]
+                            .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
+                            .filter(Boolean);
+            
+                            console.log(`   - Doc ${doc.id} (${doc.name}): Numbers found: ${JSON.stringify(possibleNumbers)}`);
+            
+                            // Check each reference against each possible number
+                            for (const ref of refNumbers) {
+                                for (const num of possibleNumbers) {
+                                    const normalizedRef = normalize(ref);
+                                    const normalizedNum = normalize(num);
+                                    console.log(`     - Comparing "${ref}" (${normalizedRef}) with "${num}" (${normalizedNum}): ${normalizedRef === normalizedNum ? 'MATCH' : 'NO MATCH'}`);
+                                    
+                                    if (normalizedRef === normalizedNum) {
+                                        if (!referenceIds.includes(doc.id)) {
+                                            referenceIds.push(doc.id);
+                                            console.log(`   - ✅ MATCH FOUND: Doc ${doc.id} "${num}" matches reference "${ref}"`);
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+            
+                        if (referenceIds.length > 0) {
+                            extractedData.references = referenceIds;
+                            console.log(`🔗 Resolved ${referenceIds.length} explicit references: ${referenceIds}`);
+                            this.logger.log(`🔗 Resolved ${referenceIds.length} explicit references during categorization.`);
+                        } else {
+                            console.log(`🔗 No references resolved. No matching documents found.`);
+                        }
+                    }
+                }
+                
+                if (extractedData.document_type === 'Invoice') {
+                    this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
+                }
+            }
+            
             if (extractedData.document_type === 'Invoice') {
                 this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
             }
