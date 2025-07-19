@@ -28,7 +28,8 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const clientEin = useSelector((state: any) => state.auth.user?.clientEin);
+  const clientEin = useSelector((state: any) => state.auth?.user?.clientEin || state.user?.clientEin || null);
+  const language = useSelector((state: any) => state.user?.language || state.auth?.user?.language || 'en');
 
   const companyEin = document?.accountingClientEin || document?.clientCompanyEin || document?.companyEin || document?.accountingClientId || null;
   const docId = document?.id;
@@ -43,8 +44,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<DocumentType | ''>('');
   const [filteredDocs, setFilteredDocs] = useState<any[]>([]);
-
-  const language = useSelector((state: {user: {language: string}}) => state.user.language);
 
   const docTypeTranslations = {
     "Invoice": "Factura",
@@ -147,8 +146,8 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   };
 
   const { data: relatedDocsData, isLoading: relatedDocsLoading } = useGetRelatedDocumentsQuery(
-    document && document.id ? { docId: document.id, clientEin } : skipToken,
-    { skip: !isOpen || !document?.id }
+    document && document.id && clientEin ? { docId: document.id, clientEin } : skipToken,
+    { skip: !isOpen || !document?.id || !clientEin }
   );
 
   useEffect(() => {
@@ -169,7 +168,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
 
     if (searchTerm) {
       filtered = filtered.filter(doc => 
-        doc.name.toLowerCase().includes(searchTerm.toLowerCase())
+        doc.name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -181,6 +180,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   }, [relatedDocuments, searchTerm, selectedType]);
 
   const handleTooLongString = (str: string): string => {
+    if (!str) return '';
     if (str.length > 30) return str.slice(0, 30) + '...'; 
     return str;
   };
@@ -192,6 +192,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
       prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
     );
   };
+
   const handleSaveReferences = async () => {
     if (!document?.id) return;
     setSaveStatus('saving');
@@ -223,7 +224,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
           className="bg-[var(--foreground)] rounded-3xl shadow-2xl border border-[var(--text4)] w-full max-w-4xl max-h-[90vh] overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Header */}
           <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--primary)]/10 to-blue-500/10">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -235,7 +235,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                     {language === 'ro' ? 'Documente Asociate' : 'Related Documents'}
                   </h2>
                   <p className="text-[var(--text2)] text-sm">
-                    {language === 'ro' ? 'Pentru' : 'For'}: {handleTooLongString(document.name)}
+                    {language === 'ro' ? 'Pentru' : 'For'}: {handleTooLongString(document?.name || '')}
                   </p>
                 </div>
               </div>
@@ -259,7 +259,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
             </div>
           </div>
 
-          {/* Search and Filters */}
           <div className="p-6 border-b border-[var(--text4)] bg-[var(--background)]">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1 relative">
@@ -291,9 +290,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
             </div>
           </div>
 
-          {/* Content */}
           <div className="p-6 max-h-[60vh] overflow-y-auto">
-            {/* Manual Picker Toggle */}
             <div className="mb-4 flex items-center gap-4">
               <button
                 className={`px-4 py-2 rounded-lg border font-medium transition-colors ${manualMode ? 'bg-[var(--primary)] text-white' : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'}`}
@@ -322,7 +319,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                       <span className="font-medium text-[var(--text2)]">{language === 'ro' ? 'Documente disponibile:' : 'Available documents:'}</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                      {allDocsData.filter((doc: any) => doc.id !== docId).map((doc: any) => {
+                      {(allDocsData?.documents || []).filter((doc: any) => doc.id !== docId).map((doc: any) => {
                         const FileIcon = getFileIcon(doc.type);
                         const iconColors = getFileIconColor(doc.type);
                         return (
@@ -430,7 +427,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
             )}
           </div>
 
-          {/* Footer */}
           <div className="p-6 border-t border-[var(--text4)] bg-[var(--background)]">
             <div className="flex items-center justify-between">
               <p className="text-[var(--text3)] text-sm">
