@@ -764,6 +764,9 @@ export class DataExtractionService {
                 .map(n => String(n).trim())
                 .filter(Boolean))];
 
+                console.log('🔗 REFERENCE RESOLUTION DEBUG:');
+                console.log(`   - Referenced numbers found: ${JSON.stringify(refNumbers)}`);
+
                 if (refNumbers.length > 0) {
                     const candidateDocs = await this.prisma.document.findMany({
                         where: {
@@ -773,8 +776,12 @@ export class DataExtractionService {
                         include: { processedData: true }
                     });
 
+                    console.log(`   - Candidate documents found: ${candidateDocs.length}`);
+
                     const referenceIds: number[] = [];
                     const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
+
+                    console.log(`   - Normalized references: ${refNumbers.map(ref => normalize(ref))}`);
 
                     for (const doc of candidateDocs) {
                         let fields: any = doc.processedData?.extractedFields;
@@ -795,14 +802,30 @@ export class DataExtractionService {
                         .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
                         .filter(Boolean);
 
-                        if (possibleNumbers.some((num: string) => refNumbers.some(ref => normalize(ref) === normalize(num)))) {
-                            referenceIds.push(doc.id);
+                        console.log(`   - Doc ${doc.id} (${doc.name}): Numbers found: ${JSON.stringify(possibleNumbers)}`);
+                        console.log(`   - Doc ${doc.id} (${doc.name}): Normalized numbers: ${possibleNumbers.map(normalize)}`);
+
+                        for (const ref of refNumbers) {
+                            for (const num of possibleNumbers) {
+                                const normalizedRef = normalize(ref);
+                                const normalizedNum = normalize(num);
+                                console.log(`     - Comparing "${ref}" (${normalizedRef}) with "${num}" (${normalizedNum}): ${normalizedRef === normalizedNum ? 'MATCH' : 'NO MATCH'}`);
+                                
+                                if (normalizedRef === normalizedNum) {
+                                    referenceIds.push(doc.id);
+                                    console.log(`   - ✅ MATCH FOUND: Doc ${doc.id} "${num}" matches reference "${ref}"`);
+                                    break;
+                                }
+                            }
                         }
                     }
 
                     if (referenceIds.length > 0) {
                         extractedData.references = referenceIds;
+                        console.log(`🔗 Resolved ${referenceIds.length} explicit references: ${referenceIds}`);
                         this.logger.log(`🔗 Resolved ${referenceIds.length} explicit references for current document.`);
+                    } else {
+                        console.log(`🔗 No references resolved. No matching documents found.`);
                     }
                 }
             }
