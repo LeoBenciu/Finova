@@ -206,7 +206,7 @@ export const finovaApi = createApi({
 
         getSomeFiles: build.mutation({
             query:({docIds, clientEin})=>({
-                url:'/files/some',
+                url:'/files/some-files',
                 method:'POST',
                 body: {
                     docIds: [...docIds],
