@@ -120,12 +120,6 @@ export class FilesService {
             throw new NotFoundException('Document not found');
         }
 
-        const hasAccess = await this.verifyDocumentAccess(docId, user);
-        if (!hasAccess) {
-            console.error(`⛔ Unauthorized access attempt: User ${user.id} tried to access document ${docId}`);
-            throw new UnauthorizedException('No access to this document');
-        }
-
         const referenceIds: number[] = Array.isArray(document.references) 
             ? document.references.filter((id: any): id is number => typeof id === 'number' && id !== docId) 
             : [];

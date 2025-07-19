@@ -150,27 +150,23 @@ const FileManagementPage = () => {
     console.log('IntervalDateFitler:', filteredFiles);
   },[filteredFiles])
 
-  // Enhanced filtering logic with payment status
   useEffect(()=>{
     if(!files?.documents) return;
     
     let newFilteredFiles = files.documents;
     
-    // Name search filter
     if(nameSearch.length>0){
        newFilteredFiles = newFilteredFiles.filter((file:any)=>(
         file.name.toLowerCase().includes(nameSearch.toLowerCase())
       ))
     };
     
-    // Document type filter
     if(typeFilter){
       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
         file.type===typeFilter
       ))
     };
     
-    // Payment status filter
     if(paymentStatus){
       newFilteredFiles = newFilteredFiles.filter((file:any)=>{
         const filePaymentStatus = file.paymentSummary?.paymentStatus;
@@ -178,7 +174,6 @@ const FileManagementPage = () => {
       });
     }
     
-    // Date range filters
     if(intervalDateFilter.from !== undefined){
       const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
       newFilteredFiles = newFilteredFiles.filter((file:any)=>{
@@ -233,7 +228,6 @@ const FileManagementPage = () => {
     }).format(amount);
   };
 
-  // Bulk selection functions
   const toggleFileSelection = (fileId: number) => {
     const newSelected = new Set(selectedFiles);
     if (newSelected.has(fileId)) {
@@ -258,10 +252,9 @@ const FileManagementPage = () => {
     setShowBulkActions(false);
   };
 
-  const isAllSelected = filteredFiles?.documents && selectedFiles.size === filteredFiles.documents.length && filteredFiles.documents.length > 0;
+  const isAllSelected = filteredFiles?.documents && selectedFiles.size === filteredFiles?.documents?.length && filteredFiles?.documents?.length > 0;
   const isPartiallySelected = selectedFiles.size > 0 && selectedFiles.size < (filteredFiles?.documents?.length || 0);
 
-  // Bulk actions
   const handleBulkDelete = async () => {
     setBulkAction('delete');
     setIsSureModal(true);
@@ -829,7 +822,7 @@ const FileManagementPage = () => {
                             </div>
                             {file.type === 'Invoice' && paymentSummary && (
                               <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-                                {language === 'ro' ? (file?.processedData[0]?.extractedFields?.result.direction === 'outgoing'? 'Incasat':'Platit') : (file.processed_data[0].extractedFields.result.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
+                                {language === 'ro' ? (file?.processedData[0]?.extractedFields?.result.direction === 'outgoing'? 'Incasat':'Platit') : (file?.processedData[0]?.extractedFields?.result?.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
                               </span>
                             )}
                           </div>
