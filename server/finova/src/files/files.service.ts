@@ -120,7 +120,7 @@ export class FilesService {
 
     async getSomeFiles(docIds: number[], user: User, clientEin: string) {
     
-        const documents = await this.prisma.document.findMany({ 
+        try{const documents = await this.prisma.document.findMany({ 
             where: { id: { in: docIds } },
             include: { processedData: true }
         });
@@ -158,7 +158,11 @@ export class FilesService {
             throw new UnauthorizedException('You don\'t have access to this client company');
         }
 
-        return documents;
+        return documents;}
+        catch(e){
+            console.log(e);
+            throw e;
+        }
     }
 
     async getRelatedDocuments(docId: number, user: User, clientEin: string) {

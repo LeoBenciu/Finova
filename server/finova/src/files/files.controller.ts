@@ -95,7 +95,7 @@ export class FilesController {
         return this.fileMangementService.getRelatedDocuments(docId, user, clientEin);
     }
 
-    @Get('some-files')
+    @Post('some-files')
     async getSomeFiles(
         @Body('docIds') docIds: number[],
         @Body('clientEin') clientEin: string,

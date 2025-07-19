@@ -204,16 +204,15 @@ export const finovaApi = createApi({
             providesTags: ['Files']
         }),
 
-        getSomeFiles: build.query({
+        getSomeFiles: build.mutation({
             query:({docIds, clientEin})=>({
                 url:'/files/some',
-                method:'GET',
+                method:'POST',
                 body: {
                     docIds: [...docIds],
                     clientEin
                 }
-            }),
-            providesTags: ['Files']
+            })
         }),
 
         getDuplicateAlerts: build.query({
