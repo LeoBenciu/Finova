@@ -204,6 +204,18 @@ export const finovaApi = createApi({
             providesTags: ['Files']
         }),
 
+        getSomeFiles: build.query({
+            query:({docIds, clientEin})=>({
+                url:'/files/some',
+                method:'GET',
+                body: {
+                    docIds: [...docIds],
+                    clientEin
+                }
+            }),
+            providesTags: ['Files']
+        }),
+
         getDuplicateAlerts: build.query({
             query:({company})=>({
                 url:`/files/${company}/duplicate-alerts`,

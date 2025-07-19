@@ -94,4 +94,14 @@ export class FilesController {
         const user = req.user as User;
         return this.fileMangementService.getRelatedDocuments(docId, user, clientEin);
     }
+
+    @Get('some-files')
+    async getSomeFiles(
+        @Body('docIds') docIds: number[],
+        @Body('clientEin') clientEin: string,
+        @Req() req: Request & { user: User }
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.getSomeFiles(docIds, user, clientEin);
+    }
 }

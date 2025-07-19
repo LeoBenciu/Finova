@@ -118,6 +118,49 @@ export class FilesService {
         return { success: true };
     }
 
+    async getSomeFiles(docIds: number[], user: User, clientEin: string) {
+    
+        const documents = await this.prisma.document.findMany({ 
+            where: { id: { in: docIds } },
+            include: { processedData: true }
+        });
+        
+        if (!documents) {
+            console.error(`❌ Document not found with ID: ${docIds}`);
+            throw new NotFoundException('Document not found');
+        }
+
+        const currentUser = await this.prisma.user.findUnique({
+            where: { id: user.id },
+            include: { accountingCompany: true }
+        });
+
+        if (!currentUser) {
+            throw new NotFoundException('User not found in the database');
+        }
+
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein: clientEin }
+        });
+
+        if (!clientCompany) {
+            throw new NotFoundException('Client company doesn\'t exist in the database');
+        }
+
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+            where: {
+                accountingCompanyId: currentUser.accountingCompanyId,
+                clientCompanyId: clientCompany.id
+            }
+        });
+
+        if (!accountingClientRelation) {
+            throw new UnauthorizedException('You don\'t have access to this client company');
+        }
+
+        return documents;
+    }
+
     async getRelatedDocuments(docId: number, user: User, clientEin: string) {
         console.log(`🔍 Fetching related documents for docId: ${docId}`);
         
