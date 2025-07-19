@@ -724,7 +724,11 @@ export class FilesService {
             }).promise();
 
             const result = await this.prisma.$transaction(async (prisma) => {
-                // Create the document first
+
+                let references: number[] = Array.isArray(processedData.result?.references)
+                ? processedData.references.filter((id: any): id is number => typeof id === 'number' && id !== docId)
+                : [];
+
                 const document = await prisma.document.create({
                     data: {
                         name: file.originalname,
@@ -735,22 +739,19 @@ export class FilesService {
                         fileSize: file.size,
                         documentHash: documentHash,
                         accountingClientId: accountingClientRelation.id,
-                        references: []
+                        references: references
                     }
                 });
 
                 const docId = document.id;
 
-                // Handle references
-                let references: number[] = Array.isArray(processedData.references)
-                    ? processedData.references.filter((id: any): id is number => typeof id === 'number' && id !== docId)
-                    : [];
+                let filteredReferences = references.filter((id: number) => id !== docId);
 
-                if (references.length > 0) {
-                    const filteredReferences = [...new Set(references)];
+                if (filteredReferences.length > 0) {
+                    const uniqueReferences = [...new Set(filteredReferences)];
                     
                     try {
-                        const cluster = [...new Set([docId, ...filteredReferences])];
+                        const cluster = [...new Set([docId, ...uniqueReferences])];
                         if (cluster.length > 1) {
                             await this.syncReferences(prisma, cluster);
                             console.log(`✅ Symmetrical references updated for cluster ${cluster.join(', ')}`);
