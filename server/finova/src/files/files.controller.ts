@@ -10,6 +10,18 @@ import { Request } from 'express';
 @Controller('files')
 export class FilesController {
 
+    constructor(private fileMangementService: FilesService){}
+
+    @Post('some-files')
+    async getSomeFiles(
+        @Body('docIds') docIds: number[],
+        @Body('clientEin') clientEin: string,
+        @Req() req: Request & { user: User }
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.getSomeFiles(docIds, user, clientEin);
+    }
+    
     @Patch(':docId/references')
     async updateReferences(
         @Param('docId') docId: string,
@@ -19,7 +31,6 @@ export class FilesController {
         const user = req.user as User;
         return this.fileMangementService.updateReferences(Number(docId), references, user);
     }
-    constructor(private fileMangementService: FilesService){}
 
     @Get(':company')
     getFiles(@Param('company') company:string, @Req() req:Request)
@@ -95,13 +106,4 @@ export class FilesController {
         return this.fileMangementService.getRelatedDocuments(docId, user, clientEin);
     }
 
-    @Post('some-files')
-    async getSomeFiles(
-        @Body('docIds') docIds: number[],
-        @Body('clientEin') clientEin: string,
-        @Req() req: Request & { user: User }
-    ) {
-        const user = req.user as User;
-        return this.fileMangementService.getSomeFiles(docIds, user, clientEin);
-    }
 }
