@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useGetFilesQuery, useUpdateDocumentReferencesMutation, useGetSomeFilesMutation } from '@/redux/slices/apiSlice';
-import { skipToken } from '@reduxjs/toolkit/query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Link, FileText, Receipt, CreditCard, FileSignature, 
@@ -31,13 +30,9 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   const clientEin = useSelector((state: any) => state.auth?.user?.clientEin || state.user?.clientEin || null);
   const language = useSelector((state: any) => state.user?.language || state.auth?.user?.language || 'en');
 
-  const companyEin = document?.accountingClientEin || document?.clientCompanyEin || document?.companyEin || document?.accountingClientId || null;
   const docId = document?.id;
 
-  const { data: allDocsData = [], isLoading: allDocsLoading } = useGetFilesQuery(
-    companyEin ? { company: companyEin } : skipToken,
-    { skip: !manualMode || !companyEin }
-  );
+  const { data: allDocsData = [], isLoading: allDocsLoading } = useGetFilesQuery(clientEin);
   const [updateReferences, { isLoading: isSaving }] = useUpdateDocumentReferencesMutation();
   const [relatedDocuments, setRelatedDocuments] = useState<any[]>([]);
   
@@ -150,7 +145,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   useEffect(() => {
     if (isOpen && document) {
       const refIds: number[] = Array.isArray(document.references) ? document.references : [];
-      const ein = companyEin || clientEin;
+      const ein = clientEin;
       if (refIds.length && ein) {
         getSomeFiles({ docIds: refIds, clientEin: ein });
       } else {
