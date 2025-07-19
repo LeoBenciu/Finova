@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useGetRelatedDocumentsQuery, useGetFilesQuery, useUpdateDocumentReferencesMutation } from '@/redux/slices/apiSlice';
+import { useGetFilesQuery, useUpdateDocumentReferencesMutation, useGetSomeFilesMutation } from '@/redux/slices/apiSlice';
 import { skipToken } from '@reduxjs/toolkit/query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -145,23 +145,27 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }
   };
 
-  const { data: relatedDocsData, isLoading: relatedDocsLoading } = useGetRelatedDocumentsQuery(
-    document && document.id && clientEin ? { docId: document.id, clientEin } : skipToken,
-    { skip: !isOpen || !document?.id || !clientEin }
-  );
+  const [getSomeFiles, { data: relatedDocsData = [], isLoading: relatedDocsLoading }] = useGetSomeFilesMutation();
 
   useEffect(() => {
-    if (isOpen && document && document.id && relatedDocsData) {
-      setRelatedDocuments(relatedDocsData);
-      setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
-    } else if (!isOpen) {
-      setRelatedDocuments([]);
-      setSelectedReferences([]);
+    if (isOpen && document && clientEin) {
+      const refIds: number[] = Array.isArray(document.references) ? document.references : [];
+      if (refIds.length) {
+        getSomeFiles({ docIds: refIds, clientEin });
+      } else {
+        setRelatedDocuments([]);
+        setSelectedReferences([]);
+      }
     }
+  }, [isOpen, document, clientEin, getSomeFiles]);
+
+  useEffect(() => {
+    setRelatedDocuments(relatedDocsData || []);
+    setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
     setManualMode(false);
     setSaveStatus('idle');
     setSaveError(null);
-  }, [isOpen, document, relatedDocsData]);
+  }, [relatedDocsData]);
 
   useEffect(() => {
     let filtered = relatedDocuments;

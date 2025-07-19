@@ -148,7 +148,7 @@ export class FilesService {
         }
 
         const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-            where: {
+            where: { 
                 accountingCompanyId: currentUser.accountingCompanyId,
                 clientCompanyId: clientCompany.id
             }

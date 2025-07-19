@@ -407,4 +407,5 @@ useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
 useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
 useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
-useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery} = finovaApi;
+useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery,
+useGetSomeFilesMutation} = finovaApi;
