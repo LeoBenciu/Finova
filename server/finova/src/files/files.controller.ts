@@ -88,9 +88,10 @@ export class FilesController {
     @Get(':docId/related')
     async getRelatedDocuments(
         @Param('docId', ParseIntPipe) docId: number,
+        @Param('clientEin') clientEin: string,
         @Req() req: Request & { user: User }
     ) {
         const user = req.user as User;
-        return this.fileMangementService.getRelatedDocuments(docId, user);
+        return this.fileMangementService.getRelatedDocuments(docId, user, clientEin);
     }
 }

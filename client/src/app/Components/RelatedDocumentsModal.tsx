@@ -28,6 +28,8 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const clientEin = useSelector((state: any) => state.auth.user?.clientEin);
+
   const companyEin = document?.accountingClientEin || document?.clientCompanyEin || document?.companyEin || document?.accountingClientId || null;
   const docId = document?.id;
 
@@ -145,7 +147,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   };
 
   const { data: relatedDocsData, isLoading: relatedDocsLoading } = useGetRelatedDocumentsQuery(
-    document && document.id ? { docId: document.id } : skipToken,
+    document && document.id ? { docId: document.id, clientEin } : skipToken,
     { skip: !isOpen || !document?.id }
   );
 

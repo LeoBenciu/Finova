@@ -78,6 +78,17 @@ export class FilesService {
         private dataExtractionService: DataExtractionService
     ) {}
 
+    private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
+        await prisma.$transaction(
+            cluster.map((id: number) =>
+                prisma.document.update({
+                    where: { id },
+                    data: { references: cluster.filter(ref => ref !== id) }
+                })
+            )
+        );
+    }
+
     async updateReferences(docId: number, references: number[], user: User) {
         // Validate access
         const document = await this.prisma.document.findUnique({ where: { id: docId } });
@@ -107,7 +118,7 @@ export class FilesService {
         return { success: true };
     }
 
-    async getRelatedDocuments(docId: number, user: User) {
+    async getRelatedDocuments(docId: number, user: User, clientEin: string) {
         console.log(`🔍 Fetching related documents for docId: ${docId}`);
         
         const document = await this.prisma.document.findUnique({ 
@@ -118,6 +129,34 @@ export class FilesService {
         if (!document) {
             console.error(`❌ Document not found with ID: ${docId}`);
             throw new NotFoundException('Document not found');
+        }
+
+        const currentUser = await this.prisma.user.findUnique({
+            where: { id: user.id },
+            include: { accountingCompany: true }
+        });
+
+        if (!currentUser) {
+            throw new NotFoundException('User not found in the database');
+        }
+
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein: clientEin }
+        });
+
+        if (!clientCompany) {
+            throw new NotFoundException('Client company doesn\'t exist in the database');
+        }
+
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+            where: {
+                accountingCompanyId: currentUser.accountingCompanyId,
+                clientCompanyId: clientCompany.id
+            }
+        });
+
+        if (!accountingClientRelation) {
+            throw new UnauthorizedException('You don\'t have access to this client company');
         }
 
         const referenceIds: number[] = Array.isArray(document.references) 
@@ -240,10 +279,10 @@ export class FilesService {
         const mapping: Record<string, DuplicateType> = {
             'exact': DuplicateType.EXACT_MATCH,
             'exact_match': DuplicateType.EXACT_MATCH,
-            'content_match': DuplicateType.CONTENT_MATCH,
             'similar': DuplicateType.SIMILAR_CONTENT,
             'similar_content': DuplicateType.SIMILAR_CONTENT,
-            'partial': DuplicateType.SIMILAR_CONTENT
+            'partial': DuplicateType.SIMILAR_CONTENT,
+            'content_match': DuplicateType.CONTENT_MATCH
         };
         return mapping[type?.toLowerCase()] || DuplicateType.SIMILAR_CONTENT;
     }
@@ -565,12 +604,12 @@ export class FilesService {
                         Expires: 60 * 60,
                     });
 
-                    const hasDuplicateAlert = document.duplicateChecks.some(check => check.status === 'PENDING') ||
-                                           document.duplicateMatches.some(check => check.status === 'PENDING');
+                    const hasDuplicateAlert = document.duplicateChecks.some(check => check.status === DuplicateStatus.PENDING) ||
+                                           document.duplicateMatches.some(check => check.status === DuplicateStatus.PENDING);
 
                     const latestCompliance = document.complianceValidations[0];
                     const hasComplianceIssues = latestCompliance && 
-                        (latestCompliance.overallStatus === 'NON_COMPLIANT' || latestCompliance.overallStatus === 'WARNING');
+                        (latestCompliance.overallStatus === ComplianceStatus.NON_COMPLIANT || latestCompliance.overallStatus === ComplianceStatus.WARNING);
     
                     return {
                         ...document,
@@ -635,8 +674,8 @@ export class FilesService {
     }
 
     async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
-        let uploadResult;
-        let fileKey;
+        let uploadResult: any;
+        let fileKey: string;
         
         const s3 = new AWS.S3({
             accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -685,248 +724,40 @@ export class FilesService {
             }).promise();
 
             const result = await this.prisma.$transaction(async (prisma) => {
-                // --- AI/logic-based auto-detect references ---
-                let references: number[] = [];
-                
-                // Initialize references array if not provided
-                if (Array.isArray(processedData.references) && processedData.references.length > 0) {
-                    references = processedData.references
-                        .filter((id: any) => typeof id === 'number')
-                        .filter((id: number) => id !== undefined && id !== null);
-                    console.log(`📝 Using provided references: ${references.join(', ')}`);
-                } else {
-                    console.log('🔍 Starting auto-detection of document references');
-                    
-                    // Ensure processedData has a result object
-                    if (!processedData.result) {
-                        processedData.result = {};
-                    }
-                    
-                    // Ensure we have the correct document number based on type
-                    const docType = (processedData.result?.document_type || '').toLowerCase();
-                    
-                    // Handle receipt number fallback logic
-                    if (docType === 'receipt') {
-                        // If receipt_number is missing but document_number exists, use it as fallback
-                        if (!processedData.result.receipt_number && processedData.result.document_number) {
-                            processedData.result.receipt_number = processedData.result.document_number;
-                            console.log(`🔄 Using document_number as receipt_number for receipt: ${processedData.result.receipt_number}`);
-                        }
-                        // Ensure receipt_number is set in the root of processedData for consistency
-                        if (processedData.result.receipt_number && !processedData.receipt_number) {
-                            processedData.receipt_number = processedData.result.receipt_number;
-                            console.log(`✅ Set root-level receipt_number: ${processedData.receipt_number}`);
-                        }
-                    }
-                    
-                    // Fetch all other documents for the same accounting client
-                    const allDocs = await prisma.document.findMany({
-                        where: {
-                            accountingClientId: accountingClientRelation.id,
-                            // Only get documents that have processed data
-                            processedData: { isNot: null }
-                        },
-                        include: { 
-                            processedData: true 
-                        }
-                    });
-                    
-                    console.log(`🔍 Found ${allDocs.length} existing documents to check for references`);
-                    
-                    // Extract relevant data from the new document
-                    const newDocType = processedData.result?.document_type;
-                    const newDocNumber = processedData.result?.document_number || processedData.result?.invoice_number || processedData.result?.receipt_number;
-                    const newDocDate = processedData.result?.document_date || processedData.result?.date;
-                    const newDocAmount = processedData.result?.total_amount || processedData.result?.amount;
-                    const newDocCounterparty = processedData.result?.counterparty_name || processedData.result?.supplier_name || processedData.result?.customer_name;
-                    
-                    console.log(`📄 New document details - Type: ${newDocType}, Number: ${newDocNumber}, Date: ${newDocDate}, Amount: ${newDocAmount}`);
-                    
-                    // Define document type relationships (which types can reference each other)
-                    const documentRelationships: Record<string, string[]> = {
-                        'Invoice': ['Receipt', 'Payment Order'],
-                        'Receipt': ['Invoice', 'Payment Order'],
-                        'Payment Order': ['Invoice', 'Receipt'],
-                        'Contract': ['Invoice', 'Receipt']
-                    };
-                    
-                    const SIMILARITY_THRESHOLD = 0.6; // Slightly lower threshold to catch more potential references
-                    
-                    // Score documents based on multiple factors
-                    const scoredDocs = await Promise.all(
-                        allDocs
-                            .filter(d => d.processedData && d.id !== undefined)
-                            .map(async (doc) => {
-                                let score = 0;
-                                const reasons: string[] = [];
-                                
-                                // Extract document data
-                                const docType = doc.type;
-                                let extractedFields: any = doc.processedData?.extractedFields;
-                                
-                                // Parse extracted fields if it's a string
-                                if (typeof extractedFields === 'string') {
-                                    try {
-                                        extractedFields = JSON.parse(extractedFields);
-                                    } catch (e) {
-                                        console.warn(`⚠️ Could not parse extracted fields for doc ${doc.id}:`, e);
-                                        extractedFields = {};
-                                    }
-                                }
-                                
-                                const docResult = extractedFields?.result || extractedFields || {};
-                                const docNumber = docResult.document_number || docResult.invoice_number || docResult.receipt_number;
-                                const docDate = docResult.document_date || docResult.date;
-                                const docAmount = docResult.total_amount || docResult.amount;
-                                const docCounterparty = docResult.counterparty_name || docResult.supplier_name || docResult.customer_name;
-                                
-                                // 1. Check if document types are related
-                                const relatedTypes = documentRelationships[newDocType] || [];
-                                const isRelatedType = relatedTypes.includes(docType) || docType === newDocType;
-                                
-                                if (isRelatedType) {
-                                    score += 0.3;
-                                    reasons.push(`Type match (${docType})`);
-                                }
-                                
-                                // 2. Check document numbers (if available)
-                                if (newDocNumber && docNumber) {
-                                    const normalizedNewNumber = String(newDocNumber).toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-                                    const normalizedDocNumber = String(docNumber).toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-                                    
-                                    if (normalizedNewNumber && normalizedDocNumber && normalizedNewNumber === normalizedDocNumber) {
-                                        score += 0.5;
-                                        reasons.push(`Document number match (${docNumber})`);
-                                    }
-                                }
-                                
-                                // 3. Check dates (if available)
-                                if (newDocDate && docDate) {
-                                    // Simple date equality check - could be enhanced to check date ranges
-                                    if (newDocDate === docDate) {
-                                        score += 0.3;
-                                        reasons.push(`Date match (${docDate})`);
-                                    }
-                                }
-                                
-                                // 4. Check amounts (if available)
-                                if (newDocAmount && docAmount) {
-                                    const amountDiff = Math.abs(Number(newDocAmount) - Number(docAmount));
-                                    if (amountDiff < 0.01) { // Exact match
-                                        score += 0.5;
-                                        reasons.push(`Exact amount match (${docAmount})`);
-                                    } else if (amountDiff < 5) { // Close match (within 5 units)
-                                        score += 0.3;
-                                        reasons.push(`Close amount match (${docAmount}, diff: ${amountDiff.toFixed(2)})`);
-                                    }
-                                }
-                                
-                                // 5. Check counterparty (if available)
-                                if (newDocCounterparty && docCounterparty) {
-                                    const similarity = this.calculateSimilarity(newDocCounterparty, docCounterparty);
-                                    if (similarity > 0.8) {
-                                        score += 0.4;
-                                        reasons.push(`Counterparty match (${docCounterparty}, similarity: ${similarity.toFixed(2)})`);
-                                    }
-                                }
-                                
-                                // If we have a document number match, boost the score significantly
-                                if (reasons.some(r => r.includes('Document number match'))) {
-                                    score = Math.max(score, 0.9); // Ensure high score for doc number matches
-                                }
-                                
-                                // Log scoring details for debugging
-                                if (score > 0.5) {
-                                    console.log(`📊 Document ${doc.id} (${docType}) score: ${score.toFixed(2)} - ${reasons.join(', ')}`);
-                                }
-                                
-                                return { 
-                                    id: doc.id, 
-                                    score,
-                                    type: docType,
-                                    reasons
-                                };
-                            })
-                    );
-                    
-                    // Filter, sort and limit results
-                    const relevantDocs = scoredDocs
-                        .filter(d => d.score >= SIMILARITY_THRESHOLD)
-                        .sort((a, b) => b.score - a.score)
-                        .slice(0, 5); // Top 5 matches
-                    
-                    console.log(`🔍 Found ${relevantDocs.length} potential references with score >= ${SIMILARITY_THRESHOLD}`);
-                    relevantDocs.forEach(doc => {
-                        console.log(`   - Document ${doc.id} (${doc.type}): ${doc.score.toFixed(2)} - ${doc.reasons.join(', ')}`);
-                    });
-                    
-                    references = relevantDocs.map(d => d.id);
-                }
-                
-                // Create the document
+                // Create the document first
                 const document = await prisma.document.create({
                     data: {
                         name: file.originalname,
-                        type: processedData.result.document_type,
+                        type: processedData.result?.document_type || 'Unknown',
                         path: uploadResult.Location,
                         s3Key: fileKey,
                         contentType: file.mimetype,
                         fileSize: file.size,
                         documentHash: documentHash,
                         accountingClientId: accountingClientRelation.id,
-                        references: [] // temporarily empty, will update after creation
+                        references: []
                     }
                 });
-                
-                // Now update bi-directional references with better error handling and logging
+
                 const docId = document.id;
-                const filteredReferences = [...new Set(references.filter((id: number) => id !== docId))];
-                
-                // Log the references being set
-                console.log(`🔗 Setting ${filteredReferences.length} references for document ${docId}:`, filteredReferences);
-                
-                // Update referenced documents to include this new document
-                try {
-                    await Promise.all(filteredReferences.map(async (refId: number) => {
-                        try {
-                            const refDoc = await prisma.document.findUnique({ 
-                                where: { id: refId },
-                                select: { references: true }
-                            });
-                            
-                            if (refDoc) {
-                                const currentRefs = Array.isArray(refDoc.references) ? refDoc.references : [];
-                                const newRefs = Array.from(new Set([...currentRefs, docId]));
-                                
-                                if (newRefs.length > currentRefs.length) {
-                                    await prisma.document.update({ 
-                                        where: { id: refId }, 
-                                        data: { 
-                                            references: { set: newRefs }
-                                        } 
-                                    });
-                                    console.log(`  ✅ Updated document ${refId} to reference ${docId}`);
-                                }
-                            }
-                        } catch (error) {
-                            console.error(`❌ Error updating references for document ${refId}:`, error);
-                            // Continue with other references even if one fails
+
+                // Handle references
+                let references: number[] = Array.isArray(processedData.references)
+                    ? processedData.references.filter((id: any): id is number => typeof id === 'number' && id !== docId)
+                    : [];
+
+                if (references.length > 0) {
+                    const filteredReferences = [...new Set(references)];
+                    
+                    try {
+                        const cluster = [...new Set([docId, ...filteredReferences])];
+                        if (cluster.length > 1) {
+                            await this.syncReferences(prisma, cluster);
+                            console.log(`✅ Symmetrical references updated for cluster ${cluster.join(', ')}`);
                         }
-                    }));
-                    
-                    // Update this document's references
-                    await prisma.document.update({ 
-                        where: { id: docId }, 
-                        data: { 
-                            references: { set: filteredReferences }
-                        } 
-                    });
-                    console.log(`✅ Successfully set references for document ${docId}`);
-                    
-                } catch (error) {
-                    console.error('❌ Error in reference update process:', error);
-                    // Re-throw to ensure the transaction is rolled back on critical errors
-                    throw new Error(`Failed to update document references: ${error.message}`);
+                    } catch (error) {
+                        console.error('❌ Error in reference update process:', error);
+                    }
                 }
 
                 const processedDataDb = await prisma.processedData.create({
@@ -936,7 +767,7 @@ export class FilesService {
                     }
                 });
 
-                if (processedData.result.duplicate_detection) {
+                if (processedData.result?.duplicate_detection) {
                     try {
                         const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
                         for (const match of duplicateMatches) {
@@ -958,7 +789,7 @@ export class FilesService {
                     }
                 }
 
-                if (processedData.result.compliance_validation) {
+                if (processedData.result?.compliance_validation) {
                     try {
                         const compliance = processedData.result.compliance_validation;
                         
@@ -1019,7 +850,7 @@ export class FilesService {
                     }
                 }
 
-                if (processedData.result.line_items && processedData.result.line_items.length > 0) {
+                if (processedData.result?.line_items && processedData.result.line_items.length > 0) {
                     console.log(`[SMART_MATCHING] Processing ${processedData.result.line_items.length} line items for intelligent article matching`);
 
                     const existingArticles = await prisma.article.findMany({
@@ -1078,9 +909,8 @@ export class FilesService {
 
         } catch (e) {
             // Cleanup S3 file if upload succeeded but database operation failed
-            if (typeof uploadResult !== 'undefined' && typeof fileKey !== 'undefined') {
+            if (uploadResult && fileKey) {
                 try {
-                    const s3 = new AWS.S3();
                     await s3.deleteObject({
                         Bucket: process.env.AWS_S3_BUCKET_NAME,
                         Key: fileKey
@@ -1120,40 +950,17 @@ export class FilesService {
                 
                 if (!document) throw new NotFoundException('Document not found');
                 
-                // --- Bi-directional reference update logic ---
-                const oldReferences: number[] = Array.isArray(document.references) ? document.references.filter((id: any): id is number => typeof id === 'number') : [];
+                // --- Symmetrical reference update logic using helper ---
+                // Prepare new references array from processed data (excluding self)
                 const newReferences: number[] = Array.isArray(processedData.references)
                     ? (processedData.references as unknown[]).filter((id: unknown): id is number => typeof id === 'number' && id !== docId)
                     : [];
                 const uniqueNewReferences: number[] = [...new Set(newReferences)];
-                
-                // Find added and removed references
-                const addedRefs = uniqueNewReferences.filter(id => !oldReferences.includes(id));
-                const removedRefs = oldReferences.filter(id => !uniqueNewReferences.includes(id));
-                
-                // Add this docId to added referenced docs
-                await Promise.all(addedRefs.map(async (refId) => {
-                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
-                    if (refDoc) {
-                        const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
-                        const newRefs: number[] = Array.from(new Set([...currentRefs, docId]));
-                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
-                    }
-                }));
-                
-                // Remove this docId from removed referenced docs
-                await Promise.all(removedRefs.map(async (refId) => {
-                    const refDoc = await prisma.document.findUnique({ where: { id: refId } });
-                    if (refDoc) {
-                        const currentRefs: number[] = Array.isArray(refDoc.references) ? refDoc.references.filter((id: any): id is number => typeof id === 'number') : [];
-                        const newRefs: number[] = currentRefs.filter((id: number) => id !== docId);
-                        await prisma.document.update({ where: { id: refId }, data: { references: newRefs } });
-                    }
-                }));
-                
-                // Update the document's references
-                await prisma.document.update({ where: { id: docId }, data: { references: uniqueNewReferences } });
-                
+
+                // Build cluster (self + references) and sync
+                const cluster: number[] = [...new Set([docId, ...uniqueNewReferences])];
+                await this.syncReferences(prisma, cluster);
+
                 // --- Continue with processedData update and user corrections ---
                 if (document.processedData) {
                     await this.detectAndSaveUserCorrections(
@@ -1362,7 +1169,7 @@ export class FilesService {
             
         } catch (e) {
             if (e instanceof NotFoundException) throw e;
-            if (e.code === 'NoSuchKey') {
+            if ((e as any).code === 'NoSuchKey') {
                 throw new InternalServerErrorException("File not found in S3 storage, but database records were deleted.");
             }
             throw new InternalServerErrorException("Failed to delete the file and its data!");

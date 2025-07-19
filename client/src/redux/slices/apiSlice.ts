@@ -220,9 +220,9 @@ export const finovaApi = createApi({
             providesTags: ['ComplianceAlerts']
         }),
 
-        getRelatedDocuments: build.query<any, { docId: number | string }>({
-            query: ({ docId }) => ({
-                url: `/files/${docId}/related`,
+        getRelatedDocuments: build.query<any, { docId: number | string, clientEin: string }>({
+            query: ({ docId, clientEin }) => ({
+                url: `/files/${docId}/related?clientEin=${clientEin}`,
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -231,18 +231,6 @@ export const finovaApi = createApi({
             // Invalidate this query when the document is updated
             providesTags: (_result, _error, args) => {
                 return [{ type: 'Files' as const, id: args.docId }];
-            },
-            // Handle 401 Unauthorized
-            async onQueryStarted(_args, { queryFulfilled }) {
-                try {
-                    await queryFulfilled;
-                } catch (error: any) {
-                    if (error?.error?.status === 401) {
-                        // Token is invalid or expired, log out the user
-                        console.error('Authentication error in getRelatedDocuments:', error);
-                        // The baseQueryWithAuthHandling should handle the logout
-                    }
-                }
             },
             // Force refetch when the arguments change
             forceRefetch({ currentArg, previousArg }) {

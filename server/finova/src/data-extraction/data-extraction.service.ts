@@ -757,6 +757,54 @@ export class DataExtractionService {
             this.validateDocumentRelevance(extractedData, clientCompanyEin);
             this.validateAndNormalizeCurrency(extractedData);
             this.validateExtractedData(extractedData, [], [], clientCompanyEin);
+
+            // --- Resolve explicit referenced_numbers to document IDs and attach to extractedData ---
+            if (Array.isArray(extractedData.referenced_numbers) && extractedData.referenced_numbers.length > 0) {
+                const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
+                .map(n => String(n).trim())
+                .filter(Boolean))];
+
+                if (refNumbers.length > 0) {
+                    const candidateDocs = await this.prisma.document.findMany({
+                        where: {
+                            accountingClientId: accountingClientRelation.id,
+                            processedData: { isNot: null }
+                        },
+                        include: { processedData: true }
+                    });
+
+                    const referenceIds: number[] = [];
+
+                    for (const doc of candidateDocs) {
+                        let fields: any = doc.processedData?.extractedFields;
+                        if (!fields) continue;
+                        if (typeof fields === 'string') {
+                            try { fields = JSON.parse(fields); } catch { continue; }
+                        }
+                        const res = fields.result ?? fields;
+                        const possibleNumbers = [
+                            res.document_number,
+                            res.invoice_number,
+                            res.receipt_number,
+                            res.contract_number,
+                            res.order_number,
+                            res.report_number,
+                            res.statement_number
+                        ]
+                        .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
+                        .filter(Boolean);
+
+                        if (possibleNumbers.some((num: string) => refNumbers.includes(num))) {
+                            referenceIds.push(doc.id);
+                        }
+                    }
+
+                    if (referenceIds.length > 0) {
+                        extractedData.references = referenceIds;
+                        this.logger.log(`🔗 Resolved ${referenceIds.length} explicit references for current document.`);
+                    }
+                }
+            }
         }
     
         const processingTime = Date.now() - startTime;
