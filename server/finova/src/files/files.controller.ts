@@ -18,10 +18,14 @@ export class FilesController {
         @Body('clientEin') clientEin: string,
         @Req() req: Request & { user: User }
     ) {
+
+        /*
         const user = req.user as User;
         return this.fileMangementService.getSomeFiles(docIds, user, clientEin);
+        */
+        return 'Not implemented';
     }
-    
+
     @Patch(':docId/references')
     async updateReferences(
         @Param('docId') docId: string,
