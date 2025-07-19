@@ -774,6 +774,7 @@ export class DataExtractionService {
                     });
 
                     const referenceIds: number[] = [];
+                    const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
 
                     for (const doc of candidateDocs) {
                         let fields: any = doc.processedData?.extractedFields;
@@ -794,7 +795,7 @@ export class DataExtractionService {
                         .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
                         .filter(Boolean);
 
-                        if (possibleNumbers.some((num: string) => refNumbers.includes(num))) {
+                        if (possibleNumbers.some((num: string) => refNumbers.some(ref => normalize(ref) === normalize(num)))) {
                             referenceIds.push(doc.id);
                         }
                     }
