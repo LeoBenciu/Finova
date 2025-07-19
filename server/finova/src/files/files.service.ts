@@ -724,11 +724,31 @@ export class FilesService {
             }).promise();
 
             const result = await this.prisma.$transaction(async (prisma) => {
-
-                let references: number[] = Array.isArray(processedData.result?.references)
-                ? processedData.references.filter((id: any): id is number => typeof id === 'number' && id !== docId)
-                : [];
-
+                let references: number[] = [];
+                
+                console.log(`🔗 POSTFILE DEBUG:`);
+                console.log(`   - processedData type: ${typeof processedData}`);
+                console.log(`   - processedData.result type: ${typeof processedData.result}`);
+                console.log(`   - processedData.result?.references: ${JSON.stringify(processedData.result?.references)}`);
+                console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
+                
+                if (processedData.result?.references && Array.isArray(processedData.result.references)) {
+                    references = processedData.result.references.filter((id: any): id is number => 
+                        typeof id === 'number' && !isNaN(id)
+                    );
+                    console.log(`   - Found references in processedData.result.references: ${JSON.stringify(references)}`);
+                } else if (processedData.references && Array.isArray(processedData.references)) {
+                    references = processedData.references.filter((id: any): id is number => 
+                        typeof id === 'number' && !isNaN(id)
+                    );
+                    console.log(`   - Found references in processedData.references: ${JSON.stringify(references)}`);
+                } else {
+                    console.log(`   - No references found or not in expected format`);
+                    references = [];
+                }
+                
+                console.log(`   - Final references to save: ${JSON.stringify(references)}`);
+            
                 const document = await prisma.document.create({
                     data: {
                         name: file.originalname,
@@ -742,11 +762,11 @@ export class FilesService {
                         references: references
                     }
                 });
-
+            
                 const docId = document.id;
-
-                let filteredReferences = references.filter((id: number) => id !== docId);
-
+            
+                const filteredReferences = references.filter((id: number) => id !== docId);
+            
                 if (filteredReferences.length > 0) {
                     const uniqueReferences = [...new Set(filteredReferences)];
                     
@@ -760,7 +780,7 @@ export class FilesService {
                         console.error('❌ Error in reference update process:', error);
                     }
                 }
-
+            
                 const processedDataDb = await prisma.processedData.create({
                     data: {
                         documentId: document.id,
