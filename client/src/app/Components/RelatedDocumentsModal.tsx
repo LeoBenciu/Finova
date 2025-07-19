@@ -148,10 +148,11 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   const [getSomeFiles, { data: relatedDocsData = [], isLoading: relatedDocsLoading }] = useGetSomeFilesMutation();
 
   useEffect(() => {
-    if (isOpen && document && clientEin) {
+    if (isOpen && document) {
       const refIds: number[] = Array.isArray(document.references) ? document.references : [];
-      if (refIds.length) {
-        getSomeFiles({ docIds: refIds, clientEin });
+      const ein = companyEin || clientEin;
+      if (refIds.length && ein) {
+        getSomeFiles({ docIds: refIds, clientEin: ein });
       } else {
         setRelatedDocuments([]);
         setSelectedReferences([]);
