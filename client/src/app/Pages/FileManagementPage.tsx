@@ -1,5 +1,25 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery, useGetInvoicePaymentsQuery } from '@/redux/slices/apiSlice';
+
+// --- Helper component so we can safely use hooks for each row ---
+interface InvoicePaymentBadgeProps { file: any; language: string; }
+const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, language }) => {
+  const { data } = useGetInvoicePaymentsQuery(file.id);
+  if (!data) return null;
+  const paid = data.amountPaid;
+  const total = data.total;
+  if (total === 0) return null;
+  const direction = file?.processedData?.[0]?.extractedFields?.result?.direction;
+  const label = language === 'ro'
+    ? direction === 'outgoing' ? 'Incasat' : 'Platit'
+    : direction === 'outgoing' ? 'Cashed' : 'Paid';
+  const formatCurrency = (v: number) => Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(v);
+  return (
+    <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
+      {label}: {formatCurrency(paid)}/{formatCurrency(total)}
+    </span>
+  );
+};
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
@@ -220,13 +240,6 @@ const FileManagementPage = () => {
     processingDocId || 0, 
     { skip: !processingDocId }
   );
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('ro-RO', {
-      style: 'currency',
-      currency: 'RON'
-    }).format(amount);
-  };
 
   const toggleFileSelection = (fileId: number) => {
     const newSelected = new Set(selectedFiles);
@@ -744,11 +757,6 @@ const FileManagementPage = () => {
                 const FileIcon = getFileIcon(file.type);
                 const isSelected = selectedFiles.has(file.id);
                 const iconColors = getFileIconColor(file.type);
-                const { data: paymentsData } = useGetInvoicePaymentsQuery(file.id, { skip: file.type !== 'Invoice' });
-                const paymentSummary = paymentsData ? {
-                  paidAmount: paymentsData.amountPaid,
-                  totalAmount: paymentsData.total,
-                } : undefined;
                 
                 return (
                   <motion.div
@@ -801,11 +809,9 @@ const FileManagementPage = () => {
                               <Calendar size={14} />
                               <span>{getDocumentDate(file)}</span>
                             </div>
-                            {file.type === 'Invoice' && paymentSummary && (
-                              <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-                                {language === 'ro' ? (file?.processedData[0]?.extractedFields?.result.direction === 'outgoing'? 'Incasat':'Platit') : (file?.processedData[0]?.extractedFields?.result?.direction === 'outgoing'? 'Cashed':'Paid')}: {formatCurrency(paymentSummary.paidAmount)}/{formatCurrency(paymentSummary.totalAmount)}
-                              </span>
-                            )}
+                            {file.type === 'Invoice' && (
+                                <InvoicePaymentBadge file={file} language={language} />
+                             )}
                           </div>
                         </div>
                       </div>
