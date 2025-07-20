@@ -206,7 +206,7 @@ export const finovaApi = createApi({
 
         getInvoicePayments: build.query<any, number>({
             query: (docId) => ({
-                url: `files/${docId}/payments`,
+                url: `files/payments/${docId}`,
                 method: 'GET',
             }),
         }),

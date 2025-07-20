@@ -96,7 +96,7 @@ export class FilesController {
         return this.fileMangementService.getServiceHealth();
     }
 
-    @Get(':docId/payments')
+    @Get('payments/:docId')
     async getInvoicePayments(
         @Param('docId', ParseIntPipe) docId: number,
         @Req() req: Request & { user: User }
