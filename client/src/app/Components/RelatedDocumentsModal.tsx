@@ -144,8 +144,10 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && document) {
-      const refIds: number[] = Array.isArray(document.references) ? document.references : [];
+      const refIds: number[] = document.references || [];
+      console.log("Ref IDs:", refIds);
       const ein = clientEin;
+      console.log("Client EIN:", ein);
       if (refIds.length && ein) {
         getSomeFiles({ docIds: refIds, clientEin: ein });
       } else {
@@ -155,8 +157,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }
   }, [isOpen, document, clientEin, getSomeFiles]);
 
-  console.log("Related Docs Data:", relatedDocsData);
-
   useEffect(() => {
     setRelatedDocuments(relatedDocsData || []);
     // setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
@@ -164,6 +164,8 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     // setSaveStatus('idle');
     // setSaveError(null);
   }, [relatedDocsData]);
+
+  console.log("Related Docs Data:", relatedDocsData);
 
   useEffect(() => {
     let filtered = relatedDocuments;
