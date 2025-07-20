@@ -780,14 +780,16 @@ export class FilesService {
                 console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
                 
                 if (processedData.result?.references && Array.isArray(processedData.result.references)) {
-                    references = processedData.result.references.filter((id: any): id is number => 
-                        typeof id === 'number' && !isNaN(id)
-                    );
+                    // Convert to numbers in case IDs come as strings
+                    references = processedData.result.references
+                        .map((id: any) => Number(id))
+                        .filter((id: number): id is number => !isNaN(id));
                     console.log(`   - Found references in processedData.result.references: ${JSON.stringify(references)}`);
                 } else if (processedData.references && Array.isArray(processedData.references)) {
-                    references = processedData.references.filter((id: any): id is number => 
-                        typeof id === 'number' && !isNaN(id)
-                    );
+                    // Convert to numbers in case IDs come as strings
+                    references = processedData.references
+                        .map((id: any) => Number(id))
+                        .filter((id: number): id is number => !isNaN(id));
                     console.log(`   - Found references in processedData.references: ${JSON.stringify(references)}`);
                 } else {
                     console.log(`   - No references found or not in expected format`);

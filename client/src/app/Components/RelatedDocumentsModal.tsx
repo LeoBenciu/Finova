@@ -31,7 +31,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   document,
   onRefresh
 }) => {
-  console.log("Document:", document);
   const [manualMode, setManualMode] = useState(false);
   //const [selectedReferences, setSelectedReferences] = useState<number[]>([]);
   //const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
@@ -154,9 +153,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   useEffect(() => {
     if (isOpen && document) {
       const refIds: number[] = document.references || [];
-      console.log("Ref IDs:", refIds);
       const ein = clientEin;
-      console.log("Client EIN:", ein);
       if (refIds.length && ein) {
         getSomeFiles({ docIds: refIds, clientEin: ein });
       } else {
@@ -174,7 +171,6 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     // setSaveError(null);
   }, [relatedDocsData]);
 
-  console.log("Related Docs Data:", relatedDocsData);
 
   useEffect(() => {
     let filtered = relatedDocuments;
