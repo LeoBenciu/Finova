@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useGetFilesQuery, useUpdateDocumentReferencesMutation, useGetSomeFilesMutation } from '@/redux/slices/apiSlice';
+import { /*useUpdateDocumentReferencesMutation,*/ useGetSomeFilesMutation } from '@/redux/slices/apiSlice';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, Link, FileText, Receipt, CreditCard, FileSignature, 
@@ -22,18 +22,18 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   document,
   onRefresh
 }) => {
+  console.log("Document:", document);
   const [manualMode, setManualMode] = useState(false);
-  const [selectedReferences, setSelectedReferences] = useState<number[]>([]);
-  const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
-  const [saveError, setSaveError] = useState<string | null>(null);
+  //const [selectedReferences, setSelectedReferences] = useState<number[]>([]);
+  //const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
+  //const [saveError, setSaveError] = useState<string | null>(null);
 
   const clientEin = useSelector((state: any) => state.auth?.user?.clientEin || state.user?.clientEin || null);
   const language = useSelector((state: any) => state.user?.language || state.auth?.user?.language || 'en');
 
-  const docId = document?.id;
+  //const docId = document?.id;
 
-  const { data: allDocsData = [], isLoading: allDocsLoading } = useGetFilesQuery(clientEin);
-  const [updateReferences, { isLoading: isSaving }] = useUpdateDocumentReferencesMutation();
+  //const [updateReferences, { isLoading: isSaving }] = useUpdateDocumentReferencesMutation();
   const [relatedDocuments, setRelatedDocuments] = useState<any[]>([]);
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -140,7 +140,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
     }
   };
 
-  const [getSomeFiles, { data: relatedDocsData = [], isLoading: relatedDocsLoading }] = useGetSomeFilesMutation();
+  const [getSomeFiles, { data: relatedDocsData , isLoading: relatedDocsLoading }] = useGetSomeFilesMutation();
 
   useEffect(() => {
     if (isOpen && document) {
@@ -150,17 +150,19 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
         getSomeFiles({ docIds: refIds, clientEin: ein });
       } else {
         setRelatedDocuments([]);
-        setSelectedReferences([]);
+        // setSelectedReferences([]);
       }
     }
   }, [isOpen, document, clientEin, getSomeFiles]);
 
+  console.log("Related Docs Data:", relatedDocsData);
+
   useEffect(() => {
     setRelatedDocuments(relatedDocsData || []);
-    setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
+    // setSelectedReferences((relatedDocsData || []).map((doc: any) => doc.id));
     setManualMode(false);
-    setSaveStatus('idle');
-    setSaveError(null);
+    // setSaveStatus('idle');
+    // setSaveError(null);
   }, [relatedDocsData]);
 
   useEffect(() => {
@@ -187,26 +189,26 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleToggleReference = (docId: number) => {
-    setSelectedReferences((prev) =>
-      prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
-    );
-  };
+  // const handleToggleReference = (docId: number) => {
+  //   setSelectedReferences((prev) =>
+  //     prev.includes(docId) ? prev.filter((id) => id !== docId) : [...prev, docId]
+  //   );
+  // };
 
-  const handleSaveReferences = async () => {
-    if (!document?.id) return;
-    setSaveStatus('saving');
-    setSaveError(null);
-    try {
-      await updateReferences({ docId: document.id, references: selectedReferences }).unwrap();
-      setSaveStatus('success');
-      onRefresh();
-      setManualMode(false);
-    } catch (e: any) {
-      setSaveStatus('error');
-      setSaveError(e?.data?.message || 'Failed to update references');
-    }
-  };
+  // const handleSaveReferences = async () => {
+  //   if (!document?.id) return;
+  //   setSaveStatus('saving');
+  //   setSaveError(null);
+  //   try {
+  //     await updateReferences({ docId: document.id, references: selectedReferences }).unwrap();
+  //     setSaveStatus('success');
+  //     onRefresh();
+  //     setManualMode(false);
+  //   } catch (e: any) {
+  //     setSaveStatus('error');
+  //     setSaveError(e?.data?.message || 'Failed to update references');
+  //   }
+  // };
 
   return (
     <AnimatePresence>
@@ -295,7 +297,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
               <button
                 className={`px-4 py-2 rounded-lg border font-medium transition-colors ${manualMode ? 'bg-[var(--primary)] text-white' : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'}`}
                 onClick={() => setManualMode((m) => !m)}
-                disabled={relatedDocsLoading || allDocsLoading}
+                disabled={relatedDocsLoading}
               >
                 {manualMode
                   ? language === 'ro' ? 'Anulează editarea' : 'Cancel Edit'
@@ -311,7 +313,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
             </div>
             {manualMode ? (
               <div>
-                {allDocsLoading ? (
+                {/* {allDocsLoading ? (
                   <div className="flex items-center gap-2 text-[var(--text2)]"><RefreshCw className="animate-spin" /> {language === 'ro' ? 'Se încarcă lista...' : 'Loading list...'}</div>
                 ) : (
                   <>
@@ -319,7 +321,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                       <span className="font-medium text-[var(--text2)]">{language === 'ro' ? 'Documente disponibile:' : 'Available documents:'}</span>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                      {(allDocsData?.documents || []).filter((doc: any) => doc.id !== docId).map((doc: any) => {
+                       {(allDocsData?.documents || []).filter((doc: any) => doc.id !== docId).map((doc: any) => {
                         const FileIcon = getFileIcon(doc.type);
                         const iconColors = getFileIconColor(doc.type);
                         return (
@@ -337,7 +339,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                             </div>
                           </label>
                         );
-                      })}
+                      })} 
                     </div>
                     <div className="mt-4 flex gap-3 items-center">
                       <button
@@ -351,7 +353,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
                       {saveStatus === 'error' && <span className="text-red-500 font-medium">{saveError}</span>}
                     </div>
                   </>
-                )}
+                )} */}
               </div>
             ) : relatedDocsLoading ? (
               <div className="flex items-center justify-center py-12">
