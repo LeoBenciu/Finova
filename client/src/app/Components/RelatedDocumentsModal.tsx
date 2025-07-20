@@ -14,6 +14,15 @@ interface RelatedDocumentsModalProps {
   onRefresh: () => void;
 }
 
+type clientCompanyName = {
+  clientCompany:{
+    current:{
+      name:string,
+      ein:string
+    }
+  }
+}
+
 type DocumentType = 'Invoice' | 'Receipt' | 'Bank Statement' | 'Contract' | 'Z Report' | 'Payment Order' | 'Collection Order';
 
 const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
@@ -28,7 +37,7 @@ const RelatedDocumentsModal: React.FC<RelatedDocumentsModalProps> = ({
   //const [saveStatus, setSaveStatus] = useState<'idle'|'saving'|'success'|'error'>('idle');
   //const [saveError, setSaveError] = useState<string | null>(null);
 
-  const clientEin = useSelector((state: any) => state.auth?.user?.clientEin || state.user?.clientEin || null);
+  const clientEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
   const language = useSelector((state: any) => state.user?.language || state.auth?.user?.language || 'en');
 
   //const docId = document?.id;
