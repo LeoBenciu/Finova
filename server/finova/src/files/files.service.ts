@@ -1233,6 +1233,23 @@ export class FilesService {
                     }
                 });
                 
+                const docsWithRef = await prisma.document.findMany({
+                    where: {
+                        references: { has: docId },
+                        accountingClientId: accountingClientRelation[0].id
+                    }
+                });
+
+                await Promise.all(
+                    docsWithRef.map(async d => {
+                        const newRefs = (d.references || []).filter(id => id !== docId);
+                        await prisma.document.update({
+                            where: { id: d.id },
+                            data: { references: newRefs }
+                        });
+                    })
+                );
+
                 const deletedDocument = await prisma.document.delete({
                     where: {
                         id: docId,
