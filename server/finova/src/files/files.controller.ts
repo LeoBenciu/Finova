@@ -96,6 +96,15 @@ export class FilesController {
         return this.fileMangementService.getServiceHealth();
     }
 
+    @Get(':docId/payments')
+    async getInvoicePayments(
+        @Param('docId', ParseIntPipe) docId: number,
+        @Req() req: Request & { user: User }
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.getInvoicePayments(docId, user);
+    }
+
     @Get(':docId/related')
     async getRelatedDocuments(
         @Param('docId', ParseIntPipe) docId: number,

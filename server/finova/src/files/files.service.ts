@@ -1277,6 +1277,77 @@ export class FilesService {
         }
     }
 
+    /**
+     * Calculate how much of an invoice has been paid by summing payment amounts
+     * from related documents (receipts, bank statements, payment/collection orders).
+     * Returns { total: number, amountPaid: number, payments: Array<{docId: number, type: string, amount: number}> }
+     */
+    async getInvoicePayments(invoiceId: number, user: User) {
+        // Load invoice with processedData and references
+        const invoiceDoc = await this.prisma.document.findUnique({
+            where: { id: invoiceId },
+            include: { processedData: true }
+        });
+        if (!invoiceDoc) throw new NotFoundException('Invoice not found');
+        // Access control: reuse logic similar to updateReferences
+        const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: invoiceDoc.accountingClientId } });
+        if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+            throw new UnauthorizedException('No access to this invoice');
+        }
+
+        const invoicePD = (invoiceDoc.processedData?.[0]?.extractedFields || {}) as any;
+        const total = Number(invoicePD.total_amount) || 0;
+        const relatedIds: number[] = Array.isArray(invoiceDoc.references) ? invoiceDoc.references : [];
+        if (relatedIds.length === 0) {
+            return { total, amountPaid: 0, payments: [] };
+        }
+
+        const relatedDocs = await this.prisma.document.findMany({
+            where: { id: { in: relatedIds } },
+            include: { processedData: true }
+        });
+
+        const payments: { docId: number; type: string; amount: number }[] = [];
+
+        // Extract invoice number once for comparisons
+        const invoiceNumber: string | undefined = invoicePD.document_number;
+
+        for (const doc of relatedDocs) {
+            const pd = (doc.processedData?.[0]?.extractedFields || {}) as any;
+            let amount = 0;
+            switch (doc.type) {
+                case 'RECEIPT':
+                    amount = Number(pd?.total_amount) || 0;
+                    break;
+                case 'PAYMENT_ORDER':
+                case 'COLLECTION_ORDER':
+                    amount = Number(pd?.amount) || 0;
+                    break;
+                case 'BANK_STATEMENT':
+                    if (Array.isArray(pd.transactions)) {
+                        for (const tx of pd.transactions) {
+                            const desc: string = (tx.description || '').toString();
+                            const matchesInvoice = invoiceNumber ? desc.includes(invoiceNumber) : false;
+                            if (matchesInvoice) {
+                                const debit = Number(tx.debit_amount) || 0;
+                                const credit = Number(tx.credit_amount) || 0;
+                                amount += credit !== 0 ? credit : debit;
+                            }
+                        }
+                    }
+                    break;
+                default:
+                    break;
+            }
+            if (amount > 0) {
+                payments.push({ docId: doc.id, type: doc.type, amount });
+            }
+        }
+
+        const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        return { total, amountPaid, payments };
+    }
+
     async getDuplicateAlerts(clientCompanyEin: string, user: User) {
         try {
             const clientCompany = await this.prisma.clientCompany.findUnique({

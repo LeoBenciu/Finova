@@ -204,6 +204,13 @@ export const finovaApi = createApi({
             providesTags: ['Files']
         }),
 
+        getInvoicePayments: build.query<any, number>({
+            query: (docId) => ({
+                url: `files/${docId}/payments`,
+                method: 'GET',
+            }),
+        }),
+
         getSomeFiles: build.mutation({
             query:({docIds, clientEin})=>({
                 url:'/files/some-files',
@@ -393,7 +400,7 @@ export const finovaApi = createApi({
     })
 })
 
-export const {useLoginMutation, useSignupMutation, useExtractDataMutation, 
+export const {useLoginMutation, useSignupMutation, useExtractDataMutation, useGetInvoicePaymentsQuery, 
     useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
 useCreateClientCompanyMutation,useGetUserDataQuery,
 useGetRelatedDocumentsQuery,

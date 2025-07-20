@@ -1,5 +1,5 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
-import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery } from '@/redux/slices/apiSlice';
+import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery, useGetInvoicePaymentsQuery } from '@/redux/slices/apiSlice';
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
@@ -767,7 +767,11 @@ const FileManagementPage = () => {
                 const FileIcon = getFileIcon(file.type);
                 const isSelected = selectedFiles.has(file.id);
                 const iconColors = getFileIconColor(file.type);
-                const paymentSummary = getPaymentSummaryFromProcessedData(file);
+                const { data: paymentsData } = useGetInvoicePaymentsQuery(file.id, { skip: file.type !== 'Invoice' });
+                const paymentSummary = paymentsData ? {
+                  paidAmount: paymentsData.amountPaid,
+                  totalAmount: paymentsData.total,
+                } : undefined;
                 
                 return (
                   <motion.div
