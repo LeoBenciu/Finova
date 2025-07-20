@@ -78,16 +78,25 @@ export class FilesService {
         private dataExtractionService: DataExtractionService
     ) {}
 
-    private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
-        await prisma.$transaction(
-            cluster.map((id: number) =>
-                prisma.document.update({
-                    where: { id },
-                    data: { references: cluster.filter(ref => ref !== id) }
+        private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
+            console.log(`🔁 syncReferences cluster=${JSON.stringify(cluster)}`);
+            await Promise.all(
+                cluster.map(async (id: number) => {
+                    try {
+                        const refs = cluster.filter(ref => ref !== id);
+                        const res = await prisma.document.update({
+                            where: { id },
+                            data: { references: refs }
+                        });
+                        console.log(`✅ updated ${id} refs → ${JSON.stringify(res.references)}`);
+                    } catch (e) {
+                        console.error(`❌ failed updating ${id}`, e);
+                        throw e;
+                    }
                 })
-            )
-        );
-    }
+            );
+        }
+
 
     async updateReferences(docId: number, references: number[], user: User) {
         // Validate access
