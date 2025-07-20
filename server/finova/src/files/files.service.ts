@@ -1022,9 +1022,14 @@ export class FilesService {
                 
                 // --- Symmetrical reference update logic using helper ---
                 // Prepare new references array from processed data (excluding self)
-                const newReferences: number[] = Array.isArray(processedData.references)
-                    ? (processedData.references as unknown[]).filter((id: unknown): id is number => typeof id === 'number' && id !== docId)
-                    : [];
+                // If the update payload omits `references`, keep the current ones to avoid accidental wipe
+                const newReferencesRaw = Array.isArray(processedData.references)
+                    ? processedData.references
+                    : document.references ?? [];
+
+                const newReferences: number[] = newReferencesRaw
+                    .map((id: any) => Number(id))
+                    .filter((id: number): id is number => !isNaN(id) && id !== docId);
                 const uniqueNewReferences: number[] = [...new Set(newReferences)];
 
                 // Build cluster (self + references) and sync
