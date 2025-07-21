@@ -1,7 +1,6 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
 import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery, useGetInvoicePaymentsQuery } from '@/redux/slices/apiSlice';
 
-// --- Helper component so we can safely use hooks for each row ---
 interface InvoicePaymentBadgeProps { file: any; language: string; }
 const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, language }) => {
   const { data } = useGetInvoicePaymentsQuery(file.id);
