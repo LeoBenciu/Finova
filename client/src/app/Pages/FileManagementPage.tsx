@@ -22,11 +22,8 @@ const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, languag
   if (!data) return null;
   
   const paid = data.amountPaid || 0;
-  const total = data.total || 0;
   
-  console.log('Payment amounts:', { paid, total, originalData: data });
-  
-  if (total === 0) return null;
+  console.log('Payment amounts:', { paid, originalData: data });
   
   const direction = file?.processedData?.[0]?.extractedFields?.result?.direction;
   const label = language === 'ro'
@@ -43,11 +40,10 @@ const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, languag
   
   return (
     <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-      {label}: {formatCurrency(paid)}/{formatCurrency(total)}
+      {label}: {formatCurrency(paid)}/{formatCurrency(file?.processedData?.[0]?.extractedFields?.result?.total_amount)}
     </span>
   );
 };
-
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
