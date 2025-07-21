@@ -1280,6 +1280,8 @@ export class FilesService {
 
     async getInvoicePayments(invoiceId: number, user: User) {
         console.log(`🔍 Getting invoice payments for invoice ${invoiceId}`);
+
+
         
         const parseAmount = (raw: any): number => {
             if (raw === undefined || raw === null) return 0;
@@ -1325,29 +1327,13 @@ export class FilesService {
             } else {
                 invoiceData = extractedFields;
             }
-        }
-        
-        const pickPath = (obj: any, path: string): any =>
-            path.split('.').reduce((o,key)=> o?.[key], obj);
-        const totalAmountPaths = [
-            'result.total_amount',
-            'result.fields.total_amount',
-            'total_amount',
-            'fields.total_amount'
-        ];
-        let totalAmount = 0;
-        for (const p of totalAmountPaths) {
-            const val = pickPath(invoiceData, p);
-            if (val !== undefined) { totalAmount = parseAmount(val); break; }
-        }
-        
-        console.log(`📊 Invoice ${invoiceId} total amount: ${totalAmount}`);
+        }        
         
         const relatedIds: number[] = Array.isArray(invoiceDoc.references) ? invoiceDoc.references : [];
         
         if (relatedIds.length === 0) {
             console.log(`ℹ️ Invoice ${invoiceId} has no related documents`);
-            return { total: totalAmount, amountPaid: 0, payments: [] };
+            return { amountPaid: 0, payments: [] };
         }
     
         const relatedDocs = await this.prisma.document.findMany({
@@ -1381,16 +1367,16 @@ export class FilesService {
             let amount = 0;
             
             switch (doc.type) {
-                case 'RECEIPT':
+                case 'Receipt':
                     amount = parseAmount(docData.result?.total_amount || docData.total_amount);
                     break;
                     
-                case 'PAYMENT_ORDER':
-                case 'COLLECTION_ORDER':
+                case 'Payment Order':
+                case 'Collection Order':
                     amount = parseAmount(docData.result?.amount || docData.amount);
                     break;
                     
-                case 'BANK_STATEMENT':
+                case 'Bank Statement':
                     const transactions = docData.result?.transactions || docData.transactions || [];
                     if (Array.isArray(transactions)) {
                         for (const tx of transactions) {
@@ -1419,13 +1405,7 @@ export class FilesService {
     
         const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
         
-        console.log(`📋 Invoice ${invoiceId} payment summary:`, {
-            total: totalAmount,
-            amountPaid,
-            paymentsCount: payments.length
-        });
-        
-        return { total: totalAmount, amountPaid, payments };
+        return { amountPaid, payments };
     }
 
     async getDuplicateAlerts(clientCompanyEin: string, user: User) {
