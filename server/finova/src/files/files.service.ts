@@ -1277,21 +1277,20 @@ export class FilesService {
         }
     }
 
-    /**
-     * Calculate how much of an invoice has been paid by summing payment amounts
-     * from related documents (receipts, bank statements, payment/collection orders).
-     * Returns { total: number, amountPaid: number, payments: Array<{docId: number, type: string, amount: number}> }
-     */
+
     async getInvoicePayments(invoiceId: number, user: User) {
-        // Load invoice with processedData and references
         const invoiceDoc = await this.prisma.document.findUnique({
             where: { id: invoiceId },
             include: { processedData: true }
         });
         if (!invoiceDoc) throw new NotFoundException('Invoice not found');
-        // Access control: reuse logic similar to updateReferences
-        const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: invoiceDoc.accountingClientId } });
-        if (!accountingClient || accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+            where: {
+                id: invoiceDoc.accountingClientId,
+                accountingCompanyId: user.accountingCompanyId
+            }
+        });
+        if (!accountingClientRelation) {
             throw new UnauthorizedException('No access to this invoice');
         }
 
@@ -1309,7 +1308,6 @@ export class FilesService {
 
         const payments: { docId: number; type: string; amount: number }[] = [];
 
-        // Extract invoice number once for comparisons
         const invoiceNumber: string | undefined = invoicePD.document_number;
 
         for (const doc of relatedDocs) {
