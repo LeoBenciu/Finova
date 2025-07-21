@@ -102,7 +102,6 @@ export class FilesController {
         @Req() req: Request & { user: User }
     ) {
         const user = req.user as User;
-        return docId;
         return this.fileMangementService.getInvoicePayments(docId, user);
     }
 
