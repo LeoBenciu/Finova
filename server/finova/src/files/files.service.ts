@@ -1279,81 +1279,146 @@ export class FilesService {
 
 
     async getInvoicePayments(invoiceId: number, user: User) {
-        // helper to transform locale-formatted strings like "1.234,56" into proper numbers
+        console.log(`🔍 Getting invoice payments for invoice ${invoiceId}`);
+        
         const parseAmount = (raw: any): number => {
             if (raw === undefined || raw === null) return 0;
+            if (typeof raw === 'number') return isNaN(raw) ? 0 : raw;
+            
             const str = raw.toString()
-                .replace(/[^0-9,.-]/g, '')      // keep digits and separators
-                .replace(/\./g, '')             // remove thousands separator
-                .replace(/,/g, '.');             // replace decimal comma with dot
+                .replace(/[^0-9,.-]/g, '')      
+                .replace(/\./g, '')             
+                .replace(/,/g, '.');            
             const num = parseFloat(str);
             return isNaN(num) ? 0 : num;
         };
+    
         const invoiceDoc = await this.prisma.document.findUnique({
             where: { id: invoiceId },
             include: { processedData: true }
         });
+        
         if (!invoiceDoc) throw new NotFoundException('Invoice not found');
+        
         const accountingClientRelation = await this.prisma.accountingClients.findFirst({
             where: {
                 id: invoiceDoc.accountingClientId,
                 accountingCompanyId: user.accountingCompanyId
             }
         });
+        
         if (!accountingClientRelation) {
             throw new UnauthorizedException('No access to this invoice');
         }
-
-        const invoicePD = (invoiceDoc.processedData?.[0]?.extractedFields || {}) as any;
-        const total = Number(invoicePD.total_amount ?? invoicePD.result?.total_amount) || 0;
-        const relatedIds: number[] = Array.isArray(invoiceDoc.references) ? invoiceDoc.references : [];
-        if (relatedIds.length === 0) {
-            return { total, amountPaid: 0, payments: [] };
+    
+        const extractedFields = invoiceDoc.processedData?.[0]?.extractedFields;
+        let invoiceData: any = {};
+        
+        if (extractedFields) {
+            if (typeof extractedFields === 'string') {
+                try {
+                    invoiceData = JSON.parse(extractedFields);
+                } catch (e) {
+                    console.error('Failed to parse extractedFields:', e);
+                    invoiceData = {};
+                }
+            } else {
+                invoiceData = extractedFields;
+            }
         }
-
+        
+        let totalAmount = 0;
+        if (invoiceData.result?.total_amount !== undefined) {
+            totalAmount = parseAmount(invoiceData.result.total_amount);
+        } else if (invoiceData.total_amount !== undefined) {
+            totalAmount = parseAmount(invoiceData.total_amount);
+        }
+        
+        console.log(`📊 Invoice ${invoiceId} total amount: ${totalAmount}`);
+        
+        const relatedIds: number[] = Array.isArray(invoiceDoc.references) ? invoiceDoc.references : [];
+        
+        if (relatedIds.length === 0) {
+            console.log(`ℹ️ Invoice ${invoiceId} has no related documents`);
+            return { total: totalAmount, amountPaid: 0, payments: [] };
+        }
+    
         const relatedDocs = await this.prisma.document.findMany({
             where: { id: { in: relatedIds } },
             include: { processedData: true }
         });
-
+    
         const payments: { docId: number; type: string; amount: number }[] = [];
-
-        const invoiceNumber: string | undefined = invoicePD.document_number;
-
+        
+        const invoiceNumber: string | undefined = invoiceData.result?.document_number || invoiceData.document_number;
+        
+        console.log(`🔍 Processing ${relatedDocs.length} related documents for invoice ${invoiceNumber || invoiceId}`);
+    
         for (const doc of relatedDocs) {
-            const pd = (doc.processedData?.[0]?.extractedFields || {}) as any;
+            let docData: any = {};
+            const docExtractedFields = doc.processedData?.[0]?.extractedFields;
+            
+            if (docExtractedFields) {
+                if (typeof docExtractedFields === 'string') {
+                    try {
+                        docData = JSON.parse(docExtractedFields);
+                    } catch (e) {
+                        console.error(`Failed to parse doc ${doc.id} extractedFields:`, e);
+                        docData = {};
+                    }
+                } else {
+                    docData = docExtractedFields;
+                }
+            }
+            
             let amount = 0;
+            
             switch (doc.type) {
-                case 'RECEIPT':
-                    amount = Number(pd?.total_amount) || 0;
+                case 'Receipt':
+                    amount = parseAmount(docData.result?.total_amount || docData.total_amount);
                     break;
-                case 'PAYMENT_ORDER':
-                case 'COLLECTION_ORDER':
-                    amount = Number(pd?.amount) || 0;
+                    
+                case 'Payment Order':
+                case 'Collection Order':
+                    amount = parseAmount(docData.result?.amount || docData.amount);
                     break;
-                case 'BANK_STATEMENT':
-                    if (Array.isArray(pd.transactions)) {
-                        for (const tx of pd.transactions) {
-                            const desc: string = (tx.description || '').toString();
-                            const matchesInvoice = invoiceNumber ? desc.includes(invoiceNumber) : false;
+                    
+                case 'Bank Statement':
+                    const transactions = docData.result?.transactions || docData.transactions || [];
+                    if (Array.isArray(transactions)) {
+                        for (const tx of transactions) {
+                            const description: string = (tx.description || '').toString();
+                            const matchesInvoice = invoiceNumber ? description.includes(invoiceNumber) : false;
+                            
                             if (matchesInvoice) {
-                                const debit = Number(tx.debit_amount) || 0;
-                                const credit = Number(tx.credit_amount) || 0;
-                                amount += credit !== 0 ? credit : debit;
+                                const debit = parseAmount(tx.debit_amount);
+                                const credit = parseAmount(tx.credit_amount);
+                                amount += credit > 0 ? credit : debit;
                             }
                         }
                     }
                     break;
+                    
                 default:
+                    console.warn(`Unknown document type: ${doc.type}`);
                     break;
             }
+            
             if (amount > 0) {
                 payments.push({ docId: doc.id, type: doc.type, amount });
+                console.log(`💰 Found payment: ${doc.type} #${doc.id} - ${amount} RON`);
             }
         }
-
+    
         const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
-        return { total, amountPaid, payments };
+        
+        console.log(`📋 Invoice ${invoiceId} payment summary:`, {
+            total: totalAmount,
+            amountPaid,
+            paymentsCount: payments.length
+        });
+        
+        return { total: totalAmount, amountPaid, payments };
     }
 
     async getDuplicateAlerts(clientCompanyEin: string, user: User) {

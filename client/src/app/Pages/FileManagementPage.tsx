@@ -3,22 +3,51 @@ import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClien
 
 interface InvoicePaymentBadgeProps { file: any; language: string; }
 const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, language }) => {
-  const { data } = useGetInvoicePaymentsQuery(file.id);
+  const { data, error, isLoading } = useGetInvoicePaymentsQuery(file.id);
+  
+  console.log('InvoicePaymentBadge Debug:', {
+    fileId: file.id,
+    data,
+    error,
+    isLoading,
+    fileType: file.type,
+    extractedTotal: file?.processedData?.[0]?.extractedFields?.result?.total_amount
+  });
+  
+  if (isLoading) return <span className="text-xs text-gray-500">Loading...</span>;
+  if (error) {
+    console.error('Invoice payments query error:', error);
+    return null;
+  }
   if (!data) return null;
-  const paid = data.amountPaid;
-  const total = data.total;
+  
+  const paid = data.amountPaid || 0;
+  const total = data.total || 0;
+  
+  console.log('Payment amounts:', { paid, total, originalData: data });
+  
   if (total === 0) return null;
+  
   const direction = file?.processedData?.[0]?.extractedFields?.result?.direction;
   const label = language === 'ro'
     ? direction === 'outgoing' ? 'Incasat' : 'Platit'
     : direction === 'outgoing' ? 'Cashed' : 'Paid';
-  const formatCurrency = (v: number) => Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(v);
+    
+  const formatCurrency = (v: number) => {
+    if (isNaN(v)) {
+      console.warn('Trying to format NaN as currency:', v);
+      return '0,00 RON';
+    }
+    return Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(v);
+  };
+  
   return (
     <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
       {label}: {formatCurrency(paid)}/{formatCurrency(total)}
     </span>
   );
 };
+
 import { 
   Bot, Eye, RefreshCw, Trash2, CheckSquare, Square, FileText, Receipt, 
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
