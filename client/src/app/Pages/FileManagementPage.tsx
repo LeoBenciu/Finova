@@ -162,10 +162,6 @@ const FileManagementPage = () => {
   };
 
   useEffect(()=>{
-    console.log('files:',files);
-  },[files])
-
-  useEffect(()=>{
     console.log('IntervalDateFitler:', filteredFiles);
   },[filteredFiles])
 
@@ -229,7 +225,10 @@ const FileManagementPage = () => {
   },[typeFilter, setTypeFilter, nameSearch, setNameSearch, intervalDateFilter, setIntervalDateFilter, paymentStatus, files]);
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
-  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery({company:clientCompanyEin});
+  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery(
+    {company: clientCompanyEin},
+    { skip: !clientCompanyEin }
+  );
   const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
   const [ processAutomation ] = useInsertClientInvoiceMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
