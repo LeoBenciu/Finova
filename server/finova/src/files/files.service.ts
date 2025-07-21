@@ -1279,6 +1279,16 @@ export class FilesService {
 
 
     async getInvoicePayments(invoiceId: number, user: User) {
+        // helper to transform locale-formatted strings like "1.234,56" into proper numbers
+        const parseAmount = (raw: any): number => {
+            if (raw === undefined || raw === null) return 0;
+            const str = raw.toString()
+                .replace(/[^0-9,.-]/g, '')      // keep digits and separators
+                .replace(/\./g, '')             // remove thousands separator
+                .replace(/,/g, '.');             // replace decimal comma with dot
+            const num = parseFloat(str);
+            return isNaN(num) ? 0 : num;
+        };
         const invoiceDoc = await this.prisma.document.findUnique({
             where: { id: invoiceId },
             include: { processedData: true }
@@ -1295,7 +1305,7 @@ export class FilesService {
         }
 
         const invoicePD = (invoiceDoc.processedData?.[0]?.extractedFields || {}) as any;
-        const total = Number(invoicePD.total_amount) || 0;
+        const total = Number(invoicePD.total_amount ?? invoicePD.result?.total_amount) || 0;
         const relatedIds: number[] = Array.isArray(invoiceDoc.references) ? invoiceDoc.references : [];
         if (relatedIds.length === 0) {
             return { total, amountPaid: 0, payments: [] };
