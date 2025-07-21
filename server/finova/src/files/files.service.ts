@@ -1348,21 +1348,8 @@ export class FilesService {
         console.log(`🔍 Processing ${relatedDocs.length} related documents for invoice ${invoiceNumber || invoiceId}`);
     
         for (const doc of relatedDocs) {
-            let docData: any = {};
-            const docExtractedFields = doc.processedData?.[0]?.extractedFields;
-            
-            if (docExtractedFields) {
-                if (typeof docExtractedFields === 'string') {
-                    try {
-                        docData = JSON.parse(docExtractedFields);
-                    } catch (e) {
-                        console.error(`Failed to parse doc ${doc.id} extractedFields:`, e);
-                        docData = {};
-                    }
-                } else {
-                    docData = docExtractedFields;
-                }
-            }
+            let docData: any = doc.processedData?.[0]?.extractedFields;
+            console.log("DOCUMENT DATA: ",docData);
             
             let amount = 0;
             
