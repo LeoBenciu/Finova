@@ -1327,11 +1327,18 @@ export class FilesService {
             }
         }
         
+        const pickPath = (obj: any, path: string): any =>
+            path.split('.').reduce((o,key)=> o?.[key], obj);
+        const totalAmountPaths = [
+            'result.total_amount',
+            'result.fields.total_amount',
+            'total_amount',
+            'fields.total_amount'
+        ];
         let totalAmount = 0;
-        if (invoiceData.result?.total_amount !== undefined) {
-            totalAmount = parseAmount(invoiceData.result.total_amount);
-        } else if (invoiceData.total_amount !== undefined) {
-            totalAmount = parseAmount(invoiceData.total_amount);
+        for (const p of totalAmountPaths) {
+            const val = pickPath(invoiceData, p);
+            if (val !== undefined) { totalAmount = parseAmount(val); break; }
         }
         
         console.log(`📊 Invoice ${invoiceId} total amount: ${totalAmount}`);
@@ -1374,16 +1381,16 @@ export class FilesService {
             let amount = 0;
             
             switch (doc.type) {
-                case 'Receipt':
+                case 'RECEIPT':
                     amount = parseAmount(docData.result?.total_amount || docData.total_amount);
                     break;
                     
-                case 'Payment Order':
-                case 'Collection Order':
+                case 'PAYMENT_ORDER':
+                case 'COLLECTION_ORDER':
                     amount = parseAmount(docData.result?.amount || docData.amount);
                     break;
                     
-                case 'Bank Statement':
+                case 'BANK_STATEMENT':
                     const transactions = docData.result?.transactions || docData.transactions || [];
                     if (Array.isArray(transactions)) {
                         for (const tx of transactions) {
