@@ -1348,7 +1348,7 @@ export class FilesService {
         console.log(`🔍 Processing ${relatedDocs.length} related documents for invoice ${invoiceNumber || invoiceId}`);
     
         for (const doc of relatedDocs) {
-            let docData: any = doc.processedData;
+            let docData: any = doc.processedData.extractedFields;
             console.log("DOCUMENT DATA: ",docData);
             
             let amount = 0;
