@@ -1346,11 +1346,9 @@ export class FilesService {
         const invoiceNumber: string | undefined = invoiceData.result?.document_number || invoiceData.document_number;
         
         console.log(`🔍 Processing ${relatedDocs.length} related documents for invoice ${invoiceNumber || invoiceId}`);
-        console.log("RELATEDDOCS:", relatedDocs)
     
         for (const doc of relatedDocs) {
-            console.log("DOCUMENT: ",doc);
-            let docData: any = doc.processedData?.[0]?.extractedFields;
+            let docData: any = doc.processedData;
             console.log("DOCUMENT DATA: ",docData);
             
             let amount = 0;
