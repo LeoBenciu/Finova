@@ -789,89 +789,111 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
       const transactionLog = [];
 
       processedData.forEach((docData) => {
-          const extractedData = docData.extractedFields as {
-              result: {
-                  buyer_ein: string,
-                  buyer: string,
-                  vendor_ein?: string,
-                  vendor: string,
-                  total_amount: number,
-                  vat_amount: number,
-                  document_date: string,
-                  document_number?: string,
-                  document_type?: string
-              }
-          };
-
-          const docYear = extractedData.result.document_date.split('/')[2] ||
-              extractedData.result.document_date.slice(6);
-
-            if (year && year !== 'all' && docYear !== year) {
-                console.log(`[YEAR_FILTER] Skipping transaction from year ${docYear} (filtering for ${year})`);
-                return;
+        const extractedData = docData.extractedFields as {
+            result: {
+                buyer_ein: string,
+                buyer: string,
+                vendor_ein?: string,
+                vendor: string,
+                total_amount: number,
+                vat_amount: number,
+                document_date: string,
+                document_number?: string,
+                document_type?: string
             }
-
-          const docMonth = extractedData.result.document_date.split('/')[1] ||
-              extractedData.result.document_date.slice(3, 5);
-
-          const docMonthIndex = Number(docMonth) - 1;
-          const amountWithoutVat = extractedData.result.total_amount - extractedData.result.vat_amount;
-
-          const isClientBuyer = extractedData.result.buyer_ein === currentCompanyEin;
-          const transactionType = isClientBuyer ? 'EXPENSE' : 'INCOME';
-          
-          console.log(`[COMPANY_DATA] Processing transaction:`);
-          console.log(`  - Document Type: ${extractedData.result.document_type || 'Unknown'}`);
-          console.log(`  - Document Number: ${extractedData.result.document_number || 'Unknown'}`);
-          console.log(`  - Date: ${extractedData.result.document_date}`);
-          console.log(`  - Year: ${docYear}`);
-          console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyer_ein})`);
-          console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendor_ein || 'Unknown'})`);
-          console.log(`  - Amount (without VAT): ${amountWithoutVat}`);
-          console.log(`  - Current Company EIN: ${currentCompanyEin}`);
-          console.log(`  - Is Client Buyer: ${isClientBuyer}`);
-          console.log(`  - Transaction Type: ${transactionType}`);
-          console.log(`  ---`);
-
-          transactionLog.push({
-              documentType: extractedData.result.document_type,
-              documentNumber: extractedData.result.document_number,
-              date: extractedData.result.document_date,
-              buyer: extractedData.result.buyer,
-              buyerEin: extractedData.result.buyer_ein,
-              vendor: extractedData.result.vendor,
-              vendorEin: extractedData.result.vendor_ein,
-              amount: amountWithoutVat,
-              isClientBuyer,
-              transactionType,
-              month: docMonth,
-              year: docYear
-          });
-
-          const shouldCountInMonthly = !year || docYear === year;
+        };
     
-          if (isClientBuyer) {
-              if (Number(docMonth) === Number(currentMonth) - 1) {
-                  expensesLastMonth += amountWithoutVat;
-              } else if (Number(docMonth) === Number(currentMonth)) {
-                  expensesCurrentMonth += amountWithoutVat;
-              }
-            
-              if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
-                  monthlyData[docMonthIndex].expenses += amountWithoutVat;
-              }
-          } else {
-              if (Number(docMonth) === Number(currentMonth) - 1) {
-                  incomeLastMonth += amountWithoutVat;
-              } else if (Number(docMonth) === Number(currentMonth)) {
-                  incomeCurrentMonth += amountWithoutVat;
-              }
-            
-              if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
-                  monthlyData[docMonthIndex].income += amountWithoutVat;
-              }
-          }
-});
+        if (!extractedData || !extractedData.result || !extractedData.result.document_date) {
+            console.log(`[COMPANY_DATA] Skipping document with missing or invalid data:`, {
+                hasExtractedData: !!extractedData,
+                hasResult: !!(extractedData && extractedData.result),
+                hasDocumentDate: !!(extractedData && extractedData.result && extractedData.result.document_date)
+            });
+            return;
+        }
+    
+        if (typeof extractedData.result.document_date !== 'string' || extractedData.result.document_date.trim() === '') {
+            console.log(`[COMPANY_DATA] Skipping document with invalid document_date:`, extractedData.result.document_date);
+            return;
+        }
+    
+        if (isNaN(extractedData.result.total_amount) || isNaN(extractedData.result.vat_amount)) {
+            console.log(`[COMPANY_DATA] Skipping document with invalid amounts:`, {
+                total_amount: extractedData.result.total_amount,
+                vat_amount: extractedData.result.vat_amount
+            });
+            return;
+        }
+    
+        const docYear = extractedData.result.document_date.split('/')[2] ||
+            extractedData.result.document_date.slice(6);
+    
+        if (year && year !== 'all' && docYear !== year) {
+            console.log(`[YEAR_FILTER] Skipping transaction from year ${docYear} (filtering for ${year})`);
+            return;
+        }
+    
+        const docMonth = extractedData.result.document_date.split('/')[1] ||
+            extractedData.result.document_date.slice(3, 5);
+    
+        const docMonthIndex = Number(docMonth) - 1;
+        const amountWithoutVat = extractedData.result.total_amount - extractedData.result.vat_amount;
+    
+        const isClientBuyer = extractedData.result.buyer_ein === currentCompanyEin;
+        const transactionType = isClientBuyer ? 'EXPENSE' : 'INCOME';
+        
+        console.log(`[COMPANY_DATA] Processing transaction:`);
+        console.log(`  - Document Type: ${extractedData.result.document_type || 'Unknown'}`);
+        console.log(`  - Document Number: ${extractedData.result.document_number || 'Unknown'}`);
+        console.log(`  - Date: ${extractedData.result.document_date}`);
+        console.log(`  - Year: ${docYear}`);
+        console.log(`  - Buyer: ${extractedData.result.buyer} (EIN: ${extractedData.result.buyer_ein})`);
+        console.log(`  - Vendor: ${extractedData.result.vendor} (EIN: ${extractedData.result.vendor_ein || 'Unknown'})`);
+        console.log(`  - Amount (without VAT): ${amountWithoutVat}`);
+        console.log(`  - Current Company EIN: ${currentCompanyEin}`);
+        console.log(`  - Is Client Buyer: ${isClientBuyer}`);
+        console.log(`  - Transaction Type: ${transactionType}`);
+        console.log(`  ---`);
+    
+        transactionLog.push({
+            documentType: extractedData.result.document_type,
+            documentNumber: extractedData.result.document_number,
+            date: extractedData.result.document_date,
+            buyer: extractedData.result.buyer,
+            buyerEin: extractedData.result.buyer_ein,
+            vendor: extractedData.result.vendor,
+            vendorEin: extractedData.result.vendor_ein,
+            amount: amountWithoutVat,
+            isClientBuyer,
+            transactionType,
+            month: docMonth,
+            year: docYear
+        });
+    
+        const shouldCountInMonthly = !year || docYear === year;
+    
+        if (isClientBuyer) {
+            if (Number(docMonth) === Number(currentMonth) - 1) {
+                expensesLastMonth += amountWithoutVat;
+            } else if (Number(docMonth) === Number(currentMonth)) {
+                expensesCurrentMonth += amountWithoutVat;
+            }
+          
+            if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
+                monthlyData[docMonthIndex].expenses += amountWithoutVat;
+            }
+        } else {
+            if (Number(docMonth) === Number(currentMonth) - 1) {
+                incomeLastMonth += amountWithoutVat;
+            } else if (Number(docMonth) === Number(currentMonth)) {
+                incomeCurrentMonth += amountWithoutVat;
+            }
+          
+            if (shouldCountInMonthly && docMonthIndex >= 0 && docMonthIndex < 12) {
+                monthlyData[docMonthIndex].income += amountWithoutVat;
+            }
+        }
+    });
 
       console.log(`[COMPANY_DATA] Transaction Summary:`);
       console.log(`  - Total Transactions: ${transactionLog.length}`);
