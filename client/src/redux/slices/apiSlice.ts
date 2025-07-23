@@ -61,6 +61,20 @@ export const finovaApi = createApi({
             }
         }),
 
+        processBatch: build.mutation({
+            query: ({ files, clientCompanyEin }) => {
+                const formData: FormData = new FormData();
+                files.forEach((f: File) => formData.append('files', f));
+                formData.append('ein', clientCompanyEin);
+                return {
+                    url: '/data-extraction/batch',
+                    method: 'POST',
+                    body: formData,
+                    formData: true,
+                };
+            },
+        }),
+
         saveFileAndExtractedData: build.mutation({
             query:({clientCompanyEin, processedData, file})=>{
                 const formData: FormData = new FormData();
@@ -414,5 +428,5 @@ useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
 useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
 useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
 useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
-useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery,
+useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery, useProcessBatchMutation,
 useGetSomeFilesMutation} = finovaApi;

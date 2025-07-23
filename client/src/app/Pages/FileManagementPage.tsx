@@ -1,5 +1,5 @@
 import InitialClientCompanyModalSelect from '@/app/Components/InitialClientCompanyModalSelect';
-import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery, useGetInvoicePaymentsQuery } from '@/redux/slices/apiSlice';
+import { useDeleteFileAndExtractedDataMutation, useGetFilesQuery, useInsertClientInvoiceMutation, useGetJobStatusQuery, useGetInvoicePaymentsQuery, useProcessBatchMutation } from '@/redux/slices/apiSlice';
 
 interface InvoicePaymentBadgeProps { file: any; language: string; }
 const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, language }) => {
@@ -255,6 +255,19 @@ const FileManagementPage = () => {
     { skip: !clientCompanyEin }
   );
   const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
+  const [ processBatch, { isLoading: isBatchUploading } ] = useProcessBatchMutation();
+  const handleBatchUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!event.target.files || event.target.files.length === 0) return;
+    const filesArr = Array.from(event.target.files);
+    try {
+      await processBatch({ files: filesArr, clientCompanyEin });
+      refetchFiles();
+    } catch (err) {
+      console.error('Batch upload failed', err);
+    } finally {
+      event.target.value = '';
+    }
+  };
   const [ processAutomation ] = useInsertClientInvoiceMutation();
   const language = useSelector((state:{user:{language:string}})=>state.user.language);
   const clientCompanyName = useSelector((state:clientCompanyName)=>state.clientCompany.current.name);
@@ -660,6 +673,14 @@ const FileManagementPage = () => {
             <p className="text-[var(--text2)] text-lg text-left">
               {language === 'ro' ? 'Gestionează și procesează documentele tale cu tracking plăți' : 'Manage and process your documents with payment tracking'}
             </p>
+            <div className="mt-4">
+              <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary-dark)] transition-colors">
+                <Download size={16} />
+                {language==='ro' ? 'Încarcă Batch' : 'Upload Batch'}
+                <input type="file" multiple className="hidden" onChange={handleBatchUpload} />
+              </label>
+              {isBatchUploading && <span className="ml-3 text-sm text-[var(--text2)]">{language==='ro'?'Se încarcă...':'Uploading...'}</span>}
+            </div>
           </div>
         </div>
       </div>

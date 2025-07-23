@@ -177,6 +177,75 @@ export class DataExtractionService {
         return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
     }
 
+    /**
+     * Batch processing entry point. It strictly follows the user-requested order:
+     *   1. Categorize ALL documents first (phase 0)
+     *   2. Extract incoming invoices (phase 1)
+     *   3. Extract outgoing invoices (phase 2)
+     *   4. Process the remaining documents (phase 3)
+     *
+     * It keeps existing duplicate / compliance / relevance logic untouched because
+     * those are executed inside `processDocument` depending on the phase.
+     */
+    async processBatch(filesBase64: string[], clientCompanyEin: string) {
+        const categorizedResults: any[] = [];
+
+        // --- 1) Categorize all documents first (phase 0) ---
+        for (const file of filesBase64) {
+            try {
+                const catResult = await this.extractData(file, clientCompanyEin, 0);
+                categorizedResults.push({ file, result: catResult });
+            } catch (e) {
+                this.logger.error(`Categorization failed for one document: ${e}`);
+                categorizedResults.push({ file, error: e });
+            }
+        }
+
+        // Helper to re-run extraction for a subset and phase
+        const runPhaseForFilter = async (filterFn: (r: any) => boolean, phase: number) => {
+            const outputs: any[] = [];
+            for (const entry of categorizedResults.filter(filterFn)) {
+                try {
+                    const res = await this.extractData(entry.file, clientCompanyEin, phase);
+                    outputs.push(res);
+                } catch (e) {
+                    this.logger.error(`Phase ${phase} failed for a document: ${e}`);
+                }
+            }
+            return outputs;
+        };
+
+        // --- 2) Incoming invoices ---
+        const incomingOutputs = await runPhaseForFilter(
+            r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'incoming',
+            1,
+        );
+
+        // --- 3) Outgoing invoices ---
+        const outgoingOutputs = await runPhaseForFilter(
+            r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'outgoing',
+            2,
+        );
+
+        // --- 4) Other documents ---
+        const otherOutputs = await runPhaseForFilter(
+            r => {
+                const type = r.result?.result?.document_type?.toLowerCase();
+                if (type === 'invoice') return false;
+                return true;
+            },
+            3,
+        );
+
+        return {
+            categorizedResults: categorizedResults.map(r => r.result),
+            incomingOutputs,
+            outgoingOutputs,
+            otherOutputs,
+        };
+    }
+
+
     private validateProcessedData(data: any, phase: number): ProcessedDataValidation {
         const validation: ProcessedDataValidation = {
             isValid: true,
