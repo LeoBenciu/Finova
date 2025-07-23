@@ -25,6 +25,7 @@ type DocumentState = 'uploaded' | 'queued' | 'processing' | 'processed' | 'saved
 
 interface DocumentStatus {
   state: DocumentState;
+  phase?: 0 | 1 | 2 | 3;
   data?: any;
   error?: string;
   position?: number;
@@ -119,6 +120,7 @@ const FileUploadPage = () => {
       newDocuments.forEach((doc, index) => {
         newStates[doc.name] = { 
           state: 'queued',
+          phase: 0,
           position: processingQueue.length + index + 1,
           retryCount: 0,
           lastAttempt: 0
@@ -189,6 +191,65 @@ const FileUploadPage = () => {
     return true;
   }, []);
 
+  // Check if all documents in current phase are processed
+  const isPhaseComplete = useCallback((phase: number) => {
+    return Object.entries(documentStates).every(([_, status]) => {
+      // Skip documents that aren't part of this phase
+      if (status.phase !== phase) return true;
+      // Document is in this phase - check if it's processed
+      return status.state === 'processed' || status.state === 'saved' || status.state === 'error';
+    });
+  }, [documentStates]);
+
+  // Move to next phase for applicable documents
+  const queueNextPhase = useCallback((currentPhase: number) => {
+    const nextPhase = currentPhase + 1 as 0 | 1 | 2 | 3;
+    const nextPhaseDocs = Object.entries(documentStates)
+      .filter(([_, status]) => {
+        if (status.phase !== currentPhase) return false;
+        if (status.state !== 'processed') return false;
+        
+        const docType = status.data?.result?.document_type?.toLowerCase();
+        if (!docType) return false;
+
+        // Phase 0 -> 1: Only incoming invoices
+        if (currentPhase === 0) return docType.includes('invoice') && 
+          status.data?.result?.direction === 'incoming';
+          
+        // Phase 1 -> 2: Only outgoing invoices
+        if (currentPhase === 1) return docType.includes('invoice') && 
+          status.data?.result?.direction === 'outgoing';
+          
+        // Phase 2 -> 3: Everything not an invoice
+        if (currentPhase === 2) return !docType.includes('invoice');
+        
+        return false;
+      })
+      .map(([name]) => name);
+
+    if (nextPhaseDocs.length === 0) return;
+
+    // Update phases and requeue
+    setDocumentStates(prev => {
+      const next = { ...prev };
+      nextPhaseDocs.forEach(name => {
+        next[name] = { ...next[name], phase: nextPhase, state: 'queued' };
+      });
+      return next;
+    });
+
+    setProcessingQueue(prev => [...prev, ...nextPhaseDocs]);
+  }, [documentStates]);
+
+  // Check for phase completion when document states change
+  useEffect(() => {
+    [0, 1, 2].forEach(phase => {
+      if (isPhaseComplete(phase)) {
+        queueNextPhase(phase);
+      }
+    });
+  }, [documentStates, isPhaseComplete, queueNextPhase]);
+
   const processNextInQueue = useCallback(async () => {
     if (isProcessingRef.current || processingQueue.length === 0 || isProcessingPaused) {
       return;
@@ -229,9 +290,13 @@ const FileUploadPage = () => {
     try {
       console.log(`Processing document: ${nextDocumentName} (attempt ${(documentStates[nextDocumentName]?.retryCount || 0) + 1})`);
       
+      const status = documentStates[nextDocumentName];
+      const currentPhase = status.phase || 0;
+      
       const processedFile = await process({ 
         file: document, 
-        clientCompanyEin 
+        clientCompanyEin,
+        phase: currentPhase
       }).unwrap();
       
       // Clear timeout on success
@@ -245,9 +310,9 @@ const FileUploadPage = () => {
       setDocumentStates(prev => ({
         ...prev,
         [nextDocumentName]: { 
+          ...prev[nextDocumentName],
           state: 'processed', 
           data: processedFile,
-          retryCount: prev[nextDocumentName]?.retryCount || 0,
           lastAttempt: Date.now()
         }
       }));
@@ -583,6 +648,10 @@ const FileUploadPage = () => {
       case 'retry':
         return language === 'ro' ? `Reîncercare ${retryCount}` : `Retry ${retryCount}`;
       case 'processing':
+        const phase = documentStates[doc.name]?.phase;
+        if (phase === 0) {
+          return language === 'ro' ? 'Se categorizează...' : 'Categorizing...';
+        }
         return language === 'ro' ? 'Se procesează...' : 'Processing...';
       case 'processed':
         return language === 'ro' ? 'Procesat' : 'Processed';

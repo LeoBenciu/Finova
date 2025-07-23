@@ -173,24 +173,77 @@ export class DataExtractionService {
         }
     }
 
-    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0) {
-        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
+    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase?: number) {
+        if (processingPhase !== undefined) {
+            return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
+        }
+        
+        return this.processingQueue.add(() => this.processDocumentPhased(fileBase64, clientCompanyEin));
+    }
+    
+    private async processDocumentPhased(fileBase64: string, clientCompanyEin: string) {
+        this.logger.log(`Starting phased processing for single document`);
+        
+        try {
+            this.logger.log(`Phase 0: Categorizing document`);
+            const categorizedResult = await this.processDocument(fileBase64, clientCompanyEin, 0);
+            
+            if (!categorizedResult || !categorizedResult.document_type) {
+                throw new Error('Categorization failed - no document type determined');
+            }
+            
+            const documentType = categorizedResult.document_type.toLowerCase();
+            const direction = categorizedResult.direction;
+            
+            this.logger.log(`Document categorized as: ${documentType}, direction: ${direction}`);
+            
+            let processingPhase: number;
+            
+            if (documentType === 'invoice') {
+                if (direction === 'incoming') {
+                    processingPhase = 1; 
+                    this.logger.log(`Processing as incoming invoice (Phase 1)`);
+                } else if (direction === 'outgoing') {
+                    processingPhase = 2; 
+                    this.logger.log(`Processing as outgoing invoice (Phase 2)`);
+                } else {
+                    this.logger.warn(`Invoice with unknown direction: ${direction}, defaulting to Phase 3`);
+                    processingPhase = 3; 
+                }
+            } else {
+                processingPhase = 3; 
+                this.logger.log(`Processing as other document type (Phase 3)`);
+            }
+            
+            this.logger.log(`Phase ${processingPhase}: Processing document data`);
+            const finalResult = await this.processDocument(fileBase64, clientCompanyEin, processingPhase);
+            
+            const mergedResult = {
+                ...categorizedResult,
+                ...finalResult,
+                document_type: categorizedResult.document_type,
+                direction: categorizedResult.direction,
+                processing_metadata: {
+                    categorization_phase: 0,
+                    extraction_phase: processingPhase,
+                    processing_order: documentType === 'invoice' 
+                        ? (direction === 'incoming' ? 'priority_1' : direction === 'outgoing' ? 'priority_2' : 'priority_3')
+                        : 'priority_3'
+                }
+            };
+            
+            this.logger.log(`Phased processing completed successfully for ${documentType} document`);
+            return mergedResult;
+            
+        } catch (error) {
+            this.logger.error(`Phased processing failed: ${error.message}`);
+            throw error;
+        }
     }
 
-    /**
-     * Batch processing entry point. It strictly follows the user-requested order:
-     *   1. Categorize ALL documents first (phase 0)
-     *   2. Extract incoming invoices (phase 1)
-     *   3. Extract outgoing invoices (phase 2)
-     *   4. Process the remaining documents (phase 3)
-     *
-     * It keeps existing duplicate / compliance / relevance logic untouched because
-     * those are executed inside `processDocument` depending on the phase.
-     */
     async processBatch(filesBase64: string[], clientCompanyEin: string) {
         const categorizedResults: any[] = [];
 
-        // --- 1) Categorize all documents first (phase 0) ---
         for (const file of filesBase64) {
             try {
                 const catResult = await this.extractData(file, clientCompanyEin, 0);
@@ -201,7 +254,6 @@ export class DataExtractionService {
             }
         }
 
-        // Helper to re-run extraction for a subset and phase
         const runPhaseForFilter = async (filterFn: (r: any) => boolean, phase: number) => {
             const outputs: any[] = [];
             for (const entry of categorizedResults.filter(filterFn)) {
@@ -215,19 +267,15 @@ export class DataExtractionService {
             return outputs;
         };
 
-        // --- 2) Incoming invoices ---
         const incomingOutputs = await runPhaseForFilter(
             r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'incoming',
             1,
         );
-
-        // --- 3) Outgoing invoices ---
         const outgoingOutputs = await runPhaseForFilter(
             r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'outgoing',
             2,
         );
 
-        // --- 4) Other documents ---
         const otherOutputs = await runPhaseForFilter(
             r => {
                 const type = r.result?.result?.document_type?.toLowerCase();

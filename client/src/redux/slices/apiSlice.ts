@@ -45,10 +45,11 @@ export const finovaApi = createApi({
         }),
 
         extractData: build.mutation({
-            query:({file, clientCompanyEin})=>{
+            query:({file, clientCompanyEin, phase = 0}:{file: File; clientCompanyEin: string; phase?: number})=>{
                 const formData: FormData = new FormData();
                 formData.append('file', file);
                 formData.append('ein', clientCompanyEin);
+                formData.append('phase', phase.toString());
 
                 return{
                     url:'/data-extraction',
