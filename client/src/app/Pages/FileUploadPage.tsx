@@ -54,6 +54,7 @@ const FileUploadPageBatch = () => {
     const [editFile, setEditFile] = useState<{ result: Record<string, any> } | undefined>(undefined);
     const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
     
+    // Batch processing states
     const [batchStatus, setBatchStatus] = useState<BatchProcessingStatus>({
         phase: 'idle',
         progress: { current: 0, total: 0, percentage: 0 }
@@ -70,6 +71,7 @@ const FileUploadPageBatch = () => {
         { skip: !clientCompanyEin }
     );
 
+    // Initialize document results when documents change
     useEffect(() => {
         if (documents.length > 0 && documentResults.length === 0) {
             setDocumentResults(
@@ -96,6 +98,7 @@ const FileUploadPageBatch = () => {
                 clientCompanyEin
             }).unwrap();
 
+            // Update document results with categorization
             setBatchStatus({
                 phase: 'categorizing',
                 progress: { 
@@ -106,11 +109,12 @@ const FileUploadPageBatch = () => {
                 stats: response.processingStats
             });
 
+            // Map results back to documents
             const updatedResults: DocumentResult[] = documents.map((file, fileIndex) => {
-                const catResult = response.categorizedResults.find((r: { index: number }) => r.index === fileIndex);
-                const incomingResult = response.incomingInvoices.find((r: { index: number }) => r.index === fileIndex);
-                const outgoingResult = response.outgoingInvoices.find((r: { index: number }) => r.index === fileIndex);
-                const otherResult = response.otherDocuments.find((r: { index: number }) => r.index === fileIndex);
+                const catResult = response.categorizedResults.find((r: {index: number}) => r.index === fileIndex);
+                const incomingResult = response.incomingInvoices.find((r: {index: number}) => r.index === fileIndex);
+                const outgoingResult = response.outgoingInvoices.find((r: {index: number}) => r.index === fileIndex);
+                const otherResult = response.otherDocuments.find((r: {index: number}) => r.index === fileIndex);
 
                 let finalResult = incomingResult || outgoingResult || otherResult;
                 
@@ -137,7 +141,7 @@ const FileUploadPageBatch = () => {
                 stats: response.processingStats
             });
 
-        } catch (error: any) {
+        } catch (error:any) {
             console.error('Batch processing failed:', error);
             setBatchStatus({
                 phase: 'error',
@@ -266,6 +270,7 @@ const FileUploadPageBatch = () => {
 
     return (
         <div className="min-h-screen p-8">
+            {/* Header Section */}
             <div className="mb-8">
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
@@ -286,6 +291,7 @@ const FileUploadPageBatch = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {/* Duplicate Alerts */}
                         {duplicateAlerts.length > 0 && (
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
@@ -299,6 +305,7 @@ const FileUploadPageBatch = () => {
                             </motion.button>
                         )}
 
+                        {/* Process Batch Button */}
                         {documents.length > 0 && batchStatus.phase === 'idle' && (
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
@@ -312,6 +319,7 @@ const FileUploadPageBatch = () => {
                             </motion.button>
                         )}
 
+                        {/* Upload Button */}
                         <motion.button
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
@@ -328,6 +336,7 @@ const FileUploadPageBatch = () => {
                     </div>
                 </div>
 
+                {/* Processing Status */}
                 {batchStatus.phase !== 'idle' && (
                     <motion.div 
                         initial={{ opacity: 0, y: -20 }}
@@ -367,6 +376,7 @@ const FileUploadPageBatch = () => {
                             )}
                         </div>
                         
+                        {/* Progress Bar */}
                         {batchStatus.phase !== 'error' && batchStatus.progress.total > 0 && (
                             <div className="w-full bg-gray-200 rounded-full h-2">
                                 <motion.div 
@@ -385,6 +395,7 @@ const FileUploadPageBatch = () => {
                 )}
             </div>
 
+            {/* Upload Zone */}
             <AnimatePresence>
                 {dropzoneVisible && (
                     <motion.div
@@ -403,6 +414,7 @@ const FileUploadPageBatch = () => {
                 )}
             </AnimatePresence>
 
+            {/* Empty State */}
             {!dropzoneVisible && documents.length === 0 && (
                 <motion.div 
                     initial={{ opacity: 0, y: 20 }}
@@ -434,12 +446,14 @@ const FileUploadPageBatch = () => {
                 </motion.div>
             )}
 
+            {/* Document List */}
             {documents.length > 0 && (
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden"
                 >
+                    {/* Header */}
                     <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -453,6 +467,7 @@ const FileUploadPageBatch = () => {
                         </div>
                     </div>
 
+                    {/* Document Items */}
                     <div className="p-6">
                         <div className="space-y-3">
                             {documentResults.map((doc) => {
@@ -467,6 +482,7 @@ const FileUploadPageBatch = () => {
                                         border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
                                     >
                                         <div className="flex items-center gap-4">
+                                            {/* File Icon & Info */}
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
                                                 <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
                                                     <FileText size={24} className="text-[var(--primary)]" />
@@ -500,6 +516,7 @@ const FileUploadPageBatch = () => {
                                                 </div>
                                             </div>
 
+                                            {/* Status */}
                                             <div className="flex items-center gap-2">
                                                 <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border ${status.color}`}>
                                                     {status.icon}
@@ -507,6 +524,7 @@ const FileUploadPageBatch = () => {
                                                 </span>
                                             </div>
 
+                                            {/* Actions */}
                                             <div className="flex items-center gap-2">
                                                 {doc.result && (
                                                     <TooltipDemo
@@ -523,6 +541,7 @@ const FileUploadPageBatch = () => {
                                                     />
                                                 )}
 
+                                                {/* Delete Button */}
                                                 <TooltipDemo
                                                     trigger={
                                                         <button
@@ -545,6 +564,7 @@ const FileUploadPageBatch = () => {
                 </motion.div>
             )}
 
+            {/* Modals */}
             <AnimatePresence>
                 {showDuplicateAlerts && (
                     <motion.div
@@ -570,6 +590,7 @@ const FileUploadPageBatch = () => {
                 )}
             </AnimatePresence>
 
+            {/* Edit Modal */}
             <Suspense fallback={
                 <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
                     <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl">

@@ -202,21 +202,55 @@ export class DataExtractionService {
         return this.processingQueue.add(() => this.processDocumentPhased(fileBase64, clientCompanyEin));
     }
 
-    async processBatchPhased(
-        filesWithMetadata: FileWithMetadata[], 
-        clientCompanyEin: string
-    ): Promise<BatchProcessingResult> {
-        this.logger.log(`Starting phased batch processing for ${filesWithMetadata.length} files`);
+    async categorizeBatch(filesBase64: string[], clientCompanyEin: string): Promise<any[]> {
+        const results = [];
         
-        const processingStats = {
-            total: filesWithMetadata.length,
-            categorized: 0,
-            incomingProcessed: 0,
-            outgoingProcessed: 0,
-            othersProcessed: 0,
-            errors: 0
-        };
+        for (let i = 0; i < filesBase64.length; i++) {
+            try {
+                const result = await this.extractData(filesBase64[i], clientCompanyEin, 0);
+                results.push({
+                    index: i,
+                    success: true,
+                    documentType: result.document_type,
+                    direction: result.direction,
+                    data: result
+                });
+            } catch (error) {
+                results.push({
+                    index: i,
+                    success: false,
+                    error: error.message
+                });
+            }
+        }
+        
+        return results;
+    }
+
+async processBatchPhased(
+    filesWithMetadata: FileWithMetadata[], 
+    clientCompanyEin: string
+): Promise<BatchProcessingResult> {
+    this.logger.log(`Starting phased batch processing for ${filesWithMetadata.length} files`);
     
+    const processingStats = {
+        total: filesWithMetadata.length,
+        categorized: 0,
+        incomingProcessed: 0,
+        outgoingProcessed: 0,
+        othersProcessed: 0,
+        errors: 0
+    };
+
+    const result: BatchProcessingResult = {
+        categorizedResults: [],
+        incomingInvoices: [],
+        outgoingInvoices: [],
+        otherDocuments: [],
+        processingStats
+    };
+
+    try {
         this.logger.log('PHASE 0: Starting categorization of all documents');
         const categorizedResults: any[] = [];
         
@@ -224,22 +258,27 @@ export class DataExtractionService {
             try {
                 this.logger.log(`Categorizing file ${file.index + 1}/${filesWithMetadata.length}: ${file.originalName}`);
                 
-                const result = await this.extractData(file.base64, clientCompanyEin, 0);
+                const categorizePromise = this.extractData(file.base64, clientCompanyEin, 0);
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Categorization timeout')), 60000) // 60 second timeout
+                );
+                
+                const catResult = await Promise.race([categorizePromise, timeoutPromise]) as any;
                 
                 categorizedResults.push({
                     index: file.index,
                     originalName: file.originalName,
                     base64: file.base64,
-                    categorization: result,
-                    documentType: result.document_type,
-                    direction: result.direction
+                    categorization: catResult,
+                    documentType: catResult.document_type,
+                    direction: catResult.direction
                 });
                 
                 processingStats.categorized++;
                 
-                this.logger.log(`Categorized ${file.originalName} as ${result.document_type} ${result.direction || ''}`);
+                this.logger.log(`✓ Categorized ${file.originalName} as ${catResult.document_type} ${catResult.direction || ''}`);
             } catch (error) {
-                this.logger.error(`Failed to categorize ${file.originalName}: ${error.message}`);
+                this.logger.error(`✗ Failed to categorize ${file.originalName}: ${error.message}`);
                 categorizedResults.push({
                     index: file.index,
                     originalName: file.originalName,
@@ -250,9 +289,17 @@ export class DataExtractionService {
                 processingStats.errors++;
             }
         }
-    
+
         this.logger.log(`Categorization complete. ${processingStats.categorized} succeeded, ${processingStats.errors} failed`);
-    
+
+        result.categorizedResults = categorizedResults.map(r => ({
+            index: r.index,
+            originalName: r.originalName,
+            documentType: r.documentType,
+            direction: r.direction,
+            error: r.error
+        }));
+
         const incomingInvoiceFiles = categorizedResults.filter(
             r => r.documentType?.toLowerCase() === 'invoice' && r.direction === 'incoming' && !r.error
         );
@@ -266,10 +313,9 @@ export class DataExtractionService {
                  (r.documentType?.toLowerCase() === 'invoice' && !r.direction)) && 
                 !r.error
         );
-    
+
         this.logger.log(`Document distribution: ${incomingInvoiceFiles.length} incoming invoices, ${outgoingInvoiceFiles.length} outgoing invoices, ${otherDocumentFiles.length} other documents`);
-    
-        const incomingInvoices: any[] = [];
+
         if (incomingInvoiceFiles.length > 0) {
             this.logger.log(`PHASE 1: Processing ${incomingInvoiceFiles.length} incoming invoices`);
             
@@ -277,21 +323,27 @@ export class DataExtractionService {
                 try {
                     this.logger.log(`Processing incoming invoice ${file.originalName}`);
                     
-                    const result = await this.extractData(file.base64, clientCompanyEin, 1);
+                    const processPromise = this.extractData(file.base64, clientCompanyEin, 1);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
+                    );
                     
-                    incomingInvoices.push({
+                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
+                    
+                    result.incomingInvoices.push({
                         index: file.index,
                         originalName: file.originalName,
                         result: {
                             ...file.categorization,
-                            ...result
+                            ...extractResult
                         }
                     });
                     
                     processingStats.incomingProcessed++;
+                    this.logger.log(`✓ Processed incoming invoice ${file.originalName}`);
                 } catch (error) {
-                    this.logger.error(`Failed to process incoming invoice ${file.originalName}: ${error.message}`);
-                    incomingInvoices.push({
+                    this.logger.error(`✗ Failed to process incoming invoice ${file.originalName}: ${error.message}`);
+                    result.incomingInvoices.push({
                         index: file.index,
                         originalName: file.originalName,
                         error: error.message,
@@ -301,8 +353,7 @@ export class DataExtractionService {
                 }
             }
         }
-    
-        const outgoingInvoices: any[] = [];
+
         if (outgoingInvoiceFiles.length > 0) {
             this.logger.log(`PHASE 2: Processing ${outgoingInvoiceFiles.length} outgoing invoices`);
             
@@ -310,21 +361,27 @@ export class DataExtractionService {
                 try {
                     this.logger.log(`Processing outgoing invoice ${file.originalName}`);
                     
-                    const result = await this.extractData(file.base64, clientCompanyEin, 2);
+                    const processPromise = this.extractData(file.base64, clientCompanyEin, 2);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
+                    );
                     
-                    outgoingInvoices.push({
+                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
+                    
+                    result.outgoingInvoices.push({
                         index: file.index,
                         originalName: file.originalName,
                         result: {
                             ...file.categorization,
-                            ...result
+                            ...extractResult
                         }
                     });
                     
                     processingStats.outgoingProcessed++;
+                    this.logger.log(`✓ Processed outgoing invoice ${file.originalName}`);
                 } catch (error) {
-                    this.logger.error(`Failed to process outgoing invoice ${file.originalName}: ${error.message}`);
-                    outgoingInvoices.push({
+                    this.logger.error(`✗ Failed to process outgoing invoice ${file.originalName}: ${error.message}`);
+                    result.outgoingInvoices.push({
                         index: file.index,
                         originalName: file.originalName,
                         error: error.message,
@@ -334,8 +391,7 @@ export class DataExtractionService {
                 }
             }
         }
-    
-        const otherDocuments: any[] = [];
+
         if (otherDocumentFiles.length > 0) {
             this.logger.log(`PHASE 3: Processing ${otherDocumentFiles.length} other documents`);
             
@@ -343,21 +399,27 @@ export class DataExtractionService {
                 try {
                     this.logger.log(`Processing ${file.documentType} document ${file.originalName}`);
                     
-                    const result = await this.extractData(file.base64, clientCompanyEin, 3);
+                    const processPromise = this.extractData(file.base64, clientCompanyEin, 3);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
+                    );
                     
-                    otherDocuments.push({
+                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
+                    
+                    result.otherDocuments.push({
                         index: file.index,
                         originalName: file.originalName,
                         result: {
                             ...file.categorization,
-                            ...result
+                            ...extractResult
                         }
                     });
                     
                     processingStats.othersProcessed++;
+                    this.logger.log(`✓ Processed ${file.documentType} document ${file.originalName}`);
                 } catch (error) {
-                    this.logger.error(`Failed to process ${file.documentType} document ${file.originalName}: ${error.message}`);
-                    otherDocuments.push({
+                    this.logger.error(`✗ Failed to process ${file.documentType} document ${file.originalName}: ${error.message}`);
+                    result.otherDocuments.push({
                         index: file.index,
                         originalName: file.originalName,
                         error: error.message,
@@ -367,25 +429,20 @@ export class DataExtractionService {
                 }
             }
         }
-    
-        const result: BatchProcessingResult = {
-            categorizedResults: categorizedResults.map(r => ({
-                index: r.index,
-                originalName: r.originalName,
-                documentType: r.documentType,
-                direction: r.direction,
-                error: r.error
-            })),
-            incomingInvoices,
-            outgoingInvoices,
-            otherDocuments,
-            processingStats
-        };
-    
+
+        result.processingStats = processingStats;
+        
         this.logger.log(`Batch processing complete. Stats: ${JSON.stringify(processingStats)}`);
         
         return result;
+        
+    } catch (error) {
+        this.logger.error(`Critical error in batch processing: ${error.message}`);
+        
+        result.processingStats = processingStats;
+        return result;
     }
+}
     
     private async processDocumentPhased(fileBase64: string, clientCompanyEin: string) {
         this.logger.log(`Starting phased processing for single document`);
