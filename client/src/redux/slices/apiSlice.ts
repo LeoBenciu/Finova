@@ -63,17 +63,37 @@ export const finovaApi = createApi({
         }),
 
         processBatch: build.mutation({
-            query: ({ files, clientCompanyEin }) => {
-                const formData: FormData = new FormData();
-                files.forEach((f: File) => formData.append('files', f));
+            query: ({ files, clientCompanyEin }: { files: File[]; clientCompanyEin: string }) => {
+                const formData = new FormData();
+                files.forEach((file) => {
+                    formData.append('files', file);
+                });
                 formData.append('ein', clientCompanyEin);
+                
                 return {
                     url: '/data-extraction/batch',
                     method: 'POST',
                     body: formData,
-                    formData: true,
+                    headers: {
+                    }
                 };
             },
+            transformResponse: (response: any) => {
+                return {
+                    categorizedResults: response.categorizedResults || [],
+                    incomingInvoices: response.incomingInvoices || [],
+                    outgoingInvoices: response.outgoingInvoices || [],
+                    otherDocuments: response.otherDocuments || [],
+                    processingStats: response.processingStats || {
+                        total: 0,
+                        categorized: 0,
+                        incomingProcessed: 0,
+                        outgoingProcessed: 0,
+                        othersProcessed: 0,
+                        errors: 0
+                    }
+                };
+            }
         }),
 
         saveFileAndExtractedData: build.mutation({

@@ -27,6 +27,27 @@ interface ProcessingPhase {
     requiresFullExtraction: boolean;
 }
 
+interface FileWithMetadata {
+    base64: string;
+    originalName: string;
+    index: number;
+}
+
+export interface BatchProcessingResult {
+    categorizedResults: any[];
+    incomingInvoices: any[];
+    outgoingInvoices: any[];
+    otherDocuments: any[];
+    processingStats: {
+        total: number;
+        categorized: number;
+        incomingProcessed: number;
+        outgoingProcessed: number;
+        othersProcessed: number;
+        errors: number;
+    };
+}
+
 class ProcessingQueue {
     private static instance: ProcessingQueue;
     private queue: Array<{ promise: Promise<any>; resolve: Function; reject: Function }> = [];
@@ -179,6 +200,191 @@ export class DataExtractionService {
         }
         
         return this.processingQueue.add(() => this.processDocumentPhased(fileBase64, clientCompanyEin));
+    }
+
+    async processBatchPhased(
+        filesWithMetadata: FileWithMetadata[], 
+        clientCompanyEin: string
+    ): Promise<BatchProcessingResult> {
+        this.logger.log(`Starting phased batch processing for ${filesWithMetadata.length} files`);
+        
+        const processingStats = {
+            total: filesWithMetadata.length,
+            categorized: 0,
+            incomingProcessed: 0,
+            outgoingProcessed: 0,
+            othersProcessed: 0,
+            errors: 0
+        };
+    
+        this.logger.log('PHASE 0: Starting categorization of all documents');
+        const categorizedResults: any[] = [];
+        
+        for (const file of filesWithMetadata) {
+            try {
+                this.logger.log(`Categorizing file ${file.index + 1}/${filesWithMetadata.length}: ${file.originalName}`);
+                
+                const result = await this.extractData(file.base64, clientCompanyEin, 0);
+                
+                categorizedResults.push({
+                    index: file.index,
+                    originalName: file.originalName,
+                    base64: file.base64,
+                    categorization: result,
+                    documentType: result.document_type,
+                    direction: result.direction
+                });
+                
+                processingStats.categorized++;
+                
+                this.logger.log(`Categorized ${file.originalName} as ${result.document_type} ${result.direction || ''}`);
+            } catch (error) {
+                this.logger.error(`Failed to categorize ${file.originalName}: ${error.message}`);
+                categorizedResults.push({
+                    index: file.index,
+                    originalName: file.originalName,
+                    base64: file.base64,
+                    error: error.message,
+                    documentType: 'unknown'
+                });
+                processingStats.errors++;
+            }
+        }
+    
+        this.logger.log(`Categorization complete. ${processingStats.categorized} succeeded, ${processingStats.errors} failed`);
+    
+        const incomingInvoiceFiles = categorizedResults.filter(
+            r => r.documentType?.toLowerCase() === 'invoice' && r.direction === 'incoming' && !r.error
+        );
+        
+        const outgoingInvoiceFiles = categorizedResults.filter(
+            r => r.documentType?.toLowerCase() === 'invoice' && r.direction === 'outgoing' && !r.error
+        );
+        
+        const otherDocumentFiles = categorizedResults.filter(
+            r => (!r.documentType?.toLowerCase().includes('invoice') || 
+                 (r.documentType?.toLowerCase() === 'invoice' && !r.direction)) && 
+                !r.error
+        );
+    
+        this.logger.log(`Document distribution: ${incomingInvoiceFiles.length} incoming invoices, ${outgoingInvoiceFiles.length} outgoing invoices, ${otherDocumentFiles.length} other documents`);
+    
+        const incomingInvoices: any[] = [];
+        if (incomingInvoiceFiles.length > 0) {
+            this.logger.log(`PHASE 1: Processing ${incomingInvoiceFiles.length} incoming invoices`);
+            
+            for (const file of incomingInvoiceFiles) {
+                try {
+                    this.logger.log(`Processing incoming invoice ${file.originalName}`);
+                    
+                    const result = await this.extractData(file.base64, clientCompanyEin, 1);
+                    
+                    incomingInvoices.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        result: {
+                            ...file.categorization,
+                            ...result
+                        }
+                    });
+                    
+                    processingStats.incomingProcessed++;
+                } catch (error) {
+                    this.logger.error(`Failed to process incoming invoice ${file.originalName}: ${error.message}`);
+                    incomingInvoices.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        error: error.message,
+                        result: file.categorization
+                    });
+                    processingStats.errors++;
+                }
+            }
+        }
+    
+        const outgoingInvoices: any[] = [];
+        if (outgoingInvoiceFiles.length > 0) {
+            this.logger.log(`PHASE 2: Processing ${outgoingInvoiceFiles.length} outgoing invoices`);
+            
+            for (const file of outgoingInvoiceFiles) {
+                try {
+                    this.logger.log(`Processing outgoing invoice ${file.originalName}`);
+                    
+                    const result = await this.extractData(file.base64, clientCompanyEin, 2);
+                    
+                    outgoingInvoices.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        result: {
+                            ...file.categorization,
+                            ...result
+                        }
+                    });
+                    
+                    processingStats.outgoingProcessed++;
+                } catch (error) {
+                    this.logger.error(`Failed to process outgoing invoice ${file.originalName}: ${error.message}`);
+                    outgoingInvoices.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        error: error.message,
+                        result: file.categorization
+                    });
+                    processingStats.errors++;
+                }
+            }
+        }
+    
+        const otherDocuments: any[] = [];
+        if (otherDocumentFiles.length > 0) {
+            this.logger.log(`PHASE 3: Processing ${otherDocumentFiles.length} other documents`);
+            
+            for (const file of otherDocumentFiles) {
+                try {
+                    this.logger.log(`Processing ${file.documentType} document ${file.originalName}`);
+                    
+                    const result = await this.extractData(file.base64, clientCompanyEin, 3);
+                    
+                    otherDocuments.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        result: {
+                            ...file.categorization,
+                            ...result
+                        }
+                    });
+                    
+                    processingStats.othersProcessed++;
+                } catch (error) {
+                    this.logger.error(`Failed to process ${file.documentType} document ${file.originalName}: ${error.message}`);
+                    otherDocuments.push({
+                        index: file.index,
+                        originalName: file.originalName,
+                        error: error.message,
+                        result: file.categorization
+                    });
+                    processingStats.errors++;
+                }
+            }
+        }
+    
+        const result: BatchProcessingResult = {
+            categorizedResults: categorizedResults.map(r => ({
+                index: r.index,
+                originalName: r.originalName,
+                documentType: r.documentType,
+                direction: r.direction,
+                error: r.error
+            })),
+            incomingInvoices,
+            outgoingInvoices,
+            otherDocuments,
+            processingStats
+        };
+    
+        this.logger.log(`Batch processing complete. Stats: ${JSON.stringify(processingStats)}`);
+        
+        return result;
     }
     
     private async processDocumentPhased(fileBase64: string, clientCompanyEin: string) {
