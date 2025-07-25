@@ -1008,10 +1008,23 @@ async processBatchPhased(
     
         if (!this.dependenciesChecked) {
             try {
-                await this.installDependencies();
+                const checkCommand = 'python3 -c "import crewai, pytesseract, pdf2image, PIL, cv2, numpy"';
+                
+                try {
+                    await execPromise(checkCommand, {
+                        cwd: path.dirname(this.pythonScriptPath),
+                        timeout: 5000
+                    });
+                    this.logger.log('Python dependencies already installed');
+                    this.dependenciesChecked = true;
+                } catch (checkError) {
+                    this.logger.log('Dependencies not found, installing...');
+                    await this.installDependencies();
+                    this.dependenciesChecked = true;
+                }
+            } catch (error) {
+                this.logger.warn('Failed to check/install Python dependencies: ' + error.message);
                 this.dependenciesChecked = true;
-            } catch (installError) {
-                this.logger.warn('Failed to install Python dependencies, they might already be installed');
             }
         }
     
@@ -1028,7 +1041,8 @@ async processBatchPhased(
         this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
         
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
+            const timeout = processingPhase === 0 ? 60000 : 300000;
+            setTimeout(() => reject(new Error(`Processing timeout after ${timeout/1000} seconds`)), timeout);
         });
     
         const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {

@@ -1,11 +1,10 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
+import  { useState, useCallback, lazy, Suspense } from "react";
 import { useSelector } from "react-redux";
 import MyDropzone from "@/components/Dropzone";
-import { useProcessBatchMutation, useGetDuplicateAlertsQuery } from "@/redux/slices/apiSlice";
+import { useExtractDataMutation, useGetDuplicateAlertsQuery } from "@/redux/slices/apiSlice";
 import { 
     Plus, Trash, Upload, FileText, Eye, X, CheckCircle, Clock, 
-    AlertCircle, LoaderCircle, AlertTriangle, 
-    Shield, Package 
+    AlertCircle, LoaderCircle, AlertTriangle, Package
 } from "lucide-react";
 import { TooltipDemo } from '../Components/Tooltip';
 import LoadingComponent from "../Components/LoadingComponent";
@@ -16,247 +15,367 @@ import { motion, AnimatePresence } from "framer-motion";
 
 const ExtractedDataEdit = lazy(() => import('../Components/EditExtractedData/EditExtractedDataComponent'));
 
-type BatchPhase = 'idle' | 'uploading' | 'categorizing' | 'processing_incoming' | 'processing_outgoing' | 'processing_others' | 'complete' | 'error';
+type ProcessingPhase = 'idle' | 'categorizing' | 'extracting' | 'complete';
+type DocumentState = 'pending' | 'categorizing' | 'categorized' | 'extracting' | 'extracted' | 'error' | 'saved';
 
-interface BatchProcessingStatus {
-    phase: BatchPhase;
-    progress: {
-        current: number;
-        total: number;
-        percentage: number;
-    };
-    stats?: {
-        total: number;
-        categorized: number;
-        incomingProcessed: number;
-        outgoingProcessed: number;
-        othersProcessed: number;
-        errors: number;
-    };
-    error?: string;
-}
-
-interface DocumentResult {
+interface DocumentInfo {
     file: File;
-    index: number;
-    result?: any;
-    error?: string;
+    state: DocumentState;
     documentType?: string;
     direction?: string;
-    saved?: boolean;
+    categorization?: any;
+    extractedData?: any;
+    error?: string;
 }
 
-const FileUploadPageBatch = () => {
+const FileUploadPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [documents, setDocuments] = useState<File[]>([]);
+    const [documents, setDocuments] = useState<DocumentInfo[]>([]);
     const [dropzoneVisible, setDropzoneVisible] = useState(false);
     const [showDuplicateAlerts, setShowDuplicateAlerts] = useState(false);
     const [editFile, setEditFile] = useState<{ result: Record<string, any> } | undefined>(undefined);
     const [currentProcessingFile, setCurrentProcessingFile] = useState<File | null>(null);
     
-    // Batch processing states
-    const [batchStatus, setBatchStatus] = useState<BatchProcessingStatus>({
-        phase: 'idle',
-        progress: { current: 0, total: 0, percentage: 0 }
-    });
-    const [documentResults, setDocumentResults] = useState<DocumentResult[]>([]);
+    const [processingPhase, setProcessingPhase] = useState<ProcessingPhase>('idle');
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const [shouldStop, setShouldStop] = useState(false);
     
     const clientCompanyName = useSelector((state: any) => state.clientCompany.current.name);
     const clientCompanyEin = useSelector((state: any) => state.clientCompany.current.ein);
     const language = useSelector((state: any) => state.user.language);
     
-    const [processBatch, { isLoading: isProcessing }] = useProcessBatchMutation();
+    const [extractData] = useExtractDataMutation();
     const { data: duplicateAlerts = [] } = useGetDuplicateAlertsQuery(
         { company: clientCompanyEin },
         { skip: !clientCompanyEin }
     );
 
-    // Initialize document results when documents change
-    useEffect(() => {
-        if (documents.length > 0 && documentResults.length === 0) {
-            setDocumentResults(
-                documents.map((file, index) => ({
-                    file,
-                    index,
-                    saved: false
-                }))
-            );
-        }
-    }, [documents, documentResults.length]);
+    // Add files to document list
+    const handleFilesAdded = useCallback((newFiles: File[]) => {
+        const newDocs: DocumentInfo[] = newFiles.map(file => ({
+            file,
+            state: 'pending' as DocumentState
+        }));
+        setDocuments(prev => [...prev, ...newDocs]);
+    }, []);
 
-    const handleBatchProcess = useCallback(async () => {
+    // Start processing
+    const startProcessing = useCallback(async () => {
         if (documents.length === 0 || !clientCompanyEin) return;
-
-        setBatchStatus({
-            phase: 'uploading',
-            progress: { current: 0, total: documents.length, percentage: 0 }
-        });
-
-        try {
-            const response = await processBatch({
-                files: documents,
-                clientCompanyEin
-            }).unwrap();
-
-            // Update document results with categorization
-            setBatchStatus({
-                phase: 'categorizing',
-                progress: { 
-                    current: response.categorizedResults.length, 
-                    total: documents.length, 
-                    percentage: (response.categorizedResults.length / documents.length) * 100 
-                },
-                stats: response.processingStats
-            });
-
-            // Map results back to documents
-            const updatedResults: DocumentResult[] = documents.map((file, fileIndex) => {
-                const catResult = response.categorizedResults.find((r: {index: number}) => r.index === fileIndex);
-                const incomingResult = response.incomingInvoices.find((r: {index: number}) => r.index === fileIndex);
-                const outgoingResult = response.outgoingInvoices.find((r: {index: number}) => r.index === fileIndex);
-                const otherResult = response.otherDocuments.find((r: {index: number}) => r.index === fileIndex);
-
-                let finalResult = incomingResult || outgoingResult || otherResult;
-                
-                return {
-                    file,
-                    index: fileIndex,
-                    documentType: catResult?.documentType,
-                    direction: catResult?.direction,
-                    result: finalResult?.result,
-                    error: finalResult?.error || catResult?.error,
-                    saved: false
-                };
-            });
-
-            setDocumentResults(updatedResults);
+        
+        setShouldStop(false);
+        setProcessingPhase('categorizing');
+        setCurrentIndex(0);
+        
+        // Phase 1: Categorize all documents one by one
+        for (let i = 0; i < documents.length; i++) {
+            if (shouldStop) break;
             
-            setBatchStatus({
-                phase: 'complete',
-                progress: { 
-                    current: documents.length, 
-                    total: documents.length, 
-                    percentage: 100 
-                },
-                stats: response.processingStats
-            });
-
-        } catch (error:any) {
-            console.error('Batch processing failed:', error);
-            setBatchStatus({
-                phase: 'error',
-                progress: { current: 0, total: documents.length, percentage: 0 },
-                error: error.message || 'Batch processing failed'
-            });
+            setCurrentIndex(i);
+            const updatedDocs = [...documents];
+            
+            try {
+                // Update state to categorizing
+                updatedDocs[i].state = 'categorizing';
+                setDocuments(updatedDocs);
+                
+                console.log(`Categorizing ${documents[i].file.name}...`);
+                
+                const result = await extractData({
+                    file: documents[i].file,
+                    clientCompanyEin,
+                    phase: 0
+                }).unwrap();
+                
+                // Update with categorization results
+                updatedDocs[i] = {
+                    ...updatedDocs[i],
+                    state: 'categorized',
+                    documentType: result.result.document_type,
+                    direction: result.result.direction,
+                    categorization: result.result
+                };
+                
+                console.log(`✓ Categorized as ${result.result.document_type} ${result.result.direction || ''}`);
+                
+            } catch (error: any) {
+                console.error(`✗ Failed to categorize ${documents[i].file.name}:`, error);
+                updatedDocs[i] = {
+                    ...updatedDocs[i],
+                    state: 'error',
+                    error: error.message || 'Categorization failed'
+                };
+            }
+            
+            setDocuments(updatedDocs);
         }
-    }, [documents, clientCompanyEin, processBatch]);
+        
+        if (shouldStop) {
+            setProcessingPhase('idle');
+            return;
+        }
+        
+        // Phase 2: Extract data in order
+        setProcessingPhase('extracting');
+        await extractInOrder();
+        
+        setProcessingPhase('complete');
+        
+    }, [documents, clientCompanyEin, extractData, shouldStop]);
 
+    // Extract data in the correct order
+    const extractInOrder = useCallback(async () => {
+        const categorizedDocs = [...documents];
+        
+        // Group documents by type
+        const incomingInvoices = categorizedDocs
+            .map((doc, index) => ({ doc, index }))
+            .filter(({ doc }) => 
+                doc.state === 'categorized' && 
+                doc.documentType?.toLowerCase() === 'invoice' && 
+                doc.direction === 'incoming'
+            );
+            
+        const outgoingInvoices = categorizedDocs
+            .map((doc, index) => ({ doc, index }))
+            .filter(({ doc }) => 
+                doc.state === 'categorized' && 
+                doc.documentType?.toLowerCase() === 'invoice' && 
+                doc.direction === 'outgoing'
+            );
+            
+        const otherDocuments = categorizedDocs
+            .map((doc, index) => ({ doc, index }))
+            .filter(({ doc }) => 
+                doc.state === 'categorized' && 
+                (!doc.documentType?.toLowerCase().includes('invoice') || 
+                 (doc.documentType?.toLowerCase() === 'invoice' && !doc.direction))
+            );
+        
+        // Process incoming invoices
+        for (const { doc, index } of incomingInvoices) {
+            if (shouldStop) break;
+            
+            const updatedDocs = [...documents];
+            updatedDocs[index].state = 'extracting';
+            setDocuments(updatedDocs);
+            setCurrentIndex(index);
+            
+            try {
+                console.log(`Extracting data from incoming invoice ${doc.file.name}...`);
+                
+                const result = await extractData({
+                    file: doc.file,
+                    clientCompanyEin,
+                    phase: 1
+                }).unwrap();
+                
+                updatedDocs[index] = {
+                    ...updatedDocs[index],
+                    state: 'extracted',
+                    extractedData: result.result
+                };
+                
+                console.log(`✓ Extracted incoming invoice data`);
+                
+            } catch (error: any) {
+                console.error(`✗ Failed to extract incoming invoice:`, error);
+                updatedDocs[index].error = error.message || 'Extraction failed';
+            }
+            
+            setDocuments(updatedDocs);
+        }
+        
+        // Process outgoing invoices
+        for (const { doc, index } of outgoingInvoices) {
+            if (shouldStop) break;
+            
+            const updatedDocs = [...documents];
+            updatedDocs[index].state = 'extracting';
+            setDocuments(updatedDocs);
+            setCurrentIndex(index);
+            
+            try {
+                console.log(`Extracting data from outgoing invoice ${doc.file.name}...`);
+                
+                const result = await extractData({
+                    file: doc.file,
+                    clientCompanyEin,
+                    phase: 2
+                }).unwrap();
+                
+                updatedDocs[index] = {
+                    ...updatedDocs[index],
+                    state: 'extracted',
+                    extractedData: result.result
+                };
+                
+                console.log(`✓ Extracted outgoing invoice data`);
+                
+            } catch (error: any) {
+                console.error(`✗ Failed to extract outgoing invoice:`, error);
+                updatedDocs[index].error = error.message || 'Extraction failed';
+            }
+            
+            setDocuments(updatedDocs);
+        }
+        
+        // Process other documents
+        for (const { doc, index } of otherDocuments) {
+            if (shouldStop) break;
+            
+            const updatedDocs = [...documents];
+            updatedDocs[index].state = 'extracting';
+            setDocuments(updatedDocs);
+            setCurrentIndex(index);
+            
+            try {
+                console.log(`Extracting data from ${doc.documentType} ${doc.file.name}...`);
+                
+                const result = await extractData({
+                    file: doc.file,
+                    clientCompanyEin,
+                    phase: 3
+                }).unwrap();
+                
+                updatedDocs[index] = {
+                    ...updatedDocs[index],
+                    state: 'extracted',
+                    extractedData: result.result
+                };
+                
+                console.log(`✓ Extracted ${doc.documentType} data`);
+                
+            } catch (error: any) {
+                console.error(`✗ Failed to extract ${doc.documentType}:`, error);
+                updatedDocs[index].error = error.message || 'Extraction failed';
+            }
+            
+            setDocuments(updatedDocs);
+        }
+    }, [documents, clientCompanyEin, extractData, shouldStop]);
+
+    // Stop processing
+    const stopProcessing = useCallback(() => {
+        setShouldStop(true);
+        setProcessingPhase('idle');
+    }, []);
+
+    // Delete document
     const handleDeleteDocument = useCallback((index: number) => {
         setDocuments(prev => prev.filter((_, i) => i !== index));
-        setDocumentResults(prev => prev.filter((_, i) => i !== index));
-        
-        if (documents.length <= 1) {
-            setBatchStatus({
-                phase: 'idle',
-                progress: { current: 0, total: 0, percentage: 0 }
-            });
-        }
-    }, [documents.length]);
+    }, []);
 
-    const handleReviewDocument = useCallback((result: DocumentResult) => {
-        if (result.result) {
-            setEditFile({ result: result.result });
-            setCurrentProcessingFile(result.file);
+    // Review document
+    const handleReviewDocument = useCallback((doc: DocumentInfo) => {
+        const result = doc.extractedData || doc.categorization;
+        if (result) {
+            setEditFile({ result });
+            setCurrentProcessingFile(doc.file);
             setIsModalOpen(true);
         }
     }, []);
 
+    // Mark document as saved
     const handleDocumentSaved = useCallback((fileName: string) => {
-        setDocumentResults(prev => 
+        setDocuments(prev => 
             prev.map(doc => 
                 doc.file.name === fileName 
-                    ? { ...doc, saved: true }
+                    ? { ...doc, state: 'saved' as DocumentState }
                     : doc
             )
         );
     }, []);
 
+    // Get document status display
+    const getDocumentStatus = (doc: DocumentInfo) => {
+        switch (doc.state) {
+            case 'pending':
+                return {
+                    icon: <Clock size={16} className="text-gray-400" />,
+                    text: language === 'ro' ? 'În așteptare' : 'Pending',
+                    color: 'text-gray-600 bg-gray-50 border-gray-200'
+                };
+            case 'categorizing':
+                return {
+                    icon: <LoaderCircle size={16} className="text-blue-500 animate-spin" />,
+                    text: language === 'ro' ? 'Se categorizează...' : 'Categorizing...',
+                    color: 'text-blue-600 bg-blue-50 border-blue-200'
+                };
+            case 'categorized':
+                return {
+                    icon: <CheckCircle size={16} className="text-blue-500" />,
+                    text: language === 'ro' ? 'Categorizat' : 'Categorized',
+                    color: 'text-blue-600 bg-blue-50 border-blue-200'
+                };
+            case 'extracting':
+                return {
+                    icon: <LoaderCircle size={16} className="text-green-500 animate-spin" />,
+                    text: language === 'ro' ? 'Se extrag date...' : 'Extracting data...',
+                    color: 'text-green-600 bg-green-50 border-green-200'
+                };
+            case 'extracted':
+                return {
+                    icon: <CheckCircle size={16} className="text-green-500" />,
+                    text: language === 'ro' ? 'Procesat' : 'Processed',
+                    color: 'text-green-600 bg-green-50 border-green-200'
+                };
+            case 'saved':
+                return {
+                    icon: <CheckCircle size={16} className="text-emerald-500" />,
+                    text: language === 'ro' ? 'Salvat' : 'Saved',
+                    color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
+                };
+            case 'error':
+                return {
+                    icon: <AlertCircle size={16} className="text-red-500" />,
+                    text: language === 'ro' ? 'Eroare' : 'Error',
+                    color: 'text-red-600 bg-red-50 border-red-200'
+                };
+            default:
+                return {
+                    icon: <Clock size={16} className="text-gray-400" />,
+                    text: '',
+                    color: 'text-gray-600 bg-gray-50 border-gray-200'
+                };
+        }
+    };
+
+    // Get processing stats
+    const getProcessingStats = () => {
+        const total = documents.length;
+        const categorized = documents.filter(d => 
+            ['categorized', 'extracting', 'extracted', 'saved'].includes(d.state)
+        ).length;
+        const extracted = documents.filter(d => 
+            ['extracted', 'saved'].includes(d.state)
+        ).length;
+        const errors = documents.filter(d => d.state === 'error').length;
+        
+        return { total, categorized, extracted, errors };
+    };
+
+    const stats = getProcessingStats();
+    
+    const getPhaseText = () => {
+        if (processingPhase === 'categorizing') {
+            return language === 'ro' 
+                ? `Se categorizează documentele... (${currentIndex + 1}/${documents.length})`
+                : `Categorizing documents... (${currentIndex + 1}/${documents.length})`;
+        } else if (processingPhase === 'extracting') {
+            return language === 'ro' 
+                ? `Se extrag datele...`
+                : `Extracting data...`;
+        } else if (processingPhase === 'complete') {
+            return language === 'ro' ? 'Procesare completă!' : 'Processing complete!';
+        }
+        return '';
+    };
+
     const handleTooLongString = useCallback((str: string): string => {
         if (str.length > 25) return str.slice(0, 25) + '..';
         return str;
     }, []);
-
-    const getPhaseText = () => {
-        switch (batchStatus.phase) {
-            case 'uploading':
-                return language === 'ro' ? 'Se încarcă fișierele...' : 'Uploading files...';
-            case 'categorizing':
-                return language === 'ro' ? 'Se categorizează documentele...' : 'Categorizing documents...';
-            case 'processing_incoming':
-                return language === 'ro' ? 'Se procesează facturile primite...' : 'Processing incoming invoices...';
-            case 'processing_outgoing':
-                return language === 'ro' ? 'Se procesează facturile emise...' : 'Processing outgoing invoices...';
-            case 'processing_others':
-                return language === 'ro' ? 'Se procesează alte documente...' : 'Processing other documents...';
-            case 'complete':
-                return language === 'ro' ? 'Procesare completă!' : 'Processing complete!';
-            case 'error':
-                return language === 'ro' ? 'Eroare la procesare' : 'Processing error';
-            default:
-                return '';
-        }
-    };
-
-    const getDocumentStatus = (doc: DocumentResult) => {
-        if (doc.saved) {
-            return { 
-                icon: <CheckCircle size={16} className="text-emerald-500" />, 
-                text: language === 'ro' ? 'Salvat' : 'Saved',
-                color: 'text-emerald-600 bg-emerald-50 border-emerald-200'
-            };
-        }
-        
-        if (doc.error) {
-            return { 
-                icon: <AlertCircle size={16} className="text-red-500" />, 
-                text: language === 'ro' ? 'Eroare' : 'Error',
-                color: 'text-red-600 bg-red-50 border-red-200'
-            };
-        }
-        
-        if (doc.result) {
-            const hasDuplicate = doc.result.duplicate_detection?.is_duplicate;
-            const hasCompliance = doc.result.compliance_validation?.compliance_status === 'NON_COMPLIANT';
-            
-            if (hasCompliance) {
-                return { 
-                    icon: <Shield size={16} className="text-red-500" />, 
-                    text: language === 'ro' ? 'Neconform' : 'Non-Compliant',
-                    color: 'text-red-600 bg-red-50 border-red-200'
-                };
-            }
-            
-            if (hasDuplicate) {
-                return { 
-                    icon: <AlertTriangle size={16} className="text-orange-500" />, 
-                    text: language === 'ro' ? 'Posibil Duplicat' : 'Possible Duplicate',
-                    color: 'text-orange-600 bg-orange-50 border-orange-200'
-                };
-            }
-            
-            return { 
-                icon: <CheckCircle size={16} className="text-green-500" />, 
-                text: language === 'ro' ? 'Procesat' : 'Processed',
-                color: 'text-green-600 bg-green-50 border-green-200'
-            };
-        }
-        
-        return { 
-            icon: <Clock size={16} className="text-gray-400" />, 
-            text: language === 'ro' ? 'În așteptare' : 'Pending',
-            color: 'text-gray-600 bg-gray-50 border-gray-200'
-        };
-    };
 
     const docType = {
         "Invoice": "Factura",
@@ -279,18 +398,30 @@ const FileUploadPageBatch = () => {
                         </div>
                         <div>
                             <h1 className="text-4xl font-bold text-[var(--text1)] mb-2 text-left">
-                                {language === 'ro' ? 'Procesare în Lot' : 'Batch Processing'}
+                                {language === 'ro' ? 'Procesare Secvențială' : 'Sequential Processing'}
                             </h1>
                             <p className="text-[var(--text2)] text-lg text-left">
                                 {language === 'ro' 
-                                    ? 'Încarcă și procesează mai multe documente simultan' 
-                                    : 'Upload and process multiple documents at once'
+                                    ? 'Categorizează toate documentele, apoi extrage datele în ordine' 
+                                    : 'Categorize all documents, then extract data in order'
                                 }
                             </p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-3">
+                        {/* Stats */}
+                        {documents.length > 0 && (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-2xl">
+                                <span className="text-sm text-gray-600">
+                                    {language === 'ro' 
+                                        ? `${stats.categorized}/${stats.total} categorized | ${stats.extracted} extracted`
+                                        : `${stats.categorized}/${stats.total} categorized | ${stats.extracted} extracted`
+                                    }
+                                </span>
+                            </div>
+                        )}
+
                         {/* Duplicate Alerts */}
                         {duplicateAlerts.length > 0 && (
                             <motion.button
@@ -305,17 +436,31 @@ const FileUploadPageBatch = () => {
                             </motion.button>
                         )}
 
-                        {/* Process Batch Button */}
-                        {documents.length > 0 && batchStatus.phase === 'idle' && (
+                        {/* Process Button */}
+                        {documents.length > 0 && processingPhase === 'idle' && (
                             <motion.button
                                 whileHover={{ scale: 1.05 }}
                                 whileTap={{ scale: 0.95 }}
-                                onClick={handleBatchProcess}
+                                onClick={startProcessing}
                                 className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 
                                 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
                             >
                                 <Package size={20} />
-                                {language === 'ro' ? 'Procesează Tot' : 'Process All'}
+                                {language === 'ro' ? 'Începe Procesarea' : 'Start Processing'}
+                            </motion.button>
+                        )}
+
+                        {/* Stop Button */}
+                        {(processingPhase === 'categorizing' || processingPhase === 'extracting') && (
+                            <motion.button
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                                onClick={stopProcessing}
+                                className="flex items-center gap-2 px-6 py-3 bg-red-500 
+                                text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
+                            >
+                                <X size={20} />
+                                {language === 'ro' ? 'Oprește' : 'Stop'}
                             </motion.button>
                         )}
 
@@ -324,8 +469,10 @@ const FileUploadPageBatch = () => {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setDropzoneVisible(!dropzoneVisible)}
+                            disabled={processingPhase !== 'idle'}
                             className="flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-[var(--primary)] to-blue-500 
-                            text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
+                            text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold
+                            disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {dropzoneVisible ? <X size={20} /> : <Plus size={20} />}
                             {dropzoneVisible 
@@ -337,60 +484,34 @@ const FileUploadPageBatch = () => {
                 </div>
 
                 {/* Processing Status */}
-                {batchStatus.phase !== 'idle' && (
+                {processingPhase !== 'idle' && (
                     <motion.div 
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         className={`mt-4 p-4 rounded-2xl border ${
-                            batchStatus.phase === 'error' 
-                                ? 'bg-red-50 border-red-200' 
-                                : batchStatus.phase === 'complete'
+                            processingPhase === 'complete'
                                 ? 'bg-green-50 border-green-200'
                                 : 'bg-blue-50 border-blue-200'
                         }`}
                     >
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3">
-                                {isProcessing && (
-                                    <motion.div
-                                        animate={{ rotate: 360 }}
-                                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                    >
-                                        <LoaderCircle size={20} className="text-blue-600" />
-                                    </motion.div>
-                                )}
-                                <span className={`font-medium ${
-                                    batchStatus.phase === 'error' ? 'text-red-800' : 
-                                    batchStatus.phase === 'complete' ? 'text-green-800' : 'text-blue-800'
-                                }`}>
-                                    {getPhaseText()}
-                                </span>
-                            </div>
-                            {batchStatus.stats && (
-                                <div className="text-sm text-gray-600">
-                                    {language === 'ro' 
-                                        ? `${batchStatus.stats.categorized}/${batchStatus.stats.total} categorized | ${batchStatus.stats.errors} erori`
-                                        : `${batchStatus.stats.categorized}/${batchStatus.stats.total} categorized | ${batchStatus.stats.errors} errors`
-                                    }
-                                </div>
+                        <div className="flex items-center gap-3">
+                            {(processingPhase === 'categorizing' || processingPhase === 'extracting') && (
+                                <motion.div
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                                >
+                                    <LoaderCircle size={20} className="text-blue-600" />
+                                </motion.div>
                             )}
+                            {processingPhase === 'complete' && (
+                                <CheckCircle size={20} className="text-green-600" />
+                            )}
+                            <span className={`font-medium ${
+                                processingPhase === 'complete' ? 'text-green-800' : 'text-blue-800'
+                            }`}>
+                                {getPhaseText()}
+                            </span>
                         </div>
-                        
-                        {/* Progress Bar */}
-                        {batchStatus.phase !== 'error' && batchStatus.progress.total > 0 && (
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${batchStatus.progress.percentage}%` }}
-                                    className="bg-blue-600 h-2 rounded-full"
-                                    transition={{ duration: 0.5 }}
-                                />
-                            </div>
-                        )}
-
-                        {batchStatus.error && (
-                            <p className="text-red-600 text-sm mt-2">{batchStatus.error}</p>
-                        )}
                     </motion.div>
                 )}
             </div>
@@ -407,7 +528,10 @@ const FileUploadPageBatch = () => {
                     >
                         <div className="bg-gradient-to-br from-[var(--primary)]/5 to-blue-500/5 rounded-3xl p-6 border-2 border-dashed border-[var(--primary)]/30">
                             <div className="bg-[var(--foreground)] rounded-2xl p-8 border border-[var(--text4)]">
-                                <MyDropzone setDocuments={setDocuments} documents={documents} />
+                                <MyDropzone 
+                                    setDocuments={(files) => handleFilesAdded(files)} 
+                                    documents={documents.map(d => d.file)} 
+                                />
                             </div>
                         </div>
                     </motion.div>
@@ -428,8 +552,8 @@ const FileUploadPageBatch = () => {
                         </h3>
                         <p className="text-[var(--text2)] mb-6">
                             {language === 'ro' 
-                                ? 'Încarcă documentele și procesează-le toate odată' 
-                                : 'Upload documents and process them all at once'
+                                ? 'Încarcă documentele pentru procesare secvențială' 
+                                : 'Upload documents for sequential processing'
                             }
                         </p>
                         <motion.button
@@ -453,7 +577,6 @@ const FileUploadPageBatch = () => {
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden"
                 >
-                    {/* Header */}
                     <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
@@ -467,22 +590,22 @@ const FileUploadPageBatch = () => {
                         </div>
                     </div>
 
-                    {/* Document Items */}
                     <div className="p-6">
                         <div className="space-y-3">
-                            {documentResults.map((doc) => {
+                            {documents.map((doc, index) => {
                                 const status = getDocumentStatus(doc);
+                                const result = doc.extractedData || doc.categorization;
+                                
                                 return (
                                     <motion.div
-                                        key={doc.index}
+                                        key={index}
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        transition={{ delay: doc.index * 0.05 }}
+                                        transition={{ delay: index * 0.05 }}
                                         className="bg-[var(--background)] rounded-2xl px-4 py-0 mb-1 
                                         border border-[var(--text4)] hover:border-[var(--primary)]/50 transition-all duration-200"
                                     >
                                         <div className="flex items-center gap-4">
-                                            {/* File Icon & Info */}
                                             <div className="flex items-center gap-3 flex-1 min-w-0">
                                                 <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center flex-shrink-0">
                                                     <FileText size={24} className="text-[var(--primary)]" />
@@ -494,10 +617,11 @@ const FileUploadPageBatch = () => {
                                                     </h3>
                                                     <div className="flex items-center gap-4 mt-1">
                                                         <span className="text-[var(--text2)] font-medium">
-                                                            {language === 'ro'
-                                                                ? docType[doc.documentType as keyof typeof docType] || doc.documentType || 'Necategorizat'
-                                                                : doc.documentType || 'Uncategorized'
-                                                            }
+                                                            {doc.documentType && (
+                                                                language === 'ro'
+                                                                    ? docType[doc.documentType as keyof typeof docType] || doc.documentType
+                                                                    : doc.documentType
+                                                            )}
                                                         </span>
                                                         {doc.direction && (
                                                             <span className="text-[var(--text3)] text-sm">
@@ -507,16 +631,20 @@ const FileUploadPageBatch = () => {
                                                                 }
                                                             </span>
                                                         )}
-                                                        {doc.result?.document_date && (
+                                                        {result?.document_date && (
                                                             <span className="text-[var(--text3)] text-sm">
-                                                                {doc.result.document_date}
+                                                                {result.document_date}
+                                                            </span>
+                                                        )}
+                                                        {doc.error && (
+                                                            <span className="text-red-500 text-sm" title={doc.error}>
+                                                                {doc.error}
                                                             </span>
                                                         )}
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            {/* Status */}
                                             <div className="flex items-center gap-2">
                                                 <span className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border ${status.color}`}>
                                                     {status.icon}
@@ -524,9 +652,8 @@ const FileUploadPageBatch = () => {
                                                 </span>
                                             </div>
 
-                                            {/* Actions */}
                                             <div className="flex items-center gap-2">
-                                                {doc.result && (
+                                                {result && (
                                                     <TooltipDemo
                                                         trigger={
                                                             <button
@@ -537,17 +664,16 @@ const FileUploadPageBatch = () => {
                                                                 <Eye size={18} />
                                                             </button>
                                                         }
-                                                        tip={doc.saved ? (language === 'ro' ? 'Vezi date' : 'View data') : (language === 'ro' ? 'Revizuiește' : 'Review')}
+                                                        tip={doc.state === 'saved' ? (language === 'ro' ? 'Vezi date' : 'View data') : (language === 'ro' ? 'Revizuiește' : 'Review')}
                                                     />
                                                 )}
 
-                                                {/* Delete Button */}
                                                 <TooltipDemo
                                                     trigger={
                                                         <button
-                                                            onClick={() => handleDeleteDocument(doc.index)}
+                                                            onClick={() => handleDeleteDocument(index)}
                                                             className="p-2 bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
-                                                            disabled={isProcessing}
+                                                            disabled={processingPhase !== 'idle'}
                                                         >
                                                             <Trash size={18} />
                                                         </button>
@@ -590,7 +716,6 @@ const FileUploadPageBatch = () => {
                 )}
             </AnimatePresence>
 
-            {/* Edit Modal */}
             <Suspense fallback={
                 <div className="fixed inset-0 flex items-center justify-center bg-black/50 z-50">
                     <div className="bg-[var(--foreground)] rounded-3xl p-8 shadow-2xl">
@@ -615,4 +740,4 @@ const FileUploadPageBatch = () => {
     );
 };
 
-export default FileUploadPageBatch;
+export default FileUploadPage;
