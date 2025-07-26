@@ -1,17 +1,6 @@
 import {createApi, fetchBaseQuery} from '@reduxjs/toolkit/query/react'
 import { logout } from '@/app/helper/authHelpers';
 
-interface ExtractDataArgs {
-    file: File;
-    clientCompanyEin: string;
-    phase?: number;
-    phase0Data?: { 
-        document_type: string; 
-        direction?: string; 
-        referenced_numbers?: string[] ;
-    };
-}
-
 
 const baseQuery = fetchBaseQuery({
     baseUrl: 'https://finova-6eeu.onrender.com',
