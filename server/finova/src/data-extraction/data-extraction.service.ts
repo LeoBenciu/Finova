@@ -354,7 +354,7 @@ export class DataExtractionService {
             confidence: correction.confidence
         }));
     }    
-    
+
     private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0, phase0Data?: { document_type: string; direction: string;  referenced_numbers: string[]}) {
         let tempBase64File: string | null = null;
         let tempExistingDocsFile: string | null = null;
@@ -367,12 +367,31 @@ export class DataExtractionService {
                 throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
             }
         
-            this.pythonScriptPath = '../../agents/first_crew_finova/src/first_crew_finova/main.py';
-
             if (!fs.existsSync(this.pythonScriptPath)) {
-                throw new Error(`Python script not found at path: ${this.pythonScriptPath}`);
+                const alternativePaths = [
+                    path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
+                    '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
+                    path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
+                    path.join(process.cwd(), 'src', 'server', 'finova', 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
+                ];
+                
+                let foundPath = null;
+                for (const altPath of alternativePaths) {
+                    this.logger.debug(`Checking alternative path: ${altPath}`);
+                    if (fs.existsSync(altPath)) {
+                        foundPath = altPath;
+                        this.logger.log(`Found Python script at alternative path: ${altPath}`);
+                        break;
+                    }
+                }
+                
+                if (!foundPath) {
+                    throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
+                }
+                
+                this.pythonScriptPath = foundPath;
             }
-    
+            
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: clientCompanyEin },
             });
