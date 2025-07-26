@@ -319,44 +319,51 @@ const FileUploadPage = () => {
       console.log(`Successfully processed: ${nextDocumentName}`);
       setQueueErrors(0);
     } catch (error) {
-      clearTimeout(timeoutId);
-      
-      let errorMessage = 'Processing failed';
-      let shouldRetry = true;
-      
-      if (abortSignal.aborted) {
-        errorMessage = 'Processing timeout - document took too long to process';
-      } else if (error instanceof Error) {
-        errorMessage = error.message;
+        clearTimeout(timeoutId);
+    
+        let errorMessage = 'Processing failed';
+        let shouldRetry = true;
         
-        if (error.message.includes('file too large') || 
-            error.message.includes('invalid file format') ||
-            error.message.includes('authentication')) {
-          shouldRetry = false;
+        if (abortSignal.aborted) {
+          errorMessage = 'Processing timeout - document took too long to process';
+        } else if (error instanceof Error) {
+          errorMessage = error.message;
+          
+          if (error.message.includes('Python script not found')) {
+            errorMessage = language === 'ro' ? 'Eroare server: Script Python lipsă' : 'Server error: Python script not found';
+            shouldRetry = false;
+          } else if (error.message.includes('Python script configuration error')) {
+            errorMessage = language === 'ro' ? 'Eroare server: Configurație script Python invalidă' : 'Server error: Invalid Python script configuration';
+            shouldRetry = false; 
+          } else if (error.message.includes('file too large') || 
+                     error.message.includes('invalid file format') ||
+                     error.message.includes('authentication')) {
+            shouldRetry = false;
+          }
         }
-      }
-      
-      console.error(`Failed to process ${nextDocumentName}:`, error);
-      
-      const currentRetryCount = documentStates[nextDocumentName]?.retryCount || 0;
-      const willRetry = shouldRetry && currentRetryCount < MAX_RETRIES;
-      
-      setDocumentStates(prev => ({
-        ...prev,
-        [nextDocumentName]: { 
-          state: willRetry ? 'error' : 'error',
-          error: errorMessage,
-          retryCount: currentRetryCount + 1,
-          lastAttempt: Date.now()
+        
+        console.error(`Failed to process ${nextDocumentName}:`, error);
+        
+        const currentRetryCount = documentStates[nextDocumentName]?.retryCount || 0;
+        const willRetry = shouldRetry && currentRetryCount < MAX_RETRIES;
+        
+        setDocumentStates(prev => ({
+          ...prev,
+          [nextDocumentName]: { 
+            state: willRetry ? 'error' : 'error',
+            error: errorMessage,
+            retryCount: currentRetryCount + 1,
+            lastAttempt: Date.now(),
+            phase: currentPhase,
+          }
+        }));
+        
+        setQueueErrors(prev => prev + 1);
+        
+        if (queueErrors >= 5) {
+          console.warn('Too many consecutive errors, pausing queue processing');
+          setIsProcessingPaused(true);
         }
-      }));
-      
-      setQueueErrors(prev => prev + 1);
-      
-      if (queueErrors >= 5) {
-        console.warn('Too many consecutive errors, pausing queue processing');
-        setIsProcessingPaused(true);
-      }
       
     } finally {
       currentAbortController.current = null;

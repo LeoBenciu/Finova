@@ -391,7 +391,7 @@ export class DataExtractionService {
                 
                 this.pythonScriptPath = foundPath;
             }
-            
+
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: clientCompanyEin },
             });
@@ -505,6 +505,9 @@ export class DataExtractionService {
             
             if (stderr) {
                 this.logger.warn(`Python stderr output: ${stderr}`);
+                if (stderr.includes('takes from 2 to 4 positional arguments')) {
+                    throw new Error(`Python script configuration error: Incorrect number of arguments passed to process_single_document`);
+                }
             }
         
             let result;
@@ -596,7 +599,11 @@ export class DataExtractionService {
         }
             
         } catch (error) {
-            throw new Error(`Failed to extract data from document in phase ${processingPhase}: ${error.message}`);
+            let errorMessage = `Failed to extract data from document in phase ${processingPhase}: ${error.message}`;
+            if (error.message.includes('Incorrect number of arguments')) {
+                errorMessage = `Server configuration error: Python script failed due to incorrect argument count`;
+            }
+            throw new Error(errorMessage);
         } finally {
             const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile, tempExistingArticlesFile].filter(Boolean);
             

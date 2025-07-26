@@ -511,7 +511,7 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
     
     return create_fallback_response(), False
 
-def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0) -> Dict[str, Any]:
+def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0, phase0_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
     log_memory_usage("Before processing")
