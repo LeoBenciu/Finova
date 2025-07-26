@@ -391,9 +391,6 @@ def get_configured_llm():
     openai_api_key = os.getenv('OPENAI_API_KEY')
     model_name = os.getenv('MODEL', 'gpt-4o-mini')
     
-    print(f"get_configured_llm: API key exists: {bool(openai_api_key)}", file=sys.stderr)
-    print(f"get_configured_llm: Model name: {model_name}", file=sys.stderr)
-    
     if not openai_api_key:
         print("ERROR: OPENAI_API_KEY environment variable not found", file=sys.stderr)
         return None
@@ -423,12 +420,12 @@ class FirstCrewFinova:
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
 
-    def __init__(self, client_company_ein: str, existing_articles: Dict, management_records: Dict, user_corrections: List[Dict] = None):
+    def __init__(self, client_company_ein: str, existing_articles: Dict, management_records: Dict, user_corrections: List[Dict] = None, processing_phase: int = 0):
         self.client_company_ein = client_company_ein
         self.existing_articles = existing_articles
         self.management_records = management_records
         self.user_corrections = user_corrections or []
-        
+        self.processing_phase = processing_phase
         self.llm = get_configured_llm()
         
         import os
@@ -570,14 +567,23 @@ class FirstCrewFinova:
 
     @crew
     def crew(self) -> Crew:
-        """Creates the FirstCrewFinova crew"""
+        if self.processing_phase == 0:
+            tasks = [self.categorize_document_task()]
+            print("Phase 0: Only running categorization task", file=sys.stderr)
+        else:
+            tasks = [
+                self.extract_invoice_data_task() if self.inputs.get('doc_type', '').lower() == 'invoice' else self.extract_other_document_data_task(),
+                self.detect_duplicates_task(),
+                self.validate_compliance_task()
+            ]
+            print("Phase 1: Running full processing pipeline", file=sys.stderr)
+
         crew_config = {
             'agents': self.agents,
-            'tasks': self.tasks,
+            'tasks': tasks,
             'verbose': True,
         }
-        
         if self.llm:
             crew_config['manager_llm'] = self.llm
-            
+
         return Crew(**crew_config)

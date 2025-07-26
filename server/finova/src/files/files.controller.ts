@@ -91,11 +91,6 @@ export class FilesController {
         return this.fileMangementService.updateDuplicateStatus(parseInt(duplicateCheckId), status, user);
     }
 
-    @Get('service/health')
-    getServiceHealth(): any {
-        return this.fileMangementService.getServiceHealth();
-    }
-
     @Get('payments/:docId')
     async getInvoicePayments(
         @Param('docId', ParseIntPipe) docId: number,

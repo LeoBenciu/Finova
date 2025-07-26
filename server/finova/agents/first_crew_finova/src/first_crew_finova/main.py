@@ -511,7 +511,7 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
     
     return create_fallback_response(), False
 
-def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None) -> Dict[str, Any]:
+def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
     log_memory_usage("Before processing")
@@ -580,7 +580,8 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
                 client_company_ein, 
                 existing_articles, 
                 management_records, 
-                user_corrections
+                user_corrections,
+                processing_phase
             )
             print("FirstCrewFinova instance created successfully", file=sys.stderr)
             
@@ -612,7 +613,9 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "management_records": management_records,
             "existing_documents": existing_documents or [],
             "document_hash": document_hash,
-            "doc_type": "Unknown"  
+            "doc_type": phase0_data.get("document_type", "Unknown") if phase0_data else "Unknown",
+            "direction": phase0_data.get("direction", "") if phase0_data else "",
+            "referenced_numbers": phase0_data.get("referenced_numbers", []) if phase0_data else [],
         }
         
         log_memory_usage("Before crew kickoff")
@@ -734,13 +737,33 @@ def main():
     memory_monitoring = setup_memory_monitoring()
     
     try:
-        if len(sys.argv) < 3:
+        if len(sys.argv) < 7:
             result = {"error": "Usage: python main.py <client_company_ein> <base64_file_data_or_file_path> [existing_documents_json]"}
             print(json.dumps(result, ensure_ascii=False))
             sys.exit(1)
         
         client_company_ein = sys.argv[1].strip()
         base64_input = sys.argv[2].strip()
+        existing_documents_file = sys.argv[3].strip()
+        user_corrections_file = sys.argv[4].strip()
+        existing_articles_file = sys.argv[5].strip()
+        processing_phase = int(sys.argv[6].strip())
+        phase0_data = json.loads(sys.argv[7].strip()) if len(sys.argv) > 7 else None
+
+        existing_documents = []
+        if os.path.exists(existing_documents_file):
+            with open(existing_documents_file, 'r') as f:
+                existing_documents = json.load(f)
+
+        base64_data = read_base64_from_file(base64_input)
+        temp_file_path = save_temp_file(base64_data)
+
+        try:
+            result = process_single_document(temp_file_path, client_company_ein, existing_documents, processing_phase, phase0_data)
+            print(json.dumps(result, ensure_ascii=False))
+        finally:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
         
         existing_documents = []
         if len(sys.argv) > 3:

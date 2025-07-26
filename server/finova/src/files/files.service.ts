@@ -1478,26 +1478,4 @@ export class FilesService {
             throw new InternalServerErrorException('Failed to update duplicate status');
         }
     }
-
-    async getServiceHealth(): Promise<{
-        status: string;
-        timestamp: string;
-        [key: string]: any;
-    }> {
-        try {
-            const healthData = await this.dataExtractionService.getServiceHealth();
-            return {
-                status: 'healthy',
-                timestamp: new Date().toISOString(),
-                ...(healthData || {})
-            };
-        } catch (e) {
-            console.error('[GET_SERVICE_HEALTH_ERROR]', e);
-            return {
-                status: 'unhealthy',
-                timestamp: new Date().toISOString(),
-                error: 'Failed to get service health'
-            };
-        }
-    }
 }

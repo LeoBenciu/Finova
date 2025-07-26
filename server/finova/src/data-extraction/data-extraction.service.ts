@@ -19,35 +19,6 @@ interface ProcessedDataValidation {
     warnings: string[];
 }
 
-interface ProcessingPhase {
-    id: number;
-    name: string;
-    description: string;
-    requiresDocumentType: boolean;
-    requiresFullExtraction: boolean;
-}
-
-interface FileWithMetadata {
-    base64: string;
-    originalName: string;
-    index: number;
-}
-
-export interface BatchProcessingResult {
-    categorizedResults: any[];
-    incomingInvoices: any[];
-    outgoingInvoices: any[];
-    otherDocuments: any[];
-    processingStats: {
-        total: number;
-        categorized: number;
-        incomingProcessed: number;
-        outgoingProcessed: number;
-        othersProcessed: number;
-        errors: number;
-    };
-}
-
 class ProcessingQueue {
     private static instance: ProcessingQueue;
     private queue: Array<{ promise: Promise<any>; resolve: Function; reject: Function }> = [];
@@ -107,37 +78,6 @@ export class DataExtractionService {
     private readonly processingTimeout = 600000; 
     private dependenciesChecked = false;
 
-    private readonly processingPhases: ProcessingPhase[] = [
-        {
-            id: 0,
-            name: 'Categorization',
-            description: 'Identify document types and basic information',
-            requiresDocumentType: true,
-            requiresFullExtraction: false
-        },
-        {
-            id: 1,
-            name: 'Incoming Invoices',
-            description: 'Full processing of incoming invoices (we are buyers)',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        },
-        {
-            id: 2,
-            name: 'Outgoing Invoices',
-            description: 'Full processing of outgoing invoices (we are sellers)',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        },
-        {
-            id: 3,
-            name: 'Other Documents',
-            description: 'Process receipts, bank statements, contracts, etc.',
-            requiresDocumentType: true,
-            requiresFullExtraction: true
-        }
-    ];
-
     constructor(
         private readonly config: ConfigService, 
         private readonly prisma: PrismaService
@@ -194,370 +134,11 @@ export class DataExtractionService {
         }
     }
 
-    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase?: number) {
-        if (processingPhase !== undefined) {
+    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number) {
             return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
-        }
-        
-        return this.processingQueue.add(() => this.processDocumentPhased(fileBase64, clientCompanyEin));
     }
 
-    async categorizeBatch(filesBase64: string[], clientCompanyEin: string): Promise<any[]> {
-        const results = [];
-        
-        for (let i = 0; i < filesBase64.length; i++) {
-            try {
-                const result = await this.extractData(filesBase64[i], clientCompanyEin, 0);
-                results.push({
-                    index: i,
-                    success: true,
-                    documentType: result.document_type,
-                    direction: result.direction,
-                    data: result
-                });
-            } catch (error) {
-                results.push({
-                    index: i,
-                    success: false,
-                    error: error.message
-                });
-            }
-        }
-        
-        return results;
-    }
-
-async processBatchPhased(
-    filesWithMetadata: FileWithMetadata[], 
-    clientCompanyEin: string
-): Promise<BatchProcessingResult> {
-    this.logger.log(`Starting phased batch processing for ${filesWithMetadata.length} files`);
-    
-    const processingStats = {
-        total: filesWithMetadata.length,
-        categorized: 0,
-        incomingProcessed: 0,
-        outgoingProcessed: 0,
-        othersProcessed: 0,
-        errors: 0
-    };
-
-    const result: BatchProcessingResult = {
-        categorizedResults: [],
-        incomingInvoices: [],
-        outgoingInvoices: [],
-        otherDocuments: [],
-        processingStats
-    };
-
-    try {
-        this.logger.log('PHASE 0: Starting categorization of all documents');
-        const categorizedResults: any[] = [];
-        
-        for (const file of filesWithMetadata) {
-            try {
-                this.logger.log(`Categorizing file ${file.index + 1}/${filesWithMetadata.length}: ${file.originalName}`);
-                
-                const categorizePromise = this.extractData(file.base64, clientCompanyEin, 0);
-                const timeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('Categorization timeout')), 60000) // 60 second timeout
-                );
-                
-                const catResult = await Promise.race([categorizePromise, timeoutPromise]) as any;
-                
-                categorizedResults.push({
-                    index: file.index,
-                    originalName: file.originalName,
-                    base64: file.base64,
-                    categorization: catResult,
-                    documentType: catResult.document_type,
-                    direction: catResult.direction
-                });
-                
-                processingStats.categorized++;
-                
-                this.logger.log(`✓ Categorized ${file.originalName} as ${catResult.document_type} ${catResult.direction || ''}`);
-            } catch (error) {
-                this.logger.error(`✗ Failed to categorize ${file.originalName}: ${error.message}`);
-                categorizedResults.push({
-                    index: file.index,
-                    originalName: file.originalName,
-                    base64: file.base64,
-                    error: error.message,
-                    documentType: 'unknown'
-                });
-                processingStats.errors++;
-            }
-        }
-
-        this.logger.log(`Categorization complete. ${processingStats.categorized} succeeded, ${processingStats.errors} failed`);
-
-        result.categorizedResults = categorizedResults.map(r => ({
-            index: r.index,
-            originalName: r.originalName,
-            documentType: r.documentType,
-            direction: r.direction,
-            error: r.error
-        }));
-
-        const incomingInvoiceFiles = categorizedResults.filter(
-            r => r.documentType?.toLowerCase() === 'invoice' && r.direction === 'incoming' && !r.error
-        );
-        
-        const outgoingInvoiceFiles = categorizedResults.filter(
-            r => r.documentType?.toLowerCase() === 'invoice' && r.direction === 'outgoing' && !r.error
-        );
-        
-        const otherDocumentFiles = categorizedResults.filter(
-            r => (!r.documentType?.toLowerCase().includes('invoice') || 
-                 (r.documentType?.toLowerCase() === 'invoice' && !r.direction)) && 
-                !r.error
-        );
-
-        this.logger.log(`Document distribution: ${incomingInvoiceFiles.length} incoming invoices, ${outgoingInvoiceFiles.length} outgoing invoices, ${otherDocumentFiles.length} other documents`);
-
-        if (incomingInvoiceFiles.length > 0) {
-            this.logger.log(`PHASE 1: Processing ${incomingInvoiceFiles.length} incoming invoices`);
-            
-            for (const file of incomingInvoiceFiles) {
-                try {
-                    this.logger.log(`Processing incoming invoice ${file.originalName}`);
-                    
-                    const processPromise = this.extractData(file.base64, clientCompanyEin, 1);
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
-                    );
-                    
-                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
-                    
-                    result.incomingInvoices.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        result: {
-                            ...file.categorization,
-                            ...extractResult
-                        }
-                    });
-                    
-                    processingStats.incomingProcessed++;
-                    this.logger.log(`✓ Processed incoming invoice ${file.originalName}`);
-                } catch (error) {
-                    this.logger.error(`✗ Failed to process incoming invoice ${file.originalName}: ${error.message}`);
-                    result.incomingInvoices.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        error: error.message,
-                        result: file.categorization
-                    });
-                    processingStats.errors++;
-                }
-            }
-        }
-
-        if (outgoingInvoiceFiles.length > 0) {
-            this.logger.log(`PHASE 2: Processing ${outgoingInvoiceFiles.length} outgoing invoices`);
-            
-            for (const file of outgoingInvoiceFiles) {
-                try {
-                    this.logger.log(`Processing outgoing invoice ${file.originalName}`);
-                    
-                    const processPromise = this.extractData(file.base64, clientCompanyEin, 2);
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
-                    );
-                    
-                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
-                    
-                    result.outgoingInvoices.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        result: {
-                            ...file.categorization,
-                            ...extractResult
-                        }
-                    });
-                    
-                    processingStats.outgoingProcessed++;
-                    this.logger.log(`✓ Processed outgoing invoice ${file.originalName}`);
-                } catch (error) {
-                    this.logger.error(`✗ Failed to process outgoing invoice ${file.originalName}: ${error.message}`);
-                    result.outgoingInvoices.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        error: error.message,
-                        result: file.categorization
-                    });
-                    processingStats.errors++;
-                }
-            }
-        }
-
-        if (otherDocumentFiles.length > 0) {
-            this.logger.log(`PHASE 3: Processing ${otherDocumentFiles.length} other documents`);
-            
-            for (const file of otherDocumentFiles) {
-                try {
-                    this.logger.log(`Processing ${file.documentType} document ${file.originalName}`);
-                    
-                    const processPromise = this.extractData(file.base64, clientCompanyEin, 3);
-                    const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Processing timeout')), 120000) // 2 minute timeout
-                    );
-                    
-                    const extractResult = await Promise.race([processPromise, timeoutPromise]) as any;
-                    
-                    result.otherDocuments.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        result: {
-                            ...file.categorization,
-                            ...extractResult
-                        }
-                    });
-                    
-                    processingStats.othersProcessed++;
-                    this.logger.log(`✓ Processed ${file.documentType} document ${file.originalName}`);
-                } catch (error) {
-                    this.logger.error(`✗ Failed to process ${file.documentType} document ${file.originalName}: ${error.message}`);
-                    result.otherDocuments.push({
-                        index: file.index,
-                        originalName: file.originalName,
-                        error: error.message,
-                        result: file.categorization
-                    });
-                    processingStats.errors++;
-                }
-            }
-        }
-
-        result.processingStats = processingStats;
-        
-        this.logger.log(`Batch processing complete. Stats: ${JSON.stringify(processingStats)}`);
-        
-        return result;
-        
-    } catch (error) {
-        this.logger.error(`Critical error in batch processing: ${error.message}`);
-        
-        result.processingStats = processingStats;
-        return result;
-    }
-}
-    
-    private async processDocumentPhased(fileBase64: string, clientCompanyEin: string) {
-        this.logger.log(`Starting phased processing for single document`);
-        
-        try {
-            this.logger.log(`Phase 0: Categorizing document`);
-            const categorizedResult = await this.processDocument(fileBase64, clientCompanyEin, 0);
-            
-            if (!categorizedResult || !categorizedResult.document_type) {
-                throw new Error('Categorization failed - no document type determined');
-            }
-            
-            const documentType = categorizedResult.document_type.toLowerCase();
-            const direction = categorizedResult.direction;
-            
-            this.logger.log(`Document categorized as: ${documentType}, direction: ${direction}`);
-            
-            let processingPhase: number;
-            
-            if (documentType === 'invoice') {
-                if (direction === 'incoming') {
-                    processingPhase = 1; 
-                    this.logger.log(`Processing as incoming invoice (Phase 1)`);
-                } else if (direction === 'outgoing') {
-                    processingPhase = 2; 
-                    this.logger.log(`Processing as outgoing invoice (Phase 2)`);
-                } else {
-                    this.logger.warn(`Invoice with unknown direction: ${direction}, defaulting to Phase 3`);
-                    processingPhase = 3; 
-                }
-            } else {
-                processingPhase = 3; 
-                this.logger.log(`Processing as other document type (Phase 3)`);
-            }
-            
-            this.logger.log(`Phase ${processingPhase}: Processing document data`);
-            const finalResult = await this.processDocument(fileBase64, clientCompanyEin, processingPhase);
-            
-            const mergedResult = {
-                ...categorizedResult,
-                ...finalResult,
-                document_type: categorizedResult.document_type,
-                direction: categorizedResult.direction,
-                processing_metadata: {
-                    categorization_phase: 0,
-                    extraction_phase: processingPhase,
-                    processing_order: documentType === 'invoice' 
-                        ? (direction === 'incoming' ? 'priority_1' : direction === 'outgoing' ? 'priority_2' : 'priority_3')
-                        : 'priority_3'
-                }
-            };
-            
-            this.logger.log(`Phased processing completed successfully for ${documentType} document`);
-            return mergedResult;
-            
-        } catch (error) {
-            this.logger.error(`Phased processing failed: ${error.message}`);
-            throw error;
-        }
-    }
-
-    async processBatch(filesBase64: string[], clientCompanyEin: string) {
-        const categorizedResults: any[] = [];
-
-        for (const file of filesBase64) {
-            try {
-                const catResult = await this.extractData(file, clientCompanyEin, 0);
-                categorizedResults.push({ file, result: catResult });
-            } catch (e) {
-                this.logger.error(`Categorization failed for one document: ${e}`);
-                categorizedResults.push({ file, error: e });
-            }
-        }
-
-        const runPhaseForFilter = async (filterFn: (r: any) => boolean, phase: number) => {
-            const outputs: any[] = [];
-            for (const entry of categorizedResults.filter(filterFn)) {
-                try {
-                    const res = await this.extractData(entry.file, clientCompanyEin, phase);
-                    outputs.push(res);
-                } catch (e) {
-                    this.logger.error(`Phase ${phase} failed for a document: ${e}`);
-                }
-            }
-            return outputs;
-        };
-
-        const incomingOutputs = await runPhaseForFilter(
-            r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'incoming',
-            1,
-        );
-        const outgoingOutputs = await runPhaseForFilter(
-            r => r.result?.result?.document_type?.toLowerCase() === 'invoice' && r.result?.result?.direction === 'outgoing',
-            2,
-        );
-
-        const otherOutputs = await runPhaseForFilter(
-            r => {
-                const type = r.result?.result?.document_type?.toLowerCase();
-                if (type === 'invoice') return false;
-                return true;
-            },
-            3,
-        );
-
-        return {
-            categorizedResults: categorizedResults.map(r => r.result),
-            incomingOutputs,
-            outgoingOutputs,
-            otherOutputs,
-        };
-    }
-
-
-    private validateProcessedData(data: any, phase: number): ProcessedDataValidation {
+    private validateProcessedData(data: any, processingPhase: number): ProcessedDataValidation {
         const validation: ProcessedDataValidation = {
             isValid: true,
             errors: [],
@@ -571,7 +152,6 @@ async processBatchPhased(
         }
 
         const result = data.result || data;
-        const currentPhase = this.processingPhases[phase];
 
         if (!result.document_type) {
             validation.isValid = false;
@@ -579,7 +159,7 @@ async processBatchPhased(
             return validation;
         }
 
-        if (currentPhase?.requiresFullExtraction) {
+        if (processingPhase === 1) {
             const docType = result.document_type.toLowerCase();
 
             switch (docType) {
@@ -596,15 +176,6 @@ async processBatchPhased(
                         validation.warnings.push('Invoice line_items should be an array');
                     }
 
-                    if (phase === 1 || phase === 2) {
-                        if (!result.direction) {
-                            validation.warnings.push('Missing invoice direction');
-                        } else if (phase === 1 && result.direction !== 'incoming') {
-                            validation.warnings.push('Expected incoming invoice in phase 1');
-                        } else if (phase === 2 && result.direction !== 'outgoing') {
-                            validation.warnings.push('Expected outgoing invoice in phase 2');
-                        }
-                    }
                     break;
 
                 case 'receipt':
@@ -689,7 +260,6 @@ async processBatchPhased(
     }
 
     private async getExistingDocuments(accountingClientId: number) {
-        console.log('🔍 getExistingDocuments called with ID:', accountingClientId);
         
         const documents = await this.prisma.document.findMany({
             where: {
@@ -704,7 +274,6 @@ async processBatchPhased(
             take: 200 
         });
 
-        console.log('🔍 Raw documents found:', documents.length);
 
         const processedDocuments = documents.map(doc => {
             const extractedFields = doc.processedData?.extractedFields;
@@ -715,7 +284,6 @@ async processBatchPhased(
                     const parsed = JSON.parse(extractedFields);
                     result = parsed.result || parsed || {};
                 } catch (e) {
-                    console.log(`🔍 Failed to parse extracted fields for doc ${doc.id}:`, e.message);
                     result = {};
                 }
             } else if (extractedFields && typeof extractedFields === 'object') {
@@ -739,12 +307,9 @@ async processBatchPhased(
                 created_at: doc.createdAt.toISOString()
             };
 
-            console.log(`🔍 Processed doc ${doc.id}: type=${processedDoc.document_type}, hash=${processedDoc.documentHash}`);
-
             return processedDoc;
         });
 
-        console.log('🔍 Processed documents returned:', processedDocuments.length);
         return processedDocuments;
     }
 
@@ -788,591 +353,255 @@ async processBatchPhased(
             correctedValue: correction.correctedValue,
             confidence: correction.confidence
         }));
-    }
+    }    
     
-    private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0) {
-    let tempBase64File: string | null = null;
-    let tempExistingDocsFile: string | null = null;
-    let tempUserCorrectionsFile: string | null = null;
-    let tempExistingArticlesFile: string | null = null;
-    const startTime = Date.now();
-    const memoryBefore = process.memoryUsage();
-    
-    try {
-        const estimatedSize = (fileBase64.length * 3) / 4; 
-        if (estimatedSize > this.maxFileSize) {
-            throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
-        }
-    
-        const currentPhase = this.processingPhases[processingPhase];
-        this.logger.log(`Starting document processing in phase ${processingPhase} (${currentPhase?.name}). Estimated file size: ${Math.round(estimatedSize / 1024)}KB`);
-        this.logger.debug(`Memory before processing: ${JSON.stringify(memoryBefore)}`);
-    
-        if (!fs.existsSync(this.pythonScriptPath)) {
-            const alternativePaths = [
-                path.join(process.cwd(), '../../agents/first_crew_finova/src/first_crew_finova/main.py'),
-                '/opt/render/project/src/agents/first_crew_finova/src/first_crew_finova/main.py',
-                path.join(process.cwd(), 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-                path.join(process.cwd(), 'src', 'server', 'finova', 'agents', 'first_crew_finova', 'src', 'first_crew_finova', 'main.py'),
-            ];
-            
-            let foundPath = null;
-            for (const altPath of alternativePaths) {
-                this.logger.debug(`Checking alternative path: ${altPath}`);
-                if (fs.existsSync(altPath)) {
-                    foundPath = altPath;
-                    this.logger.log(`Found Python script at alternative path: ${altPath}`);
-                    break;
-                }
-            }
-            
-            if (!foundPath) {
-                throw new Error(`Python script not found. Tried paths: ${this.pythonScriptPath}, ${alternativePaths.join(', ')}`);
-            }
-            
-            this.pythonScriptPath = foundPath;
-        }
-
-        console.log('🔍 DUPLICATE DETECTION DEBUG START');
-        console.log('📋 Client Company EIN:', clientCompanyEin);
+    private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0, phase0Data?: { document_type: string; direction: string;  referenced_numbers: string[]}) {
+        let tempBase64File: string | null = null;
+        let tempExistingDocsFile: string | null = null;
+        let tempUserCorrectionsFile: string | null = null;
+        let tempExistingArticlesFile: string | null = null;
         
-        const clientCompany = await this.prisma.clientCompany.findUnique({
-            where: { ein: clientCompanyEin },
-        });
-        
-        console.log('🏢 Found Client Company:', clientCompany ? 'YES' : 'NO');
-        if (clientCompany) {
-            console.log('🏢 Client Company ID:', clientCompany.id);
-            console.log('🏢 Client Company Name:', clientCompany.name);
-        } else {
-            throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
-        }
-
-        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-            where: {
-                clientCompanyId: clientCompany.id
-            }
-        });
-
-        console.log('🔗 Found Accounting Relation:', accountingClientRelation ? 'YES' : 'NO');
-        if (accountingClientRelation) {
-            console.log('🔗 Accounting Client ID:', accountingClientRelation.id);
-        } else {
-            throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
-        }
-
-        const totalDocsCount = await this.prisma.document.count({
-            where: {
-                accountingClientId: accountingClientRelation.id
-            }
-        });
-        console.log('📄 Total documents in database for this client:', totalDocsCount);
-
-        const docsWithProcessedData = await this.prisma.document.count({
-            where: {
-                accountingClientId: accountingClientRelation.id,
-                processedData: {
-                    isNot: null
-                }
-            }
-        });
-        console.log('📄 Documents with processed data:', docsWithProcessedData);
-
-        const sampleDocs = await this.prisma.document.findMany({
-            where: {
-                accountingClientId: accountingClientRelation.id
-            },
-            include: {
-                processedData: true
-            },
-            take: 3,
-            orderBy: {
-                createdAt: 'desc'
-            }
-        });
-
-        console.log('📄 Sample documents found:', sampleDocs.length);
-        sampleDocs.forEach((doc, index) => {
-            console.log(`📄 Sample Doc ${index + 1}:`);
-            console.log(`   - ID: ${doc.id}`);
-            console.log(`   - Name: ${doc.name}`);
-            console.log(`   - Accounting Client ID: ${doc.accountingClientId}`);
-            console.log(`   - Document Hash: ${doc.documentHash}`);
-            console.log(`   - Has Processed Data: ${doc.processedData ? 'YES' : 'NO'}`);
-            
-            if (doc.processedData) {
-                console.log(`   - Processed Data ID: ${doc.processedData.id}`);
-                console.log(`   - Extracted Fields Type: ${typeof doc.processedData.extractedFields}`);
-                
-                let extractedData = null;
-                if (typeof doc.processedData.extractedFields === 'string') {
-                    try {
-                        extractedData = JSON.parse(doc.processedData.extractedFields);
-                        console.log(`   - Document Type: ${extractedData?.result?.document_type || extractedData?.document_type || 'N/A'}`);
-                        console.log(`   - Document Number: ${extractedData?.result?.document_number || extractedData?.document_number || 'N/A'}`);
-                    } catch (e) {
-                        console.log(`   - Failed to parse extracted fields: ${e.message}`);
-                    }
-                } else if (doc.processedData.extractedFields && typeof doc.processedData.extractedFields === 'object') {
-                    extractedData = doc.processedData.extractedFields;
-                    console.log(`   - Document Type: ${(extractedData as any)?.result?.document_type || (extractedData as any)?.document_type || 'N/A'}`);
-                    console.log(`   - Document Number: ${(extractedData as any)?.result?.document_number || (extractedData as any)?.document_number || 'N/A'}`);
-                }
-            }
-            console.log('');
-        });
-
-        const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
-        console.log('📄 Existing documents returned by getExistingDocuments:', existingDocuments.length);
-        
-        existingDocuments.slice(0, 3).forEach((doc, index) => {
-            console.log(`📄 Existing Doc ${index + 1} (processed):`);
-            console.log(`   - ID: ${doc.id}`);
-            console.log(`   - Name: ${doc.name}`);
-            console.log(`   - Document Type: ${doc.document_type}`);
-            console.log(`   - Document Number: ${doc.document_number}`);
-            console.log(`   - Document Hash: ${doc.documentHash}`);
-            console.log(`   - Total Amount: ${doc.total_amount}`);
-            console.log(`   - Document Date: ${doc.document_date}`);
-            console.log('');
-        });
-
-        console.log('🔍 DUPLICATE DETECTION DEBUG END');
-
-        const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
-        const existingArticles = await this.getExistingArticles(accountingClientRelation.id);
-    
-        const timestamp = Date.now();
-        const randomId = randomBytes(8).toString('hex');
-        const tempFileName = `base64_${randomId}_${timestamp}.txt`;
-        const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
-        const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
-        const existingArticlesFileName = `existing_articles_${randomId}_${timestamp}.json`;
-        
-        tempBase64File = path.join(this.tempDir, tempFileName);
-        tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
-        tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
-        tempExistingArticlesFile = path.join(this.tempDir, existingArticlesFileName);
-    
-        await Promise.all([
-            writeFilePromise(tempBase64File, fileBase64),
-            writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
-            writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2)),
-            writeFilePromise(tempExistingArticlesFile, JSON.stringify(existingArticles, null, 2))
-        ]);
-
         try {
-            const existingDocsContent = fs.readFileSync(tempExistingDocsFile, 'utf8');
-            const existingDocsParsed = JSON.parse(existingDocsContent);
-
-            console.log('🔧 TEMP FILE DEBUG:');
-            console.log(`   - Existing docs file size: ${existingDocsContent.length} bytes`);
-            console.log(`   - Existing docs count in file: ${existingDocsParsed.length}`);
-
-            if (existingDocsParsed.length > 0) {
-                console.log(`   - First document in file:`, {
-                    id: existingDocsParsed[0].id,
-                    name: existingDocsParsed[0].name,
-                    document_type: existingDocsParsed[0].document_type,
-                    document_number: existingDocsParsed[0].document_number,
-                    documentHash: existingDocsParsed[0].documentHash
-                });
-
-                const targetHash = '759707691851edb5e8b1a55475c23ef5';
-                const matchingDoc = existingDocsParsed.find((doc: any) => doc.documentHash === targetHash);
-                if (matchingDoc) {
-                    console.log(`   - ✅ TARGET DOCUMENT FOUND IN TEMP FILE:`, {
-                        id: matchingDoc.id,
-                        name: matchingDoc.name,
-                        document_type: matchingDoc.document_type,
-                        document_number: matchingDoc.document_number,
-                        documentHash: matchingDoc.documentHash,
-                        total_amount: matchingDoc.total_amount
-                    });
-                } else {
-                    console.log(`   - ❌ TARGET DOCUMENT NOT FOUND IN TEMP FILE`);
-                    console.log(`   - Available hashes:`, existingDocsParsed.map((doc: any) => doc.documentHash));
-                }
+            const estimatedSize = (fileBase64.length * 3) / 4; 
+            if (estimatedSize > this.maxFileSize) {
+                throw new Error(`File too large: ${Math.round(estimatedSize / (1024 * 1024))}MB. Maximum allowed: ${this.maxFileSize / (1024 * 1024)}MB`);
             }
-        } catch (e) {
-            console.log(`   - ❌ Failed to read temp file: ${e.message}`);
-        }
         
-        console.log(`🔧 Created temp files:`);
-        console.log(`   - Base64 file: ${tempBase64File}`);
-        console.log(`   - Existing docs file: ${tempExistingDocsFile} (${existingDocuments.length} documents)`);
-        console.log(`   - User corrections file: ${tempUserCorrectionsFile} (${userCorrections.length} corrections)`);
-        console.log(`   - Existing articles file: ${tempExistingArticlesFile}`);
-        
-        this.logger.debug(`Created temporary files for phase ${processingPhase}: ${tempBase64File}, ${tempExistingDocsFile}, ${tempUserCorrectionsFile}, ${tempExistingArticlesFile}`);
+            this.pythonScriptPath = '../../agents/first_crew_finova/src/first_crew_finova/main.py';
+
+            if (!fs.existsSync(this.pythonScriptPath)) {
+                throw new Error(`Python script not found at path: ${this.pythonScriptPath}`);
+            }
     
-        if (!this.dependenciesChecked) {
-            try {
-                const checkCommand = 'python3 -c "import crewai, pytesseract, pdf2image, PIL, cv2, numpy"';
-                
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: clientCompanyEin },
+            });
+            
+            if (!clientCompany) {
+                throw new Error(`Failed to find client company with EIN: ${clientCompanyEin}`);
+            } 
+    
+            const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+                where: {
+                    clientCompanyId: clientCompany.id
+                }
+            });
+    
+            if (!accountingClientRelation) {
+                throw new Error(`No accounting relationship found for client company: ${clientCompanyEin}`);
+            }
+    
+            const existingDocuments = await this.getExistingDocuments(accountingClientRelation.id);
+    
+            const userCorrections = await this.getUserCorrections(accountingClientRelation.id);
+            const existingArticles = await this.getExistingArticles(accountingClientRelation.id);
+        
+            const timestamp = Date.now();
+            const randomId = randomBytes(8).toString('hex');
+            const tempFileName = `base64_${randomId}_${timestamp}.txt`;
+            const existingDocsFileName = `existing_docs_${randomId}_${timestamp}.json`;
+            const userCorrectionsFileName = `user_corrections_${randomId}_${timestamp}.json`;
+            const existingArticlesFileName = `existing_articles_${randomId}_${timestamp}.json`;
+            
+            tempBase64File = path.join(this.tempDir, tempFileName);
+            tempExistingDocsFile = path.join(this.tempDir, existingDocsFileName);
+            tempUserCorrectionsFile = path.join(this.tempDir, userCorrectionsFileName);
+            tempExistingArticlesFile = path.join(this.tempDir, existingArticlesFileName);
+        
+            await Promise.all([
+                writeFilePromise(tempBase64File, fileBase64),
+                writeFilePromise(tempExistingDocsFile, JSON.stringify(existingDocuments, null, 2)),
+                writeFilePromise(tempUserCorrectionsFile, JSON.stringify(userCorrections, null, 2)),
+                writeFilePromise(tempExistingArticlesFile, JSON.stringify(existingArticles, null, 2))
+            ]);
+            
+            if (!this.dependenciesChecked) {
                 try {
-                    await execPromise(checkCommand, {
-                        cwd: path.dirname(this.pythonScriptPath),
-                        timeout: 5000
-                    });
-                    this.logger.log('Python dependencies already installed');
-                    this.dependenciesChecked = true;
-                } catch (checkError) {
-                    this.logger.log('Dependencies not found, installing...');
                     await this.installDependencies();
                     this.dependenciesChecked = true;
+                } catch (installError) {
+                    this.logger.warn('Failed to install Python dependencies, they might already be installed');
                 }
-            } catch (error) {
-                this.logger.warn('Failed to check/install Python dependencies: ' + error.message);
-                this.dependenciesChecked = true;
             }
-        }
-    
-        const args = [
-            clientCompanyEin,
-            tempBase64File,
-            tempExistingDocsFile,
-            tempUserCorrectionsFile,
-            tempExistingArticlesFile,
-            processingPhase.toString()
-        ];
         
-        console.log(`🐍 Executing Python script with args:`, args);
-        this.logger.debug(`Executing Python script with args: ${JSON.stringify(args)}`);
-        
-        const timeoutPromise = new Promise((_, reject) => {
-            const timeout = processingPhase === 0 ? 60000 : 300000;
-            setTimeout(() => reject(new Error(`Processing timeout after ${timeout/1000} seconds`)), timeout);
-        });
-    
-        const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
-            const { spawn } = require('child_process');
+            const args = [
+                clientCompanyEin,
+                tempBase64File,
+                tempExistingDocsFile,
+                tempUserCorrectionsFile,
+                tempExistingArticlesFile,
+                processingPhase.toString()
+            ];
+
+            if (processingPhase === 1 && phase0Data) {
+                args.push(JSON.stringify(phase0Data));
+            }
             
-            const child = spawn('python3', [this.pythonScriptPath, ...args], {
-                cwd: path.dirname(this.pythonScriptPath),
-                env: {
-                    ...process.env,
-                    PYTHONPATH: path.dirname(this.pythonScriptPath),
-                    PYTHONUNBUFFERED: '1',
-                    MALLOC_ARENA_MAX: '2',
-                    PROCESSING_PHASE: processingPhase.toString()
-                },
-                stdio: ['pipe', 'pipe', 'pipe']
+            console.log(`🐍 Executing Python script with args:`, args);
+            
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
             });
         
-            let stdout = '';
-            let stderr = '';
-        
-            child.stdout.on('data', (data) => {
-                stdout += data.toString();
-            });
-        
-            child.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-        
-            child.on('close', (code) => {
-                if (code === 0) {
-                    resolve({ stdout, stderr });
-                } else {
-                    reject(new Error(`Python process exited with code ${code}. stderr: ${stderr}`));
-                }
-            });
-        
-            child.on('error', (error) => {
-                reject(error);
-            });
-        });
-    
-        const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
-        
-        if (stderr) {
-            this.logger.warn(`Python stderr output: ${stderr}`);
-        }
-    
-        let result;
-        try {
-            const jsonOutput = this.extractJsonFromOutput(stdout);
-            result = JSON.parse(jsonOutput);
-        } catch (parseError) {
-            this.logger.error(`Failed to parse Python output in phase ${processingPhase}. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
-            throw new Error(`Failed to parse processing results in phase ${processingPhase}: ${parseError.message}`);
-        }
-    
-        if (result.error) {
-            this.logger.error(`Python script returned error in phase ${processingPhase}: ${result.error}`);
-            throw new Error(`Processing failed in phase ${processingPhase}: ${result.error}`);
-        }
-    
-        const extractedData = result.data || result;
-        
-        if (extractedData.duplicate_detection) {
-            console.log('🔍 PYTHON DUPLICATE DETECTION RESULTS:');
-            console.log(`   - Is Duplicate: ${extractedData.duplicate_detection.is_duplicate}`);
-            console.log(`   - Confidence: ${extractedData.duplicate_detection.confidence}`);
-            console.log(`   - Existing Documents Count: ${extractedData.duplicate_detection.debug_info?.existing_documents_count || 0}`);
-            console.log(`   - Same Type Documents Count: ${extractedData.duplicate_detection.debug_info?.same_type_documents_count || 0}`);
-            console.log(`   - Matches Found: ${extractedData.duplicate_detection.duplicate_matches?.length || 0}`);
-            if (extractedData.duplicate_detection.duplicate_matches?.length > 0) {
-                extractedData.duplicate_detection.duplicate_matches.forEach((match: any, index: number) => {
-                    console.log(`     Match ${index + 1}: Doc ID ${match.document_id}, Score: ${match.similarity_score}, Type: ${match.duplicate_type}`);
-                });
-            }
-        }
-        
-        const validation = this.validateProcessedData(extractedData, processingPhase);
-        
-        if (!validation.isValid) {
-            this.logger.error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
-            throw new Error(`Data validation failed in phase ${processingPhase}: ${validation.errors.join(', ')}`);
-        }
-        
-        if (validation.warnings.length > 0) {
-            this.logger.warn(`Data validation warnings in phase ${processingPhase}: ${validation.warnings.join(', ')}`);
-        }
-    
-        if (processingPhase === 0) {
-            this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
-            if (processingPhase === 0) {
-                this.logger.log(`Categorization complete: Document type = ${extractedData.document_type}`);
+            const executionPromise = new Promise<{ stdout: string, stderr: string }>((resolve, reject) => {
+                const { spawn } = require('child_process');
                 
-                // Special handling for receipts - resolve references even in categorization phase
-                if (extractedData.document_type === 'Receipt' && 
-                    Array.isArray(extractedData.referenced_numbers) && 
-                    extractedData.referenced_numbers.length > 0) {
-                    
-                    console.log('🔗 REFERENCE RESOLUTION DEBUG (Categorization Phase):');
-                    console.log(`   - Document Type: ${extractedData.document_type}`);
-                    console.log(`   - Referenced numbers found: ${JSON.stringify(extractedData.referenced_numbers)}`);
-                    
-                    const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
+                const child = spawn('python3', [this.pythonScriptPath, ...args], {
+                    cwd: path.dirname(this.pythonScriptPath),
+                    env: {
+                        ...process.env,
+                        PYTHONPATH: path.dirname(this.pythonScriptPath),
+                        PYTHONUNBUFFERED: '1',
+                        MALLOC_ARENA_MAX: '2',
+                        PROCESSING_PHASE: processingPhase.toString()
+                    },
+                    stdio: ['pipe', 'pipe', 'pipe']
+                });
+            
+                let stdout = '';
+                let stderr = '';
+            
+                child.stdout.on('data', (data) => {
+                    stdout += data.toString();
+                });
+            
+                child.stderr.on('data', (data) => {
+                    stderr += data.toString();
+                });
+            
+                child.on('close', (code) => {
+                    if (code === 0) {
+                        resolve({ stdout, stderr });
+                    } else {
+                        reject(new Error(`Python process exited with code ${code}. stderr: ${stderr}`));
+                    }
+                });
+            
+                child.on('error', (error) => {
+                    reject(error);
+                });
+            });
+        
+            const { stdout, stderr } = await Promise.race([executionPromise, timeoutPromise]) as any;
+            
+            if (stderr) {
+                this.logger.warn(`Python stderr output: ${stderr}`);
+            }
+        
+            let result;
+            try {
+                const jsonOutput = this.extractJsonFromOutput(stdout);
+                result = JSON.parse(jsonOutput);
+            } catch (parseError) {
+                this.logger.error(`Failed to parse Python output in phase ${processingPhase}. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
+                throw new Error(`Failed to parse processing results in phase ${processingPhase}: ${parseError.message}`);
+            }
+        
+            if (result.error) {
+                this.logger.error(`Python script returned error in phase ${processingPhase}: ${result.error}`);
+                throw new Error(`Processing failed in phase ${processingPhase}: ${result.error}`);
+            }
+        
+            const extractedData = result.data || result;
+
+            if(processingPhase === 0)
+            {
+              return extractedData;
+            }
+            else
+            {   if (processingPhase === 1) {
+                    this.validateInvoiceDirection(extractedData, clientCompanyEin);
+                    this.validateDocumentRelevance(extractedData, clientCompanyEin);
+                    this.validateAndNormalizeCurrency(extractedData);
+                    this.validateExtractedData(extractedData, [], [], clientCompanyEin);
+                
+                    if (Array.isArray(extractedData.referenced_numbers) && extractedData.referenced_numbers.length > 0) {
+                        const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
                         .map(n => String(n).trim())
                         .filter(Boolean))];
-            
-                    if (refNumbers.length > 0) {
-                        const candidateDocs = await this.prisma.document.findMany({
-                            where: {
-                                accountingClientId: accountingClientRelation.id,
-                                processedData: { isNot: null }
-                            },
-                            include: { processedData: true }
-                        });
-            
-                        console.log(`   - Candidate documents found: ${candidateDocs.length}`);
-            
-                        const referenceIds: number[] = [];
-                        const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
-            
-                        for (const doc of candidateDocs) {
-                            let fields: any = doc.processedData?.extractedFields;
-                            if (!fields) {
-                                console.log(`   - Doc ${doc.id} (${doc.name}): No processed fields`);
-                                continue;
-                            }
-                            
-                            if (typeof fields === 'string') {
-                                try { 
-                                    fields = JSON.parse(fields); 
-                                } catch { 
-                                    console.log(`   - Doc ${doc.id} (${doc.name}): Failed to parse fields`);
-                                    continue; 
+                    
+                        if (refNumbers.length > 0) {
+                            const candidateDocs = await this.prisma.document.findMany({
+                                where: {
+                                    accountingClientId: accountingClientRelation.id,
+                                    processedData: { isNot: null }
+                                },
+                                include: { processedData: true }
+                            });
+                        
+                        
+                            const referenceIds: number[] = [];
+                            const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
+                        
+                            for (const doc of candidateDocs) {
+                                let fields: any = doc.processedData?.extractedFields;
+                                if (!fields) continue;
+                                if (typeof fields === 'string') {
+                                    try { fields = JSON.parse(fields); } catch { continue; }
                                 }
-                            }
+                                const res = fields.result ?? fields;
+                                const possibleNumbers = [
+                                    res.document_number,
+                                    res.invoice_number,
+                                    res.receipt_number,
+                                    res.contract_number,
+                                    res.order_number,
+                                    res.report_number,
+                                    res.statement_number
+                                ]
+                                .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
+                                .filter(Boolean);
                             
-                            const res = fields.result ?? fields;
-                            const possibleNumbers = [
-                                res.document_number,
-                                res.invoice_number,
-                                res.receipt_number,
-                                res.contract_number,
-                                res.order_number,
-                                res.report_number,
-                                res.statement_number
-                            ]
-                            .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
-                            .filter(Boolean);
-            
-                            console.log(`   - Doc ${doc.id} (${doc.name}): Numbers found: ${JSON.stringify(possibleNumbers)}`);
-            
-                            // Check each reference against each possible number
-                            for (const ref of refNumbers) {
-                                for (const num of possibleNumbers) {
-                                    const normalizedRef = normalize(ref);
-                                    const normalizedNum = normalize(num);
-                                    console.log(`     - Comparing "${ref}" (${normalizedRef}) with "${num}" (${normalizedNum}): ${normalizedRef === normalizedNum ? 'MATCH' : 'NO MATCH'}`);
-                                    
-                                    if (normalizedRef === normalizedNum) {
-                                        if (!referenceIds.includes(doc.id)) {
+                                for (const ref of refNumbers) {
+                                    for (const num of possibleNumbers) {
+                                        const normalizedRef = normalize(ref);
+                                        const normalizedNum = normalize(num);
+
+                                        if (normalizedRef === normalizedNum) {
                                             referenceIds.push(doc.id);
-                                            console.log(`   - ✅ MATCH FOUND: Doc ${doc.id} "${num}" matches reference "${ref}"`);
+                                            break;
                                         }
-                                        break;
                                     }
                                 }
                             }
-                        }
-            
-                        if (referenceIds.length > 0) {
-                            extractedData.references = referenceIds;
-                            console.log(`🔗 Resolved ${referenceIds.length} explicit references: ${referenceIds}`);
-                            this.logger.log(`🔗 Resolved ${referenceIds.length} explicit references during categorization.`);
-                        } else {
-                            console.log(`🔗 No references resolved. No matching documents found.`);
-                        }
-                    }
-                }
-                
-                if (extractedData.document_type === 'Invoice') {
-                    this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
-                }
-            }
-            
-            if (extractedData.document_type === 'Invoice') {
-                this.logger.log(`Invoice direction: ${extractedData.direction || 'unknown'}`);
-            }
-        } else {
-            if (extractedData.duplicate_detection) {
-                this.logger.log(`Duplicate detection: ${extractedData.duplicate_detection.is_duplicate ? 'Found duplicates' : 'No duplicates found'}`);
-            }
-    
-            if (extractedData.compliance_validation) {
-                this.logger.log(`Compliance status: ${extractedData.compliance_validation.compliance_status}`);
-            }
-        }
-    
-        if (currentPhase?.requiresFullExtraction) {
-            this.validateInvoiceDirection(extractedData, clientCompanyEin);
-            this.validateDocumentRelevance(extractedData, clientCompanyEin);
-            this.validateAndNormalizeCurrency(extractedData);
-            this.validateExtractedData(extractedData, [], [], clientCompanyEin);
-
-            // --- Resolve explicit referenced_numbers to document IDs and attach to extractedData ---
-            if (Array.isArray(extractedData.referenced_numbers) && extractedData.referenced_numbers.length > 0) {
-                const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
-                .map(n => String(n).trim())
-                .filter(Boolean))];
-
-                console.log('🔗 REFERENCE RESOLUTION DEBUG:');
-                console.log(`   - Referenced numbers found: ${JSON.stringify(refNumbers)}`);
-
-                if (refNumbers.length > 0) {
-                    const candidateDocs = await this.prisma.document.findMany({
-                        where: {
-                            accountingClientId: accountingClientRelation.id,
-                            processedData: { isNot: null }
-                        },
-                        include: { processedData: true }
-                    });
-
-                    console.log(`   - Candidate documents found: ${candidateDocs.length}`);
-
-                    const referenceIds: number[] = [];
-                    const normalize = (val: string) => val.replace(/[^a-z0-9]/gi, '').toLowerCase();
-
-                    console.log(`   - Normalized references: ${refNumbers.map(ref => normalize(ref))}`);
-
-                    for (const doc of candidateDocs) {
-                        let fields: any = doc.processedData?.extractedFields;
-                        if (!fields) continue;
-                        if (typeof fields === 'string') {
-                            try { fields = JSON.parse(fields); } catch { continue; }
-                        }
-                        const res = fields.result ?? fields;
-                        const possibleNumbers = [
-                            res.document_number,
-                            res.invoice_number,
-                            res.receipt_number,
-                            res.contract_number,
-                            res.order_number,
-                            res.report_number,
-                            res.statement_number
-                        ]
-                        .map((v: any) => (v !== undefined && v !== null ? String(v).trim() : null))
-                        .filter(Boolean);
-
-                        console.log(`   - Doc ${doc.id} (${doc.name}): Numbers found: ${JSON.stringify(possibleNumbers)}`);
-                        console.log(`   - Doc ${doc.id} (${doc.name}): Normalized numbers: ${possibleNumbers.map(normalize)}`);
-
-                        for (const ref of refNumbers) {
-                            for (const num of possibleNumbers) {
-                                const normalizedRef = normalize(ref);
-                                const normalizedNum = normalize(num);
-                                console.log(`     - Comparing "${ref}" (${normalizedRef}) with "${num}" (${normalizedNum}): ${normalizedRef === normalizedNum ? 'MATCH' : 'NO MATCH'}`);
-                                
-                                if (normalizedRef === normalizedNum) {
-                                    referenceIds.push(doc.id);
-                                    console.log(`   - ✅ MATCH FOUND: Doc ${doc.id} "${num}" matches reference "${ref}"`);
-                                    break;
-                                }
+                        
+                            if (referenceIds.length > 0) {
+                                extractedData.references = referenceIds;
                             }
                         }
                     }
-
-                    if (referenceIds.length > 0) {
-                        extractedData.references = referenceIds;
-                        console.log(`🔗 Resolved ${referenceIds.length} explicit references: ${referenceIds}`);
-                        this.logger.log(`🔗 Resolved ${referenceIds.length} explicit references for current document.`);
-                    } else {
-                        console.log(`🔗 No references resolved. No matching documents found.`);
-                    }
                 }
+        
+            return extractedData;
+        
+        }
+            
+        } catch (error) {
+            throw new Error(`Failed to extract data from document in phase ${processingPhase}: ${error.message}`);
+        } finally {
+            const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile, tempExistingArticlesFile].filter(Boolean);
+            
+            await Promise.all(
+                tempFiles.map(async (file) => {
+                    if (file && fs.existsSync(file)) {
+                        try {
+                            await unlinkPromise(file);
+                            this.logger.debug(`Cleaned up temporary file: ${file}`);
+                        } catch (cleanupError) {
+                            this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
+                        }
+                    }
+                })
+            );
+        
+            if (global.gc) {
+                global.gc();
             }
+        
+            const finalMemory = process.memoryUsage();
+            this.logger.debug(`Final memory state: ${JSON.stringify(finalMemory)}`);
         }
-    
-        const processingTime = Date.now() - startTime;
-        const memoryAfter = process.memoryUsage();
-        const memoryDiff = {
-            rss: memoryAfter.rss - memoryBefore.rss,
-            heapUsed: memoryAfter.heapUsed - memoryBefore.heapUsed,
-            external: memoryAfter.external - memoryBefore.external
-        };
-    
-        this.logger.log(`Document processing completed in phase ${processingPhase} (${currentPhase?.name}) in ${processingTime}ms`);
-        this.logger.debug(`Memory usage change: ${JSON.stringify(memoryDiff)}`);
-    
-        return extractedData;
-        
-    } catch (error) {
-        const processingTime = Date.now() - startTime;
-        this.logger.error(`Error extracting data for EIN ${clientCompanyEin} in phase ${processingPhase} after ${processingTime}ms: ${error.message}`, error.stack);
-        
-        if (error.message.includes('timeout')) {
-            throw new Error(`Document processing timed out in phase ${processingPhase} after ${this.processingTimeout / 1000} seconds. Please try with a smaller file or contact support.`);
-        } else if (error.message.includes('maxBuffer')) {
-            throw new Error(`Document output too large in phase ${processingPhase}. Please try with a smaller or simpler document.`);
-        } else if (error.message.includes('ENOENT')) {
-            throw new Error('Document processing system unavailable. Please try again later.');
-        } else if (error.message.includes('spawn') || error.message.includes('Python process')) {
-            throw new Error(`Python processing failed in phase ${processingPhase}. Please check system configuration.`);
-        } else if (error.message.includes('api key') || error.message.includes('authentication')) {
-            throw new Error('API authentication failed. Please check your API configuration.');
-        }
-        
-        throw new Error(`Failed to extract data from document in phase ${processingPhase}: ${error.message}`);
-    } finally {
-        const tempFiles = [tempBase64File, tempExistingDocsFile, tempUserCorrectionsFile, tempExistingArticlesFile].filter(Boolean);
-        
-        await Promise.all(
-            tempFiles.map(async (file) => {
-                if (file && fs.existsSync(file)) {
-                    try {
-                        await unlinkPromise(file);
-                        this.logger.debug(`Cleaned up temporary file: ${file}`);
-                    } catch (cleanupError) {
-                        this.logger.warn(`Failed to clean up temporary file: ${cleanupError.message}`);
-                    }
-                }
-            })
-        );
-    
-        if (global.gc) {
-            global.gc();
-        }
-    
-        const finalMemory = process.memoryUsage();
-        this.logger.debug(`Final memory state: ${JSON.stringify(finalMemory)}`);
     }
-}
 
     async saveDuplicateDetection(documentId: number, duplicateData: any) {
         if (!duplicateData.is_duplicate || !duplicateData.duplicate_matches) {
@@ -1743,25 +972,6 @@ async processBatchPhased(
         }
 
         return data;
-    }
-
-    getServiceHealth() {
-        const memory = process.memoryUsage();
-        return {
-            memory: {
-                rss: `${Math.round(memory.rss / 1024 / 1024)}MB`,
-                heapUsed: `${Math.round(memory.heapUsed / 1024 / 1024)}MB`,
-                heapTotal: `${Math.round(memory.heapTotal / 1024 / 1024)}MB`,
-                external: `${Math.round(memory.external / 1024 / 1024)}MB`
-            },
-            tempDir: this.tempDir,
-            pythonScriptPath: this.pythonScriptPath,
-            maxFileSize: `${this.maxFileSize / 1024 / 1024}MB`,
-            processingTimeout: `${this.processingTimeout / 1000}s`,
-            queueLength: this.processingQueue['queue']?.length || 0,
-            isProcessing: this.processingQueue['processing'] || false,
-            processingPhases: this.processingPhases
-        };
     }
 
     async saveDuplicateDetectionWithTransaction(

@@ -1,6 +1,17 @@
 import {createApi, fetchBaseQuery} from '@reduxjs/toolkit/query/react'
 import { logout } from '@/app/helper/authHelpers';
 
+interface ExtractDataArgs {
+    file: File;
+    clientCompanyEin: string;
+    phase?: number;
+    phase0Data?: { 
+        document_type: string; 
+        direction?: string; 
+        referenced_numbers?: string[] ;
+    };
+}
+
 
 const baseQuery = fetchBaseQuery({
     baseUrl: 'https://finova-6eeu.onrender.com',
@@ -45,19 +56,20 @@ export const finovaApi = createApi({
         }),
 
         extractData: build.mutation({
-            query:({file, clientCompanyEin, phase = 0}:{file: File; clientCompanyEin: string; phase?: number})=>{
+            query:({file, clientCompanyEin, phase = 0, phase0Data}:{file: File; clientCompanyEin: string; phase?: number; phase0Data?: { document_type: string; direction?: string; referenced_numbers?: string[] }})=>{
                 const formData: FormData = new FormData();
                 formData.append('file', file);
                 formData.append('ein', clientCompanyEin);
-                formData.append('phase', phase.toString());
-
+                if (phase !== undefined){
+                    formData.append('phase', phase.toString());
+                }
+                if (phase0Data !== undefined){
+                    formData.append('phase0Data', JSON.stringify(phase0Data));
+                }
                 return{
                     url:'/data-extraction',
                     method: 'POST',
                     body: formData,
-                    headers: {
-
-                    }
                 }
             }
         }),
