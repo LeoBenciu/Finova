@@ -182,23 +182,6 @@ const FileUploadPage = () => {
       processNextInQueue();
     }
   }, [processingQueue, isProcessingPaused]);
-    
-function validateProcessedData(data:any, phase:number) {
-    if (!data || typeof data !== 'object') {
-      return { valid: false, error: 'Invalid data structure' };
-    }
-  
-    if (phase === 0) {
-      if (!data.document_type || !data.direction || !data.confidence) {
-        return { valid: false, error: 'Missing categorization fields' };
-      }
-    } else {
-      if (!data.document_type || !data.vendor || !data.total_amount) {
-        return { valid: false, error: 'Missing extraction fields' };
-      }
-    }
-    return { valid: true };
-  }
 
   const processNextInQueue = useCallback(async () => {
     if (isProcessingRef.current || processingQueue.length === 0 || isProcessingPaused) {
@@ -265,13 +248,9 @@ function validateProcessedData(data:any, phase:number) {
         } : undefined,
       }).unwrap();
 
-      console.log(currentPhase);
+      console.log("Current phase: ", currentPhase);
       
       clearTimeout(timeoutId);
-      
-      if (!validateProcessedData(processedFile, currentPhase)) {
-        throw new Error('Received incomplete or invalid data from processing service');
-      }
       
       setDocumentStates(prev => ({
         ...prev,
@@ -364,7 +343,7 @@ function validateProcessedData(data:any, phase:number) {
         }, queueErrors > 0 ? 3000 : 1000);
       }
     }
-  }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused, documentStates, queueErrors, validateProcessedData]);
+  }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused, documentStates, queueErrors]);
 
   const clearQueue = useCallback(() => {
     if (currentAbortController.current) {
