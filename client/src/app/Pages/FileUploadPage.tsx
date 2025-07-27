@@ -182,57 +182,23 @@ const FileUploadPage = () => {
       processNextInQueue();
     }
   }, [processingQueue, isProcessingPaused]);
-
-  const validateProcessedData = useCallback((data: any): boolean => {
+    
+function validateProcessedData(data:any, phase:number) {
     if (!data || typeof data !== 'object') {
-      console.warn('Invalid data structure received');
-      return false;
+      return { valid: false, error: 'Invalid data structure' };
     }
-
-    const result = data.result || data;
-    
-    const docType = result.document_type?.toLowerCase();
-    
-    if (!docType) {
-      console.warn('Missing document_type in processed data');
-      return false;
+  
+    if (phase === 0) {
+      if (!data.document_type || !data.direction || !data.confidence) {
+        return { valid: false, error: 'Missing categorization fields' };
+      }
+    } else {
+      if (!data.document_type || !data.vendor || !data.total_amount) {
+        return { valid: false, error: 'Missing extraction fields' };
+      }
     }
-
-    // Validate based on document type
-    switch (docType) {
-      case 'invoice':
-        const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
-        const missingFields = requiredInvoiceFields.filter(field => !result[field]);
-        if (missingFields.length > 0) {
-          console.warn(`Missing required invoice fields: ${missingFields.join(', ')}`);
-          return false;
-        }
-        break;
-      
-      case 'receipt':
-        if (!result.vendor || !result.total_amount || !result.document_date) {
-          console.warn('Missing required receipt fields');
-          return false;
-        }
-        break;
-      
-      case 'bank statement':
-        if (!result.company_name || !result.bank_name || !result.account_number) {
-          console.warn('Missing required bank statement fields');
-          return false;
-        }
-        break;
-      
-      default:
-        // For other document types, just ensure basic structure exists
-        if (!result.document_date) {
-          console.warn('Missing document_date for document type:', docType);
-          return false;
-        }
-    }
-
-    return true;
-  }, []);
+    return { valid: true };
+  }
 
   const processNextInQueue = useCallback(async () => {
     if (isProcessingRef.current || processingQueue.length === 0 || isProcessingPaused) {
@@ -298,10 +264,12 @@ const FileUploadPage = () => {
             referenced_numbers: phase0Data?.referenced_numbers || [],
         } : undefined,
       }).unwrap();
+
+      console.log(currentPhase);
       
       clearTimeout(timeoutId);
       
-      if (!validateProcessedData(processedFile)) {
+      if (!validateProcessedData(processedFile, currentPhase)) {
         throw new Error('Received incomplete or invalid data from processing service');
       }
       
