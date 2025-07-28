@@ -283,21 +283,26 @@ def validate_compliance_output(result):
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text with optimized parsing and compliance validation."""
     if not text:
+        print("WARNING: extract_json_from_text received empty text", file=sys.stderr)
         return {}
     
     import re
+    
+    print(f"extract_json_from_text input (first 500 chars): {text[:500]}", file=sys.stderr)
     
     text = re.sub(r'\x1b\[[0-9;]*m', '', text) 
     text = text.strip()
     
     try:
         result = json.loads(text)
+        print(f"Successfully parsed JSON directly. Keys: {list(result.keys())}", file=sys.stderr)
         if 'compliance_validation' in result:
             if not validate_compliance_output(result):
                 print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
                 validate_compliance_output(result)
         return result
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"Direct JSON parsing failed: {e}", file=sys.stderr)
         pass
     
     def find_json_objects(text):
@@ -317,6 +322,7 @@ def extract_json_from_text(text: str) -> dict:
                         json_str = text[start_idx:i+1]
                         json_obj = json.loads(json_str)
                         results.append(json_obj)
+                        print(f"Found JSON object with keys: {list(json_obj.keys())}", file=sys.stderr)
                         if len(results) >= 5:
                             break
                     except json.JSONDecodeError:
@@ -330,6 +336,7 @@ def extract_json_from_text(text: str) -> dict:
     if json_objects:
         json_objects.sort(key=lambda x: len(x.keys()), reverse=True)
         result = json_objects[0]
+        print(f"Using largest JSON object found. Keys: {list(result.keys())}", file=sys.stderr)
         if 'compliance_validation' in result:
             if not validate_compliance_output(result):
                 print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
@@ -340,6 +347,7 @@ def extract_json_from_text(text: str) -> dict:
     if json_in_code:
         try:
             result = json.loads(json_in_code.group(1))
+            print(f"Extracted JSON from code block. Keys: {list(result.keys())}", file=sys.stderr)
             if 'compliance_validation' in result:
                 if not validate_compliance_output(result):
                     print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
@@ -348,15 +356,20 @@ def extract_json_from_text(text: str) -> dict:
         except json.JSONDecodeError:
             pass
     
-    if any(keyword in text.lower() for keyword in ["document_type", "vendor", "buyer", "company", "compliance_validation"]):
+    if any(keyword in text.lower() for keyword in ["document_type", "vendor", "buyer", "company", "compliance_validation", "document_number", "document_date", "total_amount"]):
         result = {}
         patterns = [
             (r'"document_type"\s*:\s*"([^"]+)"', 'document_type'),
             (r'"direction"\s*:\s*"([^"]+)"', 'direction'),
+            (r'"document_number"\s*:\s*"([^"]+)"', 'document_number'),
+            (r'"document_date"\s*:\s*"([^"]+)"', 'document_date'),
             (r'"vendor"\s*:\s*"([^"]+)"', 'vendor'),
             (r'"vendor_ein"\s*:\s*"([^"]+)"', 'vendor_ein'),
             (r'"buyer"\s*:\s*"([^"]+)"', 'buyer'),
             (r'"buyer_ein"\s*:\s*"([^"]+)"', 'buyer_ein'),
+            (r'"total_amount"\s*:\s*([\d.]+)', 'total_amount'),
+            (r'"vat_amount"\s*:\s*([\d.]+)', 'vat_amount'),
+            (r'"currency"\s*:\s*"([^"]+)"', 'currency'),
             (r'"company_name"\s*:\s*"([^"]+)"', 'company_name'),
             (r'"company_ein"\s*:\s*"([^"]+)"', 'company_ein'),
         ]
@@ -364,7 +377,23 @@ def extract_json_from_text(text: str) -> dict:
         for pattern, key in patterns:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
-                result[key] = match.group(1)
+                value = match.group(1)
+                if key in ['total_amount', 'vat_amount']:
+                    try:
+                        result[key] = float(value)
+                    except ValueError:
+                        result[key] = value
+                else:
+                    result[key] = value
+        
+        line_items_match = re.search(r'"line_items"\s*:\s*\[(.*?)\]', text, re.DOTALL | re.IGNORECASE)
+        if line_items_match:
+            try:
+                line_items_str = '[' + line_items_match.group(1) + ']'
+                result['line_items'] = json.loads(line_items_str)
+                print(f"Extracted {len(result['line_items'])} line items", file=sys.stderr)
+            except:
+                result['line_items'] = []
         
         if 'compliance_validation' in text.lower():
             status_match = re.search(r'"compliance_status"\s*:\s*"([^"]+)"', text, re.IGNORECASE)
@@ -387,6 +416,11 @@ def extract_json_from_text(text: str) -> dict:
             return result
     
     print(f"WARNING: Could not extract JSON from text (length: {len(text)})", file=sys.stderr)
+    print(f"Text contains 'document_number': {'document_number' in text}", file=sys.stderr)
+    print(f"Text contains 'document_date': {'document_date' in text}", file=sys.stderr)
+    print(f"Text contains 'vendor': {'vendor' in text}", file=sys.stderr)
+    print(f"Last 500 chars of text: {text[-500:]}", file=sys.stderr)
+    
     return {}
 
 def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tuple[dict, bool]:
@@ -411,74 +445,75 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
             if hasattr(result, 'tasks_output') and result.tasks_output:
                 print(f"Processing {len(result.tasks_output)} task outputs", file=sys.stderr)
 
+                current_phase = inputs.get('processing_phase', crew_instance.processing_phase)
+                print(f"Current processing phase: {current_phase}", file=sys.stderr)
+
                 for i, task_output in enumerate(result.tasks_output):
                     try:
                         if task_output and hasattr(task_output, 'raw') and task_output.raw:
                             output_length = len(task_output.raw)
                             print(f"Task {i} output length: {output_length}", file=sys.stderr)
-
                             print(f"🐍 DEBUG Task {i} first 200 chars: {task_output.raw[:200]}", file=sys.stderr)
 
-                            if i == 0: 
-                                categorization_data = extract_json_from_text(task_output.raw)
-                                if categorization_data and isinstance(categorization_data, dict):
-                                    combined_data.update(categorization_data)
-                                    doc_type = categorization_data.get('document_type', 'Unknown')
-                                    print(f"Document categorized as: {doc_type}", file=sys.stderr)
-                                    inputs['doc_type'] = doc_type
-                                else:
-                                    print(f"🐍 DEBUG: Task 0 extraction failed or empty", file=sys.stderr)
+                            if current_phase == 0:
 
-                            elif i == 1 and combined_data.get('document_type', '').lower() == 'invoice': 
-                                print(f"🐍 DEBUG: Processing Task 1 (Invoice extraction)", file=sys.stderr)
-                                print(f"🐍 DEBUG: Task 1 raw output: {task_output.raw}", file=sys.stderr)
+                                if i == 0: 
+                                    categorization_data = extract_json_from_text(task_output.raw)
+                                    if categorization_data and isinstance(categorization_data, dict):
+                                        combined_data.update(categorization_data)
+                                        doc_type = categorization_data.get('document_type', 'Unknown')
+                                        print(f"Document categorized as: {doc_type}", file=sys.stderr)
+                                        inputs['doc_type'] = doc_type
+                                    else:
+                                        print(f"🐍 DEBUG: Task 0 extraction failed or empty", file=sys.stderr)
 
-                                extraction_data = extract_json_from_text(task_output.raw)
-                                print(f"🐍 DEBUG: Task 1 extracted data: {extraction_data}", file=sys.stderr)
+                            elif current_phase == 1:
+                                if i == 0:
+                                    doc_type = combined_data.get('document_type', inputs.get('doc_type', '')).lower()
+                                    print(f"🐍 DEBUG: Processing Task {i} (Data extraction for {doc_type})", file=sys.stderr)
+                                    print(f"🐍 DEBUG: Task {i} raw output: {task_output.raw}", file=sys.stderr)
 
-                                if extraction_data and isinstance(extraction_data, dict):
-                                    print(f"🐍 DEBUG: Task 1 extracted keys: {list(extraction_data.keys())}", file=sys.stderr)
-                                    combined_data.update(extraction_data)
-                                    print(f"Invoice data extracted with keys: {list(extraction_data.keys())}", file=sys.stderr)
-                                else:
-                                    print(f"🐍 DEBUG: Task 1 extraction FAILED - no valid data returned", file=sys.stderr)
+                                    extraction_data = extract_json_from_text(task_output.raw)
+                                    print(f"🐍 DEBUG: Task {i} extracted data: {extraction_data}", file=sys.stderr)
 
-                            elif i == 2:
-                                doc_type = combined_data.get('document_type', '').lower()
-                                if doc_type != 'invoice' and doc_type:
-                                    print(f"🐍 DEBUG: Processing Task 2 (Other document: {doc_type})", file=sys.stderr)
+                                    if extraction_data and isinstance(extraction_data, dict):
+                                        print(f"🐍 DEBUG: Task {i} extracted keys: {list(extraction_data.keys())}", file=sys.stderr)
+                                        combined_data.update(extraction_data)
+                                        print(f"Data extracted for {doc_type} with keys: {list(extraction_data.keys())}", file=sys.stderr)
+                                    else:
+                                        print(f"🐍 DEBUG: Task {i} extraction FAILED - no valid data returned", file=sys.stderr)
+
+                                elif i == 1:
+                                    print(f"🐍 DEBUG: Processing Task {i} (Duplicate detection)", file=sys.stderr)
                                     try:
-                                        other_data = extract_json_from_text(task_output.raw)
-                                        if other_data and isinstance(other_data, dict):
-                                            combined_data.update(other_data)
-                                            print(f"Other document data extracted with keys: {list(other_data.keys())}", file=sys.stderr)
-                                    except Exception as task2_error:
-                                        print(f"ERROR: Task 2 processing failed: {str(task2_error)}", file=sys.stderr)
+                                        duplicate_data = extract_json_from_text(task_output.raw)
+                                        if duplicate_data and isinstance(duplicate_data, dict):
+                                            combined_data['duplicate_detection'] = duplicate_data
+                                            print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
+                                    except Exception as dup_error:
+                                        print(f"ERROR: Duplicate detection processing failed: {str(dup_error)}", file=sys.stderr)
 
-                            elif i == 3: 
-                                try:
-                                    duplicate_data = extract_json_from_text(task_output.raw)
-                                    if duplicate_data and isinstance(duplicate_data, dict):
-                                        combined_data['duplicate_detection'] = duplicate_data
-                                        print(f"Duplicate detection completed: {duplicate_data.get('is_duplicate', False)}", file=sys.stderr)
-                                except Exception as task3_error:
-                                    print(f"ERROR: Task 3 processing failed: {str(task3_error)}", file=sys.stderr)
-
-                            elif i == 4:
-                                try:
-                                    compliance_data = extract_json_from_text(task_output.raw)
-                                    if compliance_data and isinstance(compliance_data, dict):
-                                        combined_data['compliance_validation'] = compliance_data
-                                        print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
-                                except Exception as task4_error:
-                                    print(f"ERROR: Task 4 processing failed: {str(task4_error)}", file=sys.stderr)
-                        else:
-                            print(f"🐍 DEBUG: Task {i} has no output or empty raw data", file=sys.stderr)
+                                elif i == 2:
+                                    print(f"🐍 DEBUG: Processing Task {i} (Compliance validation)", file=sys.stderr)
+                                    try:
+                                        compliance_data = extract_json_from_text(task_output.raw)
+                                        if compliance_data and isinstance(compliance_data, dict):
+                                            combined_data['compliance_validation'] = compliance_data
+                                            print(f"Compliance validation completed: {compliance_data.get('compliance_status', 'PENDING')}", file=sys.stderr)
+                                    except Exception as comp_error:
+                                        print(f"ERROR: Compliance validation processing failed: {str(comp_error)}", file=sys.stderr)
+                            else:
+                                print(f"🐍 DEBUG: Task {i} has no output or empty raw data", file=sys.stderr)
 
                     except Exception as e:
                         print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
                         continue
-            
+
+            if current_phase == 1 and inputs.get('doc_type', '').lower() == 'invoice':
+                combined_data['document_type'] = inputs.get('doc_type', '').lower()
+                if inputs.get('direction'):
+                    combined_data['direction'] = inputs.get('direction')
+                
             is_valid, validation_errors = validate_processed_data(combined_data)
             
             if is_valid:
@@ -603,6 +638,7 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "document_path": doc_path,
             "client_company_ein": client_company_ein,
             "current_date": current_date,
+            "processing_phase": processing_phase,
             "vendor_labels": ["Furnizor", "Vânzător", "Emitent", "Societate emitentă", "Prestator", "Societate"],
             "buyer_labels": ["Cumpărător", "Client", "Beneficiar", "Achizitor", "Societate client", "Destinatar"],
             "incoming_types": ["Nedefinit", "Marfuri", "Materii prime", "Materiale auxiliare", "Ambalaje", "Obiecte de inventar", "Amenajari provizorii", "Mat. spre prelucrare", "Mat. in pastrare/consig.", "Discount financiar intrari", "Combustibili", "Piese de schimb", "Alte mat. consumabile", "Discount comercial intrari", "Ambalaje SGR"],
@@ -617,6 +653,12 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "direction": phase0_data.get("direction", "") if phase0_data else "",
             "referenced_numbers": phase0_data.get("referenced_numbers", []) if phase0_data else [],
         }
+        
+        if processing_phase == 1 and phase0_data:
+            inputs["doc_type"] = phase0_data.get("document_type", "Unknown")
+            inputs["direction"] = phase0_data.get("direction", "")
+            inputs["referenced_numbers"] = phase0_data.get("referenced_numbers", [])
+            print(f"Phase 1 inputs: doc_type={inputs['doc_type']}, direction={inputs['direction']}", file=sys.stderr)
         
         log_memory_usage("Before crew kickoff")
         

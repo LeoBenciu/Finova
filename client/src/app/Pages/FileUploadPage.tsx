@@ -240,10 +240,10 @@ const FileUploadPage = () => {
         file: document, 
         clientCompanyEin,
         phase: currentPhase,
-        phase0Data: currentPhase === 1 ? {
-            document_type: phase0Data?.document_type,
-            direction: phase0Data?.direction,
-            referenced_numbers: phase0Data?.referenced_numbers || [],
+        phase0Data: currentPhase === 1 && phase0Data ? {
+            document_type: phase0Data.document_type,
+            direction: phase0Data.direction,
+            referenced_numbers: phase0Data.referenced_numbers || [],
         } : undefined,
       }).unwrap();
 

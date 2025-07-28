@@ -19,11 +19,14 @@ categorize_document_task:
 
 extract_invoice_data_task:
   description: >
-    For a document at {document_path} classified as 'Invoice', extract:
+    For a document at {document_path} classified as 'Invoice' with direction '{direction}', extract:
     CURRENT DATE: {current_date} (use as reference - dates should not be after this)
 
     - vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), document_number, document_date (DD-MM-YYYY, must not be after {current_date}), due_date (DD-MM-YYYY, null if absent, must not be after {current_date}), total_amount (numeric), vat_amount (numeric), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), referenced_numbers: array of any document numbers which the current document references(invoices, contracts, receipts, etc.) mentioned anywhere in the invoice text.
-    Determine direction using: buyer_ein = '{client_company_ein}' (incoming), vendor_ein = '{client_company_ein}' (outgoing).
+
+    The document has already been categorized as: {doc_type} with direction: {direction}
+    Use this information: if buyer_ein = '{client_company_ein}' then it's incoming, if vendor_ein = '{client_company_ein}' then it's outgoing.
+
     Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
     Compare articles with {existing_articles}: if the article referes to the same thing/object/service but the naming is different (ex: 'Pix rosu' and 'Pix rosu cu capac'): replace the name of the article with the name from the database, set isNew false, assign the article code from the database. If the articles from the database don't reffer to the same thing/object/service (ex: 'Pix rosu' and 'Pix albastru'): assign next articleCode, set isNew true, leave the article name like it is if it's relevant(always translate in romanian if the article name is in other language).
     For 'Nedefinit' type, set management to null, suggest account_code from the romanian "Plan de conturi" (e.g., '623' - Cheltuieli de protocol, reclamă şi publicitate).
@@ -37,6 +40,8 @@ extract_other_document_data_task:
   description: >
     For non-factură documents at {document_path} of type {doc_type}, extract relevant data:
     CURRENT DATE: {current_date} (use as reference - dates should not be after this)
+
+    The document has already been categorized as: {doc_type}
 
     -For Receipts: receipt_number (make sure that the number is of the receipt not of the invoice for which the receipt was made), vendor, vendor_ein (number only, remove 'RO'), buyer, buyer_ein (number only, remove 'RO'), total_amount (paid/received), document_date (DD-MM-YYYY, must not be after {current_date}), invoice_reference (The number of the invoice, if available), payment_method(cash/card/bank), currency (RON/EUR/USD/GBP/CHF/JPY/CAD/AUD/SEK/NOK/DKK/PLN/CZK/HUF/BGN - detect from document or default to RON), referenced_numbers array listing every document number which the current document references(invoice, contract, receipt, etc.) detected anywhere in the text.
     -For Bank Statements: company_name, company_ein (number only, remove 'RO'), bank_name, account_number (ex: RO70BTRLRONCRT0CL4098501), statement_number, statement_period_start (DD-MM-YYYY, must not be after {current_date}), statement_period_end (DD-MM-YYYY, must not be after {current_date}), opening_balance (numeric, just the number without currency), closing_balance (numeric, just the number without currency), currency, transactions array with: transaction_date (DD-MM-YYYY, must not be after {current_date}), description, reference_number, debit_amount (numeric, null if none, just the number without currency), credit_amount (numeric, null if none, just the number without currency), balance_after_transaction (numeric, just the number without currency), transaction_type (transfer/payment/deposit/withdrawal), referenced_numbers array listing every document number which the current document references(invoice, contract, receipt, etc.) detected anywhere in the text.

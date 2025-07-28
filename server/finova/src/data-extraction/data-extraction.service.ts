@@ -134,8 +134,8 @@ export class DataExtractionService {
         }
     }
 
-    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number) {
-            return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase));
+    async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number, phase0Data?: any) {
+            return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase, phase0Data));
     }
 
     private validateProcessedData(data: any, processingPhase: number): ProcessedDataValidation {
@@ -355,7 +355,7 @@ export class DataExtractionService {
         }));
     }    
 
-    private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0, phase0Data?: { document_type: string; direction: string;  referenced_numbers: string[]}) {
+    private async processDocument(fileBase64: string, clientCompanyEin: string, processingPhase: number = 0, phase0Data?: any) {
         let tempBase64File: string | null = null;
         let tempExistingDocsFile: string | null = null;
         let tempUserCorrectionsFile: string | null = null;
@@ -457,6 +457,7 @@ export class DataExtractionService {
             }
             
             console.log(`🐍 Executing Python script with args:`, args);
+            console.log(`🐍 Phase 0 data being passed:`, phase0Data);
             
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('Processing timeout')), this.processingTimeout);
