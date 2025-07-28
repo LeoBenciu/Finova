@@ -43,38 +43,72 @@ class DuplicateCheckInput(BaseModel):
 
 class SimpleTextExtractorTool(BaseTool):
     name: str = "simple_text_extractor"
-    description: str = "Simple text extraction for text-based files"
+    description: str = "Text extraction with PyPDF2 & OpenAI Vision fallback"
     args_schema: Type[BaseModel] = FileReadInput
-    
+
     def _run(self, file_path: str) -> str:
-        """Extract text from simple text files."""
+        """Extract text from files. Uses PyPDF2 for text PDFs, falls back to OpenAI Vision for image-based PDFs."""
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
-        
-        if file_path.endswith(".pdf"):
+
+        def _extract_with_vision(path: str) -> str:
+            """Extract text using OpenAI's Vision API."""
+            try:
+                import base64
+                from openai import OpenAI
+                
+                with open(path, "rb") as f:
+                    file_content = f.read()
+                base64_encoded = base64.b64encode(file_content).decode('utf-8')
+                
+                client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                response = client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": "Extract all text from this document. Preserve formatting, tables, and structure. Include all numbers, dates, and codes."},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:application/pdf;base64,{base64_encoded}",
+                                        "detail": "high"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    max_tokens=4000,
+                )
+                return response.choices[0].message.content
+            except Exception as e:
+                print(f"OpenAI Vision extraction failed: {e}", file=sys.stderr)
+                return ""
+
+        if file_path.lower().endswith(".pdf"):
             if PYPDF2_AVAILABLE:
                 try:
-                    with open(file_path, 'rb') as file:
-                        pdf_reader = PyPDF2.PdfReader(file)
-                        text = ""
-                        for page_num, page in enumerate(pdf_reader.pages):
-                            page_text = page.extract_text()
-                            if page_text:
-                                text += page_text + "\n"
-                        
-                        if len(text.strip()) > 100:
-                            return text
+                    with open(file_path, "rb") as f:
+                        reader = PyPDF2.PdfReader(f)
+                        extracted = "\n".join(page.extract_text() or "" for page in reader.pages)
+                        if len(extracted.strip()) > 100:
+                            return extracted
                 except Exception as e:
-                    print(f"PyPDF2 extraction failed: {str(e)}")
-            
-            return "Could not extract text from PDF. This appears to be an image-based PDF."
-        else:
+                    print(f"PyPDF2 extraction failed, will try Vision API: {e}", file=sys.stderr)
+
+            vision_result = _extract_with_vision(file_path)
+            if vision_result and len(vision_result.strip()) > 50:
+                return vision_result
+            return "Could not extract text from PDF (PyPDF2 and Vision API both failed)."
+
+        for enc in ("utf-8", "latin-1", "windows-1250"):
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, "r", encoding=enc) as f:
                     return f.read()
             except UnicodeDecodeError:
-                with open(file_path, "r", encoding="latin-1") as f:
-                    return f.read()
+                continue
+        return ""
 
 class DocumentHashTool(BaseTool):
     name: str = "document_hash_generator"
