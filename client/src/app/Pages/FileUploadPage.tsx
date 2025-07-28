@@ -132,20 +132,19 @@ const FileUploadPage = () => {
       setProcessingQueue(prev => [...prev, ...newQueueItems]);
     }
 
-    const allCategorized = documents.every(doc =>
-        documentStates[doc.name]?.state === 'processed' && 
-        documentStates[doc.name]?.phase === 0 &&
-        documentStates[doc.name]?.data?.result?.document_type &&
-        documentStates[doc.name]?.data?.result?.direction
-    )
+    const allPhase0Done = documents.every(doc =>
+        documentStates[doc.name]?.state === 'processed' &&
+        documentStates[doc.name]?.phase === 0
+    );
 
-    if (allCategorized && !isProcessingPaused && processingQueue.length === 0) {
+    if (allPhase0Done && !isProcessingPaused && processingQueue.length === 0) {
         const prioritizedQueue = documents
           .sort((a, b) => {
-            const aType = documentStates[a.name]?.data?.result?.document_type?.toLowerCase();
-            const bType = documentStates[b.name]?.data?.result?.document_type?.toLowerCase();
-            const aDir = documentStates[a.name]?.data?.result?.direction?.toLowerCase();
-            const bDir = documentStates[b.name]?.data?.result?.direction?.toLowerCase();
+            const safeLower = (val?: string) => (typeof val === 'string' ? val.toLowerCase() : '');
+            const aType = safeLower(documentStates[a.name]?.data?.result?.document_type);
+            const bType = safeLower(documentStates[b.name]?.data?.result?.document_type);
+            const aDir  = safeLower(documentStates[a.name]?.data?.result?.direction);
+            const bDir  = safeLower(documentStates[b.name]?.data?.result?.direction);
     
             if (aType === 'invoice' && aDir === 'incoming' && (bType !== 'invoice' || bDir !== 'incoming')) return -1;
             if (bType === 'invoice' && bDir === 'incoming' && (aType !== 'invoice' || aDir !== 'incoming')) return 1;
