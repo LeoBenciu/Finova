@@ -514,7 +514,15 @@ export class DataExtractionService {
             let result;
             try {
                 const jsonOutput = this.extractJsonFromOutput(stdout);
+                console.log('🔍 Extracted JSON string (first 1000 chars):', jsonOutput.substring(0, 1000));
+
                 result = JSON.parse(jsonOutput);
+
+                console.log('🔍 Parsed Python result keys:', Object.keys(result));
+                console.log('🔍 Result.data keys:', Object.keys(result.data || {}));
+                console.log('🔍 Vendor in result.data:', result.data?.vendor);
+                console.log('🔍 Receipt number in result.data:', result.data?.receipt_number);
+                console.log('🔍 Total amount in result.data:', result.data?.total_amount);
             } catch (parseError) {
                 this.logger.error(`Failed to parse Python output in phase ${processingPhase}. Raw output (first 1000 chars): ${stdout?.substring(0, 1000)}`);
                 throw new Error(`Failed to parse processing results in phase ${processingPhase}: ${parseError.message}`);
@@ -781,6 +789,7 @@ export class DataExtractionService {
     }
 
     private extractJsonFromOutput(output: string): string {
+        console.log('🔍 RAW Python output (first 2000 chars):', output.substring(0, 2000));
         if (!output) {
             throw new Error('No output received from Python script');
         }
