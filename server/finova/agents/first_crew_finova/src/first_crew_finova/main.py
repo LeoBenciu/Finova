@@ -433,7 +433,28 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
             
             with redirect_stdout(captured_output), redirect_stderr(captured_output):
                 if crew_instance.processing_phase == 1:
-                    doc_type = inputs.get('doc_type', '').lower()
+                    doc_type = None
+
+                    phase0_data = inputs.get('phase0_data')
+                    if phase0_data:
+                        try:
+                            if isinstance(phase0_data, str):
+                                import json
+                                phase0_parsed = json.loads(phase0_data)
+                                doc_type = phase0_parsed.get('document_type', '').lower()
+                                print(f"Parsed phase0_data from string: {phase0_parsed}", file=sys.stderr)
+                            elif isinstance(phase0_data, dict):
+                                doc_type = phase0_data.get('document_type', '').lower()
+                                print(f"Using phase0_data dict: {phase0_data}", file=sys.stderr)
+                        except Exception as e:
+                            print(f"Error parsing phase0_data: {e}", file=sys.stderr)
+    
+                    if not doc_type:
+                        doc_type = inputs.get('doc_type', '').lower()
+    
+                    if not doc_type:
+                        doc_type = 'unknown'
+    
                     print(f"Phase 1: Processing {doc_type} document", file=sys.stderr)
 
                     crew_obj = crew_instance.crew()
