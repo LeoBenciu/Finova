@@ -517,6 +517,8 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                     if extraction_data and isinstance(extraction_data, dict):
                                         print(f"🐍 DEBUG: Task {i} extracted keys: {list(extraction_data.keys())}", file=sys.stderr)
                                         combined_data.update(extraction_data)
+                                        print(f"🐍 DEBUG: combined_data after update: {list(combined_data.keys())}", file=sys.stderr)
+                                        print(f"🐍 DEBUG: combined_data receipt_number: {combined_data.get('receipt_number')}", file=sys.stderr)
                                         print(f"Data extracted for {doc_type} with keys: {list(extraction_data.keys())}", file=sys.stderr)
                                     else:
                                         print(f"🐍 DEBUG: Task {i} extraction FAILED - no valid data returned", file=sys.stderr)
