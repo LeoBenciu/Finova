@@ -432,7 +432,24 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
             captured_output = StringIO()
             
             with redirect_stdout(captured_output), redirect_stderr(captured_output):
-                result = crew_instance.crew().kickoff(inputs=inputs)
+                if crew_instance.processing_phase == 1:
+                    doc_type = inputs.get('doc_type', '').lower()
+                    print(f"Phase 1: Processing {doc_type} document", file=sys.stderr)
+
+                    crew_obj = crew_instance.crew()
+
+                    if doc_type == 'invoice':
+                        extraction_task = crew_instance.extract_invoice_data_task()
+                        print("Using invoice extraction task", file=sys.stderr)
+                    else:
+                        extraction_task = crew_instance.extract_other_document_data_task()
+                        print(f"Using other document extraction task for {doc_type}", file=sys.stderr)
+
+                    crew_obj.tasks.insert(0, extraction_task)
+
+                    result = crew_obj.kickoff(inputs=inputs)
+                else:
+                    result = crew_instance.crew().kickoff(inputs=inputs)
             
             combined_data = {
                 "document_type": "Unknown",

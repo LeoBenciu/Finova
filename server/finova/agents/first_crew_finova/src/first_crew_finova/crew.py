@@ -598,7 +598,7 @@ class FirstCrewFinova:
             config=self.tasks_config['validate_compliance_task'],
             output_file='compliance_validation.json'
         )
-
+        
     @crew
     def crew(self) -> Crew:
         if self.processing_phase == 0:
@@ -606,8 +606,6 @@ class FirstCrewFinova:
             print("Phase 0: Only running categorization task", file=sys.stderr)
         else:
             tasks = [
-                self.extract_invoice_data_task(),
-                self.extract_other_document_data_task(),
                 self.detect_duplicates_task(),
                 self.validate_compliance_task()
             ]
