@@ -790,62 +790,30 @@ export class DataExtractionService {
 
     private extractJsonFromOutput(output: string): string {
         console.log('🔍 RAW Python output (first 2000 chars):', output.substring(0, 2000));
+        
         if (!output) {
             throw new Error('No output received from Python script');
         }
-
+    
         const lines = output.split('\n');
-        
-        let jsonString = '';
-        let braceCount = 0;
-        let inJson = false;
         
         for (let i = lines.length - 1; i >= 0; i--) {
             const line = lines[i].trim();
             
-            if (!inJson && line.includes('}')) {
-                inJson = true;
+            if (!line || !line.startsWith('{')) {
+                continue;
             }
             
-            if (inJson) {
-                for (let j = line.length - 1; j >= 0; j--) {
-                    if (line[j] === '}') braceCount++;
-                    else if (line[j] === '{') braceCount--;
-                    
-                    if (braceCount === 0 && line[j] === '{') {
-                        jsonString = line.substring(j) + '\n' + jsonString;
-                        return jsonString.trim();
-                    }
-                }
-                
-                jsonString = line + '\n' + jsonString;
+            try {
+                JSON.parse(line);
+                console.log('🔍 Found final JSON at line:', i, 'Content:', line.substring(0, 200) + '...');
+                return line;
+            } catch (e) {
+                continue;
             }
         }
         
-        const startIndex = output.lastIndexOf('{');
-        if (startIndex === -1) {
-            throw new Error('No JSON object found in output');
-        }
-        
-        let openBraces = 0;
-        let endIndex = -1;
-        
-        for (let i = startIndex; i < output.length; i++) {
-            if (output[i] === '{') openBraces++;
-            else if (output[i] === '}') {
-                openBraces--;
-                if (openBraces === 0) {
-                    endIndex = i + 1;
-                    break;
-                }
-            }
-        }
-        
-        if (endIndex !== -1) {
-            return output.substring(startIndex, endIndex);
-        }
-        
-        throw new Error('Incomplete JSON object in output');
+        throw new Error('No valid JSON object found in output');
     }
 
     private validateDocumentRelevance(data: any, clientCompanyEin: string) {
