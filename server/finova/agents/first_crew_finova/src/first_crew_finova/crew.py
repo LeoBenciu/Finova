@@ -607,6 +607,7 @@ class FirstCrewFinova:
         else:
             tasks = [
                 self.extract_invoice_data_task(),
+                self.extract_other_document_data_task(),
                 self.detect_duplicates_task(),
                 self.validate_compliance_task()
             ]
