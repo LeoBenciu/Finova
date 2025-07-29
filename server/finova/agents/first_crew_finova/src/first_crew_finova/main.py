@@ -749,6 +749,13 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             }
         
         log_memory_usage("After processing")
+
+        print(f"🐍 FINAL DEBUG: About to return combined_data with keys: {list(combined_data.keys())}", file=sys.stderr)
+        print(f"🐍 FINAL DEBUG: receipt_number in final data: {combined_data.get('receipt_number')}", file=sys.stderr)
+        print(f"🐍 FINAL DEBUG: vendor in final data: {combined_data.get('vendor')}", file=sys.stderr)
+        print(f"🐍 FINAL DEBUG: total_amount in final data: {combined_data.get('total_amount')}", file=sys.stderr)
+        print(f"🐍 FINAL DEBUG: Full combined_data: {json.dumps(combined_data, default=str)[:1000]}...", file=sys.stderr)
+        
         
         return {
             "data": combined_data
