@@ -690,7 +690,11 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "doc_type": phase0_data.get("document_type", "Unknown") if phase0_data else "Unknown",
             "direction": phase0_data.get("direction", "") if phase0_data else "",
             "referenced_numbers": phase0_data.get("referenced_numbers", []) if phase0_data else [],
+            "phase0_data": phase0_data,
         }
+
+        print(f"🐍 DEBUG: inputs contains phase0_data: {'phase0_data' in inputs}", file=sys.stderr)
+        print(f"🐍 DEBUG: phase0_data value: {inputs.get('phase0_data')}", file=sys.stderr)
         
         if processing_phase == 1 and phase0_data:
             inputs["doc_type"] = phase0_data.get("document_type", "Unknown")
