@@ -223,19 +223,6 @@ const FileUploadPage = () => {
     try {
       console.log(`Processing document: ${nextDocumentName} (attempt ${(documentStates[nextDocumentName]?.retryCount || 0) + 1})`);
       
-      const formData = new FormData();
-      formData.append('file', document);
-      formData.append('ein', clientCompanyEin);
-      formData.append('phase', currentPhase.toString());
-
-      if(currentPhase === 1 && phase0Data){
-        formData.append('phase0Data', JSON.stringify({
-            document_type: phase0Data.document_type,
-            direction: phase0Data.direction,
-            referenced_numbers: phase0Data.referenced_numbers || [],
-          }));
-      }
-      
       const processedFile = await process({ 
         file: document, 
         clientCompanyEin,
