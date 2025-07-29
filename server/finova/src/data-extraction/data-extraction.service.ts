@@ -796,24 +796,32 @@ export class DataExtractionService {
         }
     
         const lines = output.split('\n');
+        const jsonCandidates: { line: string, data: any, size: number }[] = [];
         
-        for (let i = lines.length - 1; i >= 0; i--) {
+        for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
             
-            if (!line || !line.startsWith('{')) {
-                continue;
-            }
-            
-            try {
-                JSON.parse(line);
-                console.log('🔍 Found final JSON at line:', i, 'Content:', line.substring(0, 200) + '...');
-                return line;
-            } catch (e) {
-                continue;
+            if (line.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(line);
+                    const dataSize = JSON.stringify(parsed).length;
+                    jsonCandidates.push({ line, data: parsed, size: dataSize });
+                    console.log(`🔍 Found JSON at line ${i}, size: ${dataSize}, has vendor: ${!!parsed.data?.vendor}`);
+                } catch (e) {
+                }
             }
         }
         
-        throw new Error('No valid JSON object found in output');
+        if (jsonCandidates.length === 0) {
+            throw new Error('No valid JSON found in output');
+        }
+        
+        jsonCandidates.sort((a, b) => b.size - a.size);
+        
+        const chosenJson = jsonCandidates[0];
+        console.log(`🔍 Chose largest JSON (size: ${chosenJson.size})`);
+        
+        return chosenJson.line;
     }
 
     private validateDocumentRelevance(data: any, clientCompanyEin: string) {
