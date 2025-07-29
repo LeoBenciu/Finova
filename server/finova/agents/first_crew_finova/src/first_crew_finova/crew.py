@@ -606,7 +606,7 @@ class FirstCrewFinova:
             print("Phase 0: Only running categorization task", file=sys.stderr)
         else:
             tasks = [
-                self.extract_invoice_data_task() if self.inputs.get('doc_type', '').lower() == 'invoice' else self.extract_other_document_data_task(),
+                self.extract_invoice_data_task(),
                 self.detect_duplicates_task(),
                 self.validate_compliance_task()
             ]
