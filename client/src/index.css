@@ -214,7 +214,7 @@ textarea::-webkit-scrollbar-thumb {
   }
 }
 
-.rainbow { animation: rainbow 5s linear infinite; }
+.rainbow { animation: rainbow 15s linear infinite; }
 @keyframes rainbow {
   0% { color: #59419A; }
   16% { color: #B840C6; }

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import InitialClientCompanyModalSelect from '../Components/InitialClientCompanyModalSelect';
+import BankConnectionModal from '../Components/BankConnectionModal';
 
 interface BankAccount {
   id: string;
@@ -68,6 +69,7 @@ const BankPage = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [activeTab, setActiveTab] = useState<'reconciliation' | 'documents' | 'transactions'>('reconciliation');
+  const [isBankModalOpen, setIsBankModalOpen] = useState<boolean>(false);
 
   if(false){
     console.log(selectedAccount);
@@ -156,6 +158,16 @@ const BankPage = () => {
     }
   };
 
+  const handleBankConnect = (bankData: any) => {
+    console.log('Connecting to bank:', bankData);
+    // Here you would integrate with your backend API to store the bank connection
+    // For now, we'll just show a success message or update the UI
+    
+    // Example: Add the connected bank to the bankAccounts array
+    // You would typically make an API call here to save the connection
+    alert(`Successfully initiated connection to ${bankData.bank.displayName} in ${bankData.environment} mode!`);
+  };
+
   return (
     <div className="min-h-screen p-8">
         {clientCompanyName===''&&(
@@ -196,6 +208,7 @@ const BankPage = () => {
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
+              onClick={() => setIsBankModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[var(--primary)] to-blue-500 
               text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
             >
@@ -530,6 +543,13 @@ const BankPage = () => {
           </div>
         </div>
       )}
+      
+      {/* Bank Connection Modal */}
+      <BankConnectionModal
+        isOpen={isBankModalOpen}
+        onClose={() => setIsBankModalOpen(false)}
+        onConnect={handleBankConnect}
+      />
     </div>
   );
 };
