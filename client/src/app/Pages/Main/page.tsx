@@ -2,7 +2,7 @@ import { Outlet } from 'react-router';
 import SideBar from '@/app/Components/SideBar';
 import { useState } from 'react';
 import AIChatSidebar from '@/app/Components/AiChatSidebar';
-import { BotMessageSquare, Sparkles } from 'lucide-react';
+import { BotMessageSquare } from 'lucide-react';
 import { useSelector } from 'react-redux';
 
 const Page = () => {
@@ -36,8 +36,7 @@ const Page = () => {
             <div className="absolute inset-1 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
             
             <div className="relative flex items-center justify-center">
-              <BotMessageSquare size={28} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <Sparkles size={12} className="absolute -top-1 -right-1 text-emerald-300 animate-pulse" />
+              <BotMessageSquare size={28} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse rainbow" />
             </div>
             
             <div className="absolute right-full mr-4 px-4 py-3 bg-gray-900/95 backdrop-blur-sm text-white text-sm rounded-2xl 

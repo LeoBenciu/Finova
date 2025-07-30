@@ -25,13 +25,20 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
     const documentTypes ={
-        "Invoice":"Factura",
-        "Receipt":"Chitanta",
-        "Bank Statement":"Extras De Cont",
-        "Contract":"Contract",
-        "Z Report":"Raport Z",
-        "Payment Order":"Dispozitie De Plata",
-        "Collection Order":"Dispozitie De Incasare"
+      "invoice": "Factura",
+      "Invoice": "Factura", 
+      "receipt": "Chitanta",
+      "Receipt": "Chitanta",
+      "bank statement": "Extras De Cont",
+      "Bank Statement": "Extras De Cont",
+      "contract": "Contract",
+      "Contract": "Contract",
+      "z report": "Raport Z",
+      "Z Report": "Raport Z",
+      "payment order": "Dispozitie De Plata",
+      "Payment Order": "Dispozitie De Plata",
+      "collection order": "Dispozitie De Incasare",
+      "Collection Order": "Dispozitie De Incasare"
     };
 
     const [selectorValue, setSelectorValue] = useState<string>('');
