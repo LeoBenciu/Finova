@@ -1,44 +1,40 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Landmark, 
-  Plus, 
   Search, 
-  Filter, 
   CheckCircle, 
-  AlertCircle, 
-  Clock, 
   CreditCard,
   FileText,
   Receipt,
   ArrowRight,
   Link,
-  Unlink,
-  RefreshCw
+  DollarSign,
+  Calendar,
+  AlertTriangle,
+  Check,
+  X,
+  Zap,
+  Target,
+  TrendingUp,
+  Eye,
+  Edit3
 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import InitialClientCompanyModalSelect from '../Components/InitialClientCompanyModalSelect';
-import BankConnectionModal from '../Components/BankConnectionModal';
-
-interface BankAccount {
-  id: string;
-  name: string;
-  bank: string;
-  accountNumber: string;
-  balance: number;
-  connected: boolean;
-  lastSync: string;
-}
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Document {
-  id: string;
-  type: 'invoice' | 'z_report' | 'receipt' | 'expense';
-  number: string;
-  amount: number;
-  date: string;
-  description: string;
-  status: 'pending' | 'matched' | 'unmatched';
-  bankTransaction?: string;
+  id: number;
+  name: string;
+  type: 'Invoice' | 'Receipt' | 'Z Report' | 'Payment Order' | 'Collection Order';
+  document_number?: string;
+  total_amount: number;
+  document_date: string;
+  vendor?: string;
+  buyer?: string;
+  direction?: 'incoming' | 'outgoing';
+  reconciliation_status: 'unreconciled' | 'auto_matched' | 'manually_matched' | 'disputed';
+  matched_transactions?: string[];
+  references?: number[];
 }
 
 interface BankTransaction {
@@ -47,133 +43,259 @@ interface BankTransaction {
   description: string;
   amount: number;
   type: 'debit' | 'credit';
-  status: 'pending' | 'matched' | 'ignored';
-  matchedDocument?: string;
+  reference?: string;
+  balance_after?: number;
+  reconciliation_status: 'unreconciled' | 'matched' | 'ignored';
+  matched_document_id?: number;
+  confidence_score?: number;
 }
 
-type clientCompany = {
-  clientCompany:{
-    current:{
-      name:string,
-      ein:string
-    }
-  }
+interface ReconciliationSuggestion {
+  document_id: number;
+  transaction_id: string;
+  confidence: number;
+  matching_criteria: string[];
+  reasons: string[];
 }
 
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   
-  const clientCompanyName = useSelector((state:clientCompany)=>state.clientCompany.current.name);
-  const [selectedAccount, setSelectedAccount] = useState<string>('');
+  // State management
   const [searchTerm, setSearchTerm] = useState<string>('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [activeTab, setActiveTab] = useState<'reconciliation' | 'documents' | 'transactions'>('reconciliation');
-  const [isBankModalOpen, setIsBankModalOpen] = useState<boolean>(false);
+  const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
+  const [activeTab, setActiveTab] = useState<'reconciliation' | 'suggestions' | 'reports'>('reconciliation');
+  const [selectedItems, setSelectedItems] = useState<{documents: number[], transactions: string[]}>({documents: [], transactions: []});
+  const [draggedItem, setDraggedItem] = useState<{type: 'document' | 'transaction', id: string | number} | null>(null);
+  const [showMatchModal, setShowMatchModal] = useState(false);
+  const [matchingPair, setMatchingPair] = useState<{document: Document, transaction: BankTransaction} | null>(null);
 
-  if(false){
-    console.log(selectedAccount);
-  }
-
-  // Mock data - replace with your actual data
-  const bankAccounts: BankAccount[] = [
-    {
-      id: '1',
-      name: 'Cont Principal',
-      bank: 'BCR',
-      accountNumber: 'RO89RNCB0082****5678',
-      balance: 125000.50,
-      connected: true,
-      lastSync: '2025-06-20 10:30'
-    },
-    {
-      id: '2',
-      name: 'Cont Operațional',
-      bank: 'BRD',
-      accountNumber: 'RO12BRDE****1234',
-      balance: 45000.00,
-      connected: false,
-      lastSync: '2025-06-18 14:20'
-    }
-  ];
-
+  // Mock data - replace with your actual API calls
   const documents: Document[] = [
     {
-      id: '1',
-      type: 'invoice',
-      number: 'INV-2025-001',
-      amount: 2500.00,
-      date: '2025-06-19',
-      description: 'Factură client ABC SRL',
-      status: 'pending'
+      id: 1,
+      name: 'INV-2025-001.pdf',
+      type: 'Invoice',
+      document_number: 'INV-2025-001',
+      total_amount: 2500.00,
+      document_date: '2025-01-15',
+      vendor: 'ABC SRL',
+      direction: 'incoming',
+      reconciliation_status: 'unreconciled',
+      references: []
     },
     {
-      id: '2',
-      type: 'z_report',
-      number: 'Z-2025-06-19',
-      amount: 1200.50,
-      date: '2025-06-19',
-      description: 'Raport Z - Casa 1',
-      status: 'matched',
-      bankTransaction: 'TXN-001'
+      id: 2,
+      name: 'INV-2025-002.pdf', 
+      type: 'Invoice',
+      document_number: 'INV-2025-002',
+      total_amount: 1200.50,
+      document_date: '2025-01-16',
+      vendor: 'XYZ SRL',
+      direction: 'outgoing',
+      reconciliation_status: 'auto_matched',
+      matched_transactions: ['TXN-001'],
+      references: []
+    },
+    {
+      id: 3,
+      name: 'REC-2025-001.pdf',
+      type: 'Receipt',
+      document_number: 'REC-2025-001', 
+      total_amount: 850.00,
+      document_date: '2025-01-17',
+      vendor: 'DEF SRL',
+      reconciliation_status: 'manually_matched',
+      matched_transactions: ['TXN-003'],
+      references: []
     }
   ];
 
   const transactions: BankTransaction[] = [
     {
       id: 'TXN-001',
-      date: '2025-06-19',
-      description: 'Transfer BCR',
-      amount: 1200.50,
-      type: 'credit',
-      status: 'matched',
-      matchedDocument: '2'
+      date: '2025-01-16',
+      description: 'Transfer pentru INV-2025-002 - XYZ SRL',
+      amount: -1200.50,
+      type: 'debit',
+      reference: 'INV-2025-002',
+      balance_after: 98799.50,
+      reconciliation_status: 'matched',
+      matched_document_id: 2,
+      confidence_score: 0.95
     },
     {
       id: 'TXN-002',
-      date: '2025-06-19',
-      description: 'Plata furnizor XYZ',
-      amount: -850.00,
+      date: '2025-01-15',
+      description: 'Plata cash - ABC SRL',
+      amount: 2500.00,
+      type: 'credit',
+      balance_after: 101300.00,
+      reconciliation_status: 'unreconciled'
+    },
+    {
+      id: 'TXN-003',
+      date: '2025-01-17',
+      description: 'Incasare REC-2025-001',
+      amount: 850.00,
+      type: 'credit',
+      reference: 'REC-2025-001',
+      balance_after: 102150.00,
+      reconciliation_status: 'matched',
+      matched_document_id: 3,
+      confidence_score: 0.88
+    },
+    {
+      id: 'TXN-004',
+      date: '2025-01-18',
+      description: 'Transfer bancar - Furnizor necunoscut',
+      amount: -750.00,
       type: 'debit',
-      status: 'pending'
+      balance_after: 101400.00,
+      reconciliation_status: 'unreconciled'
     }
   ];
 
-  const getDocumentIcon = (type: string) => {
-    switch(type) {
-      case 'invoice': return FileText;
-      case 'z_report': return Receipt;
-      case 'receipt': return Receipt;
-      case 'expense': return CreditCard;
-      default: return FileText;
+  const suggestions: ReconciliationSuggestion[] = [
+    {
+      document_id: 1,
+      transaction_id: 'TXN-002',
+      confidence: 0.85,
+      matching_criteria: ['amount_match', 'vendor_match', 'date_proximity'],
+      reasons: [
+        'Exact amount match: 2500.00 RON',
+        'Vendor name similarity: ABC SRL',
+        'Date within 1 day of invoice date'
+      ]
     }
+  ];
+
+  // Filtered data based on search and filters
+  const filteredDocuments = useMemo(() => {
+    return documents.filter(doc => {
+      const matchesSearch = searchTerm === '' || 
+        doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        doc.vendor?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = filterStatus === 'all' || doc.reconciliation_status === filterStatus;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [documents, searchTerm, filterStatus]);
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(txn => {
+      const matchesSearch = searchTerm === '' || 
+        txn.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        txn.reference?.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      const matchesStatus = filterStatus === 'all' || txn.reconciliation_status === filterStatus;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [transactions, searchTerm, filterStatus]);
+
+  // Statistics
+  const stats = useMemo(() => {
+    const totalDocs = documents.length;
+    const reconciledDocs = documents.filter(d => d.reconciliation_status !== 'unreconciled').length;
+    const totalTxns = transactions.length;
+    const reconciledTxns = transactions.filter(t => t.reconciliation_status !== 'unreconciled').length;
+    
+    return {
+      documents: { total: totalDocs, reconciled: reconciledDocs, percentage: (reconciledDocs / totalDocs) * 100 },
+      transactions: { total: totalTxns, reconciled: reconciledTxns, percentage: (reconciledTxns / totalTxns) * 100 },
+      unmatched_amount: documents.filter(d => d.reconciliation_status === 'unreconciled').reduce((sum, d) => sum + d.total_amount, 0)
+    };
+  }, [documents, transactions]);
+
+  // Drag & Drop handlers
+  const handleDragStart = (type: 'document' | 'transaction', id: string | number) => {
+    setDraggedItem({ type, id });
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent, targetType: 'document' | 'transaction', targetId: string | number) => {
+    e.preventDefault();
+    
+    if (!draggedItem) return;
+    
+    // Can only match document with transaction and vice versa
+    if (draggedItem.type === targetType) return;
+    
+    const document = draggedItem.type === 'document' 
+      ? documents.find(d => d.id === draggedItem.id)
+      : documents.find(d => d.id === targetId);
+    
+    const transaction = draggedItem.type === 'transaction'
+      ? transactions.find(t => t.id === draggedItem.id)
+      : transactions.find(t => t.id === targetId);
+    
+    if (document && transaction) {
+      setMatchingPair({ document, transaction });
+      setShowMatchModal(true);
+    }
+    
+    setDraggedItem(null);
+  };
+
+  const handleManualMatch = (confirmed: boolean, notes?: string) => {
+    if (!matchingPair) return;
+    
+    if (confirmed) {
+      // In real implementation, call your API to create the match
+      console.log('Creating manual match:', {
+        document_id: matchingPair.document.id,
+        transaction_id: matchingPair.transaction.id,
+        notes
+      });
+      
+      // Update local state (in real app, refetch data)
+      // This would be handled by your state management
+    }
+    
+    setMatchingPair(null);
+    setShowMatchModal(false);
+  };
+
+  const handleBulkAction = (action: 'match_selected' | 'ignore_selected' | 'unreconcile_selected') => {
+    console.log('Bulk action:', action, selectedItems);
+    // Implement bulk operations
   };
 
   const getStatusColor = (status: string) => {
     switch(status) {
-      case 'matched': return 'text-green-500';
-      case 'pending': return 'text-yellow-500';
-      case 'unmatched': return 'text-red-500';
-      default: return 'text-[var(--text3)]';
+      case 'matched':
+      case 'auto_matched': 
+      case 'manually_matched':
+        return 'text-green-500 bg-green-50';
+      case 'unreconciled':
+        return 'text-yellow-500 bg-yellow-50';
+      case 'disputed':
+        return 'text-red-500 bg-red-50';
+      case 'ignored':
+        return 'text-gray-500 bg-gray-50';
+      default: 
+        return 'text-gray-500 bg-gray-50';
     }
   };
 
-  const handleBankConnect = (bankData: any) => {
-    console.log('Connecting to bank:', bankData);
-    // Here you would integrate with your backend API to store the bank connection
-    // For now, we'll just show a success message or update the UI
-    
-    // Example: Add the connected bank to the bankAccounts array
-    // You would typically make an API call here to save the connection
-    alert(`Successfully initiated connection to ${bankData.bank.displayName} in ${bankData.environment} mode!`);
+  const getDocumentIcon = (type: string) => {
+    switch(type) {
+      case 'Invoice': return FileText;
+      case 'Receipt': return Receipt;
+      case 'Z Report': return CreditCard;
+      default: return FileText;
+    }
   };
 
   return (
-    <div className="min-h-screen p-8">
-        {clientCompanyName===''&&(
-            <div style={{ zIndex: 9999, position: 'fixed', inset: 0 }}>
-             <InitialClientCompanyModalSelect/>
-            </div>
-        )}
+    <div className="min-h-screen p-8 bg-[var(--background)]">
+      {/* Header */}
       <div className="mb-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
@@ -192,83 +314,95 @@ const BankPage = () => {
               </p>
             </div>
           </div>
-
-          <div className="flex gap-3">
-
-            {/* MADE THIS VISIBLE TO IMPLEMENT BANK INTEGRATIONS */}
-            {false&&(<motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setIsBankModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[var(--primary)] to-blue-500 
-              text-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 font-semibold"
-            >
-              <Plus size={18} />
-              {language === 'ro' ? 'Conectează Banca' : 'Connect Bank'}
-            </motion.button>)}
-          </div>
         </div>
 
-        {/* Bank Accounts Overview - MAKE ALSO THIS VISIBLE WHEN ENABLING BANK INTEGRATIONS */}
-        {false&&(<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-          {bankAccounts.map((account) => (
-            <motion.div
-              key={account.id}
-              whileHover={{ scale: 1.02 }}
-              className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-lg cursor-pointer"
-              onClick={() => setSelectedAccount(account.id)}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded-full ${account.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className="text-sm font-medium text-[var(--text2)]">{account.bank}</span>
-                </div>
-                {account.connected ? (
-                  <Link size={16} className="text-green-500" />
-                ) : (
-                  <Unlink size={16} className="text-red-500" />
-                )}
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          <motion.div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                <FileText size={24} className="text-blue-600" />
               </div>
-              
-              <h3 className="font-semibold text-[var(--text1)] mb-1">{account.name}</h3>
-              <p className="text-xs text-[var(--text3)] mb-2">{account.accountNumber}</p>
-              <p className="text-lg font-bold text-[var(--primary)]">
-                {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(account.balance)}
-              </p>
-              <p className="text-xs text-[var(--text3)] mt-2">
-                {language === 'ro' ? 'Ultima sincronizare: ' : 'Last sync: '}{account.lastSync}
-              </p>
-            </motion.div>
-          ))}
+              <div>
+                <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Documente' : 'Documents'}</p>
+                <p className="text-xl font-bold text-[var(--text1)]">{stats.documents.reconciled}/{stats.documents.total}</p>
+                <p className="text-xs text-green-600">{stats.documents.percentage.toFixed(1)}% {language === 'ro' ? 'reconciliate' : 'reconciled'}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                <CreditCard size={24} className="text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Tranzacții' : 'Transactions'}</p>
+                <p className="text-xl font-bold text-[var(--text1)]">{stats.transactions.reconciled}/{stats.transactions.total}</p>
+                <p className="text-xs text-green-600">{stats.transactions.percentage.toFixed(1)}% {language === 'ro' ? 'reconciliate' : 'reconciled'}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
+                <AlertTriangle size={24} className="text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Nereconciliate' : 'Unmatched'}</p>
+                <p className="text-xl font-bold text-[var(--text1)]">
+                  {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(stats.unmatched_amount)}
+                </p>
+                <p className="text-xs text-orange-600">{language === 'ro' ? 'Necesită atenție' : 'Needs attention'}</p>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+                <Zap size={24} className="text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugerări' : 'Suggestions'}</p>
+                <p className="text-xl font-bold text-[var(--text1)]">{suggestions.length}</p>
+                <p className="text-xs text-purple-600">{language === 'ro' ? 'Disponibile' : 'Available'}</p>
+              </div>
+            </div>
+          </motion.div>
         </div>
-        )}
       </div>
 
       {/* Tabs */}
       <div className="mb-6">
-        <div className="flex space-x-1 bg-[var(--background)] p-1 rounded-2xl border border-[var(--text4)] w-fit">
+        <div className="flex space-x-1 bg-[var(--foreground)] p-1 rounded-2xl border border-[var(--text4)] w-fit">
           {[
-            { key: 'reconciliation', label: language === 'ro' ? 'Reconciliere' : 'Reconciliation' },
-            { key: 'documents', label: language === 'ro' ? 'Documente' : 'Documents' },
-            { key: 'transactions', label: language === 'ro' ? 'Tranzacții' : 'Transactions' }
-          ].map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key as any)}
-              className={`px-6 py-2 rounded-xl font-medium transition-all duration-300 ${
-                activeTab === tab.key
-                  ? 'bg-[var(--primary)] text-white shadow-md'
-                  : 'bg-[var(--primary)]/20 text-[var(--primary)]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+            { key: 'reconciliation', label: language === 'ro' ? 'Reconciliere' : 'Reconciliation', icon: Target },
+            { key: 'suggestions', label: language === 'ro' ? 'Sugerări' : 'Suggestions', icon: Zap },
+            { key: 'reports', label: language === 'ro' ? 'Rapoarte' : 'Reports', icon: TrendingUp }
+          ].map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key as any)}
+                className={`flex items-center gap-2 px-6 py-3 rounded-xl font-medium transition-all duration-300 ${
+                  activeTab === tab.key
+                    ? 'bg-[var(--primary)] text-white shadow-md'
+                    : 'text-[var(--text2)] hover:bg-[var(--primary)]/10'
+                }`}
+              >
+                <Icon size={18} />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Filters and Search */}
-      <div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-lg mb-6">
+      {/* Filters */}
+      <div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm mb-6">
         <div className="flex flex-wrap gap-4 items-center">
           <div className="flex-1 min-w-64">
             <div className="relative">
@@ -291,62 +425,120 @@ const BankPage = () => {
             focus:outline-none focus:ring-2 focus:ring-[var(--primary)] text-[var(--text1)]"
           >
             <option value="all">{language === 'ro' ? 'Toate statusurile' : 'All statuses'}</option>
-            <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
-            <option value="matched">{language === 'ro' ? 'Reconciliate' : 'Matched'}</option>
-            <option value="unmatched">{language === 'ro' ? 'Nereconciliate' : 'Unmatched'}</option>
+            <option value="unreconciled">{language === 'ro' ? 'Nereconciliate' : 'Unreconciled'}</option>
+            <option value="auto_matched">{language === 'ro' ? 'Auto-reconciliate' : 'Auto-matched'}</option>
+            <option value="manually_matched">{language === 'ro' ? 'Manual reconciliate' : 'Manually matched'}</option>
+            <option value="disputed">{language === 'ro' ? 'Disputate' : 'Disputed'}</option>
           </select>
 
-          <div className="flex gap-2">
-            <button className="p-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
-            hover:bg-[var(--primary)]/10 transition-colors duration-200">
-              <Filter size={18} className="text-[var(--text2)]" />
-            </button>
-            
-            <button className="p-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
-            hover:bg-[var(--primary)]/10 transition-colors duration-200">
-              <RefreshCw size={18} className="text-[var(--text2)]" />
-            </button>
-          </div>
+          {/* Bulk Actions */}
+          {selectedItems.documents.length > 0 || selectedItems.transactions.length > 0 ? (
+            <div className="flex gap-2">
+              <button 
+                onClick={() => handleBulkAction('match_selected')}
+                className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors text-sm font-medium"
+              >
+                {language === 'ro' ? 'Reconciliază' : 'Match'}
+              </button>
+              <button 
+                onClick={() => handleBulkAction('ignore_selected')}
+                className="px-4 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition-colors text-sm font-medium"
+              >
+                {language === 'ro' ? 'Ignoră' : 'Ignore'}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {/* Content based on active tab */}
+      {/* Main Content */}
       {activeTab === 'reconciliation' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {/* Unmatched Documents */}
-          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-lg overflow-hidden">
+          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
             <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-              <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-                <FileText size={20} />
-                {language === 'ro' ? 'Documente de Reconciliat' : 'Documents to Reconcile'}
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
+                  <FileText size={20} />
+                  {language === 'ro' ? 'Documente Nereconciliate' : 'Unmatched Documents'}
+                </h3>
+                <span className="text-sm text-[var(--text3)]">
+                  {filteredDocuments.filter(d => d.reconciliation_status === 'unreconciled').length} {language === 'ro' ? 'articole' : 'items'}
+                </span>
+              </div>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
+            <div className="p-4 max-h-[600px] overflow-y-auto">
               <div className="space-y-3">
-                {documents.filter(doc => doc.status === 'pending').map((doc) => {
+                {filteredDocuments.filter(doc => filterStatus === 'all' || doc.reconciliation_status === 'unreconciled').map((doc) => {
                   const Icon = getDocumentIcon(doc.type);
+                  const isSelected = selectedItems.documents.includes(doc.id);
+                  
                   return (
                     <motion.div
                       key={doc.id}
+                      draggable
+                      onDragStart={() => handleDragStart('document', doc.id)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, 'document', doc.id)}
                       whileHover={{ scale: 1.02 }}
-                      className="p-3 bg-[var(--background)] rounded-xl border border-[var(--text4)] 
-                      hover:border-[var(--primary)]/50 cursor-pointer transition-all duration-300"
+                      className={`p-4 bg-[var(--background)] rounded-xl border-2 transition-all duration-300 cursor-grab active:cursor-grabbing ${
+                        isSelected 
+                          ? 'border-[var(--primary)] bg-[var(--primary)]/5' 
+                          : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                      } ${draggedItem?.type === 'transaction' ? 'border-dashed border-green-400 bg-green-50' : ''}`}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedItems(prev => ({
+                                  ...prev,
+                                  documents: [...prev.documents, doc.id]
+                                }));
+                              } else {
+                                setSelectedItems(prev => ({
+                                  ...prev,
+                                  documents: prev.documents.filter(id => id !== doc.id)
+                                }));
+                              }
+                            }}
+                            className="mt-1 accent-[var(--primary)]"
+                          />
+                          <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Icon size={18} className="text-[var(--primary)]" />
                           </div>
-                          <div>
-                            <p className="font-semibold text-[var(--text1)]">{doc.number}</p>
-                            <p className="text-sm text-[var(--text3)]">{doc.description}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-semibold text-[var(--text1)] truncate">{doc.document_number}</p>
+                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.reconciliation_status)}`}>
+                                {doc.reconciliation_status === 'unreconciled' ? (language === 'ro' ? 'Nereconciliat' : 'Unmatched') : 
+                                 doc.reconciliation_status === 'auto_matched' ? (language === 'ro' ? 'Auto' : 'Auto') :
+                                 doc.reconciliation_status === 'manually_matched' ? (language === 'ro' ? 'Manual' : 'Manual') : 'Disputed'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-[var(--text3)] mb-2 truncate">{doc.vendor}</p>
+                            <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
+                              <span className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {doc.document_date}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <DollarSign size={12} />
+                                {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(doc.total_amount)}
+                              </span>
+                            </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-[var(--primary)]">
-                            {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(doc.amount)}
-                          </p>
-                          <p className="text-xs text-[var(--text3)]">{doc.date}</p>
+                        <div className="flex items-center gap-1 ml-2">
+                          <button className="p-1 text-[var(--text3)] hover:text-[var(--primary)] transition-colors">
+                            <Eye size={14} />
+                          </button>
+                          <button className="p-1 text-[var(--text3)] hover:text-[var(--primary)] transition-colors">
+                            <Edit3 size={14} />
+                          </button>
                         </div>
                       </div>
                     </motion.div>
@@ -357,191 +549,320 @@ const BankPage = () => {
           </div>
 
           {/* Unmatched Transactions */}
-          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-lg overflow-hidden">
+          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
             <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-              <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-                <CreditCard size={20} />
-                {language === 'ro' ? 'Tranzacții Bancare' : 'Bank Transactions'}
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
+                  <CreditCard size={20} />
+                  {language === 'ro' ? 'Tranzacții Nereconciliate' : 'Unmatched Transactions'}
+                </h3>
+                <span className="text-sm text-[var(--text3)]">
+                  {filteredTransactions.filter(t => t.reconciliation_status === 'unreconciled').length} {language === 'ro' ? 'articole' : 'items'}
+                </span>
+              </div>
             </div>
-            <div className="p-4 max-h-96 overflow-y-auto">
+            <div className="p-4 max-h-[600px] overflow-y-auto">
               <div className="space-y-3">
-                {transactions.filter(txn => txn.status === 'pending').map((txn) => (
-                  <motion.div
-                    key={txn.id}
-                    whileHover={{ scale: 1.02 }}
-                    className="p-3 bg-[var(--background)] rounded-xl border border-[var(--text4)] 
-                    hover:border-[var(--primary)]/50 cursor-pointer transition-all duration-300"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          txn.type === 'credit' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                        }`}>
-                          <ArrowRight size={18} className={txn.type === 'credit' ? 'rotate-180' : ''} />
+                {filteredTransactions.filter(txn => filterStatus === 'all' || txn.reconciliation_status === 'unreconciled').map((txn) => {
+                  const isSelected = selectedItems.transactions.includes(txn.id);
+                  
+                  return (
+                    <motion.div
+                      key={txn.id}
+                      draggable
+                      onDragStart={() => handleDragStart('transaction', txn.id)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleDrop(e, 'transaction', txn.id)}
+                      whileHover={{ scale: 1.02 }}
+                      className={`p-4 bg-[var(--background)] rounded-xl border-2 transition-all duration-300 cursor-grab active:cursor-grabbing ${
+                        isSelected 
+                          ? 'border-[var(--primary)] bg-[var(--primary)]/5' 
+                          : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                      } ${draggedItem?.type === 'document' ? 'border-dashed border-green-400 bg-green-50' : ''}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3 flex-1">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedItems(prev => ({
+                                  ...prev,
+                                  transactions: [...prev.transactions, txn.id]
+                                }));
+                              } else {
+                                setSelectedItems(prev => ({
+                                  ...prev,
+                                  transactions: prev.transactions.filter(id => id !== txn.id)
+                                }));
+                              }
+                            }}
+                            className="mt-1 accent-[var(--primary)]"
+                          />
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            txn.type === 'credit' ? 'bg-green-100' : 'bg-red-100'
+                          }`}>
+                            <ArrowRight size={18} className={`${
+                              txn.type === 'credit' ? 'text-green-600 rotate-180' : 'text-red-600'
+                            }`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="font-semibold text-[var(--text1)] truncate">{txn.description}</p>
+                              {txn.confidence_score && (
+                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium">
+                                  {Math.round(txn.confidence_score * 100)}%
+                                </span>
+                              )}
+                            </div>
+                            {txn.reference && (
+                              <p className="text-sm text-[var(--text3)] mb-2">Ref: {txn.reference}</p>
+                            )}
+                            <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
+                              <span className="flex items-center gap-1">
+                                <Calendar size={12} />
+                                {txn.date}
+                              </span>
+                              <span className={`flex items-center gap-1 font-semibold ${
+                                txn.type === 'credit' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                <DollarSign size={12} />
+                                {txn.type === 'credit' ? '+' : ''}{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(txn.amount)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-semibold text-[var(--text1)]">{txn.description}</p>
-                          <p className="text-xs text-[var(--text3)]">{txn.date}</p>
+                        <div className="flex items-center gap-1 ml-2">
+                          <button className="p-1 text-[var(--text3)] hover:text-[var(--primary)] transition-colors">
+                            <Eye size={14} />
+                          </button>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${txn.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {txn.type === 'credit' ? '+' : ''}{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(txn.amount)}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {activeTab === 'documents' && (
-        <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-lg overflow-hidden">
+      {activeTab === 'suggestions' && (
+        <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
           <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-            <h3 className="text-lg font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Toate Documentele' : 'All Documents'}
+            <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
+              <Zap size={20} />
+              {language === 'ro' ? 'Sugerări de Reconciliere' : 'Reconciliation Suggestions'}
             </h3>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-[var(--background)] border-b border-[var(--text4)]">
-                <tr>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Document' : 'Document'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Sumă' : 'Amount'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Data' : 'Date'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Acțiuni' : 'Actions'}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {documents.map((doc) => {
-                  const Icon = getDocumentIcon(doc.type);
-                  return (
-                    <tr key={doc.id} className="border-b border-[var(--text5)] hover:bg-[var(--background)] transition-colors duration-200">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <Icon size={18} className="text-[var(--primary)]" />
-                          <div>
-                            <p className="font-semibold text-[var(--text1)]">{doc.number}</p>
-                            <p className="text-sm text-[var(--text3)]">{doc.description}</p>
-                          </div>
+          <div className="p-6">
+            <div className="space-y-4">
+              {suggestions.map((suggestion, index) => {
+                const doc = documents.find(d => d.id === suggestion.document_id);
+                const txn = transactions.find(t => t.id === suggestion.transaction_id);
+                
+                if (!doc || !txn) return null;
+                
+                return (
+                  <motion.div
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 border-2 border-blue-200 bg-blue-50 rounded-xl"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+                          <Target size={20} className="text-blue-600" />
                         </div>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-[var(--primary)]">
-                        {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(doc.amount)}
-                      </td>
-                      <td className="px-4 py-3 text-[var(--text2)]">{doc.date}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.status)}`}>
-                          {doc.status === 'matched' && <CheckCircle size={12} />}
-                          {doc.status === 'pending' && <Clock size={12} />}
-                          {doc.status === 'unmatched' && <AlertCircle size={12} />}
-                          {language === 'ro' 
-                            ? (doc.status === 'matched' ? 'Reconciliat' : doc.status === 'pending' ? 'În așteptare' : 'Nereconciliat')
-                            : (doc.status === 'matched' ? 'Matched' : doc.status === 'pending' ? 'Pending' : 'Unmatched')
-                          }
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <button className="text-white hover:text-white/70 bg-[var(--primary)] text-sm font-medium">
-                          {language === 'ro' ? 'Vezi detalii' : 'View details'}
+                        <div>
+                          <p className="font-semibold text-[var(--text1)]">
+                            {language === 'ro' ? 'Potrivire sugerată' : 'Suggested Match'}
+                          </p>
+                          <p className="text-sm text-blue-600 font-medium">
+                            {language === 'ro' ? 'Încredere' : 'Confidence'}: {Math.round(suggestion.confidence * 100)}%
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            setMatchingPair({ document: doc, transaction: txn });
+                            setShowMatchModal(true);
+                          }}
+                          className="px-4 py-2 bg-green-500 text-white rounded-xl hover:bg-green-600 transition-colors text-sm font-medium"
+                        >
+                          <Check size={16} className="inline mr-1" />
+                          {language === 'ro' ? 'Acceptă' : 'Accept'}
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        <button className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium">
+                          <X size={16} className="inline mr-1" />
+                          {language === 'ro' ? 'Respinge' : 'Reject'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div className="p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">Document</p>
+                        <p className="text-sm text-[var(--text2)]">{doc.document_number}</p>
+                        <p className="text-xs text-[var(--text3)]">{doc.vendor}</p>
+                        <p className="text-sm font-medium text-[var(--primary)]">
+                          {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(doc.total_amount)}
+                        </p>
+                      </div>
+                      
+                      <div className="p-3 bg-white rounded-lg border border-gray-200">
+                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">Tranzacție</p>
+                        <p className="text-sm text-[var(--text2)] truncate">{txn.description}</p>
+                        <p className="text-xs text-[var(--text3)]">{txn.date}</p>
+                        <p className={`text-sm font-medium ${txn.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                          {txn.type === 'credit' ? '+' : ''}{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(txn.amount)}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <p className="text-sm font-semibold text-[var(--text1)]">
+                        {language === 'ro' ? 'Motivele potrivirii:' : 'Matching reasons:'}
+                      </p>
+                      {suggestion.reasons.map((reason, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm text-[var(--text2)]">
+                          <CheckCircle size={14} className="text-green-500" />
+                          {reason}
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
 
-      {activeTab === 'transactions' && (
-        <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-lg overflow-hidden">
-          <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-            <h3 className="text-lg font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Toate Tranzacțiile' : 'All Transactions'}
-            </h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-[var(--background)] border-b border-[var(--text4)]">
-                <tr>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Descriere' : 'Description'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Sumă' : 'Amount'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Data' : 'Date'}
-                  </th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">Status</th>
-                  <th className="px-4 py-3 text-left text-[var(--text2)] font-semibold">
-                    {language === 'ro' ? 'Acțiuni' : 'Actions'}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((txn) => (
-                  <tr key={txn.id} className="border-b border-[var(--text5)] hover:bg-[var(--background)] transition-colors duration-200">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                          txn.type === 'credit' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'
-                        }`}>
-                          <ArrowRight size={14} className={txn.type === 'credit' ? 'rotate-180' : ''} />
-                        </div>
-                        <p className="font-semibold text-[var(--text1)]">{txn.description}</p>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`font-semibold ${txn.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                        {txn.type === 'credit' ? '+' : ''}{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(txn.amount)}
+      {/* Match Confirmation Modal */}
+      <AnimatePresence>
+        {showMatchModal && matchingPair && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
+                  <Link size={24} className="text-[var(--primary)]" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[var(--text1)]">
+                    {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Reconciliation'}
+                  </h3>
+                  <p className="text-[var(--text2)]">
+                    {language === 'ro' ? 'Verifică detaliile înainte de a confirma' : 'Review details before confirming'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)]">
+                  <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
+                    <FileText size={18} />
+                    Document
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Număr:</span>
+                      <span className="text-[var(--text1)]">{matchingPair.document.document_number}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Furnizor:</span>
+                      <span className="text-[var(--text1)]">{matchingPair.document.vendor}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Sumă:</span>
+                      <span className="text-[var(--primary)] font-semibold">
+                        {new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(matchingPair.document.total_amount)}
                       </span>
-                    </td>
-                    <td className="px-4 py-3 text-[var(--text2)]">{txn.date}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(txn.status)}`}>
-                        {txn.status === 'matched' && <CheckCircle size={12} />}
-                        {txn.status === 'pending' && <Clock size={12} />}
-                        {language === 'ro' 
-                          ? (txn.status === 'matched' ? 'Reconciliat' : 'În așteptare')
-                          : (txn.status === 'matched' ? 'Matched' : 'Pending')
-                        }
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Data:</span>
+                      <span className="text-[var(--text1)]">{matchingPair.document.document_date}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)]">
+                  <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
+                    <CreditCard size={18} />
+                    Tranzacție
+                  </h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Descriere:</span>
+                      <span className="text-[var(--text1)] truncate ml-2">{matchingPair.transaction.description}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Referință:</span>
+                      <span className="text-[var(--text1)]">{matchingPair.transaction.reference || '-'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Sumă:</span>
+                      <span className={`font-semibold ${matchingPair.transaction.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                        {matchingPair.transaction.type === 'credit' ? '+' : ''}{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(matchingPair.transaction.amount)}
                       </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button className="bg-[var(--primary)] text-white hover:text-white/70 text-sm font-medium">
-                        {language === 'ro' ? 'Reconciliază' : 'Reconcile'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-      
-      {/* Bank Connection Modal */}
-      <BankConnectionModal
-        isOpen={isBankModalOpen}
-        onClose={() => setIsBankModalOpen(false)}
-        onConnect={handleBankConnect}
-      />
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-[var(--text3)]">Data:</span>
+                      <span className="text-[var(--text1)]">{matchingPair.transaction.date}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Amount verification */}
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl mb-6">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={18} className="text-yellow-600" />
+                  <span className="font-semibold text-yellow-800">
+                    {language === 'ro' ? 'Verificare Sumă' : 'Amount Verification'}
+                  </span>
+                </div>
+                <p className="text-sm text-yellow-700">
+                  {Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)) < 0.01 
+                    ? (language === 'ro' ? '✓ Sumele se potrivesc perfect' : '✓ Amounts match perfectly')
+                    : (language === 'ro' 
+                        ? `⚠ Diferență de sumă: ${Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`
+                        : `⚠ Amount difference: ${Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`)
+                  }
+                </p>
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <button
+                  onClick={() => handleManualMatch(false)}
+                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                >
+                  {language === 'ro' ? 'Anulează' : 'Cancel'}
+                </button>
+                <button
+                  onClick={() => handleManualMatch(true)}
+                  className="px-6 py-3 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors font-medium"
+                >
+                  {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Match'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
