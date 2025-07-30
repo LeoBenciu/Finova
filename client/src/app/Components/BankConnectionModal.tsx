@@ -4,13 +4,18 @@ import {
   X, 
   ChevronRight, 
   ChevronLeft, 
-  Check, 
-  Shield, 
+  Check,  
   Link,
   AlertCircle,
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import BtLogo from '@/assets/BTLogo.png';
+import BCRLogo from '@/assets/BCRLogo.png';
+import BRDLogo from '@/assets/BRDLogo.png';
+import INGLogo from '@/assets/INGLogo.png';
+import RaiffeisenLogo from '@/assets/RaiffeisenLogo.png';
+import AlphaLogo from '@/assets/AlfaLogo.png';
 
 interface BankConnectionModalProps {
   isOpen: boolean;
@@ -49,7 +54,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'bt',
       name: 'Banca Transilvania',
       displayName: 'Banca Transilvania',
-      logo: '🏦', // In real app, use actual logo URLs
+      logo: BtLogo,
       marketShare: '26%',
       apiDocs: 'https://apistorebt.ro/bt/sb/',
       authMethod: 'OAuth2 + SCA',
@@ -91,7 +96,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'bcr',
       name: 'BCR',
       displayName: 'Banca Comercială Română',
-      logo: '🏛️',
+      logo: BCRLogo,
       marketShare: '10%',
       apiDocs: 'https://developers.erstegroup.com/',
       authMethod: 'NextGenPSD2 OAuth2',
@@ -125,7 +130,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'brd',
       name: 'BRD',
       displayName: 'BRD - Groupe Société Générale',
-      logo: '🔴',
+      logo: BRDLogo,
       marketShare: '11.2%',
       apiDocs: 'https://www.devbrd.ro/brd/apicatalog/',
       authMethod: 'OAuth2 Corporate',
@@ -159,7 +164,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'ing',
       name: 'ING',
       displayName: 'ING Bank Romania',
-      logo: '🧡',
+      logo: INGLogo,
       marketShare: '8.2%',
       apiDocs: 'https://developer.ing.com/',
       authMethod: 'OAuth2 + eIDAS',
@@ -192,7 +197,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'raiffeisen',
       name: 'Raiffeisen',
       displayName: 'Raiffeisen Bank Romania',
-      logo: '🟡',
+      logo: RaiffeisenLogo,
       marketShare: '7%',
       apiDocs: 'https://developer.raiffeisen.at/',
       authMethod: 'XS2A-API + eIDAS',
@@ -226,7 +231,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       id: 'alpha',
       name: 'Alpha Bank',
       displayName: 'Alpha Bank Romania',
-      logo: '🔵',
+      logo: AlphaLogo,
       marketShare: '5%',
       apiDocs: 'https://developer.api.alphabank.eu/',
       authMethod: 'OAuth2 + QSealC',
@@ -399,45 +404,27 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
                 </div>
 
                 {/* Banks Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {banks.map((bank) => (
                     <motion.div
                       key={bank.id}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => handleBankSelect(bank)}
-                      className="p-4 border border-[var(--text4)] rounded-xl hover:border-[var(--primary)] 
-                      cursor-pointer transition-all duration-300 hover:shadow-lg bg-[var(--background)]"
+                      className="aspect-square p-6 border border-[var(--text4)] rounded-xl hover:border-[var(--primary)] 
+                      cursor-pointer transition-all duration-300 hover:shadow-lg bg-[var(--background)]
+                      flex flex-col items-center justify-center text-center"
                     >
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{bank.logo}</span>
-                          <div>
-                            <h3 className="font-semibold text-[var(--text1)]">{bank.displayName}</h3>
-                            <p className="text-xs text-[var(--text3)]">
-                              {language === 'ro' ? 'Cota de piață: ' : 'Market share: '}{bank.marketShare}
-                            </p>
-                          </div>
-                        </div>
-                        <ChevronRight size={16} className="text-[var(--text3)]" />
+                      <div className="w-16 h-16 mb-4 flex items-center justify-center">
+                        <img 
+                          src={bank.logo} 
+                          alt={bank.displayName}
+                          className="w-full h-full object-contain"
+                        />
                       </div>
-                      
-                      <div className="flex items-center gap-2 text-xs text-[var(--text3)]">
-                        <Shield size={12} />
-                        <span>{bank.authMethod}</span>
-                      </div>
-                      
-                      <div className="mt-3 pt-3 border-t border-[var(--text5)]">
-                        <a
-                          href={bank.apiDocs}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-[var(--primary)] hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {language === 'ro' ? 'Documentație API' : 'API Documentation'} ↗
-                        </a>
-                      </div>
+                      <h3 className="font-semibold text-[var(--text1)] text-sm leading-tight">
+                        {bank.displayName}
+                      </h3>
                     </motion.div>
                   ))}
                 </div>
@@ -453,7 +440,13 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
               >
                 <div className="mb-6">
                   <div className="flex items-center gap-3 mb-4">
-                    <span className="text-2xl">{selectedBank.logo}</span>
+                    <div className="w-12 h-12 flex items-center justify-center">
+                      <img 
+                        src={selectedBank.logo} 
+                        alt={selectedBank.displayName}
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
                     <div>
                       <h3 className="font-semibold text-[var(--text1)]">{selectedBank.displayName}</h3>
                       <p className="text-sm text-[var(--text3)]">{selectedBank.authMethod}</p>
