@@ -214,13 +214,13 @@ textarea::-webkit-scrollbar-thumb {
   }
 }
 
-.rainbow { animation: rainbow 2s linear infinite; }
+.rainbow { animation: rainbow 5s linear infinite; }
 @keyframes rainbow {
-  0% { color: #ff0000; }
-  16% { color: #ff8000; }
-  33% { color: #ffff00; }
-  50% { color: #00ff00; }
-  66% { color: #0080ff; }
-  83% { color: #8000ff; }
-  100% { color: #ff0000; }
+  0% { color: #59419A; }
+  16% { color: #B840C6; }
+  33% { color: #D97DE7; }
+  50% { color: #446B9E; }
+  66% { color: #3FD4B4; }
+  83% { color: #5CE1E6; }
+  100% { color: #3E9DAD; }
 }
