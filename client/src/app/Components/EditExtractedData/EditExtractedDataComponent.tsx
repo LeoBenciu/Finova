@@ -242,7 +242,7 @@ const EditExtractedDataComponent = ({
         console.log('Client Company EIN:', currentClientCompanyEin);
         console.log('Data to save:', JSON.stringify(dataToSave, null, 2));
         console.log('User corrections count:', userCorrections.length);
-        console.log('Has compliance validation:', !!dataToSave.result?.compliance_validation);
+        console.log('Has compliance validation:', !!dataToSave.result?.compliance_validation?.compliance_validation);
         console.log('Has duplicate detection:', !!dataToSave.result?.duplicate_detection);
         console.log('======================');
 
@@ -486,11 +486,11 @@ const EditExtractedDataComponent = ({
               )}
 
 
-              {(editFile?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT' || 
-                editFile?.result?.compliance_validation?.compliance_status === 'WARNING') && (
+              {(editFile?.result?.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT' || 
+                editFile?.result?.compliance_validation?.compliance_validation?.compliance_status === 'WARNING') && (
                 <motion.div 
                   className={`mx-6 mt-4 p-4 rounded-2xl border ${
-                    editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                    editFile.result.compliance_validation.compliance_validation?.compliance_status === 'NON_COMPLIANT'
                       ? 'bg-red-50 border-red-200 text-red-800'
                       : 'bg-orange-50 border-orange-200 text-orange-800'
                   }`}
@@ -502,7 +502,7 @@ const EditExtractedDataComponent = ({
                     <AlertTriangle 
                       size={20} 
                       className={`flex-shrink-0 mt-0.5 ${
-                        editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                        editFile.result.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT'
                           ? 'text-red-600'
                           : 'text-orange-600'
                       }`} 
@@ -510,30 +510,30 @@ const EditExtractedDataComponent = ({
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-3">
                         <span className="text-sm font-semibold">
-                          {editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                          {editFile.result.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT'
                             ? (language === 'ro' ? 'Probleme de Conformitate' : 'Compliance Issues')
                             : (language === 'ro' ? 'Avertismente de Conformitate' : 'Compliance Warnings')
                           }
                         </span>
-                        {editFile.result.compliance_validation.overall_score && (
+                        {editFile.result.compliance_validation?.compliance_validation?.overall_score && (
                           <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                            editFile.result.compliance_validation.compliance_status === 'NON_COMPLIANT'
+                            editFile.result.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT'
                               ? 'bg-red-200 text-red-800'
                               : 'bg-orange-200 text-orange-800'
                           }`}>
                             {language === 'ro' ? 'Scor: ' : 'Score: '}
-                            {Math.round(editFile.result.compliance_validation.overall_score * 100)}%
+                            {Math.round(editFile.result.compliance_validation?.compliance_validation?.overall_score * 100)}%
                           </span>
                         )}
                       </div>
                       
-                      {editFile.result.compliance_validation.errors && (
+                      {editFile.result.compliance_validation?.compliance_validation?.errors && (
                         (() => {
                           let errorMessages = [];
-                          if (editFile.result.compliance_validation.errors[language]) {
-                            errorMessages = editFile.result.compliance_validation.errors[language];
-                          } else if (Array.isArray(editFile.result.compliance_validation.errors)) {
-                            errorMessages = editFile.result.compliance_validation.errors;
+                          if (editFile.result.compliance_validation?.compliance_validation?.errors[language]) {
+                            errorMessages = editFile.result.compliance_validation?.compliance_validation?.errors[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation?.compliance_validation?.errors)) {
+                            errorMessages = editFile.result.compliance_validation?.compliance_validation?.errors;
                           }
 
                           return errorMessages.length > 0 && (
@@ -554,13 +554,13 @@ const EditExtractedDataComponent = ({
                         })()
                       )}
 
-                      {editFile.result.compliance_validation.warnings && (
+                      {editFile.result.compliance_validation?.compliance_validation?.warnings && (
                         (() => {
                           let warningMessages = [];
-                          if (editFile.result.compliance_validation.warnings[language]) {
-                            warningMessages = editFile.result.compliance_validation.warnings[language];
-                          } else if (Array.isArray(editFile.result.compliance_validation.warnings)) {
-                            warningMessages = editFile.result.compliance_validation.warnings;
+                          if (editFile.result.compliance_validation?.compliance_validation?.warnings[language]) {
+                            warningMessages = editFile.result.compliance_validation?.compliance_validation?.warnings[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation?.compliance_validation?.warnings)) {
+                            warningMessages = editFile.result.compliance_validation?.compliance_validation?.warnings;
                           }
 
                           return warningMessages.length > 0 && (
@@ -581,13 +581,13 @@ const EditExtractedDataComponent = ({
                         })()
                       )}
 
-                      {editFile.result.compliance_validation.validation_rules && (
+                      {editFile.result.compliance_validation?.compliance_validation?.validation_rules && (
                         (() => {
                           let ruleMessages = [];
-                          if (editFile.result.compliance_validation.validation_rules[language]) {
-                            ruleMessages = editFile.result.compliance_validation.validation_rules[language];
-                          } else if (Array.isArray(editFile.result.compliance_validation.validation_rules)) {
-                            ruleMessages = editFile.result.compliance_validation.validation_rules;
+                          if (editFile.result.compliance_validation?.compliance_validation?.validation_rules[language]) {
+                            ruleMessages = editFile.result.compliance_validation?.compliance_validation?.validation_rules[language];
+                          } else if (Array.isArray(editFile.result.compliance_validation?.compliance_validation?.validation_rules)) {
+                            ruleMessages = editFile.result.compliance_validation?.compliance_validation?.validation_rules;
                           }
 
                           return ruleMessages.length > 0 && (

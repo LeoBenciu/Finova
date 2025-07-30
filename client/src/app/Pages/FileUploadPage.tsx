@@ -459,8 +459,8 @@ const FileUploadPage = () => {
     const retryCount = documentStates[doc.name]?.retryCount || 0;
     
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
-    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT' ||
-                              data?.result?.compliance_validation?.compliance_status === 'WARNING';
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT' ||
+                              data?.result?.compliance_validation?.compliance_validation?.compliance_status === 'WARNING';
     
     const baseIcon = (() => {
       switch (state) {
@@ -513,7 +513,7 @@ const FileUploadPage = () => {
     const data = documentStates[doc.name]?.data;
     
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
-    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
     
     if (hasComplianceIssue) {
       return 'text-red-600 bg-red-50 border-red-200';
@@ -542,13 +542,20 @@ const FileUploadPage = () => {
   };
 
   const docType ={
-    "Invoice":"Factura",
-    "Receipt":"Chitanta",
-    "Bank Statement":"Extras De Cont",
-    "Contract":"Contract",
-    "Z Report":"Raport Z",
-    "Payment Order":"Dispozitie De Plata",
-    "Collection Order":"Dispozitie De Incasare"
+    "invoice": "Factura",
+    "Invoice": "Factura", 
+    "receipt": "Chitanta",
+    "Receipt": "Chitanta",
+    "bank statement": "Extras De Cont",
+    "Bank Statement": "Extras De Cont",
+    "contract": "Contract",
+    "Contract": "Contract",
+    "z report": "Raport Z",
+    "Z Report": "Raport Z",
+    "payment order": "Dispozitie De Plata",
+    "Payment Order": "Dispozitie De Plata",
+    "collection order": "Dispozitie De Incasare",
+    "Collection Order": "Dispozitie De Incasare"
   };
 
   const getStatusText = (doc: File) => {
@@ -558,7 +565,7 @@ const FileUploadPage = () => {
     const retryCount = documentStates[doc.name]?.retryCount || 0;
     const phase = documentStates[doc.name]?.phase || 0;
   
-    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
+    const hasComplianceIssue = data?.result?.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
   
     if (hasComplianceIssue) {

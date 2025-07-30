@@ -75,12 +75,6 @@ const InvoiceFields: React.FC<InvoiceFieldsProps> = ({ editFile, setEditFile }) 
         setEditFile={setEditFile}
       />
 
-      <EditableField
-        label={language === 'ro' ? 'Directie' : 'Direction'}
-        fieldName="direction"
-        editFile={editFile}
-        setEditFile={setEditFile}
-      />
     </div>
   );
 };
