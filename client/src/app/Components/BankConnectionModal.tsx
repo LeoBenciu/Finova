@@ -10,7 +10,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import BtLogo from '@/assets/BTLogo.png';
+import BtLogo from '@/assets/BTLogo1.png';
 import BCRLogo from '@/assets/BCRLogo.png';
 import BRDLogo from '@/assets/BRDLogo.png';
 import INGLogo from '@/assets/INGLogo.png';
@@ -331,9 +331,9 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[var(--background)] rounded-xl transition-colors duration-200"
+            className="p-2 bg-red-500/20 hover:bg-red-500 rounded-xl transition-colors duration-200"
           >
-            <X size={20} className="text-[var(--text2)]" />
+            <X size={20} className="hover:text-white text-red-500" />
           </button>
         </div>
 
@@ -442,7 +442,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
                     </div>
                     <div>
                       <h3 className="font-semibold text-[var(--text1)]">{selectedBank.displayName}</h3>
-                      <p className="text-sm text-[var(--text3)]">{selectedBank.authMethod}</p>
                     </div>
                   </div>
                 </div>
@@ -572,8 +571,8 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
             {currentStep !== 'select' && (
               <button
                 onClick={handleBack}
-                className="flex items-center gap-2 px-4 py-2 text-[var(--text2)] hover:text-[var(--text1)] 
-                hover:bg-[var(--background)] rounded-xl transition-all duration-200"
+                className="flex items-center gap-2 px-4 py-2 text-[var(--text2)]
+                hover:bg-black hover:text-white bg-[var(--background)] rounded-xl transition-all duration-200"
               >
                 <ChevronLeft size={16} />
                 {language === 'ro' ? 'Înapoi' : 'Back'}
