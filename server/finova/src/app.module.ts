@@ -11,6 +11,7 @@ import { AccountingCompaniesModule } from './accounting-companies/accounting-com
 import { AnafModule } from './anaf/anaf.module';
 import { UipathModule } from './uipath/uipath.module';
 import {ScheduleModule} from '@nestjs/schedule';
+import { BankModule } from './bank/bank.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import {ScheduleModule} from '@nestjs/schedule';
     AccountingCompaniesModule,
     AnafModule,
     UipathModule,
+    BankModule,
    ],
 })
 export class AppModule {}

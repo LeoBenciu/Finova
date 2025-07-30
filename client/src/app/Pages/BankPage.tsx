@@ -5,7 +5,6 @@ import {
   Plus, 
   Search, 
   Filter, 
-  Download, 
   CheckCircle, 
   AlertCircle, 
   Clock, 
@@ -195,17 +194,9 @@ const BankPage = () => {
           </div>
 
           <div className="flex gap-3">
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--background)] border border-[var(--text4)] 
-              text-[var(--text2)] rounded-2xl hover:bg-[var(--foreground)] transition-all duration-300"
-            >
-              <Download size={18} />
-              {language === 'ro' ? 'Export' : 'Export'}
-            </motion.button>
 
-            <motion.button
+            {/* MADE THIS VISIBLE TO IMPLEMENT BANK INTEGRATIONS */}
+            {false&&(<motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setIsBankModalOpen(true)}
@@ -214,12 +205,12 @@ const BankPage = () => {
             >
               <Plus size={18} />
               {language === 'ro' ? 'Conectează Banca' : 'Connect Bank'}
-            </motion.button>
+            </motion.button>)}
           </div>
         </div>
 
-        {/* Bank Accounts Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
+        {/* Bank Accounts Overview - MAKE ALSO THIS VISIBLE WHEN ENABLING BANK INTEGRATIONS */}
+        {false&&(<div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
           {bankAccounts.map((account) => (
             <motion.div
               key={account.id}
@@ -250,6 +241,7 @@ const BankPage = () => {
             </motion.div>
           ))}
         </div>
+        )}
       </div>
 
       {/* Tabs */}

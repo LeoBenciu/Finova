@@ -1,4 +1,3 @@
-
 import {
   Select,
   SelectContent,
@@ -25,29 +24,59 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
     const language = useSelector((state: {user:{language:string}}) => state.user.language);
 
     const documentTypes ={
-      "invoice": "Factura",
       "Invoice": "Factura", 
-      "receipt": "Chitanta",
       "Receipt": "Chitanta",
-      "bank statement": "Extras De Cont",
       "Bank Statement": "Extras De Cont",
-      "contract": "Contract",
       "Contract": "Contract",
-      "z report": "Raport Z",
       "Z Report": "Raport Z",
-      "payment order": "Dispozitie De Plata",
       "Payment Order": "Dispozitie De Plata",
-      "collection order": "Dispozitie De Incasare",
       "Collection Order": "Dispozitie De Incasare"
+    };
+
+    // Normalization function to handle lowercase/variant inputs
+    const normalizeDocumentType = (input: string): string => {
+      const normalizations: Record<string, string> = {
+        // Lowercase variants
+        "invoice": "Invoice",
+        "receipt": "Receipt", 
+        "bank statement": "Bank Statement",
+        "contract": "Contract",
+        "z report": "Z Report",
+        "payment order": "Payment Order",
+        "collection order": "Collection Order",
+        
+        // Other possible variants
+        "factura": "Invoice",
+        "chitanta": "Receipt",
+        "extras de cont": "Bank Statement",
+        "raport z": "Z Report",
+        "dispozitie de plata": "Payment Order",
+        "dispozitie de incasare": "Collection Order",
+        
+        // Handle exact matches (return as-is if already correct)
+        "Invoice": "Invoice",
+        "Receipt": "Receipt",
+        "Bank Statement": "Bank Statement", 
+        "Contract": "Contract",
+        "Z Report": "Z Report",
+        "Payment Order": "Payment Order",
+        "Collection Order": "Collection Order"
+      };
+
+      // Convert to lowercase for lookup, then return normalized version
+      const normalized = normalizations[input.toLowerCase()];
+      return normalized || input; // Return original if no match found
     };
 
     const [selectorValue, setSelectorValue] = useState<string>('');
 
-    if(value){
-      useEffect(()=>{
-          setSelectorValue(value);
-      },[])
-    };
+    useEffect(() => {
+      if(value) {
+        // Normalize the incoming value before setting it
+        const normalizedValue = normalizeDocumentType(value);
+        setSelectorValue(normalizedValue);
+      }
+    }, [value]);
 
     const handleSelect = (e:string)=>{
       setSelectorValue(e);
@@ -55,7 +84,7 @@ export function SelectDocType({value, setEditFile, editFile,full}: SelectDocType
         ...editFile,
         result: {
           ...editFile?.result,
-          document_type:e
+          document_type: e // Store the normalized (proper case) version
         }
       });
     }
