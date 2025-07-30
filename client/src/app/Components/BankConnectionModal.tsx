@@ -28,7 +28,6 @@ interface Bank {
   name: string;
   displayName: string;
   logo: string;
-  marketShare: string;
   apiDocs: string;
   fields: {
     label: string;
@@ -55,7 +54,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'Banca Transilvania',
       displayName: 'Banca Transilvania',
       logo: BtLogo,
-      marketShare: '26%',
       apiDocs: 'https://apistorebt.ro/bt/sb/',
       authMethod: 'OAuth2 + SCA',
       environment: 'sandbox',
@@ -97,7 +95,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'BCR',
       displayName: 'Banca Comercială Română',
       logo: BCRLogo,
-      marketShare: '10%',
       apiDocs: 'https://developers.erstegroup.com/',
       authMethod: 'NextGenPSD2 OAuth2',
       environment: 'sandbox',
@@ -131,7 +128,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'BRD',
       displayName: 'BRD - Groupe Société Générale',
       logo: BRDLogo,
-      marketShare: '11.2%',
       apiDocs: 'https://www.devbrd.ro/brd/apicatalog/',
       authMethod: 'OAuth2 Corporate',
       environment: 'sandbox',
@@ -165,7 +161,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'ING',
       displayName: 'ING Bank Romania',
       logo: INGLogo,
-      marketShare: '8.2%',
       apiDocs: 'https://developer.ing.com/',
       authMethod: 'OAuth2 + eIDAS',
       environment: 'sandbox',
@@ -198,7 +193,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'Raiffeisen',
       displayName: 'Raiffeisen Bank Romania',
       logo: RaiffeisenLogo,
-      marketShare: '7%',
       apiDocs: 'https://developer.raiffeisen.at/',
       authMethod: 'XS2A-API + eIDAS',
       environment: 'sandbox',
@@ -232,7 +226,6 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
       name: 'Alpha Bank',
       displayName: 'Alpha Bank Romania',
       logo: AlphaLogo,
-      marketShare: '5%',
       apiDocs: 'https://developer.api.alphabank.eu/',
       authMethod: 'OAuth2 + QSealC',
       environment: 'sandbox',
@@ -415,7 +408,7 @@ const BankConnectionModal = ({ isOpen, onClose, onConnect }: BankConnectionModal
                       cursor-pointer transition-all duration-300 hover:shadow-lg bg-[var(--background)]
                       flex flex-col items-center justify-center text-center"
                     >
-                      <div className="w-16 h-16 mb-4 flex items-center justify-center">
+                      <div className="w-44 h-44 mb-4 flex items-center justify-center">
                         <img 
                           src={bank.logo} 
                           alt={bank.displayName}
