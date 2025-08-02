@@ -825,10 +825,10 @@ const FileManagementPage = () => {
                           }/>
                           <div className="flex items-center gap-4 mt-1">
                             <span className="text-[var(--text2)] font-medium">
-                              {language === 'ro'
-                                ? docType[String(file.type) as keyof typeof docType] || 'Tip necunoscut'
-                                : file.type || 'Unknown type'
-                              }
+                            {language === 'ro'
+                              ? docType[String(file.type).replace(/^\w/, c => c.toUpperCase()) as keyof typeof docType] || 'Tip necunoscut'
+                              : file.type || 'Unknown type'
+                            }
                             </span>
                             <div className="flex items-center gap-1 text-[var(--text3)]">
                               <Calendar size={14} />

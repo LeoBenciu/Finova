@@ -316,8 +316,9 @@ const BankPage = () => {
     }
   };
 
-  const getDocumentIcon = (type: string) => {
-    switch(type) {
+  const getDocumentIcon = (fileType: string) => {
+    const normalizedType = fileType.replace(/^\w/, c => c.toUpperCase());
+    switch (normalizedType) {
       case 'Invoice': return FileText;
       case 'Receipt': return Receipt;
       case 'Z Report': return CreditCard;
@@ -902,7 +903,7 @@ const BankPage = () => {
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
                         <p className="text-sm font-semibold text-[var(--text1)] mb-2">Document</p>
                         <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
-                        <p className="text-xs text-[var(--text3)]">{suggestion.document.type}</p>
+                        <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
                       </div>
                       
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
