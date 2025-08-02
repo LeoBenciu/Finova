@@ -1,4 +1,6 @@
-import { Controller, UseGuards } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { GetUser } from 'src/auth/decorator';
+import { User } from '@prisma/client';
 import { JwtGuard } from 'src/auth/guard';
 import { BankService } from './bank.service';
 
@@ -6,6 +8,114 @@ import { BankService } from './bank.service';
 @Controller('bank')
 export class BankController {
     constructor(private readonly bankService: BankService){}
+
+    @Get(':clientEin/dashboard')
+    async getReconciliationDashboard(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getReconciliationStats(clientEin, user);
+    }
+    
+    @Get(':clientEin/documents')
+    async getFinancialDocuments(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('unreconciled') unreconciled?: string
+    ) {
+      return this.bankService.getFinancialDocuments(clientEin, user, unreconciled === 'true');
+    }
+    
+    @Get(':clientEin/transactions')
+    async getBankTransactions(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('unreconciled') unreconciled?: string
+    ) {
+      return this.bankService.getBankTransactions(clientEin, user, unreconciled === 'true');
+    }
+    
+    @Get(':clientEin/suggestions')
+    async getReconciliationSuggestions(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getReconciliationSuggestions(clientEin, user);
+    }
+    
+    @Post('match')
+    async createManualMatch(
+      @Body() matchData: {
+        documentId: number;
+        bankTransactionId: string;
+        notes?: string;
+      },
+      @GetUser() user: User
+    ) {
+      return this.bankService.createManualMatch(matchData, user);
+    }
+    
+    @Post('bulk-match')
+    async createBulkMatches(
+      @Body() bulkData: {
+        matches: Array<{
+          documentId: number;
+          bankTransactionId: string;
+          notes?: string;
+        }>;
+      },
+      @GetUser() user: User
+    ) {
+      return this.bankService.createBulkMatches(bulkData.matches, user);
+    }
+    
+    @Put('suggestion/:id/accept')
+    async acceptSuggestion(
+      @Param('id') suggestionId: number,
+      @GetUser() user: User,
+      @Body() data: { notes?: string }
+    ) {
+      return this.bankService.acceptSuggestion(suggestionId, user, data.notes);
+    }
+    
+    @Put('suggestion/:id/reject')
+    async rejectSuggestion(
+      @Param('id') suggestionId: number,
+      @GetUser() user: User,
+      @Body() data: { reason?: string }
+    ) {
+      return this.bankService.rejectSuggestion(suggestionId, user, data.reason);
+    }  
+
+    @Get(':clientEin/reports/reconciliation-summary')
+    async getReconciliationSummaryReport(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('month') month: string,
+      @Query('year') year: string
+    ) {
+      return this.bankService.getReconciliationSummaryReport(clientEin, user, month, year);
+    }
+
+    @Get(':clientEin/reports/account-attribution')
+    async getAccountAttributionReport(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('month') month: string,
+      @Query('year') year: string
+    ) {
+      return this.bankService.getAccountAttributionReport(clientEin, user, month, year);
+    }
+
+    @Get(':clientEin/reports/exceptions')
+    async getExceptionReport(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('month') month: string,
+      @Query('year') year: string
+    ) {
+      return this.bankService.getExceptionReport(clientEin, user, month, year);
+    }
 
     
 }

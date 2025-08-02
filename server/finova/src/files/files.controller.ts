@@ -1,16 +1,18 @@
-import { Controller, Get, Put, Delete, Post, Patch, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Put, Delete, Post, Patch, UseGuards, Param, Body, UseInterceptors, UploadedFile, Req, ParseIntPipe, Query } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { JwtGuard } from 'src/auth/guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DeleteFileDto, PostFileDto, UpdateFileDto } from './dto';
 import { User, DuplicateStatus } from '@prisma/client';
 import { Request } from 'express';
+import { GetUser } from 'src/auth/decorator';
+import { BankService } from 'src/bank/bank.service';
 
 @UseGuards(JwtGuard)
 @Controller('files')
 export class FilesController {
 
-    constructor(private fileMangementService: FilesService){}
+    constructor(private fileMangementService: FilesService, private bankService: BankService){}
 
     @Post('some-files')
     async getSomeFiles(
@@ -108,6 +110,31 @@ export class FilesController {
     ) {
         const user = req.user as User;
         return this.fileMangementService.getRelatedDocuments(docId, user, clientEin);
+    }
+
+    @Get(':clientEin/bank/dashboard')
+    async getBankReconciliationDashboard(
+        @Param('clientEin') clientEin: string,
+        @GetUser() user: User
+    ) {
+        return this.bankService.getReconciliationStats(clientEin, user); 
+    }
+    
+    @Get(':clientEin/bank/transactions')
+    async getBankTransactions(
+        @Param('clientEin') clientEin: string,
+        @GetUser() user: User,
+        @Query('unreconciled') unreconciled?: string
+    ) {
+        return this.bankService.getBankTransactions(clientEin, user, unreconciled === 'true'); 
+    }
+    
+    @Get(':clientEin/bank/suggestions') 
+    async getReconciliationSuggestions(
+        @Param('clientEin') clientEin: string,
+        @GetUser() user: User
+    ) {
+        return this.bankService.getReconciliationSuggestions(clientEin, user); 
     }
 
 }

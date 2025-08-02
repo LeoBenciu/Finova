@@ -26,7 +26,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -420,6 +420,74 @@ export const finovaApi = createApi({
             }),
             providesTags: ['UserAgreements']
         }),
+
+        getBankReconciliationStats: build.query({
+            query: (clientEin: string) => ({
+                url: `/bank/${clientEin}/dashboard`,
+                method: 'GET'
+            }),
+            providesTags: ['BankReconciliation']
+        }),
+
+        getFinancialDocuments: build.query({
+            query: ({ clientEin, unreconciled }: { clientEin: string; unreconciled?: boolean }) => ({
+                url: `/bank/${clientEin}/documents${unreconciled ? '?unreconciled=true' : ''}`,
+                method: 'GET'
+            }),
+            providesTags: ['BankReconciliation', 'Files']
+        }),
+
+        getBankTransactions: build.query({
+            query: ({ clientEin, unreconciled }: { clientEin: string; unreconciled?: boolean }) => ({
+                url: `/bank/${clientEin}/transactions${unreconciled ? '?unreconciled=true' : ''}`,
+                method: 'GET'
+            }),
+            providesTags: ['BankReconciliation']
+        }),
+
+        getReconciliationSuggestions: build.query({
+            query: (clientEin: string) => ({
+                url: `/bank/${clientEin}/suggestions`,
+                method: 'GET'
+            }),
+            providesTags: ['BankReconciliation']
+        }),
+
+        createManualMatch: build.mutation({
+            query: (matchData: { documentId: number; bankTransactionId: string; notes?: string }) => ({
+                url: '/bank/match',
+                method: 'POST',
+                body: matchData
+            }),
+            invalidatesTags: ['BankReconciliation', 'Files']
+        }),
+
+        createBulkMatches: build.mutation({
+            query: (bulkData: { matches: Array<{ documentId: number; bankTransactionId: string; notes?: string }> }) => ({
+                url: '/bank/bulk-match',
+                method: 'POST',
+                body: bulkData
+            }),
+            invalidatesTags: ['BankReconciliation', 'Files']
+        }),
+
+        acceptReconciliationSuggestion: build.mutation({
+            query: ({ suggestionId, notes }: { suggestionId: number; notes?: string }) => ({
+                url: `/bank/suggestion/${suggestionId}/accept`,
+                method: 'PUT',
+                body: { notes }
+            }),
+            invalidatesTags: ['BankReconciliation', 'Files']
+        }),
+
+        rejectReconciliationSuggestion: build.mutation({
+            query: ({ suggestionId, reason }: { suggestionId: number; reason?: string }) => ({
+                url: `/bank/suggestion/${suggestionId}/reject`,
+                method: 'PUT',
+                body: { reason }
+            }),
+            invalidatesTags: ['BankReconciliation']
+        }),
         
         updateUserConsent: build.mutation({
             query: ({ agreementType, accepted }) => ({
@@ -432,6 +500,27 @@ export const finovaApi = createApi({
             }),
             invalidatesTags: ['UserAgreements']
         }),
+
+        getReconciliationSummaryReport: build.query({
+            query: ({ clientEin, month, year }: { clientEin: string; month: string; year: string }) => ({
+              url: `/bank/${clientEin}/reports/reconciliation-summary?month=${month}&year=${year}`,
+              method: 'GET'
+            })
+          }),
+          
+          getAccountAttributionReport: build.query({
+            query: ({ clientEin, month, year }: { clientEin: string; month: string; year: string }) => ({
+              url: `/bank/${clientEin}/reports/account-attribution?month=${month}&year=${year}`,
+              method: 'GET'
+            })
+          }),
+          
+          getExceptionReport: build.query({
+            query: ({ clientEin, month, year }: { clientEin: string; month: string; year: string }) => ({
+              url: `/bank/${clientEin}/reports/exceptions?month=${month}&year=${year}`,
+              method: 'GET'
+            })
+          })
 
     })
 })
@@ -451,4 +540,7 @@ useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
 useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
 useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
 useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery, useProcessBatchMutation,
-useGetSomeFilesMutation} = finovaApi;
+useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
+useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
+useCreateBulkMatchesMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
+useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery} = finovaApi;

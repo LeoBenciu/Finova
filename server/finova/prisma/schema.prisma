@@ -23,6 +23,7 @@ model User {
   rpaActionsTriggered      RpaAction[]            @relation("TriggeredByUser")
   legalAgreements          LegalAgreement[]
   userCorrections          UserCorrection[]
+  reconciledRecords        ReconciliationRecord[] @relation("ReconciledByUser")
 }
 
 model LegalAgreement {
@@ -41,31 +42,42 @@ model LegalAgreement {
 }
 
 model Document {
-  id                    Int                      @id @default(autoincrement())
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  name                  String
-  type                  String
-  path                  String
-  s3Key                 String
-  contentType           String
-  fileSize              Int?
-  documentHash          String?
-  parentRelations       DocumentRelationship[]   @relation("ParentDocumentRelations")
-  childRelations        DocumentRelationship[]   @relation("ChildDocumentRelations")
-  references            Int[]
-  accountingClientId    Int
-  accountingClient      AccountingClients        @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
-  processedData         ProcessedData?
-  rpaActions            RpaAction[]
-  duplicateChecks       DocumentDuplicateCheck[] @relation("OriginalDocument")
-  duplicateMatches      DocumentDuplicateCheck[] @relation("DuplicateDocument")
-  complianceValidations ComplianceValidation[]
-  userCorrections       UserCorrection[]
-  paymentSummary        PaymentSummary?
+  id                        Int                        @id @default(autoincrement())
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  name                      String
+  type                      String
+  path                      String
+  s3Key                     String
+  contentType               String
+  fileSize                  Int?
+  documentHash              String?
+  parentRelations           DocumentRelationship[]     @relation("ParentDocumentRelations")
+  childRelations            DocumentRelationship[]     @relation("ChildDocumentRelations")
+  references                Int[]
+  accountingClientId        Int
+  reconciliationStatus      ReconciliationStatus       @default(UNRECONCILED)
+  paymentStatus             PaymentStatus              @default(UNPAID)
+  totalPaidAmount           Decimal                    @default(0) @db.Decimal(12, 2)
+  lastPaymentDate           DateTime?
+  bankTransactions          BankTransaction[]          @relation("BankStatementDocument")
+  reconciliationRecords     ReconciliationRecord[]
+  reconciliationSuggestions ReconciliationSuggestion[]
+  potentialReferencesSource PotentialReference[]       @relation("SourceDocument")
+  potentialReferencesTarget PotentialReference[]       @relation("TargetDocument")
+  accountingClient          AccountingClients          @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  processedData             ProcessedData?
+  rpaActions                RpaAction[]
+  duplicateChecks           DocumentDuplicateCheck[]   @relation("OriginalDocument")
+  duplicateMatches          DocumentDuplicateCheck[]   @relation("DuplicateDocument")
+  complianceValidations     ComplianceValidation[]
+  userCorrections           UserCorrection[]
+  paymentSummary            PaymentSummary?
 
   @@index([documentHash])
   @@index([accountingClientId])
+  @@index([reconciliationStatus])
+  @@index([paymentStatus])
 }
 
 model ProcessedData {
@@ -259,6 +271,105 @@ model Management {
   @@index([clientCompanyId])
 }
 
+model BankTransaction {
+  id                        String                     @id
+  bankStatementDocument     Document                   @relation("BankStatementDocument", fields: [bankStatementDocumentId], references: [id], onDelete: Cascade)
+  bankStatementDocumentId   Int
+  transactionDate           DateTime
+  description               String
+  amount                    Decimal                    @db.Decimal(12, 2)
+  transactionType           TransactionType
+  referenceNumber           String?
+  balanceAfter              Decimal?                   @db.Decimal(12, 2)
+  reconciliationStatus      ReconciliationStatus       @default(UNRECONCILED)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  chartOfAccount            ChartOfAccounts?           @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccountId          Int?
+  isStandalone              Boolean                    @default(false)
+  accountingNotes           String?
+  reconciliationRecords     ReconciliationRecord[]
+  reconciliationSuggestions ReconciliationSuggestion[]
+
+  @@index([bankStatementDocumentId])
+  @@index([transactionDate])
+  @@index([reconciliationStatus])
+  @@index([chartOfAccountId])
+  @@index([isStandalone])
+}
+
+model ReconciliationRecord {
+  id                Int                        @id @default(autoincrement())
+  document          Document                   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId        Int
+  bankTransaction   BankTransaction            @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId String
+  matchType         MatchType
+  confidenceScore   Decimal?                   @db.Decimal(3, 2)
+  reconciledBy      User?                      @relation("ReconciledByUser", fields: [reconciledById], references: [id])
+  reconciledById    Int?
+  reconciledAt      DateTime                   @default(now())
+  notes             String?
+  status            ReconciliationRecordStatus @default(ACTIVE)
+  createdAt         DateTime                   @default(now())
+
+  @@unique([documentId, bankTransactionId])
+  @@index([documentId])
+  @@index([bankTransactionId])
+  @@index([status])
+}
+
+model ReconciliationSuggestion {
+  id                Int              @id @default(autoincrement())
+  document          Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId        Int
+  bankTransaction   BankTransaction  @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId String
+  confidenceScore   Decimal          @db.Decimal(3, 2)
+  matchingCriteria  Json
+  reasons           String[]
+  status            SuggestionStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
+
+  @@unique([documentId, bankTransactionId])
+  @@index([status])
+}
+
+model PotentialReference {
+  id                       Int             @id @default(autoincrement())
+  sourceDocument           Document        @relation("SourceDocument", fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  sourceDocumentId         Int
+  referencedDocumentNumber String
+  targetDocument           Document?       @relation("TargetDocument", fields: [targetDocumentId], references: [id], onDelete: Cascade)
+  targetDocumentId         Int?
+  confidence               Decimal?        @db.Decimal(3, 2)
+  status                   ReferenceStatus @default(PENDING)
+  createdAt                DateTime        @default(now())
+  resolvedAt               DateTime?
+
+  @@index([status, referencedDocumentNumber])
+  @@index([sourceDocumentId])
+  @@index([targetDocumentId])
+}
+
+model ChartOfAccounts {
+  id               Int               @id @default(autoincrement())
+  accountCode      String            @unique
+  accountName      String
+  accountType      AccountType
+  parentAccount    ChartOfAccounts?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  parentAccountId  Int?
+  childAccounts    ChartOfAccounts[] @relation("AccountHierarchy")
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  bankTransactions BankTransaction[]
+
+  @@index([accountCode])
+  @@index([accountType])
+  @@index([isActive])
+}
+
 enum DocumentRelationType {
   PAYMENT
   CORRECTION
@@ -401,4 +512,47 @@ enum CorrectionType {
   LINE_ITEMS
   DATES
   OTHER
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
+}
+
+enum ReconciliationStatus {
+  UNRECONCILED
+  MATCHED
+  IGNORED
+}
+
+enum MatchType {
+  AUTOMATIC
+  MANUAL
+  SUGGESTED
+}
+
+enum ReconciliationRecordStatus {
+  ACTIVE
+  DISPUTED
+  CANCELLED
+}
+
+enum SuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ReferenceStatus {
+  PENDING
+  RESOLVED
+  INVALID
+}
+
+enum AccountType {
+  ASSETS
+  LIABILITIES
+  INCOME
+  EXPENSE
+  EQUITY
 }

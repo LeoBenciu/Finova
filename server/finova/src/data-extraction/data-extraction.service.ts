@@ -7,11 +7,21 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as os from 'os';
 import { randomBytes } from 'crypto';
-import { DuplicateType, DuplicateStatus, ComplianceStatus, CorrectionType } from '@prisma/client';
+import { DuplicateType, DuplicateStatus, ComplianceStatus, CorrectionType, Document, ReconciliationStatus, SuggestionStatus } from '@prisma/client';
 
 const execPromise = promisify(exec);
 const writeFilePromise = promisify(fs.writeFile);
 const unlinkPromise = promisify(fs.unlink);
+
+interface BankTransactionData {
+    id: string;
+    transactionDate: Date;
+    description: string;
+    amount: number;
+    transactionType: 'DEBIT' | 'CREDIT';
+    referenceNumber?: string;
+    balanceAfter?: number;
+  }
 
 interface ProcessedDataValidation {
     isValid: boolean;
@@ -788,6 +798,449 @@ export class DataExtractionService {
         }
     }
 
+    async extractBankTransactions(
+        bankStatementDocumentId: number, 
+        extractedData: any
+      ): Promise<BankTransactionData[]> {
+        this.logger.log(`Extracting bank transactions from document ${bankStatementDocumentId}`);
+      
+        try {
+          const transactions = extractedData.result?.transactions || extractedData.transactions || [];
+          
+          if (!Array.isArray(transactions) || transactions.length === 0) {
+            this.logger.warn(`No transactions found in bank statement ${bankStatementDocumentId}`);
+            return [];
+          }
+      
+          await this.prisma.bankTransaction.deleteMany({
+            where: { bankStatementDocumentId }
+          });
+      
+          const bankTransactions: BankTransactionData[] = [];
+      
+          for (const [index, tx] of transactions.entries()) {
+            try {
+              const transactionId = `${bankStatementDocumentId}-${index}-${Date.now()}`;
+              
+              const debitAmount = this.parseAmount(tx.debit_amount);
+              const creditAmount = this.parseAmount(tx.credit_amount);
+              
+              let amount: number;
+              let transactionType: 'DEBIT' | 'CREDIT';
+              
+              if (creditAmount > 0) {
+                amount = creditAmount;
+                transactionType = 'CREDIT';
+              } else if (debitAmount > 0) {
+                amount = -debitAmount;
+                transactionType = 'DEBIT';
+              } else {
+                this.logger.warn(`Invalid transaction amounts in ${bankStatementDocumentId}, index ${index}`);
+                continue;
+              }
+      
+              const transactionDate = this.parseTransactionDate(tx.transaction_date || tx.date);
+              if (!transactionDate) {
+                this.logger.warn(`Invalid transaction date in ${bankStatementDocumentId}, index ${index}`);
+                continue;
+              }
+      
+              const bankTransactionData = {
+                id: transactionId,
+                transactionDate,
+                description: tx.description || '',
+                amount,
+                transactionType,
+                referenceNumber: tx.reference_number || tx.reference || null,
+                balanceAfter: this.parseAmount(tx.balance_after_transaction) || null
+              };
+      
+              await this.prisma.bankTransaction.create({
+                data: {
+                  ...bankTransactionData,
+                  bankStatementDocumentId,
+                  reconciliationStatus: 'UNRECONCILED',
+                  isStandalone: false
+                }
+              });
+      
+              bankTransactions.push(bankTransactionData);
+              
+            } catch (error) {
+              this.logger.error(`Error processing transaction ${index}:`, error);
+              continue;
+            }
+          }
+      
+          this.logger.log(`Successfully extracted ${bankTransactions.length} transactions`);
+          return bankTransactions;
+      
+        } catch (error) {
+          this.logger.error(`Failed to extract bank transactions:`, error);
+          throw new Error(`Bank transaction extraction failed: ${error.message}`);
+        }
+      }
+      
+      private parseTransactionDate(dateStr: string): Date | null {
+        if (!dateStr) return null;
+        
+        try {
+          if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
+            const [day, month, year] = dateStr.split('-');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+          
+          const parsed = new Date(dateStr);
+          return isNaN(parsed.getTime()) ? null : parsed;
+        } catch {
+          return null;
+        }
+      }
+      
+      private parseAmount(amount: any): number {
+        if (!amount || amount === null || amount === undefined) return 0;
+        
+        if (typeof amount === 'number') return amount;
+        
+        const cleanAmount = amount.toString()
+          .replace(/[^\d,.-]/g, '')
+          .replace(/\./g, '')
+          .replace(',', '.');
+          
+        const parsed = parseFloat(cleanAmount);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+
+      async resolvePendingReferences(document: Document): Promise<void> {
+        try {
+          const documentNumber = this.extractDocumentNumber(document);
+          if (!documentNumber) {
+            this.logger.debug(`No document number found for document ${document.id}`);
+            return;
+          }
+      
+          this.logger.log(`Resolving pending references for document number: ${documentNumber}`);
+      
+          const pendingRefs = await this.prisma.potentialReference.findMany({
+            where: { 
+              referencedDocumentNumber: documentNumber,
+              status: 'PENDING'
+            },
+            include: {
+              sourceDocument: true
+            }
+          });
+      
+          if (pendingRefs.length === 0) {
+            this.logger.debug(`No pending references found for ${documentNumber}`);
+            return;
+          }
+      
+          this.logger.log(`Found ${pendingRefs.length} pending references to resolve`);
+      
+          for (const pendingRef of pendingRefs) {
+            try {
+              await this.prisma.potentialReference.update({
+                where: { id: pendingRef.id },
+                data: {
+                  targetDocumentId: document.id,
+                  status: 'RESOLVED',
+                  resolvedAt: new Date(),
+                  confidence: 1.0
+                }
+              });
+      
+              await this.createBidirectionalReference(pendingRef.sourceDocumentId, document.id);
+      
+              this.logger.log(`Resolved reference: ${pendingRef.sourceDocument.name} -> ${document.name}`);
+      
+            } catch (error) {
+              this.logger.error(`Failed to resolve reference ${pendingRef.id}:`, error);
+              continue;
+            }
+          }
+      
+        } catch (error) {
+          this.logger.error(`Error resolving pending references:`, error);
+        }
+      }
+      
+      private extractDocumentNumber(document: Document & { processedData?: { extractedFields: any } | null }): string | null {
+        try {
+          if (!document.processedData?.extractedFields) return null;
+          
+          const extractedFields = typeof document.processedData.extractedFields === 'string' 
+            ? JSON.parse(document.processedData.extractedFields)
+            : document.processedData.extractedFields;
+      
+          const result = extractedFields.result || extractedFields;
+          
+          return result.document_number || 
+                 result.invoice_number || 
+                 result.receipt_number || 
+                 result.contract_number ||
+                 result.order_number ||
+                 result.report_number ||
+                 null;
+        } catch (error) {
+          this.logger.error(`Error extracting document number:`, error);
+          return null;
+        }
+      }
+      
+      private async createBidirectionalReference(sourceDocId: number, targetDocId: number): Promise<void> {
+        try {
+          const [sourceDoc, targetDoc] = await Promise.all([
+            this.prisma.document.findUnique({ where: { id: sourceDocId } }),
+            this.prisma.document.findUnique({ where: { id: targetDocId } })
+          ]);
+      
+          if (!sourceDoc || !targetDoc) return;
+      
+          const sourceRefs = Array.isArray(sourceDoc.references) ? sourceDoc.references : [];
+          if (!sourceRefs.includes(targetDocId)) {
+            await this.prisma.document.update({
+              where: { id: sourceDocId },
+              data: { references: [...sourceRefs, targetDocId] }
+            });
+          }
+      
+          const targetRefs = Array.isArray(targetDoc.references) ? targetDoc.references : [];
+          if (!targetRefs.includes(sourceDocId)) {
+            await this.prisma.document.update({
+              where: { id: targetDocId },
+              data: { references: [...targetRefs, sourceDocId] }
+            });
+          }
+      
+        } catch (error) {
+          this.logger.error(`Error creating bidirectional reference:`, error);
+        }
+      }
+
+    async suggestAccountForTransaction(
+        transaction: {
+          description: string;
+          amount: number;
+          transactionType: 'DEBIT' | 'CREDIT';
+          referenceNumber?: string;
+        }
+      ): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+        const suggestions: { accountCode: string; accountName: string; confidence: number }[] = [];
+        const description = transaction.description.toLowerCase();
+    
+        if (this.matchesPattern(description, ['comision', 'taxa', 'fee', 'charge', 'cost'])) {
+          suggestions.push({ accountCode: '627', accountName: 'Servicii bancare', confidence: 0.9 });
+        }
+    
+        if (this.matchesPattern(description, ['dobanda', 'interest', 'dobânda']) && transaction.transactionType === 'CREDIT') {
+          suggestions.push({ accountCode: '766', accountName: 'Venituri din dobânzi', confidence: 0.95 });
+        }
+    
+        if (this.matchesPattern(description, ['dobanda', 'interest', 'dobânda']) && transaction.transactionType === 'DEBIT') {
+          suggestions.push({ accountCode: '666', accountName: 'Cheltuieli privind dobânzile', confidence: 0.95 });
+        }
+    
+        if (this.matchesPattern(description, ['curs', 'exchange', 'valuta', 'currency'])) {
+          if (transaction.transactionType === 'CREDIT') {
+            suggestions.push({ accountCode: '765', accountName: 'Câștiguri din diferențe de curs valutar', confidence: 0.85 });
+          } else {
+            suggestions.push({ accountCode: '665', accountName: 'Pierderi din diferențe de curs valutar', confidence: 0.85 });
+          }
+        }
+    
+        if (this.matchesPattern(description, ['retragere', 'cash', 'atm', 'numerar'])) {
+          suggestions.push({ accountCode: '5311', accountName: 'Casa în lei', confidence: 0.8 });
+        }
+    
+        if (this.matchesPattern(description, ['transfer', 'virament', 'plata'])) {
+          suggestions.push({ accountCode: '5121', accountName: 'Conturi curente la bănci în lei', confidence: 0.7 });
+        }
+    
+        if (this.matchesPattern(description, ['asigurare', 'insurance'])) {
+          suggestions.push({ accountCode: '626', accountName: 'Cheltuieli cu servicii executate de terți', confidence: 0.8 });
+        }
+    
+        if (suggestions.length === 0) {
+          if (transaction.transactionType === 'DEBIT') {
+            suggestions.push({ accountCode: '628', accountName: 'Alte cheltuieli cu serviciile executate de terți', confidence: 0.3 });
+          } else {
+            suggestions.push({ accountCode: '758', accountName: 'Alte venituri din exploatare', confidence: 0.3 });
+          }
+        }
+    
+        return suggestions.sort((a, b) => b.confidence - a.confidence);
+      }
+
+      async handleRoundingDifferences(
+        expectedAmount: number, 
+        actualAmount: number,
+        currency: string = 'RON'
+      ): Promise<{ accountCode: string; accountName: string; roundingAmount: number } | null> {
+        const difference = Math.abs(expectedAmount - actualAmount);
+
+        const maxRounding = currency === 'RON' ? 1.0 : 0.05; 
+
+        if (difference > maxRounding) {
+          return null; 
+        }
+    
+        if (difference < 0.01) {
+          return null; 
+        }
+    
+        const isGain = actualAmount > expectedAmount;
+
+        if (isGain) {
+          return {
+            accountCode: '754',
+            accountName: 'Câștiguri din rotunjirea sumelor',
+            roundingAmount: difference
+          };
+        } else {
+          return {
+            accountCode: '654',
+            accountName: 'Pierderi din rotunjirea sumelor',
+            roundingAmount: -difference
+          };
+        }
+      }
+
+      async categorizeStandaloneTransaction(
+        bankTransactionId: string,
+        force: boolean = false
+      ): Promise<void> {
+        try {
+          const transaction = await this.prisma.bankTransaction.findUnique({
+            where: { id: bankTransactionId }
+          });
+      
+          if (!transaction) {
+            throw new Error(`Transaction ${bankTransactionId} not found`);
+          }
+      
+          if (transaction.chartOfAccountId && !force) {
+            this.logger.debug(`Transaction ${bankTransactionId} already has account assigned`);
+            return;
+          }
+      
+          const suggestions = await this.suggestAccountForTransaction({
+            description: transaction.description,
+            amount: Number(transaction.amount),
+            transactionType: transaction.transactionType,
+            referenceNumber: transaction.referenceNumber || undefined
+          });
+      
+          if (suggestions.length === 0) {
+            this.logger.warn(`No account suggestions found for transaction ${bankTransactionId}`);
+            return;
+          }
+      
+          const bestSuggestion = suggestions[0];
+
+          const chartOfAccount = await this.getOrCreateChartOfAccount(
+            bestSuggestion.accountCode,
+            bestSuggestion.accountName
+          );
+      
+          if (bestSuggestion.confidence > 0.7) {
+            await this.prisma.bankTransaction.update({
+              where: { id: bankTransactionId },
+              data: {
+                chartOfAccountId: chartOfAccount.id,
+                isStandalone: true,
+                accountingNotes: `Auto-categorized: ${bestSuggestion.accountName} (confidence: ${Math.round(bestSuggestion.confidence * 100)}%)`
+              }
+            });
+        
+            this.logger.log(`Transaction ${bankTransactionId} categorized as ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+          } else {
+            await this.prisma.bankTransaction.update({
+              where: { id: bankTransactionId },
+              data: {
+                isStandalone: true,
+                accountingNotes: `Requires manual categorization - suggested: ${bestSuggestion.accountName} (low confidence: ${Math.round(bestSuggestion.confidence * 100)}%)`
+              }
+            });
+        
+            this.logger.log(`Transaction ${bankTransactionId} marked for manual categorization`);
+          }
+      
+        } catch (error) {
+          this.logger.error(`Error categorizing standalone transaction ${bankTransactionId}:`, error);
+          throw error;
+        }
+      }
+
+      private async getOrCreateChartOfAccount(accountCode: string, accountName: string): Promise<{ id: number }> {
+        let chartOfAccount = await this.prisma.chartOfAccounts.findUnique({
+          where: { accountCode }
+        });
+    
+        if (!chartOfAccount) {
+          const accountType = this.determineAccountType(accountCode);
+        
+          chartOfAccount = await this.prisma.chartOfAccounts.create({
+            data: {
+              accountCode,
+              accountName,
+              accountType,
+              isActive: true
+            }
+          });
+      
+          this.logger.log(`Created new chart of accounts entry: ${accountCode} - ${accountName}`);
+        }
+    
+        return chartOfAccount;
+      }
+
+      private determineAccountType(accountCode: string): 'ASSETS' | 'LIABILITIES' | 'INCOME' | 'EXPENSE' | 'EQUITY' {
+        const firstDigit = accountCode.charAt(0);
+
+        switch (firstDigit) {
+          case '1':
+          case '2':
+          case '3':
+          case '5':
+            return 'ASSETS';
+          case '4':
+            return 'LIABILITIES';
+          case '6':
+            return 'EXPENSE';
+          case '7':
+            return 'INCOME';
+          case '8':
+          case '9':
+            return 'EQUITY';
+          default:
+            return 'EXPENSE';
+        }
+      }
+
+      private matchesPattern(description: string, keywords: string[]): boolean {
+        return keywords.some(keyword => description.includes(keyword));
+      }
+
+      async extractBankTransactionsWithAccounts(
+        bankStatementDocumentId: number, 
+        extractedData: any
+      ): Promise<BankTransactionData[]> {
+        const transactions = await this.extractBankTransactions(bankStatementDocumentId, extractedData);
+
+        for (const transaction of transactions) {
+          try {
+            setTimeout(async () => {
+              await this.categorizeStandaloneTransaction(transaction.id);
+            }, 100);
+          } catch (error) {
+            this.logger.error(`Failed to categorize transaction ${transaction.id}:`, error);
+          }
+        }
+    
+        return transactions;
+      }
+
     private extractJsonFromOutput(output: string): string {
         console.log('🔍 RAW Python output (first 2000 chars):', output.substring(0, 2000));
         
@@ -1151,4 +1604,227 @@ export class DataExtractionService {
         };
         return mapping[type] || CorrectionType.OTHER;
     }
+
+    async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
+        try {
+          const unreconciled = await this.prisma.document.findMany({
+            where: {
+              accountingClientId,
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED,
+              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] }
+            },
+            include: { processedData: true }
+          });
+      
+          const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
+            where: {
+              bankStatementDocument: { accountingClientId },
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            }
+          });
+      
+          if (unreconciled.length === 0 || unreconciliedTransactions.length === 0) {
+            return;
+          }
+      
+          await this.prisma.reconciliationSuggestion.deleteMany({
+            where: {
+              document: { accountingClientId },
+              status: SuggestionStatus.PENDING
+            }
+          });
+      
+          const suggestions = [];
+      
+          for (const document of unreconciled) {
+            let documentData: any = {};
+            
+            if (document.processedData?.extractedFields) {
+              try {
+                const parsedFields = typeof document.processedData.extractedFields === 'string'
+                  ? JSON.parse(document.processedData.extractedFields)
+                  : document.processedData.extractedFields;
+                
+                documentData = parsedFields.result || parsedFields || {};
+              } catch (e) {
+                continue; 
+              }
+            }
+      
+            const documentAmount = this.parseAmountForReconciliation(documentData.total_amount);
+            const documentNumber = documentData.document_number || documentData.receipt_number;
+            const documentDate = this.parseDate(documentData.document_date);
+      
+            if (documentAmount === 0) continue;
+      
+            for (const transaction of unreconciliedTransactions) {
+              const suggestion = this.calculateMatchSuggestion(
+                document,
+                transaction,
+                documentData,
+                documentAmount,
+                documentNumber,
+                documentDate
+              );
+      
+              if (suggestion.confidenceScore >= 0.3) { 
+                suggestions.push({
+                  documentId: document.id,
+                  bankTransactionId: transaction.id,
+                  confidenceScore: suggestion.confidenceScore,
+                  matchingCriteria: suggestion.matchingCriteria,
+                  reasons: suggestion.reasons
+                });
+              }
+            }
+          }
+      
+          const filteredSuggestions = this.filterBestSuggestions(suggestions);
+      
+          if (filteredSuggestions.length > 0) {
+            await this.prisma.reconciliationSuggestion.createMany({
+              data: filteredSuggestions,
+              skipDuplicates: true
+            });
+      
+            this.logger.log(`Generated ${filteredSuggestions.length} reconciliation suggestions for client ${accountingClientId}`);
+          }
+      
+        } catch (error) {
+          this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
+        }
+      }
+      
+      private calculateMatchSuggestion(
+        document: any,
+        transaction: any,
+        documentData: any,
+        documentAmount: number,
+        documentNumber: string,
+        documentDate: Date | null
+      ): { confidenceScore: number; matchingCriteria: any; reasons: string[] } {
+        let score = 0;
+        const criteria: any = {};
+        const reasons: string[] = [];
+      
+        const transactionAmount = Math.abs(Number(transaction.amount));
+        const transactionDate = new Date(transaction.transactionDate);
+      
+        const amountDiff = Math.abs(documentAmount - transactionAmount);
+        const amountThreshold = Math.max(documentAmount * 0.02, 1); 
+      
+        if (amountDiff === 0) {
+          score += 0.4;
+          criteria.exact_amount_match = true;
+          reasons.push('Exact amount match');
+        } else if (amountDiff <= amountThreshold) {
+          score += 0.3;
+          criteria.close_amount_match = true;
+          reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)} RON)`);
+        }
+      
+        if (documentNumber && transaction.referenceNumber) {
+          const docNumNormalized = this.normalizeReference(documentNumber);
+          const txnRefNormalized = this.normalizeReference(transaction.referenceNumber);
+          
+          if (docNumNormalized === txnRefNormalized) {
+            score += 0.3;
+            criteria.reference_match = true;
+            reasons.push('Reference number match');
+          } else if (docNumNormalized.includes(txnRefNormalized) || txnRefNormalized.includes(docNumNormalized)) {
+            score += 0.2;
+            criteria.partial_reference_match = true;
+            reasons.push('Partial reference match');
+          }
+        }
+      
+        if (documentNumber && transaction.description) {
+          const description = transaction.description.toLowerCase();
+          const docNum = documentNumber.toLowerCase();
+          
+          if (description.includes(docNum)) {
+            score += 0.2;
+            criteria.description_match = true;
+            reasons.push('Document number found in description');
+          }
+        }
+      
+        if (documentDate) {
+          const daysDiff = Math.abs((documentDate.getTime() - transactionDate.getTime()) / (1000 * 60 * 60 * 24));
+          
+          if (daysDiff === 0) {
+            score += 0.1;
+            criteria.same_date = true;
+            reasons.push('Same date');
+          } else if (daysDiff <= 3) {
+            score += 0.07;
+            criteria.close_date = true;
+            reasons.push(`Close dates (${Math.round(daysDiff)} days apart)`);
+          } else if (daysDiff <= 7) {
+            score += 0.05;
+            criteria.week_proximity = true;
+            reasons.push(`Within a week (${Math.round(daysDiff)} days apart)`);
+          }
+        }
+      
+        const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt';
+        const isCredit = transaction.transactionType === 'CREDIT';
+        const isDebit = transaction.transactionType === 'DEBIT';
+      
+        if ((isIncoming && isCredit) || (!isIncoming && isDebit)) {
+          score += 0.05;
+          criteria.logical_transaction_type = true;
+          reasons.push('Transaction type matches document direction');
+        }
+      
+        return {
+          confidenceScore: Math.min(score, 1.0), 
+          matchingCriteria: criteria,
+          reasons
+        };
+      }
+      
+      private filterBestSuggestions(suggestions: any[]): any[] {
+        suggestions.sort((a, b) => b.confidenceScore - a.confidenceScore);
+      
+        const filteredSuggestions = [];
+        const usedDocuments = new Set<number>();
+        const usedTransactions = new Set<string>();
+      
+        for (const suggestion of suggestions) {
+          if (!usedDocuments.has(suggestion.documentId) && 
+              !usedTransactions.has(suggestion.bankTransactionId) &&
+              suggestion.confidenceScore >= 0.5) { 
+            
+            filteredSuggestions.push(suggestion);
+            usedDocuments.add(suggestion.documentId);
+            usedTransactions.add(suggestion.bankTransactionId);
+          }
+        }
+      
+        return filteredSuggestions;
+      }
+      
+      private normalizeReference(ref: string): string {
+        return ref.replace(/[^a-z0-9]/gi, '').toLowerCase();
+      }
+      
+      private parseAmountForReconciliation(amount: any): number {
+        return Math.abs(this.parseAmount(amount));
+      }
+      
+      private parseDate(dateStr: any): Date | null {
+        if (!dateStr) return null;
+        
+        try {
+          if (typeof dateStr === 'string' && dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
+            const [day, month, year] = dateStr.split('-');
+            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+          
+          return new Date(dateStr);
+        } catch {
+          return null;
+        }
+      }
 }

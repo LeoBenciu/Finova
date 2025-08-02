@@ -738,49 +738,50 @@ export class FilesService {
             secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
             region: process.env.AWS_REGION
         });
-
+    
         try {
             const currentUser = await this.prisma.user.findUnique({
                 where: { id: user.id },
                 include: { accountingCompany: true }
             });
-
+    
             if (!currentUser) {
                 throw new NotFoundException('User not found in the database');
             }
-
+    
             const clientCompany = await this.prisma.clientCompany.findUnique({
                 where: { ein: clientEin }
             });
-
+    
             if (!clientCompany) {
                 throw new NotFoundException('Client company doesn\'t exist in the database');
             }
-
+    
             const accountingClientRelation = await this.prisma.accountingClients.findFirst({
                 where: {
                     accountingCompanyId: currentUser.accountingCompanyId,
                     clientCompanyId: clientCompany.id
                 }
             });
-
+    
             if (!accountingClientRelation) {
                 throw new UnauthorizedException('You don\'t have access to this client company');
             }
-
+    
             const documentHash = this.generateDocumentHash(file.buffer);
-
+    
             fileKey = `${currentUser.accountingCompanyId}/${clientCompany.id}/${Date.now()}-${file.originalname}`;
-
+    
             uploadResult = await s3.upload({
                 Bucket: process.env.AWS_S3_BUCKET_NAME,
                 Key: fileKey,
                 Body: file.buffer,
                 ContentType: file.mimetype
             }).promise();
-
+    
             const result = await this.prisma.$transaction(async (prisma) => {
                 let references: number[] = [];
+                let allDocs: any[] = [];
                 
                 console.log(`🔗 POSTFILE DEBUG:`);
                 console.log(`   - processedData type: ${typeof processedData}`);
@@ -788,24 +789,55 @@ export class FilesService {
                 console.log(`   - processedData.result?.references: ${JSON.stringify(processedData.result?.references)}`);
                 console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
                 
-                if (processedData.result?.references && Array.isArray(processedData.result.references)) {
-                    // Convert to numbers in case IDs come as strings
-                    references = processedData.result.references
-                        .map((id: any) => Number(id))
-                        .filter((id: number): id is number => !isNaN(id));
-                    console.log(`   - Found references in processedData.result.references: ${JSON.stringify(references)}`);
-                } else if (processedData.references && Array.isArray(processedData.references)) {
-                    // Convert to numbers in case IDs come as strings
-                    references = processedData.references
-                        .map((id: any) => Number(id))
-                        .filter((id: number): id is number => !isNaN(id));
-                    console.log(`   - Found references in processedData.references: ${JSON.stringify(references)}`);
-                } else {
-                    console.log(`   - No references found or not in expected format`);
-                    references = [];
+                if (processedData.result?.referenced_numbers && Array.isArray(processedData.result.referenced_numbers)) {
+                    const referencedNumbers = processedData.result.referenced_numbers
+                        .map((num: any) => String(num).trim())
+                        .filter((num: string) => num.length > 0);
+                    
+                    console.log(`🔗 Processing ${referencedNumbers.length} referenced numbers: ${JSON.stringify(referencedNumbers)}`);
+                    
+                    allDocs = await prisma.document.findMany({
+                        where: {
+                            accountingClientId: accountingClientRelation.id
+                        },
+                        include: {
+                            processedData: true
+                        }
+                    });
+    
+                    for (const docNumber of referencedNumbers) {
+                        
+                        const existingDoc = allDocs.find(doc => {
+                            if (!doc.processedData?.extractedFields) return false;
+                            
+                            try {
+                                let data: any = doc.processedData.extractedFields;
+                                if (typeof data === 'string') {
+                                    data = JSON.parse(data);
+                                }
+                                
+                                const result = data.result || data;
+                                const documentNumber = result.document_number || 
+                                                      result.invoice_number || 
+                                                      result.receipt_number || 
+                                                      result.contract_number ||
+                                                      result.order_number ||
+                                                      result.report_number;
+                                
+                                return documentNumber === docNumber;
+                            } catch (e) {
+                                return false;
+                            }
+                        });
+                        
+                        if (existingDoc) {
+                            references.push(existingDoc.id);
+                            console.log(`✅ Found referenced document: ${docNumber} -> ID ${existingDoc.id}`);
+                        } else {
+                            console.log(`⏳ Creating potential reference for: ${docNumber}`);
+                        }
+                    }
                 }
-                
-                console.log(`   - Final references to save: ${JSON.stringify(references)}`);
             
                 const document = await prisma.document.create({
                     data: {
@@ -820,6 +852,83 @@ export class FilesService {
                         references: references
                     }
                 });
+                
+                if (processedData.result?.referenced_numbers && Array.isArray(processedData.result.referenced_numbers)) {
+                    const referencedNumbers = processedData.result.referenced_numbers
+                        .map((num: any) => String(num).trim())
+                        .filter((num: string) => num.length > 0);
+                    
+                    for (const docNumber of referencedNumbers) {
+                        const existingDoc = allDocs.find(doc => {
+                            if (!doc.processedData?.extractedFields) return false;
+                            
+                            try {
+                                let data: any = doc.processedData.extractedFields;
+                                if (typeof data === 'string') {
+                                    data = JSON.parse(data);
+                                }
+                                
+                                const result = data.result || data;
+                                const documentNumber = result.document_number || 
+                                                      result.invoice_number || 
+                                                      result.receipt_number || 
+                                                      result.contract_number ||
+                                                      result.order_number ||
+                                                      result.report_number;
+                                
+                                return documentNumber === docNumber;
+                            } catch (e) {
+                                return false;
+                            }
+                        });
+                        
+                        if (!existingDoc) {
+                            await prisma.potentialReference.create({
+                                data: {
+                                    sourceDocumentId: document.id,
+                                    referencedDocumentNumber: docNumber,
+                                    status: 'PENDING',
+                                    confidence: 0.8
+                                }
+                            });
+                            console.log(`📝 Created potential reference: ${document.id} -> "${docNumber}"`);
+                        }
+                    }
+                }
+                
+                console.log(`   - Final references to save: ${JSON.stringify(references)}`);
+    
+                if (document.type === 'Bank Statement' && processedData.result?.transactions) {
+                    try {
+                      await this.dataExtractionService.extractBankTransactionsWithAccounts(
+                        document.id, 
+                        processedData.result
+                      );
+                      
+                      setTimeout(async () => {
+                        await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
+                      }, 2000); 
+                      
+                    } catch (error) {
+                      console.error(`Failed to extract bank transactions for document ${document.id}:`, error);
+                    }
+                  }
+                  
+                if (['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'].includes(document.type)) {
+                    setTimeout(async () => {
+                        try {
+                            await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
+                        } catch (error) {
+                            console.error(`Failed to generate reconciliation suggestions:`, error);
+                        }
+                    }, 1500);
+                }
+    
+                  try {
+                    await this.dataExtractionService.resolvePendingReferences(document);
+                  } catch (error) {
+                    console.error(`Failed to resolve pending references for document ${document.id}:`, error);
+                  }
             
                 const docId = document.id;
             
@@ -845,7 +954,7 @@ export class FilesService {
                         extractedFields: processedData
                     }
                 });
-
+    
                 if (processedData.result?.duplicate_detection) {
                     try {
                         const duplicateMatches = processedData.result.duplicate_detection.duplicate_matches || [];
@@ -867,7 +976,7 @@ export class FilesService {
                         console.warn('[DUPLICATE_DETECTION_WARNING]', duplicateError);
                     }
                 }
-
+    
                 if (processedData.result?.compliance_validation) {
                     try {
                         const compliance = processedData.result.compliance_validation;
@@ -892,7 +1001,7 @@ export class FilesService {
                                 en: compliance.warnings || []
                             };
                         }
-
+    
                         await prisma.complianceValidation.create({
                             data: {
                                 documentId: document.id,
@@ -908,7 +1017,7 @@ export class FilesService {
                         console.warn('[COMPLIANCE_VALIDATION_WARNING]', complianceError);
                     }
                 }
-
+    
                 if (processedData.userCorrections && processedData.userCorrections.length > 0) {
                     try {
                         for (const correction of processedData.userCorrections) {
@@ -928,27 +1037,26 @@ export class FilesService {
                         console.warn('[USER_CORRECTION_WARNING]', correctionError);
                     }
                 }
-
+    
                 if (processedData.result?.line_items && processedData.result.line_items.length > 0) {
                     console.log(`[SMART_MATCHING] Processing ${processedData.result.line_items.length} line items for intelligent article matching`);
-
+    
                     const existingArticles = await prisma.article.findMany({
                         where: { accountingClientId: accountingClientRelation.id }
                     });
-
+    
                     const direction = this.determineInvoiceDirection(processedData.result, clientEin);
                     console.log(`[SMART_MATCHING] Invoice direction determined: ${direction}`);
-
+    
                     const smartArticleResults = await this.smartArticleProcessing(
                         processedData.result.line_items,
                         existingArticles,
                         direction,
                         accountingClientRelation.id
                     );
-
+    
                     const newArticlesToCreate = smartArticleResults.filter(result => result.isNew);
                     
-                    // Update line items with smart matching results
                     if (processedData.result.line_items) {
                         processedData.result.line_items = processedData.result.line_items.map((item: any, index: number) => {
                             const smartResult = smartArticleResults[index];
@@ -967,7 +1075,7 @@ export class FilesService {
                             return item;
                         });
                     }
-
+    
                     if (newArticlesToCreate.length > 0) {
                         console.log(`[SMART_MATCHING] Creating ${newArticlesToCreate.length} new articles`);
                     } else {
@@ -976,18 +1084,17 @@ export class FilesService {
                 } else {
                     console.log(`[SMART_MATCHING] No line items found or no new articles to create`);
                 }
-
+    
                 console.log(`[AUDIT] Document ${document.id} created by user ${currentUser.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
-
+    
                 return { savedDocument: document, savedProcessedData: processedDataDb };
             }, {
                 timeout: 30000
             });
-
+    
             return result;
-
+    
         } catch (e) {
-            // Cleanup S3 file if upload succeeded but database operation failed
             if (uploadResult && fileKey) {
                 try {
                     await s3.deleteObject({
@@ -1044,6 +1151,7 @@ export class FilesService {
                 // Build cluster (self + references) and sync
                 const cluster: number[] = [...new Set([docId, ...uniqueNewReferences])];
                 await this.syncReferences(prisma, cluster);
+                
 
                 // --- Continue with processedData update and user corrections ---
                 if (document.processedData) {
