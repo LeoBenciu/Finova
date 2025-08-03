@@ -654,7 +654,7 @@ const BankPage = () => {
                                  doc.reconciliation_status === 'manually_matched' ? (language === 'ro' ? 'Manual' : 'Manual') : 'Disputed'}
                               </span>
                             </div>
-                            <p className="text-sm text-[var(--text3)] mb-2 truncate">{doc.vendor}</p>
+                            <p className="text-sm text-[var(--text3)] mb-2 truncate text-left">{doc.vendor}</p>
                             <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
                               <span className="flex items-center gap-1">
                                 <Calendar size={12} />

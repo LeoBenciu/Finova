@@ -788,6 +788,52 @@ export class FilesService {
                 console.log(`   - processedData.result type: ${typeof processedData.result}`);
                 console.log(`   - processedData.result?.references: ${JSON.stringify(processedData.result?.references)}`);
                 console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
+
+                if (processedData.result?.document_type?.toLowerCase() === 'bank statement' && 
+                processedData.result?.transactions && 
+                Array.isArray(processedData.result.transactions)) {
+                
+                const aggregatedReferences: string[] = [];
+                
+                console.log(`🔗 BANK STATEMENT: Processing ${processedData.result.transactions.length} transactions for reference aggregation`);
+                
+                for (const transaction of processedData.result.transactions) {
+                    if (transaction.reference_number) {
+                        aggregatedReferences.push(transaction.reference_number);
+                    }
+
+                    if (Array.isArray(transaction.referenced_numbers)) {
+                        aggregatedReferences.push(...transaction.referenced_numbers);
+                    }
+                    if (transaction.description) {
+                        const patterns = [
+                            /(?:factura|invoice|receipt|chitanta)\s*nr\.?\s*([A-Z0-9\-_]+)/gi,
+                            /nr\.?\s*([A-Z0-9\-_]{6,})/gi,
+                            /([A-Z]\d{8,})/g,
+                            /([A-Z]{2,}-\d{4,}-\d+)/g,
+                        ];
+
+                        for (const pattern of patterns) {
+                            const matches = transaction.description.matchAll(pattern);
+                            for (const match of matches) {
+                                if (match[1]) {
+                                    aggregatedReferences.push(match[1]);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                const uniqueReferences = [...new Set(aggregatedReferences
+                    .map(ref => String(ref).trim())
+                    .filter(Boolean)
+                )];
+
+                if (uniqueReferences.length > 0) {
+                    processedData.result.referenced_numbers = uniqueReferences;
+                    console.log(`🔗 BANK STATEMENT: Aggregated ${uniqueReferences.length} referenced numbers: ${JSON.stringify(uniqueReferences)}`);
+                }
+                }
                 
                 if (processedData.result?.referenced_numbers && Array.isArray(processedData.result.referenced_numbers)) {
                     const referencedNumbers = processedData.result.referenced_numbers

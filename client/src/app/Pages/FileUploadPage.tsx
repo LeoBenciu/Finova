@@ -568,11 +568,15 @@ const FileUploadPage = () => {
     const hasComplianceIssue = data?.result?.compliance_validation?.compliance_validation?.compliance_status === 'NON_COMPLIANT';
     const hasDuplicateAlert = data?.result?.duplicate_detection?.is_duplicate;
   
-    if (hasComplianceIssue) {
+    if (state === 'saved') {
+      return language === 'ro' ? 'Salvat' : 'Saved';
+    }
+  
+    if (hasComplianceIssue && state === 'processed') {
       return language === 'ro' ? 'Neconform' : 'Non-Compliant';
     }
   
-    if (hasDuplicateAlert && (state === 'processed' || state === 'saved')) {
+    if (hasDuplicateAlert && state === 'processed') {
       return language === 'ro' ? 'Posibil Duplicat' : 'Possible Duplicate';
     }
   
@@ -600,8 +604,6 @@ const FileUploadPage = () => {
           return language === 'ro' ? 'Procesat' : 'Processed';
         }
         return language === 'ro' ? 'Procesat' : 'Processed';
-      case 'saved':
-        return language === 'ro' ? 'Salvat' : 'Saved';
       case 'error':
         const willRetry = retryCount < MAX_RETRIES;
         return willRetry
