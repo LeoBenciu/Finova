@@ -507,8 +507,9 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
 
                             elif current_phase == 1:
                                 if i == 0:
-                                    doc_type = combined_data.get('document_type', inputs.get('doc_type', '')).lower()
-                                    print(f"🐍 DEBUG: Processing Task {i} (Data extraction for {doc_type})", file=sys.stderr)
+                                    expected_doc_type = inputs.get('phase0_data', {}).get('document_type', inputs.get('doc_type', ''))
+
+                                    print(f"🐍 DEBUG: Processing Task {i} (Data extraction for {expected_doc_type})", file=sys.stderr)
                                     print(f"🐍 DEBUG: Task {i} raw output: {task_output.raw}", file=sys.stderr)
 
                                     extraction_data = extract_json_from_text(task_output.raw)
@@ -516,13 +517,20 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
 
                                     if extraction_data and isinstance(extraction_data, dict):
                                         print(f"🐍 DEBUG: Task {i} extracted keys: {list(extraction_data.keys())}", file=sys.stderr)
+
+                                        if not extraction_data.get('document_type') or extraction_data.get('document_type') == 'Unknown':
+                                            if expected_doc_type and expected_doc_type.lower() != 'unknown':
+                                                extraction_data['document_type'] = standardize_document_type(expected_doc_type)
+                                                print(f"🐍 DEBUG: Preserved document_type from phase 0: {extraction_data['document_type']}", file=sys.stderr)
+
                                         combined_data.update(extraction_data)
                                         print(f"🐍 DEBUG: combined_data after update: {list(combined_data.keys())}", file=sys.stderr)
-                                        print(f"🐍 DEBUG: combined_data receipt_number: {combined_data.get('receipt_number')}", file=sys.stderr)
-                                        print(f"Data extracted for {doc_type} with keys: {list(extraction_data.keys())}", file=sys.stderr)
+                                        print(f"🐍 DEBUG: combined_data document_type: {combined_data.get('document_type')}", file=sys.stderr)
                                     else:
                                         print(f"🐍 DEBUG: Task {i} extraction FAILED - no valid data returned", file=sys.stderr)
-
+                                        if expected_doc_type and expected_doc_type.lower() != 'unknown':
+                                            combined_data['document_type'] = standardize_document_type(expected_doc_type)
+                                            print(f"🐍 DEBUG: Fallback - preserved document_type from phase 0: {combined_data['document_type']}", file=sys.stderr)
                                 elif i == 1:
                                     print(f"🐍 DEBUG: Processing Task {i} (Duplicate detection)", file=sys.stderr)
                                     try:
@@ -549,10 +557,15 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                         print(f"ERROR: Error processing task {i}: {str(e)}", file=sys.stderr)
                         continue
 
-            if current_phase == 1 and inputs.get('doc_type', '').lower() == 'invoice':
-                combined_data['document_type'] = inputs.get('doc_type', '').lower()
-                if inputs.get('direction'):
-                    combined_data['direction'] = inputs.get('direction')
+            if current_phase == 1:
+                phase0_doc_type = inputs.get('phase0_data', {}).get('document_type')
+                if phase0_doc_type and (not combined_data.get('document_type') or combined_data.get('document_type') == 'Unknown'):
+                    combined_data['document_type'] = standardize_document_type(phase0_doc_type)
+                    print(f"🐍 FINAL DEBUG: Restored document_type from phase 0: {combined_data['document_type']}", file=sys.stderr)
+
+                if combined_data.get('document_type', '').lower() == 'invoice':
+                    if inputs.get('direction'):
+                        combined_data['direction'] = inputs.get('direction')
                 
             is_valid, validation_errors = validate_processed_data(combined_data)
             
@@ -585,6 +598,33 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                 return create_fallback_response(), False
     
     return create_fallback_response(), False
+
+def standardize_document_type(doc_type: str) -> str:
+    """Standardize document type casing to match expected format."""
+    if not doc_type:
+        return "Unknown"
+    
+    doc_type_lower = doc_type.lower().strip()
+    
+    type_mapping = {
+        'invoice': 'Invoice',
+        'factură': 'Invoice', 
+        'factura': 'Invoice',
+        'receipt': 'Receipt',
+        'chitanță': 'Receipt',
+        'chitanta': 'Receipt',
+        'bank statement': 'Bank Statement',
+        'extras de cont': 'Bank Statement',
+        'contract': 'Contract',
+        'z report': 'Z Report',
+        'raport z': 'Z Report',
+        'payment order': 'Payment Order',
+        'dispozitie de plata': 'Payment Order',
+        'collection order': 'Collection Order',
+        'dispozitie de incasare': 'Collection Order'
+    }
+    
+    return type_mapping.get(doc_type_lower, doc_type.title())
 
 def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0, phase0_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
