@@ -9,7 +9,6 @@ import {
   Receipt,
   ArrowRight,
   Link,
-  DollarSign,
   Calendar,
   AlertTriangle,
   Check,
@@ -19,7 +18,9 @@ import {
   TrendingUp,
   Eye,
   RefreshCw,
-  Loader2
+  Loader2,
+  Square,
+  CheckSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -182,6 +183,8 @@ const BankPage = () => {
   }, {
     skip: !clientCompanyEin
   });
+
+  console.log("DCS:", documents);
   
   const { data: transactions = [], isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
     clientEin: clientCompanyEin,
@@ -671,12 +674,16 @@ const BankPage = () => {
                         } ${draggedItem?.type === 'transaction' ? 'border-dashed border-emerald-400 bg-emerald-50' : ''}`}
                       >
                         <div className="flex items-center gap-4">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleFileSelection(doc.id)}
-                            className="w-5 h-5 text-[var(--primary)] bg-white border-2 border-gray-300 rounded focus:ring-[var(--primary)] focus:ring-2 focus:ring-offset-0 checked:bg-[var(--primary)] checked:border-[var(--primary)]"
-                          />
+                        <button
+                          onClick={() => toggleFileSelection(doc.id)}
+                          className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={20} className="text-[var(--primary)]" />
+                          ) : (
+                            <Square size={20} className="text-[var(--text3)]" />
+                          )}
+                        </button>
                           
                           <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Icon size={18} className="text-[var(--primary)]" />
@@ -776,12 +783,16 @@ const BankPage = () => {
                         } ${draggedItem?.type === 'document' ? 'border-dashed border-emerald-400 bg-emerald-50' : ''}`}
                       >
                         <div className="flex items-center gap-4">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleTransactionSelection(txn.id)}
-                            className="w-5 h-5 text-[var(--primary)] bg-white border-2 border-gray-300 rounded focus:ring-[var(--primary)] focus:ring-2 focus:ring-offset-0 checked:bg-[var(--primary)] checked:border-[var(--primary)]"
-                          />
+                        <button
+                          onClick={() => toggleTransactionSelection(txn.id)}
+                          className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
+                        >
+                          {isSelected ? (
+                            <CheckSquare size={20} className="text-[var(--primary)]" />
+                          ) : (
+                            <Square size={20} className="text-[var(--text3)]" />
+                          )}
+                        </button>
                           
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                             txn.transactionType === 'credit' ? 'bg-emerald-100' : 'bg-red-100'
@@ -801,7 +812,7 @@ const BankPage = () => {
                               )}
                             </div>
                             {txn.referenceNumber && (
-                              <p className="text-sm text-[var(--text3)] mb-2">Ref: {txn.referenceNumber}</p>
+                              <p className="text-sm text-[var(--text3)] mb-2 text-left">Ref: {txn.referenceNumber}</p>
                             )}
                             <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
                               <span className="flex items-center gap-1">
@@ -811,7 +822,6 @@ const BankPage = () => {
                               <span className={`flex items-center gap-1 font-semibold ${
                                 txn.transactionType === 'credit' ? 'text-emerald-600' : 'text-red-600'
                               }`}>
-                                <DollarSign size={12} />
                                 {txn.transactionType === 'credit' ? '+' : ''}{formatCurrency(txn.amount)}
                               </span>
                             </div>
