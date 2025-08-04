@@ -1574,112 +1574,117 @@ export class DataExtractionService {
       async extractBankTransactionsWithAccounts(
         bankStatementDocumentId: number, 
         extractedData: any
-      ): Promise<BankTransactionData[]> {
+    ): Promise<BankTransactionData[]> {
         
         this.logger.log(`🔍 Starting extractBankTransactionsWithAccounts for document ${bankStatementDocumentId}`);
         
-        return await this.prisma.$transaction(async (prisma) => {
-          const document = await prisma.document.findUnique({
-            where: { id: bankStatementDocumentId },
-            include: { accountingClient: true }
-          });
-          
-          if (!document) {
-            throw new Error(`Document ${bankStatementDocumentId} not found`);
-          }
-          
-          this.logger.log(`✅ Document verified: ID=${document.id}, Type=${document.type}`);
-          
-          const transactions = extractedData.result?.transactions || extractedData.transactions || [];
-          
-          if (!Array.isArray(transactions) || transactions.length === 0) {
-            this.logger.warn(`No transactions found in bank statement ${bankStatementDocumentId}`);
-            return [];
-          }
-      
-          this.logger.log(`🔍 Found ${transactions.length} transactions to process`);
-      
-          await prisma.bankTransaction.deleteMany({
-            where: { bankStatementDocumentId }
-          });
-      
-          const bankTransactions: BankTransactionData[] = [];
-      
-          for (const [index, tx] of transactions.entries()) {
-            try {
-              const transactionId = `${bankStatementDocumentId}-${index}-${Date.now()}`;
-              
-              const debitAmount = this.parseAmount(tx.debit_amount);
-              const creditAmount = this.parseAmount(tx.credit_amount);
-              
-              let amount: number;
-              let transactionType: 'DEBIT' | 'CREDIT';
-              
-              if (creditAmount > 0) {
-                amount = creditAmount;
-                transactionType = 'CREDIT';
-              } else if (debitAmount > 0) {
-                amount = debitAmount;
-                transactionType = 'DEBIT';
-              } else {
-                this.logger.warn(`⚠️ Invalid transaction amounts in ${bankStatementDocumentId}, index ${index}`);
-                continue;
-              }
-      
-              const transactionDate = this.parseTransactionDate(tx.transaction_date || tx.date);
-              if (!transactionDate) {
-                this.logger.warn(`⚠️ Invalid transaction date in ${bankStatementDocumentId}, index ${index}`);
-                continue;
-              }
-      
-              const bankTransactionData = {
-                id: transactionId,
-                transactionDate,
-                description: tx.description || '',
-                amount,
-                transactionType,
-                referenceNumber: tx.reference_number || tx.reference || null,
-                balanceAfter: this.parseAmount(tx.balance_after_transaction) || null
-              };
-      
-              this.logger.log(`🔍 Creating transaction ${index}: ${tx.description} (${amount} ${transactionType})`);
-      
-              await prisma.bankTransaction.create({
-                data: {
-                  ...bankTransactionData,
-                  bankStatementDocumentId,
-                  reconciliationStatus: 'UNRECONCILED',
-                  isStandalone: false
+        try {
+            const document = await this.prisma.document.findUnique({
+                where: { id: bankStatementDocumentId },
+                include: { accountingClient: true }
+            });
+            
+            if (!document) {
+                throw new Error(`Document ${bankStatementDocumentId} not found`);
+            }
+            
+            this.logger.log(`✅ Document verified: ID=${document.id}, Type=${document.type}`);
+            
+            const transactions = extractedData.result?.transactions || extractedData.transactions || [];
+            
+            if (!Array.isArray(transactions) || transactions.length === 0) {
+                this.logger.warn(`No transactions found in bank statement ${bankStatementDocumentId}`);
+                return [];
+            }
+    
+            this.logger.log(`🔍 Found ${transactions.length} transactions to process`);
+    
+            await this.prisma.bankTransaction.deleteMany({
+                where: { bankStatementDocumentId }
+            });
+    
+            const bankTransactions: BankTransactionData[] = [];
+    
+            for (const [index, tx] of transactions.entries()) {
+                try {
+                    const transactionId = `${bankStatementDocumentId}-${index}-${Date.now()}`;
+                    
+                    const debitAmount = this.parseAmount(tx.debit_amount);
+                    const creditAmount = this.parseAmount(tx.credit_amount);
+                    
+                    let amount: number;
+                    let transactionType: 'DEBIT' | 'CREDIT';
+                    
+                    if (creditAmount > 0) {
+                        amount = creditAmount;
+                        transactionType = 'CREDIT';
+                    } else if (debitAmount > 0) {
+                        amount = debitAmount;
+                        transactionType = 'DEBIT';
+                    } else {
+                        this.logger.warn(`⚠️ Invalid transaction amounts in ${bankStatementDocumentId}, index ${index}`);
+                        continue;
+                    }
+    
+                    const transactionDate = this.parseTransactionDate(tx.transaction_date || tx.date);
+                    if (!transactionDate) {
+                        this.logger.warn(`⚠️ Invalid transaction date in ${bankStatementDocumentId}, index ${index}`);
+                        continue;
+                    }
+    
+                    const bankTransactionData = {
+                        id: transactionId,
+                        transactionDate,
+                        description: tx.description || '',
+                        amount,
+                        transactionType,
+                        referenceNumber: tx.reference_number || tx.reference || null,
+                        balanceAfter: this.parseAmount(tx.balance_after_transaction) || null
+                    };
+    
+                    this.logger.log(`🔍 Creating transaction ${index}: ${tx.description} (${amount} ${transactionType})`);
+    
+                    await this.prisma.bankTransaction.create({
+                        data: {
+                            ...bankTransactionData,
+                            bankStatementDocumentId,
+                            reconciliationStatus: 'UNRECONCILED',
+                            isStandalone: false
+                        }
+                    });
+    
+                    bankTransactions.push(bankTransactionData);
+                    this.logger.log(`✅ Created transaction ${index} successfully`);
+                    
+                } catch (error) {
+                    this.logger.error(`❌ Error creating transaction ${index}:`, error);
+                    continue; 
                 }
-              });
-      
-              bankTransactions.push(bankTransactionData);
-              this.logger.log(`✅ Created transaction ${index} successfully`);
-              
-            } catch (error) {
-              this.logger.error(`❌ Error creating transaction ${index}:`, error);
-              continue; 
             }
-          }
-      
-          this.logger.log(`✅ Successfully created ${bankTransactions.length}/${transactions.length} transactions`);
-          
-          setTimeout(async () => {
-            for (const transaction of bankTransactions) {
-              try {
-                await this.categorizeStandaloneTransactionWithAgent(
-                  transaction.id, 
-                  document.accountingClientId
-                );
-              } catch (error) {
-                this.logger.error(`Failed to categorize transaction ${transaction.id}:`, error);
-              }
-            }
-          }, 1000); 
-          
-          return bankTransactions;
-        });
-      }
+    
+            this.logger.log(`✅ Successfully created ${bankTransactions.length}/${transactions.length} transactions`);
+            
+            setTimeout(async () => {
+                for (const transaction of bankTransactions) {
+                    try {
+                        await this.categorizeStandaloneTransactionWithAgent(
+                            transaction.id, 
+                            document.accountingClientId
+                        );
+                    } catch (error) {
+                        this.logger.error(`Failed to categorize transaction ${transaction.id}:`, error);
+                    }
+                }
+            }, 1000);
+            
+            return bankTransactions;
+            
+        } catch (error) {
+            this.logger.error(`❌ Failed to extract bank transactions for document ${bankStatementDocumentId}:`, error);
+            throw error;
+        }
+        
+    }
 
     private extractJsonFromOutput(output: string): string {
         console.log('🔍 RAW Python output (first 2000 chars):', output.substring(0, 2000));
