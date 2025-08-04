@@ -230,7 +230,7 @@ validate_compliance_task:
     A JSON string with comprehensive compliance validation results in both Romanian and English.
   agent: compliance_validator_agent
 
-  attribute_bank_transaction_account_task:
+attribute_bank_transaction_account_task:
   description: >
     Analyze the bank transaction with the following details:
     - Description: {transaction_description}
@@ -238,19 +238,19 @@ validate_compliance_task:
     - Transaction Type: {transaction_type} (DEBIT/CREDIT)
     - Reference Number: {reference_number}
     - Transaction Date: {transaction_date}
-    
+
     Using the Romanian Chart of Accounts and Romanian accounting standards, determine the most appropriate account code for this transaction.
-    
+
     ROMANIAN CHART OF ACCOUNTS:
     {romanian_chart_of_accounts}
-    
+
     ANALYSIS GUIDELINES:
     1. Analyze the transaction description for keywords and business context
     2. Consider the transaction type (DEBIT/CREDIT) and amount
     3. Match against standard Romanian accounting practices
     4. If unclear, research current Romanian accounting standards using available tools
     5. Provide confidence score (0.0-1.0) based on certainty of categorization
-    
+
     COMMON PATTERNS:
     - Bank fees/commissions → 627 (Cheltuieli cu serviciile bancare)
     - Interest received → 766 (Venituri din dobânzi)  
@@ -260,7 +260,7 @@ validate_compliance_task:
     - Transfers between accounts → 5121 (Conturi curente la bănci)
     - Insurance payments → 613 (Cheltuieli cu primele de asigurare)
     - Utilities → 605 (Cheltuieli privind utilitățile)
-    
+
     OUTPUT FORMAT:
     Return JSON with:
     {
