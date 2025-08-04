@@ -943,22 +943,27 @@ export class FilesService {
                 }
                 
                 console.log(`   - Final references to save: ${JSON.stringify(references)}`);
-    
-                if (document.type === 'Bank Statement' && processedData.result?.transactions) {
+
+                if (document.type === 'Bank Statement' && 
+                    processedData.result._shouldProcessBankTransactions && 
+                    processedData.result.transactions && 
+                    Array.isArray(processedData.result.transactions) && 
+                    processedData.result.transactions.length > 0) {
+                    
+                    console.log(`🏦 Processing bank statement: ${document.id} with ${processedData.result.transactions.length} transactions`);
+                    
                     try {
-                      await this.dataExtractionService.extractBankTransactionsWithAccounts(
-                        document.id, 
-                        processedData.result
-                      );
-                      
-                      setTimeout(async () => {
-                        await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
-                      }, 2000); 
-                      
+                        const bankTransactions = await this.dataExtractionService.extractBankTransactionsWithAccounts(
+                            document.id, 
+                              processedData.result
+                        );
+                        
+                        console.log(`✅ Bank statement processing complete: ${bankTransactions.length} transactions created`);
+                        
                     } catch (error) {
-                      console.error(`Failed to extract bank transactions for document ${document.id}:`, error);
+                        console.error(`❌ Bank statement processing failed:`, error);
                     }
-                  }
+                }
                   
                 if (['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'].includes(document.type)) {
                     setTimeout(async () => {

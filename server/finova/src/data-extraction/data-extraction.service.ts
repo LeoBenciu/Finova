@@ -556,6 +556,15 @@ export class DataExtractionService {
                     this.validateDocumentRelevance(extractedData, clientCompanyEin);
                     this.validateAndNormalizeCurrency(extractedData);
                     this.validateExtractedData(extractedData, [], [], clientCompanyEin);
+
+                    if (extractedData.document_type === 'Bank Statement' && 
+                      extractedData.transactions && 
+                      Array.isArray(extractedData.transactions) && 
+                      extractedData.transactions.length > 0) {
+                      
+                      this.logger.log(`🏦 Bank statement detected with ${extractedData.transactions.length} transactions`);
+                      extractedData._shouldProcessBankTransactions = true;
+                  }
                 
                     if (Array.isArray(extractedData.referenced_numbers) && extractedData.referenced_numbers.length > 0) {
                         const refNumbers = [...new Set((extractedData.referenced_numbers as unknown[])
