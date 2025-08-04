@@ -800,87 +800,124 @@ export class DataExtractionService {
     }
 
     async extractBankTransactions(
-        bankStatementDocumentId: number, 
-        extractedData: any
-      ): Promise<BankTransactionData[]> {
-        this.logger.log(`Extracting bank transactions from document ${bankStatementDocumentId}`);
+      bankStatementDocumentId: number, 
+      extractedData: any
+    ): Promise<BankTransactionData[]> {
+      this.logger.log(`🔍 Starting transaction extraction for document ${bankStatementDocumentId}`);
       
-        try {
-          const transactions = extractedData.result?.transactions || extractedData.transactions || [];
-          
-          if (!Array.isArray(transactions) || transactions.length === 0) {
-            this.logger.warn(`No transactions found in bank statement ${bankStatementDocumentId}`);
-            return [];
-          }
-      
-          await this.prisma.bankTransaction.deleteMany({
-            where: { bankStatementDocumentId }
-          });
-      
-          const bankTransactions: BankTransactionData[] = [];
-      
-          for (const [index, tx] of transactions.entries()) {
-            try {
-              const transactionId = `${bankStatementDocumentId}-${index}-${Date.now()}`;
-              
-              const debitAmount = this.parseAmount(tx.debit_amount);
-              const creditAmount = this.parseAmount(tx.credit_amount);
-              
-              let amount: number;
-              let transactionType: 'DEBIT' | 'CREDIT';
-              
-              if (creditAmount > 0) {
-                amount = creditAmount;
-                transactionType = 'CREDIT';
-              } else if (debitAmount > 0) {
-                amount = -debitAmount;
-                transactionType = 'DEBIT';
-              } else {
-                this.logger.warn(`Invalid transaction amounts in ${bankStatementDocumentId}, index ${index}`);
-                continue;
-              }
-      
-              const transactionDate = this.parseTransactionDate(tx.transaction_date || tx.date);
-              if (!transactionDate) {
-                this.logger.warn(`Invalid transaction date in ${bankStatementDocumentId}, index ${index}`);
-                continue;
-              }
-      
-              const bankTransactionData = {
-                id: transactionId,
-                transactionDate,
-                description: tx.description || '',
-                amount,
-                transactionType,
-                referenceNumber: tx.reference_number || tx.reference || null,
-                balanceAfter: this.parseAmount(tx.balance_after_transaction) || null
-              };
-      
-              await this.prisma.bankTransaction.create({
-                data: {
-                  ...bankTransactionData,
-                  bankStatementDocumentId,
-                  reconciliationStatus: 'UNRECONCILED',
-                  isStandalone: false
-                }
-              });
-      
-              bankTransactions.push(bankTransactionData);
-              
-            } catch (error) {
-              this.logger.error(`Error processing transaction ${index}:`, error);
+      try {
+        const document = await this.prisma.document.findUnique({
+          where: { id: bankStatementDocumentId }
+        });
+        
+        if (!document) {
+          this.logger.error(`❌ Document ${bankStatementDocumentId} not found in database`);
+          throw new Error(`Document ${bankStatementDocumentId} not found`);
+        }
+        
+        this.logger.log(`✅ Document found: ID=${document.id}, Type=${document.type}, Name=${document.name}`);
+        
+        const transactions = extractedData.result?.transactions || extractedData.transactions || [];
+        
+        if (!Array.isArray(transactions) || transactions.length === 0) {
+          this.logger.warn(`No transactions found in bank statement ${bankStatementDocumentId}`);
+          return [];
+        }
+    
+        this.logger.log(`🔍 Found ${transactions.length} transactions to process`);
+    
+        const deleteResult = await this.prisma.bankTransaction.deleteMany({
+          where: { bankStatementDocumentId }
+        });
+        
+        this.logger.log(`🗑️ Deleted ${deleteResult.count} existing transactions`);
+    
+        const bankTransactions: BankTransactionData[] = [];
+    
+        for (const [index, tx] of transactions.entries()) {
+          try {
+            const transactionId = `${bankStatementDocumentId}-${index}-${Date.now()}`;
+            
+            const debitAmount = this.parseAmount(tx.debit_amount);
+            const creditAmount = this.parseAmount(tx.credit_amount);
+            
+            let amount: number;
+            let transactionType: 'DEBIT' | 'CREDIT';
+            
+            if (creditAmount > 0) {
+              amount = creditAmount;
+              transactionType = 'CREDIT';
+            } else if (debitAmount > 0) {
+              amount = -debitAmount;
+              transactionType = 'DEBIT';
+            } else {
+              this.logger.warn(`⚠️ Invalid transaction amounts in ${bankStatementDocumentId}, index ${index}`);
               continue;
             }
+    
+            const transactionDate = this.parseTransactionDate(tx.transaction_date || tx.date);
+            if (!transactionDate) {
+              this.logger.warn(`⚠️ Invalid transaction date in ${bankStatementDocumentId}, index ${index}`);
+              continue;
+            }
+    
+            const bankTransactionData = {
+              id: transactionId,
+              transactionDate,
+              description: tx.description || '',
+              amount,
+              transactionType,
+              referenceNumber: tx.reference_number || tx.reference || null,
+              balanceAfter: this.parseAmount(tx.balance_after_transaction) || null
+            };
+    
+            this.logger.log(`🔍 Creating transaction ${index}: ${tx.description} (${amount} ${transactionType})`);
+    
+            const createdTransaction = await this.prisma.bankTransaction.create({
+              data: {
+                ...bankTransactionData,
+                bankStatementDocumentId,
+                reconciliationStatus: 'UNRECONCILED',
+                isStandalone: false
+              }
+            });
+    
+            bankTransactions.push(bankTransactionData);
+            this.logger.log(`✅ Successfully created transaction ${index}: ${createdTransaction.id}`);
+            
+          } catch (error) {
+            this.logger.error(`❌ Error creating transaction ${index}:`, {
+              error: error.message,
+              transactionData: tx,
+              documentId: bankStatementDocumentId
+            });
+            
+            continue;
           }
-      
-          this.logger.log(`Successfully extracted ${bankTransactions.length} transactions`);
-          return bankTransactions;
-      
-        } catch (error) {
-          this.logger.error(`Failed to extract bank transactions:`, error);
-          throw new Error(`Bank transaction extraction failed: ${error.message}`);
         }
+    
+        this.logger.log(`✅ Successfully extracted ${bankTransactions.length}/${transactions.length} transactions`);
+        return bankTransactions;
+    
+      } catch (error) {
+        this.logger.error(`❌ Failed to extract bank transactions for document ${bankStatementDocumentId}:`, error);
+        throw new Error(`Bank transaction extraction failed: ${error.message}`);
       }
+    }
+
+    async processDocumentWithTransactions(documentData: any, extractedData: any) {
+      return await this.prisma.$transaction(async (prisma) => {
+        const document = await prisma.document.create({
+          data: documentData
+        });
+        
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const transactions = await this.extractBankTransactions(document.id, extractedData);
+        
+        return { document, transactions };
+      });
+    }
       
       private parseTransactionDate(dateStr: string): Date | null {
         if (!dateStr) return null;
@@ -1529,7 +1566,15 @@ export class DataExtractionService {
         bankStatementDocumentId: number, 
         extractedData: any
       ): Promise<BankTransactionData[]> {
+        
+        this.logger.log(`🔍 Starting extractBankTransactionsWithAccounts for document ${bankStatementDocumentId}`);
+        
         const transactions = await this.extractBankTransactions(bankStatementDocumentId, extractedData);
+      
+        if (transactions.length === 0) {
+          this.logger.warn(`❌ No transactions created for document ${bankStatementDocumentId}, skipping account attribution`);
+          return transactions;
+        }
       
         const bankStatement = await this.prisma.document.findUnique({
           where: { id: bankStatementDocumentId },
@@ -1537,9 +1582,11 @@ export class DataExtractionService {
         });
       
         if (!bankStatement) {
-          this.logger.error(`Bank statement document ${bankStatementDocumentId} not found`);
+          this.logger.error(`❌ Bank statement document ${bankStatementDocumentId} not found for account attribution`);
           return transactions;
         }
+      
+        this.logger.log(`✅ Found bank statement, starting account attribution for ${transactions.length} transactions`);
       
         for (const transaction of transactions) {
           try {
