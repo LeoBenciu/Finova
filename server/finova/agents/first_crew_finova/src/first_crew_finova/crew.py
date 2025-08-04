@@ -10,7 +10,17 @@ from pydantic import BaseModel, Field
 import logging
 import hashlib
 import re
-from .tools.serper_tool import get_serper_tool
+
+
+try:
+    from .tools.serper_tool import get_serper_tool
+except ImportError:
+    try:
+        from tools.serper_tool import get_serper_tool
+    except ImportError:
+        print("Warning: Serper tool not available", file=sys.stderr)
+        def get_serper_tool():
+            return None
 
 try:
     from crewai import Process
