@@ -1,6 +1,13 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { User, ReconciliationStatus, MatchType, SuggestionStatus } from '@prisma/client';
+import * as AWS from 'aws-sdk';
+
+const s3 = new AWS.S3({
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  region: process.env.AWS_REGION,
+});
 
 @Injectable()
 export class BankService {
@@ -161,7 +168,7 @@ export class BankService {
           orderBy: { createdAt: 'desc' }
         });
       
-        return documents.map(doc => {
+        const documentsWithUrls = await Promise.all(documents.map(async (doc) => {
           let extractedData = {};
           
           if (doc.processedData?.extractedFields) {
@@ -182,9 +189,17 @@ export class BankService {
             createdAt: doc.createdAt,
             reconciliationStatus: doc.reconciliationStatus,
             ...extractedData,
-            matchedTransactions: doc.reconciliationRecords.map(record => record.bankTransaction.id)
+            matchedTransactions: doc.reconciliationRecords.map(record => record.bankTransaction.id),
+            path: doc.path, 
+            signedUrl: doc.s3Key ? await s3.getSignedUrlPromise('getObject', {
+              Bucket: process.env.AWS_S3_BUCKET_NAME,
+              Key: doc.s3Key,
+              Expires: 3600 
+            }) : doc.path 
           };
-        });
+        }));
+      
+        return documentsWithUrls;
       }
       
       async getBankTransactions(clientEin: string, user: User, unreconciled: boolean = false) {
