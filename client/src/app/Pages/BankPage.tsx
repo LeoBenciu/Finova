@@ -96,6 +96,81 @@ const BankPage = () => {
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [matchingPair, setMatchingPair] = useState<{document: Document, transaction: BankTransaction} | null>(null);
 
+  const normalizeStatus = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      'UNRECONCILED': 'unreconciled',
+      'PENDING': 'unreconciled', 
+      'AUTO_MATCHED': 'auto_matched',
+      'MANUALLY_MATCHED': 'manually_matched',
+      'MATCHED': 'matched',
+      'DISPUTED': 'disputed',
+      'IGNORED': 'ignored'
+    };
+    
+    return statusMap[status?.toUpperCase()] || status?.toLowerCase() || 'unreconciled';
+  };
+
+  const getStatusColor = (status: string) => {
+    const normalizedStatus = normalizeStatus(status);
+    
+    switch(normalizedStatus) {
+      case 'matched':
+      case 'auto_matched': 
+      case 'manually_matched':
+        return 'text-emerald-500 bg-emerald-50';
+      case 'unreconciled':
+      case 'pending':
+        return 'text-yellow-500 bg-yellow-50';
+      case 'disputed':
+        return 'text-red-500 bg-red-50';
+      case 'ignored':
+        return 'text-gray-500 bg-gray-50';
+      default: 
+        return 'text-gray-500 bg-gray-50';
+    }
+  };
+
+  const getStatusText = (status: string, language: string) => {
+    const normalizedStatus = normalizeStatus(status);
+    
+    const statusTexts: Record<string, Record<string, string>> = {
+      'unreconciled': { ro: 'Nereconciliat', en: 'Unmatched' },
+      'pending': { ro: 'În așteptare', en: 'Pending' },
+      'auto_matched': { ro: 'Auto', en: 'Auto' },
+      'manually_matched': { ro: 'Manual', en: 'Manual' },
+      'matched': { ro: 'Reconciliat', en: 'Matched' },
+      'disputed': { ro: 'Disputat', en: 'Disputed' },
+      'ignored': { ro: 'Ignorat', en: 'Ignored' }
+    };
+    
+    return statusTexts[normalizedStatus]?.[language === 'ro' ? 'ro' : 'en'] || normalizedStatus;
+  };
+
+  const getDocumentIcon = (fileType: string) => {
+    const normalizedType = fileType.replace(/^\w/, c => c.toUpperCase());
+    switch (normalizedType) {
+      case 'Invoice': return FileText;
+      case 'Receipt': return Receipt;
+      case 'Z Report': return CreditCard;
+      default: return FileText;
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    try {
+      const date = new Date(dateString);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}-${month}-${year}`;
+    } catch (error) {
+      return dateString;
+    }
+  };
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(amount);
+  };
   // API Calls
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetBankReconciliationStatsQuery(clientCompanyEin, {
     skip: !clientCompanyEin
@@ -186,20 +261,6 @@ const BankPage = () => {
       return matchesSearch && matchesStatus;
     });
   }, [transactions, searchTerm, filterStatus]);
-
-  const normalizeStatus = (status: string): string => {
-    const statusMap: Record<string, string> = {
-      'UNRECONCILED': 'unreconciled',
-      'PENDING': 'unreconciled', 
-      'AUTO_MATCHED': 'auto_matched',
-      'MANUALLY_MATCHED': 'manually_matched',
-      'MATCHED': 'matched',
-      'DISPUTED': 'disputed',
-      'IGNORED': 'ignored'
-    };
-    
-    return statusMap[status?.toUpperCase()] || status?.toLowerCase() || 'unreconciled';
-  };
 
   // Drag & Drop handlers
   const handleDragStart = (type: 'document' | 'transaction', id: string | number) => {
@@ -317,68 +378,6 @@ const BankPage = () => {
   };
 
   const [showBulkActions, setShowBulkActions] = useState(false);
-
-  const getStatusColor = (status: string) => {
-    const normalizedStatus = normalizeStatus(status);
-    
-    switch(normalizedStatus) {
-      case 'matched':
-      case 'auto_matched': 
-      case 'manually_matched':
-        return 'text-emerald-500 bg-emerald-50';
-      case 'unreconciled':
-      case 'pending':
-        return 'text-yellow-500 bg-yellow-50';
-      case 'disputed':
-        return 'text-red-500 bg-red-50';
-      case 'ignored':
-        return 'text-gray-500 bg-gray-50';
-      default: 
-        return 'text-gray-500 bg-gray-50';
-    }
-  };
-
-  const getStatusText = (status: string, language: string) => {
-    const normalizedStatus = normalizeStatus(status);
-    
-    const statusTexts: Record<string, Record<string, string>> = {
-      'unreconciled': { ro: 'Nereconciliat', en: 'Unmatched' },
-      'pending': { ro: 'În așteptare', en: 'Pending' },
-      'auto_matched': { ro: 'Auto', en: 'Auto' },
-      'manually_matched': { ro: 'Manual', en: 'Manual' },
-      'matched': { ro: 'Reconciliat', en: 'Matched' },
-      'disputed': { ro: 'Disputat', en: 'Disputed' },
-      'ignored': { ro: 'Ignorat', en: 'Ignored' }
-    };
-    
-    return statusTexts[normalizedStatus]?.[language === 'ro' ? 'ro' : 'en'] || normalizedStatus;
-  };
-
-  const getDocumentIcon = (fileType: string) => {
-    const normalizedType = fileType.replace(/^\w/, c => c.toUpperCase());
-    switch (normalizedType) {
-      case 'Invoice': return FileText;
-      case 'Receipt': return Receipt;
-      case 'Z Report': return CreditCard;
-      default: return FileText;
-    }
-  };
-
-  const formatDate = (dateString: string): string => {
-    try {
-      const date = new Date(dateString);
-      const day = date.getDate().toString().padStart(2, '0');
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}-${month}-${year}`;
-    } catch (error) {
-      return dateString;
-    }
-  };
-
-  const formatCurrency = (amount: number): string => {
-    return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(amount);
-  };
 
   if (!clientCompanyEin) {
     return (
