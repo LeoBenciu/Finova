@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 import logging
 import hashlib
 import re
+from .tools.serper_tool import get_serper_tool
 
 try:
     from crewai import Process
@@ -473,6 +474,75 @@ class FirstCrewFinova:
         if os.path.exists(config_dir):
             files_in_config = os.listdir(config_dir)
             print(f"Files in config directory: {files_in_config}", file=sys.stderr)
+    
+    def attribute_account_for_transaction(self, transaction_data: dict, romanian_chart_of_accounts: str) -> dict:
+        """Use the account attribution agent to categorize a bank transaction."""
+        try:
+            attribution_crew = Crew(
+                agents=[self.account_attribution_agent()],
+                tasks=[self.attribute_bank_transaction_account_task()],
+                verbose=True
+            )
+
+            inputs = {
+                'transaction_description': transaction_data.get('description', ''),
+                'transaction_amount': transaction_data.get('amount', 0),
+                'transaction_type': transaction_data.get('transactionType', ''),
+                'reference_number': transaction_data.get('referenceNumber', ''),
+                'transaction_date': transaction_data.get('transactionDate', ''),
+                'romanian_chart_of_accounts': romanian_chart_of_accounts
+            }
+
+            result = attribution_crew.kickoff(inputs=inputs)
+
+            if hasattr(result, 'tasks_output') and result.tasks_output:
+                task_output = result.tasks_output[0]
+                if hasattr(task_output, 'raw'):
+                    return self._parse_account_attribution_result(task_output.raw)
+
+            return {
+                'account_code': '628',
+                'account_name': 'Alte cheltuieli cu serviciile executate de terți',
+                'confidence': 0.3,
+                'reasoning': 'Could not determine specific account, using general expense account',
+                'requires_manual_review': True
+            }
+
+        except Exception as e:
+            print(f"Account attribution failed: {str(e)}", file=sys.stderr)
+            return {
+                'account_code': '628',
+                'account_name': 'Alte cheltuieli cu serviciile executate de terți',
+                'confidence': 0.1,
+                'reasoning': f'Attribution failed due to error: {str(e)}',
+                'requires_manual_review': True
+            }
+
+    def _parse_account_attribution_result(self, raw_output: str) -> dict:
+        """Parse the agent's JSON output."""
+        try:
+            import re
+            json_match = re.search(r'\{[^{}]*\}', raw_output)
+            if json_match:
+                result_json = json.loads(json_match.group())
+                return result_json
+            else:
+                return {
+                    'account_code': '628',
+                    'account_name': 'Alte cheltuieli cu serviciile executate de terți',
+                    'confidence': 0.2,
+                    'reasoning': 'Could not parse agent response',
+                    'requires_manual_review': True
+                }
+        except Exception as e:
+            print(f"Failed to parse attribution result: {str(e)}", file=sys.stderr)
+            return {
+                'account_code': '628',
+                'account_name': 'Alte cheltuieli cu serviciile executate de terți',
+                'confidence': 0.1,
+                'reasoning': 'Parsing error',
+                'requires_manual_review': True
+            }
 
     @agent
     def document_categorizer(self) -> Agent:
@@ -565,6 +635,32 @@ class FirstCrewFinova:
             
         return Agent(**agent_config)
 
+    @agent
+    def account_attribution_agent(self) -> Agent:
+
+        tools = [get_text_extractor_tool()]
+    
+        serper_tool = get_serper_tool()
+        if serper_tool:
+            tools.append(serper_tool)
+            print("Account attribution agent: Serper research enabled", file=sys.stderr)
+        else:
+            print("Account attribution agent: Using local knowledge only", file=sys.stderr)
+    
+
+        agent_config = {
+            'role': self.agents_config['account_attribution_agent']['role'],
+            'goal': self.agents_config['account_attribution_agent']['goal'],
+            'backstory': self.agents_config['account_attribution_agent']['backstory'],
+            'verbose': True,
+            'tools': tools,
+        }
+        
+        if self.llm:
+            agent_config['llm'] = self.llm
+            
+        return Agent(**agent_config)
+
     @task
     def categorize_document_task(self) -> Task:
         return Task(
@@ -597,6 +693,13 @@ class FirstCrewFinova:
         return Task(
             config=self.tasks_config['validate_compliance_task'],
             output_file='compliance_validation.json'
+        )
+
+    @task
+    def attribute_bank_transaction_account_task(self) -> Task:
+        return Task(
+            config=self.tasks_config['attribute_bank_transaction_account_task'],
+            output_file='account_attribution.json'
         )
         
     @crew

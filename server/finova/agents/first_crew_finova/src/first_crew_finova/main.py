@@ -626,6 +626,46 @@ def standardize_document_type(doc_type: str) -> str:
     
     return type_mapping.get(doc_type_lower, doc_type.title())
 
+def process_account_attribution(transaction_file_path: str) -> Dict[str, Any]:
+    """Process account attribution for a bank transaction."""
+    try:
+        with open(transaction_file_path, 'r', encoding='utf-8') as f:
+            transaction_data = json.load(f)
+        
+        client_company_ein = transaction_data.get('clientCompanyEin')
+        chart_of_accounts = transaction_data.get('chartOfAccounts', '')
+        
+        existing_articles = get_existing_articles()
+        management_records = {"Depozit Central": {}, "Servicii": {}}
+        user_corrections = load_user_corrections(client_company_ein)
+        
+        crew_instance = FirstCrewFinova(
+            client_company_ein,
+            existing_articles,
+            management_records,
+            user_corrections,
+            0  
+        )
+        
+        result = crew_instance.attribute_account_for_transaction(
+            transaction_data,
+            chart_of_accounts
+        )
+        
+        return {"data": result}
+        
+    except Exception as e:
+        print(f"ERROR: Account attribution failed: {str(e)}", file=sys.stderr)
+        return {
+            "error": str(e),
+            "data": {
+                "account_code": "628",
+                "account_name": "Alte cheltuieli cu serviciile executate de terți",
+                "confidence": 0.1,
+                "reasoning": f"Attribution failed: {str(e)}"
+            }
+        }
+
 def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0, phase0_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
@@ -848,6 +888,25 @@ def read_base64_from_file(file_path: str) -> str:
 
 def main():
     """Main function with comprehensive error handling and memory management."""
+
+    if len(sys.argv) >= 3 and sys.argv[1] == 'account_attribution':
+        transaction_file_path = sys.argv[2]
+        
+        try:
+            result = process_account_attribution(transaction_file_path)
+            print(json.dumps(result, ensure_ascii=False))
+            sys.exit(0)
+        except Exception as e:
+            error_result = {
+                "error": str(e),
+                "data": {
+                    "account_code": "628",
+                    "account_name": "Alte cheltuieli cu serviciile executate de terți",
+                    "confidence": 0.1
+                }
+            }
+            print(json.dumps(error_result, ensure_ascii=False))
+            sys.exit(1)
 
     print(f"Python script started", file=sys.stderr)
     print(f"Python version: {sys.version}", file=sys.stderr)

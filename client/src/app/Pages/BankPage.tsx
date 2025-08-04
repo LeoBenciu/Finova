@@ -18,7 +18,6 @@ import {
   Target,
   TrendingUp,
   Eye,
-  Edit3,
   RefreshCw,
   Loader2
 } from 'lucide-react';
@@ -47,6 +46,8 @@ interface Document {
   reconciliation_status: 'unreconciled' | 'auto_matched' | 'manually_matched' | 'disputed';
   matched_transactions?: string[];
   references?: number[];
+  signedUrl?: string; 
+  path?: string;      
 }
 
 interface BankTransaction {
@@ -86,7 +87,6 @@ interface ReconciliationSuggestion {
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const clientCompanyEin = useSelector((state: {clientCompany: {current: {ein: string}}}) => state.clientCompany.current.ein);
-  
   // State management
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
@@ -638,7 +638,7 @@ const BankPage = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleFileSelection(doc.id)}
-                            className="accent-[var(--primary)] w-5 h-5"
+                            className="accent-[var(--primary)] w-5 h-5 bg-white"
                           />
                           
                           <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -661,18 +661,19 @@ const BankPage = () => {
                                 {formatDate(doc.document_date)}
                               </span>
                               <span className="flex items-center gap-1">
-                                <DollarSign size={12} />
                                 {formatCurrency(doc.total_amount)}
                               </span>
                             </div>
                           </div>
                           
                           <div className="flex items-center gap-1 ml-2">
-                            <button className="p-1 hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] transition-colors rounded-lg">
+                            <button className="p-1 hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] transition-colors rounded-lg"
+                            onClick={() => {
+                              if (doc.signedUrl || doc.path) {
+                                window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
+                              }
+                            }}>
                               <Eye size={14} />
-                            </button>
-                            <button className="p-1 hover:text-white hover:bg-orange-500 bg-orange-500/20 text-orange-500 transition-colors rounded-lg">
-                              <Edit3 size={14} />
                             </button>
                           </div>
                         </div>
