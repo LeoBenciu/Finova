@@ -1148,130 +1148,189 @@ export class DataExtractionService {
 
       async suggestAccountForTransaction(
         transaction: {
-          description: string;
-          amount: number;
-          transactionType: 'DEBIT' | 'CREDIT';
-          referenceNumber?: string;
-          transactionDate?: string;
+            description: string;
+            amount: number;
+            transactionType: 'DEBIT' | 'CREDIT';
+            referenceNumber?: string;
+            transactionDate?: string;
         },
         accountingClientId: number
-      ): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+    ): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+        
+        this.logger.log(`🤖 STARTING AI ACCOUNT ATTRIBUTION`);
+        this.logger.log(`🤖 Transaction: "${transaction.description}" | ${transaction.amount} | ${transaction.transactionType}`);
+        
         try {
-          const accountingRelation = await this.prisma.accountingClients.findUnique({
-            where: { id: accountingClientId },
-            include: { clientCompany: true }
-          });
-      
-          if (!accountingRelation) {
-            throw new Error('Accounting client relation not found');
-          }
-      
-          const timestamp = Date.now();
-          const randomId = require('crypto').randomBytes(8).toString('hex');
-          const transactionFileName = `transaction_${randomId}_${timestamp}.json`;
-          const transactionFilePath = path.join(this.tempDir, transactionFileName);
-      
-          const transactionData = {
-            description: transaction.description,
-            amount: transaction.amount,
-            transactionType: transaction.transactionType,
-            referenceNumber: transaction.referenceNumber || '',
-            transactionDate: transaction.transactionDate || new Date().toISOString(),
-            clientCompanyEin: accountingRelation.clientCompany.ein,
-            chartOfAccounts: ROMANIAN_CHART_OF_ACCOUNTS
-          };
-      
-          await writeFilePromise(transactionFilePath, JSON.stringify(transactionData, null, 2));
-      
-          const result = await this.callAccountAttributionScript(transactionFilePath);
-      
-          if (fs.existsSync(transactionFilePath)) {
-            await unlinkPromise(transactionFilePath);
-          }
-      
-          return result;
-      
+            const accountingRelation = await this.prisma.accountingClients.findUnique({
+                where: { id: accountingClientId },
+                include: { clientCompany: true }
+            });
+    
+            if (!accountingRelation) {
+                this.logger.error(`❌ No accounting relation found for ID: ${accountingClientId}`);
+                throw new Error('Accounting client relation not found');
+            }
+    
+            const timestamp = Date.now();
+            const randomId = require('crypto').randomBytes(8).toString('hex');
+            const transactionFileName = `transaction_${randomId}_${timestamp}.json`;
+            const transactionFilePath = path.join(this.tempDir, transactionFileName);
+    
+            const transactionData = {
+                description: transaction.description,
+                amount: transaction.amount,
+                transactionType: transaction.transactionType,
+                referenceNumber: transaction.referenceNumber || '',
+                transactionDate: transaction.transactionDate || new Date().toISOString(),
+                clientCompanyEin: accountingRelation.clientCompany.ein,
+                chartOfAccounts: ROMANIAN_CHART_OF_ACCOUNTS
+            };
+    
+            this.logger.log(`🤖 WRITING TRANSACTION DATA TO: ${transactionFilePath}`);
+            this.logger.log(`🤖 TRANSACTION DATA: ${JSON.stringify(transactionData, null, 2)}`);
+    
+            await writeFilePromise(transactionFilePath, JSON.stringify(transactionData, null, 2));
+    
+            this.logger.log(`🤖 CALLING AI PYTHON SCRIPT...`);
+            const result = await this.callAccountAttributionScript(transactionFilePath);
+    
+            if (fs.existsSync(transactionFilePath)) {
+                await unlinkPromise(transactionFilePath);
+            }
+    
+            this.logger.log(`🤖 AI RESULT: ${JSON.stringify(result)}`);
+            
+            if (!result || result.length === 0 || result[0].accountCode === '628') {
+                this.logger.warn(`⚠️ AI returned default/empty result, this suggests AI failure`);
+                this.logger.log(`🔄 FALLING BACK TO RULE-BASED CATEGORIZATION`);
+                return this.suggestAccountForTransactionFallback(transaction);
+            }
+            
+            this.logger.log(`✅ AI SUCCESS: Using AI suggestion ${result[0].accountCode} - ${result[0].accountName}`);
+            return result;
+    
         } catch (error) {
-          this.logger.error(`Account attribution agent failed: ${error.message}`);
-          
-          return this.suggestAccountForTransactionFallback(transaction);
+            this.logger.error(`❌ AI ACCOUNT ATTRIBUTION FAILED: ${error.message}`);
+            this.logger.log(`🔄 FALLING BACK TO RULE-BASED CATEGORIZATION`);
+            
+            return this.suggestAccountForTransactionFallback(transaction);
         }
-      }
+    }
+    
       
-      private async callAccountAttributionScript(transactionFilePath: string): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
-        return new Promise((resolve, reject) => {
+    private async callAccountAttributionScript(transactionFilePath: string): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+      return new Promise((resolve, reject) => {
           const { spawn } = require('child_process');
           
+          this.logger.log(`🐍 PYTHON DEBUG: Calling account attribution script`);
+          this.logger.log(`🐍 Script path: ${this.pythonScriptPath}`);
+          this.logger.log(`🐍 Transaction file: ${transactionFilePath}`);
+          
           const child = spawn('python3', [
-            this.pythonScriptPath, 
-            'account_attribution',
-            transactionFilePath
+              this.pythonScriptPath, 
+              'account_attribution', 
+              transactionFilePath
           ], {
-            cwd: path.dirname(this.pythonScriptPath),
-            env: {
-              ...process.env,
-              PYTHONPATH: path.dirname(this.pythonScriptPath),
-              PYTHONUNBUFFERED: '1',
-            },
-            stdio: ['pipe', 'pipe', 'pipe']
+              cwd: path.dirname(this.pythonScriptPath),
+              env: {
+                  ...process.env,
+                  PYTHONPATH: path.dirname(this.pythonScriptPath),
+                  PYTHONUNBUFFERED: '1',
+              },
+              stdio: ['pipe', 'pipe', 'pipe']
           });
-      
+  
           let stdout = '';
           let stderr = '';
-      
+  
           child.stdout.on('data', (data) => {
-            stdout += data.toString();
+              stdout += data.toString();
           });
-      
+  
           child.stderr.on('data', (data) => {
-            stderr += data.toString();
+              stderr += data.toString();
           });
-      
+  
           child.on('close', (code) => {
-            if (code === 0) {
-              try {
-                const jsonOutput = this.extractJsonFromOutput(stdout);
-                const result = JSON.parse(jsonOutput);
-                
-                if (result.error) {
-                  this.logger.error(`Python account attribution error: ${result.error}`);
+              this.logger.log(`🐍 PYTHON EXIT CODE: ${code}`);
+              this.logger.log(`🐍 PYTHON STDOUT (first 1000 chars): ${stdout.substring(0, 1000)}`);
+              if (stderr) this.logger.log(`🐍 PYTHON STDERR: ${stderr.substring(0, 500)}`);
+              
+              if (code === 0) {
+                  try {
+                      const jsonOutput = this.extractJsonFromOutput(stdout);
+                      const result = JSON.parse(jsonOutput);
+                      
+                      this.logger.log(`🐍 PARSED PYTHON RESULT: ${JSON.stringify(result)}`);
+                      
+                      if (result.error) {
+                          this.logger.error(`🐍 Python returned error: ${result.error}`);
+                          resolve(this.getDefaultFallbackSuggestion());
+                          return;
+                      }
+  
+                      let suggestions: { accountCode: string; accountName: string; confidence: number }[] = [];
+                      
+                      if (result.account_code || result.recommended_account) {
+                          suggestions.push({
+                              accountCode: result.account_code || result.recommended_account || '628',
+                              accountName: result.account_name || result.account_description || 'Alte cheltuieli cu serviciile executate de terți',
+                              confidence: result.confidence || result.confidence_score || 0.5
+                          });
+                      }
+                      
+                      else if (result.data && (result.data.account_code || result.data.recommended_account)) {
+                          suggestions.push({
+                              accountCode: result.data.account_code || result.data.recommended_account || '628',
+                              accountName: result.data.account_name || result.data.account_description || 'Alte cheltuieli cu serviciile executate de terți',
+                              confidence: result.data.confidence || result.data.confidence_score || 0.5
+                          });
+                      }
+                      
+                      else if (Array.isArray(result.suggestions)) {
+                          suggestions = result.suggestions.map((s: any) => ({
+                              accountCode: s.account_code || s.code || '628',
+                              accountName: s.account_name || s.name || 'Alte cheltuieli cu serviciile executate de terți',
+                              confidence: s.confidence || 0.5
+                          }));
+                      }
+                      
+                      if (suggestions.length === 0) {
+                          this.logger.warn(`🐍 No valid suggestions in Python result, using fallback`);
+                          resolve(this.getDefaultFallbackSuggestion());
+                          return;
+                      }
+  
+                      if (result.alternative_accounts && Array.isArray(result.alternative_accounts)) {
+                          result.alternative_accounts.forEach((alt: any) => {
+                              suggestions.push({
+                                  accountCode: alt.code || alt.account_code || '628',
+                                  accountName: alt.name || alt.account_name || 'Alternative account',
+                                  confidence: alt.confidence || 0.3
+                              });
+                          });
+                      }
+  
+                      this.logger.log(`🐍 FINAL SUGGESTIONS: ${JSON.stringify(suggestions)}`);
+                      resolve(suggestions.sort((a, b) => b.confidence - a.confidence));
+                      
+                  } catch (parseError) {
+                      this.logger.error(`🐍 Failed to parse Python result: ${parseError.message}`);
+                      this.logger.error(`🐍 Raw output that failed to parse: ${stdout.substring(0, 1000)}`);
+                      resolve(this.getDefaultFallbackSuggestion());
+                  }
+              } else {
+                  this.logger.error(`🐍 Python failed with code ${code}: ${stderr}`);
                   resolve(this.getDefaultFallbackSuggestion());
-                  return;
-                }
-      
-                const suggestions = [{
-                  accountCode: result.account_code || '628',
-                  accountName: result.account_name || 'Alte cheltuieli cu serviciile executate de terți',
-                  confidence: result.confidence || 0.5
-                }];
-      
-                if (result.alternative_accounts && Array.isArray(result.alternative_accounts)) {
-                  result.alternative_accounts.forEach((alt: any) => {
-                    suggestions.push({
-                      accountCode: alt.code || '628',
-                      accountName: alt.name || 'Alternative account',
-                      confidence: alt.confidence || 0.3
-                    });
-                  });
-                }
-      
-                resolve(suggestions.sort((a, b) => b.confidence - a.confidence));
-              } catch (parseError) {
-                this.logger.error(`Failed to parse account attribution result: ${parseError.message}`);
-                resolve(this.getDefaultFallbackSuggestion());
               }
-            } else {
-              this.logger.error(`Python account attribution failed with code ${code}: ${stderr}`);
-              resolve(this.getDefaultFallbackSuggestion());
-            }
           });
-      
+  
           child.on('error', (error) => {
-            this.logger.error(`Failed to start account attribution process: ${error.message}`);
-            resolve(this.getDefaultFallbackSuggestion());
+              this.logger.error(`🐍 Failed to start Python process: ${error.message}`);
+              resolve(this.getDefaultFallbackSuggestion());
           });
-        });
-      }
+      });
+  }
       
       private getDefaultFallbackSuggestion(): { accountCode: string; accountName: string; confidence: number }[] {
         return [{
@@ -1283,53 +1342,67 @@ export class DataExtractionService {
       
       private async suggestAccountForTransactionFallback(
         transaction: {
-          description: string;
-          amount: number;
-          transactionType: 'DEBIT' | 'CREDIT';
-          referenceNumber?: string;
+            description: string;
+            amount: number;
+            transactionType: 'DEBIT' | 'CREDIT';
+            referenceNumber?: string;
         }
-      ): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+    ): Promise<{ accountCode: string; accountName: string; confidence: number }[]> {
+        
+        this.logger.warn(`⚠️ USING FALLBACK RULES - AI FAILED!`);
+        this.logger.log(`🔧 FALLBACK: Processing "${transaction.description}"`);
+        
         const suggestions: { accountCode: string; accountName: string; confidence: number }[] = [];
         const description = transaction.description.toLowerCase();
-      
-        if (this.matchesPattern(description, ['comision', 'taxa', 'fee', 'charge', 'cost'])) {
-          suggestions.push({ accountCode: '627', accountName: 'Servicii bancare', confidence: 0.9 });
+    
+        if (this.matchesPattern(description, ['comision', 'taxa', 'fee', 'charge', 'cost', 'bancar'])) {
+            suggestions.push({ accountCode: '627', accountName: 'Servicii bancare', confidence: 0.9 });
+            this.logger.log(`🔧 FALLBACK MATCH: Bank fees → 627`);
         }
-      
-        if (this.matchesPattern(description, ['dobanda', 'interest', 'dobânda']) && transaction.transactionType === 'CREDIT') {
-          suggestions.push({ accountCode: '766', accountName: 'Venituri din dobânzi', confidence: 0.95 });
+    
+        if (this.matchesPattern(description, ['salariu', 'salary', 'angajat', 'payroll'])) {
+            suggestions.push({ accountCode: '421', accountName: 'Personal - salarii datorate', confidence: 0.9 });
+            this.logger.log(`🔧 FALLBACK MATCH: Salary → 421`);
         }
-      
-        if (this.matchesPattern(description, ['dobanda', 'interest', 'dobânda']) && transaction.transactionType === 'DEBIT') {
-          suggestions.push({ accountCode: '666', accountName: 'Cheltuieli privind dobânzile', confidence: 0.95 });
+    
+        if (this.matchesPattern(description, ['servicii it', 'it services', 'software'])) {
+            if (transaction.transactionType === 'CREDIT') {
+                suggestions.push({ accountCode: '704', accountName: 'Venituri din prestări servicii', confidence: 0.9 });
+                this.logger.log(`🔧 FALLBACK MATCH: IT Services Income → 704`);
+            } else {
+                suggestions.push({ accountCode: '628', accountName: 'Alte cheltuieli cu serviciile executate de terți', confidence: 0.8 });
+                this.logger.log(`🔧 FALLBACK MATCH: IT Services Expense → 628`);
+            }
         }
-      
-        if (this.matchesPattern(description, ['curs', 'exchange', 'valuta', 'currency'])) {
-          if (transaction.transactionType === 'CREDIT') {
-            suggestions.push({ accountCode: '765', accountName: 'Câștiguri din diferențe de curs valutar', confidence: 0.85 });
-          } else {
-            suggestions.push({ accountCode: '665', accountName: 'Pierderi din diferențe de curs valutar', confidence: 0.85 });
-          }
+    
+        if (this.matchesPattern(description, ['utilitati', 'utilities'])) {
+            suggestions.push({ accountCode: '626', accountName: 'Cheltuieli poștale și taxe de telecomunicații', confidence: 0.8 });
+            this.logger.log(`🔧 FALLBACK MATCH: Utilities → 626`);
         }
-      
-        if (this.matchesPattern(description, ['retragere', 'cash', 'atm', 'numerar'])) {
-          suggestions.push({ accountCode: '5311', accountName: 'Casa în lei', confidence: 0.8 });
+    
+        if (this.matchesPattern(description, ['consultanta', 'consulting'])) {
+            if (transaction.transactionType === 'CREDIT') {
+                suggestions.push({ accountCode: '704', accountName: 'Venituri din prestări servicii', confidence: 0.85 });
+                this.logger.log(`🔧 FALLBACK MATCH: Consulting Income → 704`);
+            } else {
+                suggestions.push({ accountCode: '628', accountName: 'Alte cheltuieli cu serviciile executate de terți', confidence: 0.7 });
+                this.logger.log(`🔧 FALLBACK MATCH: Consulting Expense → 628`);
+            }
         }
-      
-        if (this.matchesPattern(description, ['transfer', 'virament', 'plata'])) {
-          suggestions.push({ accountCode: '5121', accountName: 'Conturi curente la bănci în lei', confidence: 0.7 });
-        }
-      
+    
         if (suggestions.length === 0) {
-          if (transaction.transactionType === 'DEBIT') {
-            suggestions.push({ accountCode: '628', accountName: 'Alte cheltuieli cu serviciile executate de terți', confidence: 0.3 });
-          } else {
-            suggestions.push({ accountCode: '758', accountName: 'Alte venituri din exploatare', confidence: 0.3 });
-          }
+            if (transaction.transactionType === 'DEBIT') {
+                suggestions.push({ accountCode: '628', accountName: 'Alte cheltuieli cu serviciile executate de terți', confidence: 0.3 });
+                this.logger.log(`🔧 FALLBACK DEFAULT: Expense → 628`);
+            } else {
+                suggestions.push({ accountCode: '758', accountName: 'Alte venituri din exploatare', confidence: 0.3 });
+                this.logger.log(`🔧 FALLBACK DEFAULT: Income → 758`);
+            }
         }
-      
+    
+        this.logger.log(`🔧 FALLBACK RESULT: ${JSON.stringify(suggestions[0])}`);
         return suggestions.sort((a, b) => b.confidence - a.confidence);
-      }
+    }
 
       async handleRoundingDifferences(
         expectedAmount: number, 
@@ -1365,56 +1438,66 @@ export class DataExtractionService {
         }
       }
 
-      private async categorizeStandaloneTransactionWithAgent(
+      async categorizeStandaloneTransactionWithAgent(
         bankTransactionId: string,
         accountingClientId: number
       ): Promise<void> {
         try {
-          const transaction = await this.prisma.bankTransaction.findUnique({
-            where: { id: bankTransactionId }
-          });
-      
-          if (!transaction || transaction.chartOfAccountId) {
-            return;
-          }
-      
-          const suggestions = await this.suggestAccountForTransaction({
-            description: transaction.description,
-            amount: Number(transaction.amount),
-            transactionType: transaction.transactionType,
-            referenceNumber: transaction.referenceNumber || undefined,
-            transactionDate: transaction.transactionDate.toISOString()
-          }, accountingClientId);
-      
-          if (suggestions.length > 0) {
-            const bestSuggestion = suggestions[0];
-            
-            const chartOfAccount = await this.getOrCreateChartOfAccount(
-              bestSuggestion.accountCode,
-              bestSuggestion.accountName
-            );
-      
-            const notes = bestSuggestion.confidence > 0.7 
-              ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
-              : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
-      
-            await this.prisma.bankTransaction.update({
-              where: { id: bankTransactionId },
-              data: {
-                chartOfAccountId: chartOfAccount.id,
-                isStandalone: true,
-                accountingNotes: notes
-              }
+            const transaction = await this.prisma.bankTransaction.findUnique({
+                where: { id: bankTransactionId }
             });
-      
-            this.logger.log(`Transaction ${bankTransactionId} AI-categorized as ${bestSuggestion.accountCode}`);
-          }
-      
+    
+            if (!transaction || transaction.chartOfAccountId) {
+                return;
+            }
+    
+            this.logger.log(`🤖 AI ATTRIBUTION DEBUG: Processing transaction ${bankTransactionId}`);
+            this.logger.log(`🤖 Description: "${transaction.description}"`);
+            this.logger.log(`🤖 Amount: ${transaction.amount}, Type: ${transaction.transactionType}`);
+    
+            const suggestions = await this.suggestAccountForTransaction({
+                description: transaction.description,
+                amount: Number(transaction.amount),
+                transactionType: transaction.transactionType,
+                referenceNumber: transaction.referenceNumber || undefined,
+                transactionDate: transaction.transactionDate.toISOString()
+            }, accountingClientId);
+    
+            this.logger.log(`🤖 AI SUGGESTIONS: ${JSON.stringify(suggestions)}`);
+    
+            if (suggestions.length > 0) {
+                const bestSuggestion = suggestions[0];
+                
+                this.logger.log(`🤖 BEST SUGGESTION: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName} (${bestSuggestion.confidence})`);
+                
+                const chartOfAccount = await this.getOrCreateChartOfAccount(
+                    bestSuggestion.accountCode,
+                    bestSuggestion.accountName
+                );
+    
+                const notes = bestSuggestion.confidence > 0.7 
+                    ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
+                    : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
+    
+                await this.prisma.bankTransaction.update({
+                    where: { id: bankTransactionId },
+                    data: {
+                        chartOfAccountId: chartOfAccount.id,
+                        isStandalone: true,
+                        accountingNotes: notes
+                    }
+                });
+    
+                this.logger.log(`✅ Transaction ${bankTransactionId} AI-categorized as ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+            }
+    
         } catch (error) {
-          this.logger.error(`AI categorization failed for ${bankTransactionId}, using fallback`);
-          await this.categorizeStandaloneTransaction(bankTransactionId, false);
+            this.logger.error(`❌ AI categorization failed for ${bankTransactionId}:`, error);
+            this.logger.log(`🔄 Falling back to rule-based categorization`);
+            await this.categorizeStandaloneTransaction(bankTransactionId, false);
         }
-      }
+    }
+    
 
       async categorizeStandaloneTransaction(
         bankTransactionId: string,

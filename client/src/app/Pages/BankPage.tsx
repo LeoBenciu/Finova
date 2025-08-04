@@ -158,9 +158,12 @@ const BankPage = () => {
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.vendor?.toLowerCase().includes(searchTerm.toLowerCase());
       
+      const normalizedStatus = normalizeStatus(doc.reconciliation_status);
+      
       const matchesStatus = filterStatus === 'all' || 
-        (filterStatus === 'unreconciled' && doc.reconciliation_status === 'unreconciled') ||
-        (filterStatus === 'matched' && ['auto_matched', 'manually_matched'].includes(doc.reconciliation_status));
+        (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
+        (filterStatus === 'matched' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
+        (filterStatus === 'disputed' && normalizedStatus === 'disputed');
       
       return matchesSearch && matchesStatus;
     });
@@ -174,13 +177,29 @@ const BankPage = () => {
         txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         txn.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase());
       
+      const normalizedStatus = normalizeStatus(txn.reconciliation_status);
+      
       const matchesStatus = filterStatus === 'all' || 
-        (filterStatus === 'unreconciled' && txn.reconciliation_status === 'unreconciled') ||
-        (filterStatus === 'matched' && txn.reconciliation_status === 'matched');
+        (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
+        (filterStatus === 'matched' && ['matched', 'auto_matched', 'manually_matched'].includes(normalizedStatus));
       
       return matchesSearch && matchesStatus;
     });
   }, [transactions, searchTerm, filterStatus]);
+
+  const normalizeStatus = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      'UNRECONCILED': 'unreconciled',
+      'PENDING': 'unreconciled', 
+      'AUTO_MATCHED': 'auto_matched',
+      'MANUALLY_MATCHED': 'manually_matched',
+      'MATCHED': 'matched',
+      'DISPUTED': 'disputed',
+      'IGNORED': 'ignored'
+    };
+    
+    return statusMap[status?.toUpperCase()] || status?.toLowerCase() || 'unreconciled';
+  };
 
   // Drag & Drop handlers
   const handleDragStart = (type: 'document' | 'transaction', id: string | number) => {
@@ -300,12 +319,15 @@ const BankPage = () => {
   const [showBulkActions, setShowBulkActions] = useState(false);
 
   const getStatusColor = (status: string) => {
-    switch(status) {
+    const normalizedStatus = normalizeStatus(status);
+    
+    switch(normalizedStatus) {
       case 'matched':
       case 'auto_matched': 
       case 'manually_matched':
         return 'text-emerald-500 bg-emerald-50';
       case 'unreconciled':
+      case 'pending':
         return 'text-yellow-500 bg-yellow-50';
       case 'disputed':
         return 'text-red-500 bg-red-50';
@@ -314,6 +336,22 @@ const BankPage = () => {
       default: 
         return 'text-gray-500 bg-gray-50';
     }
+  };
+
+  const getStatusText = (status: string, language: string) => {
+    const normalizedStatus = normalizeStatus(status);
+    
+    const statusTexts: Record<string, Record<string, string>> = {
+      'unreconciled': { ro: 'Nereconciliat', en: 'Unmatched' },
+      'pending': { ro: 'În așteptare', en: 'Pending' },
+      'auto_matched': { ro: 'Auto', en: 'Auto' },
+      'manually_matched': { ro: 'Manual', en: 'Manual' },
+      'matched': { ro: 'Reconciliat', en: 'Matched' },
+      'disputed': { ro: 'Disputat', en: 'Disputed' },
+      'ignored': { ro: 'Ignorat', en: 'Ignored' }
+    };
+    
+    return statusTexts[normalizedStatus]?.[language === 'ro' ? 'ro' : 'en'] || normalizedStatus;
   };
 
   const getDocumentIcon = (fileType: string) => {
@@ -638,7 +676,7 @@ const BankPage = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleFileSelection(doc.id)}
-                            className="accent-[var(--primary)] w-5 h-5 bg-white focus:shadow-black text-white"
+                            className="w-5 h-5 text-[var(--primary)] bg-white border-2 border-gray-300 rounded focus:ring-[var(--primary)] focus:ring-2 focus:ring-offset-0 checked:bg-[var(--primary)] checked:border-[var(--primary)]"
                           />
                           
                           <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -649,9 +687,7 @@ const BankPage = () => {
                             <div className="flex items-center gap-2 mb-1">
                               <p className="font-semibold text-[var(--text1)] truncate">{doc.document_number || doc.name}</p>
                               <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.reconciliation_status)}`}>
-                                {doc.reconciliation_status === 'unreconciled' ? (language === 'ro' ? 'Nereconciliat' : 'Unmatched') : 
-                                 doc.reconciliation_status === 'auto_matched' ? (language === 'ro' ? 'Auto' : 'Auto') :
-                                 doc.reconciliation_status === 'manually_matched' ? (language === 'ro' ? 'Manual' : 'Manual') : 'Disputed'}
+                                {getStatusText(doc.reconciliation_status, language)}
                               </span>
                             </div>
                             <p className="text-sm text-[var(--text3)] mb-2 truncate text-left">{doc.vendor}</p>
@@ -745,7 +781,7 @@ const BankPage = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleTransactionSelection(txn.id)}
-                            className="accent-[var(--primary)] w-5 h-5 bg-white focus:shadow-black text-white"
+                            className="w-5 h-5 text-[var(--primary)] bg-white border-2 border-gray-300 rounded focus:ring-[var(--primary)] focus:ring-2 focus:ring-offset-0 checked:bg-[var(--primary)] checked:border-[var(--primary)]"
                           />
                           
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${

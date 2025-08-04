@@ -895,7 +895,8 @@ export class FilesService {
                         fileSize: file.size,
                         documentHash: documentHash,
                         accountingClientId: accountingClientRelation.id,
-                        references: references
+                        references: references,
+                        reconciliationStatus: "UNRECONCILED"
                     }
                 });
                 
