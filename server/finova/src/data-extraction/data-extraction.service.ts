@@ -928,21 +928,31 @@ export class DataExtractionService {
       });
     }
       
-      private parseTransactionDate(dateStr: string): Date | null {
-        if (!dateStr) return null;
-        
-        try {
+    private parseTransactionDate(dateStr: string): Date | null {
+      if (!dateStr) return null;
+      
+      try {
           if (dateStr.match(/^\d{2}-\d{2}-\d{4}$/)) {
-            const [day, month, year] = dateStr.split('-');
-            return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+              const [day, month, year] = dateStr.split('-');
+              return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+          
+          if (dateStr.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+              const [day, month, year] = dateStr.split('/');
+              return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+          }
+          
+          if (dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+              return new Date(dateStr);
           }
           
           const parsed = new Date(dateStr);
           return isNaN(parsed.getTime()) ? null : parsed;
-        } catch {
+      } catch (error) {
+          this.logger.warn(`Failed to parse date: ${dateStr}`, error);
           return null;
-        }
       }
+  }
       
       private parseAmount(amount: any): number {
         if (!amount || amount === null || amount === undefined) return 0;

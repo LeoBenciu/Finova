@@ -638,7 +638,7 @@ const BankPage = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleFileSelection(doc.id)}
-                            className="accent-[var(--primary)] w-5 h-5 bg-white"
+                            className="accent-[var(--primary)] w-5 h-5 bg-white focus:shadow-black text-white"
                           />
                           
                           <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -745,7 +745,7 @@ const BankPage = () => {
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleTransactionSelection(txn.id)}
-                            className="accent-[var(--primary)] w-5 h-5"
+                            className="accent-[var(--primary)] w-5 h-5 bg-white focus:shadow-black text-white"
                           />
                           
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
