@@ -944,27 +944,6 @@ export class FilesService {
                 
                 console.log(`   - Final references to save: ${JSON.stringify(references)}`);
 
-                if (document.type === 'Bank Statement' && 
-                    processedData.result._shouldProcessBankTransactions && 
-                    processedData.result.transactions && 
-                    Array.isArray(processedData.result.transactions) && 
-                    processedData.result.transactions.length > 0) {
-                    
-                    console.log(`🏦 Processing bank statement: ${document.id} with ${processedData.result.transactions.length} transactions`);
-                    
-                    try {
-                        const bankTransactions = await this.dataExtractionService.extractBankTransactionsWithAccounts(
-                            document.id, 
-                              processedData.result
-                        );
-                        
-                        console.log(`✅ Bank statement processing complete: ${bankTransactions.length} transactions created`);
-                        
-                    } catch (error) {
-                        console.error(`❌ Bank statement processing failed:`, error);
-                    }
-                }
-                  
                 if (['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'].includes(document.type)) {
                     setTimeout(async () => {
                         try {
@@ -1142,6 +1121,29 @@ export class FilesService {
             }, {
                 timeout: 30000
             });
+
+            if (result.savedDocument.type === 'Bank Statement' && 
+                processedData.result._shouldProcessBankTransactions && 
+                processedData.result.transactions && 
+                Array.isArray(processedData.result.transactions) && 
+                processedData.result.transactions.length > 0) {
+                
+                console.log(`🏦 Processing bank statement: ${result.savedDocument.id} with ${processedData.result.transactions.length} transactions`);
+                
+                setTimeout(async () => {
+                    try {
+                        const bankTransactions = await this.dataExtractionService.extractBankTransactionsWithAccounts(
+                            result.savedDocument.id, 
+                            processedData.result
+                        );
+                        
+                        console.log(`✅ Bank statement processing complete: ${bankTransactions.length} transactions created`);
+                        
+                    } catch (error) {
+                        console.error(`❌ Bank statement processing failed:`, error);
+                    }
+                }, 100);
+            }
     
             return result;
     
