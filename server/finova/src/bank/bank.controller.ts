@@ -1,4 +1,4 @@
-import { Controller, UseGuards, Get, Post, Put, Body, Param, Query } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Put, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
 import { GetUser } from 'src/auth/decorator';
 import { User } from '@prisma/client';
 import { JwtGuard } from 'src/auth/guard';
@@ -71,7 +71,7 @@ export class BankController {
     
     @Put('suggestion/:id/accept')
     async acceptSuggestion(
-      @Param('id') suggestionId: number,
+      @Param('id', ParseIntPipe) suggestionId: number,
       @GetUser() user: User,
       @Body() data: { notes?: string }
     ) {
@@ -80,7 +80,7 @@ export class BankController {
     
     @Put('suggestion/:id/reject')
     async rejectSuggestion(
-      @Param('id') suggestionId: number,
+      @Param('id', ParseIntPipe) suggestionId: number,
       @GetUser() user: User,
       @Body() data: { reason?: string }
     ) {

@@ -320,16 +320,18 @@ model ReconciliationRecord {
 }
 
 model ReconciliationSuggestion {
-  id                Int              @id @default(autoincrement())
-  document          Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  documentId        Int
-  bankTransaction   BankTransaction  @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
-  bankTransactionId String
-  confidenceScore   Decimal          @db.Decimal(3, 2)
-  matchingCriteria  Json
-  reasons           String[]
-  status            SuggestionStatus @default(PENDING)
-  createdAt         DateTime         @default(now())
+  id                    Int               @id @default(autoincrement())
+  document              Document?         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId            Int?
+  bankTransaction       BankTransaction   @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId     String
+  chartOfAccount        ChartOfAccounts?  @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccountId      Int?
+  confidenceScore       Decimal           @db.Decimal(4, 3)
+  matchingCriteria      Json
+  reasons               String[]
+  status                SuggestionStatus  @default(PENDING)
+  createdAt             DateTime          @default(now())
 
   @@unique([documentId, bankTransactionId])
   @@index([status])
@@ -363,7 +365,8 @@ model ChartOfAccounts {
   isActive         Boolean           @default(true)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
-  bankTransactions BankTransaction[]
+  bankTransactions          BankTransaction[]
+  reconciliationSuggestions ReconciliationSuggestion[]
 
   @@index([accountCode])
   @@index([accountType])

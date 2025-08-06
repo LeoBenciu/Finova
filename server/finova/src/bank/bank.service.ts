@@ -313,22 +313,35 @@ export class BankService {
       
         const suggestions = await this.prisma.reconciliationSuggestion.findMany({
           where: {
-            document: {
-              accountingClientId: accountingClientRelation.id
-            },
-            status: SuggestionStatus.PENDING
+            status: SuggestionStatus.PENDING,
+            OR: [
+              {
+                document: {
+                  accountingClientId: accountingClientRelation.id,
+                },
+              },
+              {
+                documentId: null,
+                bankTransaction: {
+                  bankStatementDocument: {
+                    accountingClientId: accountingClientRelation.id,
+                  },
+                },
+              },
+            ],
           },
           include: {
             document: {
               include: {
-                processedData: true
-              }
+                processedData: true,
+              },
             },
             bankTransaction: {
               include: {
-                bankStatementDocument: true
-              }
-            }
+                bankStatementDocument: true,
+              },
+            },
+            chartOfAccount: true,
           },
           orderBy: { confidenceScore: 'desc' }
         });

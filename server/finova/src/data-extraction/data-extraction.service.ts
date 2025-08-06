@@ -1479,16 +1479,19 @@ export class DataExtractionService {
                     ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
                     : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
     
-                await this.prisma.bankTransaction.update({
-                    where: { id: bankTransactionId },
-                    data: {
-                        chartOfAccountId: chartOfAccount.id,
-                        isStandalone: true,
-                        accountingNotes: notes
-                    }
+                // Instead of permanently writing the account on the transaction, create a reconciliation suggestion
+                await this.prisma.reconciliationSuggestion.create({
+                  data: {
+                    bankTransactionId: bankTransactionId,
+                    chartOfAccountId: chartOfAccount.id,
+                    documentId: null,
+                    confidenceScore: bestSuggestion.confidence.toFixed(3) as unknown as any,
+                    matchingCriteria: {},
+                    reasons: [notes],
+                  },
                 });
     
-                this.logger.log(`✅ Transaction ${bankTransactionId} AI-categorized as ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+                this.logger.log(`🤖 Created standalone suggestion for transaction ${bankTransactionId}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
             }
     
         } catch (error) {

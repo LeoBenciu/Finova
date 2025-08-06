@@ -3,7 +3,6 @@ import { useSelector } from 'react-redux';
 import { 
   Landmark, 
   Search, 
-  CheckCircle, 
   CreditCard,
   FileText,
   Receipt,
@@ -984,18 +983,6 @@ const BankPage = () => {
                           {suggestion.bankTransaction.transactionType === 'credit' ? '+' : ''}{formatCurrency(suggestion.bankTransaction.amount)}
                         </p>
                       </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-[var(--text1)]">
-                        {language === 'ro' ? 'Motivele potrivirii:' : 'Matching reasons:'}
-                      </p>
-                      {suggestion.reasons?.map((reason: string, i: number) => (
-                        <div key={i} className="flex items-center gap-2 text-sm text-[var(--text2)]">
-                          <CheckCircle size={14} className="text-emerald-500" />
-                          {reason}
-                        </div>
-                      ))}
                     </div>
                   </motion.div>
                 ))}
