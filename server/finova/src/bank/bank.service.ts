@@ -346,8 +346,10 @@ export class BankService {
           orderBy: { confidenceScore: 'desc' }
         });
       
-        return suggestions.map(suggestion => ({
-          id: suggestion.id,
+        return suggestions
+          .filter(suggestion => suggestion != null)
+          .map(suggestion => ({
+            id: suggestion.id,
           confidenceScore: suggestion.confidenceScore,
           matchingCriteria: suggestion.matchingCriteria,
           reasons: suggestion.reasons,
