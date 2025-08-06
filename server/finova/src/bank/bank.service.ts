@@ -369,10 +369,14 @@ export class BankService {
               }
             : null,
           chartOfAccount: s.chartOfAccount
-            ? {
+            ? ({
+                // legacy keys expected by frontend
+                code: s.chartOfAccount.accountCode,
+                name: s.chartOfAccount.accountName,
+                // new explicit keys
                 accountCode: s.chartOfAccount.accountCode,
                 accountName: s.chartOfAccount.accountName,
-              }
+              } as any)
             : null,
         }));
       }
