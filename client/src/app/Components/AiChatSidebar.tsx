@@ -1,4 +1,4 @@
-import { Send, Bot, User, Zap, Cpu } from 'lucide-react';
+import { Send, Bot, User, Zap } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -94,40 +94,30 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         />
       )}
 
-      <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[700px] h-[90vh] sm:h-[80vh]
+      <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[700px] h-[90vh] sm:h-[80vh] flex flex-col
         z-50 transform transition-all duration-300 ease-out
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
         
-        <div className="relative bg-gradient-to-br from-[var(--primary)] via-[var(--primary)] to-blue-500 p-6 
-          border-b border-white/10">
-          <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent rounded-b-3xl"></div>
-          
-          <div className="relative flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/20">
-                  <Cpu size={24} className="text-white drop-shadow-lg" />
-                </div>
-                <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full border-2 border-white animate-pulse"></div>
-              </div>
-              <div>
-                <h3 className="font-bold text-xl text-white drop-shadow-sm">
-                  {language === 'ro' ? 'Finly' : 'Finly'}
-                </h3>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                  <p className="text-white/90 text-sm font-medium">
-                    {language === 'ro' ? 'Online și pregătit' : 'Online and ready'}
-                  </p>
-                </div>
-              </div>
-            </div>
+        <div>
+          <h3 className="font-bold text-xl text-white drop-shadow-sm">
+            {language === 'ro' ? 'Finly' : 'Finly'}
+          </h3>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <p className="text-white/90 text-sm font-medium">
+              {language === 'ro' ? 'Online și pregătit' : 'Online and ready'}
+            </p>
           </div>
         </div>
 
-        <div className="flex-1 h-[calc(100vh-200px)] overflow-y-auto p-6 space-y-6 
+        <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 
           scrollbar-thin scrollbar-thumb-[var(--text4)] scrollbar-track-transparent">
-          {messages.map((message) => (
+          {messages.length === 1 && messages[0].sender === 'ai' && (
+              <div className="flex justify-center my-10">
+                <h1 className="text-4xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
+              </div>
+            )}
+            {messages.map((message) => (
             <div key={message.id} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div className={`flex gap-3 max-w-[85%] ${message.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                 
