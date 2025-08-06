@@ -346,26 +346,34 @@ export class BankService {
           orderBy: { confidenceScore: 'desc' }
         });
       
-        return suggestions
-          .filter(suggestion => suggestion != null)
-          .map(suggestion => ({
-            id: suggestion.id,
-          confidenceScore: suggestion.confidenceScore,
-          matchingCriteria: suggestion.matchingCriteria,
-          reasons: suggestion.reasons,
-          createdAt: suggestion.createdAt,
-          document: {
-            id: suggestion.document.id,
-            name: suggestion.document.name,
-            type: suggestion.document.type
-          },
-          bankTransaction: {
-            id: suggestion.bankTransaction.id,
-            description: suggestion.bankTransaction.description,
-            amount: suggestion.bankTransaction.amount,
-            transactionDate: suggestion.bankTransaction.transactionDate,
-            transactionType: suggestion.bankTransaction.transactionType
-          }
+        return suggestions.map(s => ({
+          id: s.id,
+          confidenceScore: s.confidenceScore,
+          matchingCriteria: s.matchingCriteria,
+          reasons: s.reasons,
+          createdAt: s.createdAt,
+          document: s.document
+            ? {
+                id: s.document.id,
+                name: s.document.name,
+                type: s.document.type,
+              }
+            : null,
+          bankTransaction: s.bankTransaction
+            ? {
+                id: s.bankTransaction.id,
+                description: s.bankTransaction.description,
+                amount: s.bankTransaction.amount,
+                transactionDate: s.bankTransaction.transactionDate,
+                transactionType: s.bankTransaction.transactionType,
+              }
+            : null,
+          chartOfAccount: s.chartOfAccount
+            ? {
+                accountCode: s.chartOfAccount.accountCode,
+                accountName: s.chartOfAccount.accountName,
+              }
+            : null,
         }));
       }
 
