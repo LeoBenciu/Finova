@@ -92,12 +92,13 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         z-50 transform transition-all duration-300 ease-out
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
 
-        <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 
-          scrollbar-thin scrollbar-thumb-red scrollbar-track-transparent">
+        <div className={`flex-1 ${isEmpty ? 'max-h-[150px] min-h-[130px]' : ''} overflow-y-auto p-6 space-y-6 
+          scrollbar-thin scrollbar-thumb-red scrollbar-track-transparent` }>
           {isEmpty && (
               <div className="flex flex-row justify-center items-center my-4">
-                <Aperture size={45} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2 text-[var(--primary)]" />
-                <h1 className="text-6xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
+                <Aperture size={65} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2 text-[var(--primary)]" />
+                <h1 className="text-6xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text
+                transition-transform duration-300 drop-shadow-lg animate-pulse">Finly</h1>
               </div>
             )}
             {messages.map((message) => (
@@ -163,8 +164,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
         <div>
           <div className={`flex gap-4 items-end ${isEmpty ? 'max-w-[700px] w-[90%]' : ''}`}>
-            <div className="group relative flex-1 rounded-3xl ring-1 ring-inset ring-[var(--text4)] backdrop-blur-md shadow-inner overflow-hidden px-4 min-w-full
-            bg-white hover:shadow-xl focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:shadow-2xl">
+            <div className="group relative min-w-[700px] max-w-[700px] flex-1 rounded-3xl ring-1 ring-inset ring-[var(--text4)] backdrop-blur-md shadow-inner overflow-hidden px-4
+            bg-white hover:shadow-xl focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:shadow-2xl pb-1">
               
               <textarea
                 ref={inputRef}
@@ -174,15 +175,16 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 placeholder={language === 'ro' ? 'Scrie un mesaj...' : 'Type a message...'}
                 style={{resize:'none'}}
                 className="relative w-full px-0 pt-6 pb-4 bg-transparent 
-                border border-[var(--text4)] rounded-3xl focus:outline-none 
-                text-[var(--text1)] transition-all duration-300 shadow-lg backdrop-blur-sm
-                placeholder:text-[var(--text3)] font-medium"
+                rounded-3xl text-[var(--text1)] placeholder:text-[var(--text3)] font-medium"
                 disabled={isTyping}
               />
 
-              <div>
+              <div className='flex flex-row justify-between items-center'>
 
+              <div className='flex flex-row gap-2'>
               <button></button>
+              <button></button>
+              </div>
 
               <button
                 onClick={handleSendMessage}
@@ -191,10 +193,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
                 disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 
                 transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg hover:shadow-2xl
-                border border-white/20 backdrop-blur-sm group"
+                border border-white/20 backdrop-blur-sm group p-0"
               >
-                <div className="absolute inset-1 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
-                
                 <Send size={20} className="relative group-hover:scale-110 transition-transform duration-200 drop-shadow-sm" />
               </button>
               </div>
