@@ -62,6 +62,11 @@ interface BankTransaction {
   reconciliation_status: 'unreconciled' | 'matched' | 'ignored';
   matched_document_id?: number;
   confidence_score?: number;
+  bankStatementDocument?: {
+    id: number;
+    name: string;
+    signedUrl?: string;
+  };
 }
 
 interface ReconciliationSuggestion {
@@ -828,9 +833,28 @@ const BankPage = () => {
                           </div>
                           
                           <div className="flex items-center gap-1 ml-2">
-                            <button className="p-1 hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] transition-colors rounded-lg">
-                              <Eye size={14} />
-                            </button>
+                          <button 
+                            className={`p-1 transition-colors rounded-lg ${
+                              txn.bankStatementDocument?.signedUrl 
+                                ? 'hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] cursor-pointer' 
+                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                            onClick={() => {
+                              if (txn.bankStatementDocument?.signedUrl) {
+                                window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
+                              } else {
+                                alert(language === 'ro' 
+                                  ? 'Extractul bancar nu este disponibil pentru această tranzacție' 
+                                  : 'Bank statement not available for this transaction'
+                                );
+                              }
+                            }}
+                            disabled={!txn.bankStatementDocument?.signedUrl}
+                            title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
+                          >
+                            <Eye size={14} />
+                          </button>
+
                           </div>
                         </div>
                       </motion.div>

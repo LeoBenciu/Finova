@@ -1,0 +1,42 @@
+# Chat Assistant Crew Tasks Configuration
+
+process_chat_message_task:
+  description: >
+    Process the user's chat message and provide a helpful response. Consider the chat history for context.
+    
+    User Query: {user_query}
+    
+    Chat History:
+    {chat_history}
+    
+    Provide a clear, concise, and accurate response. If the query requires specific data or actions,
+    explain what would be needed to fulfill the request.
+  expected_output: >
+    A helpful and accurate response to the user's query.
+  agent: chat_agent
+
+analyze_document_task:
+  description: >
+    Analyze the provided document to answer the user's query.
+    
+    User Query: {user_query}
+    Document Content: {document_content}
+    
+    Extract relevant information from the document that answers the user's question.
+    If the document doesn't contain the requested information, clearly state that.
+  expected_output: >
+    A clear and concise response based on the document content, or an explanation if the information isn't available.
+  agent: document_analyzer_agent
+
+retrieve_financial_data_task:
+  description: >
+    Retrieve and analyze financial data to answer the user's query.
+    
+    User Query: {user_query}
+    Available Data: {available_data}
+    
+    Use the available data to generate insights and answer the user's question.
+    If additional data is needed, specify what's missing.
+  expected_output: >
+    A detailed response with financial insights based on the available data, or a request for additional information.
+  agent: data_retrieval_agent

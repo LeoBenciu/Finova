@@ -42,7 +42,7 @@ const Page = () => {
             <div className="absolute right-full mr-4 px-4 py-3 bg-gray-900/95 backdrop-blur-sm text-white text-sm rounded-2xl 
             opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap shadow-xl border border-white/10
             transform group-hover:translate-x-0 translate-x-2">
-              {language === 'ro' ? 'Chat cu AI' : 'AI Chat'}
+              {language === 'ro' ? 'Finly AI' : 'Finly AI'}
               <div className="absolute top-1/2 -right-1 w-2 h-2 bg-gray-900 rotate-45 transform -translate-y-1/2 border-r border-b border-white/10"></div>
             </div>
           </button>

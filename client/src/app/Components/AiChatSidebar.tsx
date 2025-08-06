@@ -18,7 +18,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      content: 'Salut! Sunt asistentul tău AI. Cu ce te pot ajuta astăzi?',
+      content: 'Salut! Sunt Finly, asistentul tău AI. Cu ce te pot ajuta astăzi?',
       sender: 'ai',
       timestamp: new Date()
     }
@@ -89,16 +89,15 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
     <>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-white/60 backdrop-blur-sm z-40"
           onClick={onClose}
         />
       )}
 
-      <div className={`fixed top-0 right-0 h-full w-full sm:w-[420px] lg:w-[480px] 
+      <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[700px] h-[90vh] sm:h-[80vh]
         bg-gradient-to-br from-[var(--foreground)] via-[var(--foreground)] to-[var(--background)]/50
-        backdrop-blur-xl z-50 transform transition-all duration-500 ease-out
-        border-l border-white/10 shadow-2xl
-        ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}>
+        backdrop-blur-xl z-50 transform transition-all duration-300 ease-out
+        ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'} rounded-3xl shadow-2xl border border-white/10`}>
         
         <div className="relative bg-gradient-to-br from-[var(--primary)] via-[var(--primary)] to-blue-500 p-6 
           border-b border-white/10">
@@ -114,7 +113,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               </div>
               <div>
                 <h3 className="font-bold text-xl text-white drop-shadow-sm">
-                  {language === 'ro' ? 'Asistent AI' : 'AI Assistant'}
+                  {language === 'ro' ? 'Finly' : 'Finly'}
                 </h3>
                 <div className="flex items-center gap-2 mt-1">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -144,7 +143,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 shadow-lg
                   ${message.sender === 'user' 
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 border-white/20 text-white' 
-                    : 'bg-gradient-to-br from-[var(--background)] to-[var(--foreground)] border-[var(--text4)] text-[var(--text2)]'
+                    : 'bg-white border-[var(--text4)] text-[var(--text2)]'
                   }`}>
                   {message.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
                 </div>
@@ -152,7 +151,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 <div className={`relative rounded-3xl px-5 py-4 shadow-lg border backdrop-blur-sm ${
                   message.sender === 'user'
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white border-white/20 rounded-br-lg'
-                    : 'bg-gradient-to-br from-[var(--background)] to-[var(--foreground)] text-[var(--text1)] border-[var(--text4)] rounded-bl-lg'
+                    : 'bg-white text-[var(--text1)] border-[var(--text4)] rounded-bl-lg'
                 }`}>
                   <div className={`absolute inset-0 rounded-3xl ${
                     message.sender === 'user' ? 'rounded-br-lg' : 'rounded-bl-lg'
