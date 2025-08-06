@@ -105,6 +105,14 @@ div::-webkit-scrollbar-thumb {
   border-radius: 10px;
 }
 
+/* transparent thumb variant */
+.scrollbar-thumb-transparent::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
+}
+.scrollbar-thumb-transparent::-webkit-scrollbar {
+  width: 8px;
+}
+
 
 textarea::-webkit-scrollbar-track {
   background: transparent;
