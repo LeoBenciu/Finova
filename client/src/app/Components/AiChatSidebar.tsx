@@ -94,7 +94,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
         <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 
           scrollbar-thin scrollbar-thumb-[var(--text4)] scrollbar-track-transparent">
-          {messages.length === 1 && messages[0].sender === 'ai' && (
+          {isEmpty && (
               <div className="flex justify-center my-10">
                 <h1 className="text-9xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
               </div>
@@ -162,8 +162,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className={`p-6 pb-8 bg-gradient-to-t from-[var(--background)]/80 to-transparent backdrop-blur-sm ${isEmpty ? 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-none bg-transparent p-0' : 'border-t border-white/10'}`}>
-          <div className="flex gap-4 items-end">
+        <div className={`p-6 pb-8 bg-gradient-to-t from-[var(--background)]/80 to-transparent backdrop-blur-sm ${isEmpty ? 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-none bg-transparent p-0 w-full flex justify-center' : 'border-t border-white/10'}`}>
+          <div className={`flex gap-4 items-end ${isEmpty ? 'max-w-[700px] w-[90%]' : ''}`}>
             <div className="flex-1 relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--primary)]/20 to-blue-500/20 rounded-3xl blur-xl opacity-50"></div>
               
@@ -173,7 +173,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder={language === 'ro' ? 'Scrie un mesaj...' : 'Type a message...'}
-                className="relative w-full px-6 py-4 bg-gradient-to-br from-[var(--foreground)] to-[var(--background)] 
+                className="relative w-full px-6 py-4 bg-white/60 
                 border border-[var(--text4)] rounded-3xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] 
                 focus:border-transparent text-[var(--text1)] transition-all duration-300 shadow-lg backdrop-blur-sm
                 placeholder:text-[var(--text3)] font-medium hover:shadow-xl focus:shadow-2xl"
@@ -186,7 +186,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
             <button
               onClick={handleSendMessage}
               disabled={!inputMessage.trim() || isTyping}
-              className="relative w-14 h-14 bg-gradient-to-br from-[var(--primary)] to-blue-500 
+              className="relative w-14 h-14 bg-[var(--primary)] 
               hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
               disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 
               transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg hover:shadow-2xl
