@@ -246,25 +246,50 @@ export class BankService {
           orderBy: { transactionDate: 'desc' }
         });
       
-        return transactions.map(transaction => ({
-          id: transaction.id,
-          transactionDate: transaction.transactionDate,
-          description: transaction.description,
-          amount: transaction.amount,
-          transactionType: transaction.transactionType,
-          referenceNumber: transaction.referenceNumber,
-          balanceAfter: transaction.balanceAfter,
-          reconciliationStatus: transaction.reconciliationStatus,
-          chartOfAccount: transaction.chartOfAccount,
-          isStandalone: transaction.isStandalone,
-          accountingNotes: transaction.accountingNotes,
-          bankStatementDocument: {
-            id: transaction.bankStatementDocument.id,
-            name: transaction.bankStatementDocument.name
-          },
-          matchedDocuments: transaction.reconciliationRecords.map(record => record.document.id)
-        }));
+        const transactionsWithSignedUrls = await Promise.all(
+          transactions.map(async (transaction) => {
+            let bankStatementSignedUrl = null;
+            
+            if (transaction.bankStatementDocument) {
+              try {
+                bankStatementSignedUrl = transaction.bankStatementDocument.s3Key 
+                  ? await s3.getSignedUrlPromise('getObject', {
+                      Bucket: process.env.AWS_S3_BUCKET_NAME,
+                      Key: transaction.bankStatementDocument.s3Key,
+                      Expires: 3600 
+                    }) 
+                  : transaction.bankStatementDocument.path;
+              } catch (error) {
+                console.error(`Failed to generate signed URL for bank statement ${transaction.bankStatementDocument.id}:`, error);
+                bankStatementSignedUrl = transaction.bankStatementDocument.path;
+              }
+            }
+      
+            return {
+              id: transaction.id,
+              transactionDate: transaction.transactionDate,
+              description: transaction.description,
+              amount: transaction.amount,
+              transactionType: transaction.transactionType,
+              referenceNumber: transaction.referenceNumber,
+              balanceAfter: transaction.balanceAfter,
+              reconciliationStatus: transaction.reconciliationStatus,
+              chartOfAccount: transaction.chartOfAccount,
+              isStandalone: transaction.isStandalone,
+              accountingNotes: transaction.accountingNotes,
+              bankStatementDocument: {
+                id: transaction.bankStatementDocument.id,
+                name: transaction.bankStatementDocument.name,
+                signedUrl: bankStatementSignedUrl 
+              },
+              matchedDocuments: transaction.reconciliationRecords.map(record => record.document.id)
+            };
+          })
+        );
+      
+        return transactionsWithSignedUrls;
       }
+
       
       async getReconciliationSuggestions(clientEin: string, user: User) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
