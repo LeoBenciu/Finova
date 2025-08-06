@@ -111,7 +111,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
 
         <div className={`flex-1 ${isEmpty ? 'max-h-[150px] min-h-[130px]' : ''} overflow-y-auto p-6 space-y-6 
-          scrollbar-thin scrollbar-thumb-red scrollbar-track-transparent` }>
+          scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent` }>
           {isEmpty && (
               <div className="flex flex-row justify-center items-center my-4">
                 <Aperture size={65} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg mr-2 text-[var(--primary)]" />
@@ -126,7 +126,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 shadow-lg
                   ${message.sender === 'user' 
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white border-[var(--primary)]/60' 
-                    : 'bg-white text-[var(--text2)] border-[var(--text4)]'
+                    : 'bg-white text-[var(--text2)] border-neutral-200'
                   }`}>
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
@@ -138,8 +138,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 }`}>
                   <div className={`absolute inset-0 rounded-3xl ${
                     message.sender === 'user' 
-                      ? 'bg-white' 
-                      : 'bg-[var(--primary)]'
+                      ? 'bg-[var(--primary)]' 
+                      : ' bg-white'
                   }`}></div>
                   
                   <div className="relative">
@@ -204,8 +204,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               <div className='flex flex-row justify-between items-center'>
 
               <div className='flex flex-row gap-2'>
-              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60'><Upload size={20} /> Upload</button>
-              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60'><RotateCw size={20} /> Reset</button>
+              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100'><Upload size={20} /> Upload</button>
+              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100'><RotateCw size={20} /> Reset</button>
               </div>
 
               <button
