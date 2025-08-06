@@ -1,4 +1,4 @@
-import { Send, Bot, User, Zap, Aperture } from 'lucide-react';
+import { Send, User, Zap, Aperture, Upload, RotateCw } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 
@@ -37,6 +37,24 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
       inputRef.current.focus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    // reset height when textarea is cleared
+    if (inputMessage === '' && inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      inputRef.current.style.overflowY = 'hidden';
+    }
+  }, [inputMessage]);
+
+  const adjustTextareaHeight = () => {
+    if (inputRef.current) {
+      inputRef.current.style.height = 'auto';
+      const maxHeight = 200; // px
+      const newHeight = Math.min(inputRef.current.scrollHeight, maxHeight);
+      inputRef.current.style.height = `${newHeight}px`;
+      inputRef.current.style.overflowY = inputRef.current.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    }
+  };
 
   const handleSendMessage = () => {
     if (!inputMessage.trim()) return;
@@ -83,7 +101,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
     <>
       {isOpen && (
         <div 
-          className="fixed inset-0 bg-white/50 backdrop-blur-sm z-40"
+          className="fixed inset-0 bg-white/30 backdrop-blur-sm z-40"
           onClick={onClose}
         />
       )}
@@ -98,7 +116,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               <div className="flex flex-row justify-center items-center my-4">
                 <Aperture size={65} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2 text-[var(--primary)]" />
                 <h1 className="text-6xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text
-                transition-transform duration-300 drop-shadow-lg animate-pulse">Finly</h1>
+                transition-transform duration-300 drop-shadow-lg py-1">Finly</h1>
               </div>
             )}
             {messages.map((message) => (
@@ -107,21 +125,21 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 shadow-lg
                   ${message.sender === 'user' 
-                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 border-white/20 text-white' 
-                    : 'bg-white border-[var(--text4)] text-[var(--text2)]'
+                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white' 
+                    : 'bg-white text-[var(--text2)]'
                   }`}>
-                  {message.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
+                  {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
 
-                <div className={`relative rounded-3xl px-5 py-4 shadow-lg border backdrop-blur-sm ${
+                <div className={`relative rounded-3xl px-5 py-4 shadow-lg border-0 backdrop-blur-sm ${
                   message.sender === 'user'
-                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white border-white/20 rounded-br-lg'
-                    : 'bg-white text-[var(--text1)] border-[var(--text4)]'
+                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white'
+                    : 'bg-white text-[var(--text1)]'
                 }`}>
-                  <div className={`absolute inset-0 rounded-3xl bg-gradient-to-br ${
+                  <div className={`absolute inset-0 rounded-3xl bg-white ${
                     message.sender === 'user' 
                       ? 'from-white/10 to-transparent' 
-                      : 'from-[var(--text1)]/5 to-transparent'
+                      : ''
                   }`}></div>
                   
                   <div className="relative">
@@ -165,31 +183,35 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         <div>
           <div className={`flex gap-4 items-end ${isEmpty ? 'max-w-[700px] w-[90%]' : ''}`}>
             <div className="group relative min-w-[700px] max-w-[700px] flex-1 rounded-3xl ring-1 ring-inset ring-[var(--text4)] backdrop-blur-md shadow-inner overflow-hidden px-4
-            bg-white hover:shadow-xl focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:shadow-2xl pb-1">
+            bg-white hover:shadow-xl focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:shadow-2xl pb-2 pt-1">
               
               <textarea
                 ref={inputRef}
                 value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
+                onChange={(e) => {
+                  setInputMessage(e.target.value);
+                  adjustTextareaHeight();
+                }}
                 onKeyPress={handleKeyPress}
                 placeholder={language === 'ro' ? 'Scrie un mesaj...' : 'Type a message...'}
                 style={{resize:'none'}}
-                className="relative w-full px-0 pt-6 pb-4 bg-transparent 
-                rounded-3xl text-[var(--text1)] placeholder:text-[var(--text3)] font-medium"
+                className="relative w-full px-0 pt-6 pb-4 bg-transparent max-h-[200px] 
+                text-[var(--text1)] placeholder:text-[var(--text3)] font-medium
+                focus:outline-none overflow-auto"
                 disabled={isTyping}
               />
 
               <div className='flex flex-row justify-between items-center'>
 
               <div className='flex flex-row gap-2'>
-              <button></button>
-              <button></button>
+              <button className='flex flex-row gap-2 bg-white bord'><Upload size={20} /> Upload</button>
+              <button className='flex flex-row gap-2'><RotateCw size={20} /> Reset</button>
               </div>
 
               <button
                 onClick={handleSendMessage}
                 disabled={!inputMessage.trim() || isTyping}
-                className="relative w-12 h-12 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:bg-[var(--text4)] 
+                className="relative w-11 h-11 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:bg-[var(--text4)] 
                 hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
                 disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 
                 transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg hover:shadow-2xl
