@@ -15,20 +15,14 @@ interface Message {
 }
 
 const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: 'Salut! Sunt Finly, asistentul tău AI. Cu ce te pot ajuta astăzi?',
-      sender: 'ai',
-      timestamp: new Date()
-    }
-  ]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
+  const isEmpty = messages.length === 0;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -97,24 +91,12 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
       <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[700px] h-[90vh] sm:h-[80vh] flex flex-col
         z-50 transform transition-all duration-300 ease-out
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
-        
-        <div>
-          <h3 className="font-bold text-xl text-white drop-shadow-sm">
-            {language === 'ro' ? 'Finly' : 'Finly'}
-          </h3>
-          <div className="flex items-center gap-2 mt-1">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-            <p className="text-white/90 text-sm font-medium">
-              {language === 'ro' ? 'Online și pregătit' : 'Online and ready'}
-            </p>
-          </div>
-        </div>
 
         <div className="flex-1 h-full overflow-y-auto p-6 space-y-6 
           scrollbar-thin scrollbar-thumb-[var(--text4)] scrollbar-track-transparent">
           {messages.length === 1 && messages[0].sender === 'ai' && (
               <div className="flex justify-center my-10">
-                <h1 className="text-4xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
+                <h1 className="text-9xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
               </div>
             )}
             {messages.map((message) => (
@@ -180,7 +162,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className="p-6 pb-8 border-t border-white/10 bg-gradient-to-t from-[var(--background)]/80 to-transparent backdrop-blur-sm">
+        <div className={`p-6 pb-8 bg-gradient-to-t from-[var(--background)]/80 to-transparent backdrop-blur-sm ${isEmpty ? 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-none bg-transparent p-0' : 'border-t border-white/10'}`}>
           <div className="flex gap-4 items-end">
             <div className="flex-1 relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--primary)]/20 to-blue-500/20 rounded-3xl blur-xl opacity-50"></div>
