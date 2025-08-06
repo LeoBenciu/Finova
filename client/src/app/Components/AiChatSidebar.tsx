@@ -114,7 +114,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           scrollbar-thin scrollbar-thumb-red scrollbar-track-transparent` }>
           {isEmpty && (
               <div className="flex flex-row justify-center items-center my-4">
-                <Aperture size={65} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2 text-[var(--primary)]" />
+                <Aperture size={65} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg mr-2 text-[var(--primary)]" />
                 <h1 className="text-6xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text
                 transition-transform duration-300 drop-shadow-lg py-1">Finly</h1>
               </div>
@@ -125,8 +125,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 shadow-lg
                   ${message.sender === 'user' 
-                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white' 
-                    : 'bg-white text-[var(--text2)]'
+                    ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white border-[var(--primary)]/60' 
+                    : 'bg-white text-[var(--text2)] border-[var(--text4)]'
                   }`}>
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
@@ -136,10 +136,10 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white'
                     : 'bg-white text-[var(--text1)]'
                 }`}>
-                  <div className={`absolute inset-0 rounded-3xl bg-white ${
+                  <div className={`absolute inset-0 rounded-3xl ${
                     message.sender === 'user' 
-                      ? 'from-white/10 to-transparent' 
-                      : ''
+                      ? 'bg-white' 
+                      : 'bg-[var(--primary)]'
                   }`}></div>
                   
                   <div className="relative">
@@ -195,7 +195,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 onKeyPress={handleKeyPress}
                 placeholder={language === 'ro' ? 'Scrie un mesaj...' : 'Type a message...'}
                 style={{resize:'none'}}
-                className="relative w-full px-0 pt-6 pb-4 bg-transparent max-h-[200px] 
+                className="relative w-full px-0 pt-2 pb-4 bg-transparent max-h-[200px] 
                 text-[var(--text1)] placeholder:text-[var(--text3)] font-medium
                 focus:outline-none overflow-auto"
                 disabled={isTyping}
@@ -204,8 +204,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               <div className='flex flex-row justify-between items-center'>
 
               <div className='flex flex-row gap-2'>
-              <button className='flex flex-row gap-2 bg-white bord'><Upload size={20} /> Upload</button>
-              <button className='flex flex-row gap-2'><RotateCw size={20} /> Reset</button>
+              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60'><Upload size={20} /> Upload</button>
+              <button className='flex flex-row gap-2 bg-white rounded-2xl text-black/60'><RotateCw size={20} /> Reset</button>
               </div>
 
               <button
