@@ -19,7 +19,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const isEmpty = messages.length === 0;
@@ -96,7 +96,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           scrollbar-thin scrollbar-thumb-red scrollbar-track-transparent">
           {isEmpty && (
               <div className="flex flex-row justify-center items-center my-4">
-                <Aperture size={45} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2" />
+                <Aperture size={45} className="group-hover:scale-110 transition-transform duration-300 drop-shadow-lg animate-pulse mr-2 text-[var(--primary)]" />
                 <h1 className="text-6xl font-bold bg-gradient-to-br from-[var(--primary)] to-blue-500 text-transparent bg-clip-text">Finly</h1>
               </div>
             )}
@@ -161,11 +161,12 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           <div ref={messagesEndRef} />
         </div>
 
-        <div className={`p-6 pb-8 bg-gradient-to-t from-[var(--background)]/80 to-transparent backdrop-blur-sm ${isEmpty ? 'absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-none bg-transparent p-0 w-full flex justify-center' : 'border-t border-white/10'}`}>
+        <div>
           <div className={`flex gap-4 items-end ${isEmpty ? 'max-w-[700px] w-[90%]' : ''}`}>
-            <div className="group relative flex-1 rounded-3xl ring-1 ring-inset ring-[var(--text4)] bg-white/70 backdrop-blur-md shadow-inner overflow-hidden px-4 pb-12">
+            <div className="group relative flex-1 rounded-3xl ring-1 ring-inset ring-[var(--text4)] backdrop-blur-md shadow-inner overflow-hidden px-4 min-w-full
+            bg-white hover:shadow-xl focus-within:ring-2 focus-within:ring-[var(--primary)] focus-within:shadow-2xl">
               
-              <input
+              <textarea
                 ref={inputRef}
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
@@ -173,29 +174,32 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 placeholder={language === 'ro' ? 'Scrie un mesaj...' : 'Type a message...'}
                 style={{resize:'none'}}
                 className="relative w-full px-0 pt-6 pb-4 bg-transparent 
-                border border-[var(--text4)] rounded-3xl focus:outline-none focus:ring-2 focus:ring-[var(--primary)] 
-                focus:border-transparent text-[var(--text1)] transition-all duration-300 shadow-lg backdrop-blur-sm
-                placeholder:text-[var(--text3)] font-medium hover:shadow-xl focus:shadow-2xl"
+                border border-[var(--text4)] rounded-3xl focus:outline-none 
+                text-[var(--text1)] transition-all duration-300 shadow-lg backdrop-blur-sm
+                placeholder:text-[var(--text3)] font-medium"
                 disabled={isTyping}
               />
-              <span className="absolute left-4 top-2.5 text-[var(--text3)] pointer-events-none select-none text-sm">
-                {language === 'ro' ? 'Scrie un mesaj...' : 'What do you want to know?'}
-              </span>
+
+              <div>
+
+              <button></button>
+
+              <button
+                onClick={handleSendMessage}
+                disabled={!inputMessage.trim() || isTyping}
+                className="relative w-12 h-12 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:bg-[var(--text4)] 
+                hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
+                disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 
+                transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg hover:shadow-2xl
+                border border-white/20 backdrop-blur-sm group"
+              >
+                <div className="absolute inset-1 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
+                
+                <Send size={20} className="relative group-hover:scale-110 transition-transform duration-200 drop-shadow-sm" />
+              </button>
+              </div>
             </div>
             
-            <button
-              onClick={handleSendMessage}
-              disabled={!inputMessage.trim() || isTyping}
-              className="relative w-12 h-12 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:bg-[var(--text4)] 
-              hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
-              disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 
-              transition-all duration-300 hover:scale-110 active:scale-95 shadow-lg hover:shadow-2xl
-              border border-white/20 backdrop-blur-sm group"
-            >
-              <div className="absolute inset-1 bg-gradient-to-br from-white/20 to-transparent rounded-2xl"></div>
-              
-              <Send size={20} className="relative group-hover:scale-110 transition-transform duration-200 drop-shadow-sm" />
-            </button>
           </div>
         </div>
       </div>
