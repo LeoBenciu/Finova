@@ -1450,6 +1450,20 @@ export class DataExtractionService {
             if (!transaction || transaction.chartOfAccountId) {
                 return;
             }
+
+            // Check if there are already document-based suggestions for this transaction
+            const existingDocumentSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+                where: {
+                    bankTransactionId,
+                    documentId: { not: null },
+                    status: SuggestionStatus.PENDING
+                }
+            });
+
+            if (existingDocumentSuggestions.length > 0) {
+                this.logger.log(`🤖 SKIPPING AI attribution for ${bankTransactionId} - document suggestions already exist`);
+                return;
+            }
     
             this.logger.log(`🤖 AI ATTRIBUTION DEBUG: Processing transaction ${bankTransactionId}`);
             this.logger.log(`🤖 Description: "${transaction.description}"`);
@@ -1759,6 +1773,14 @@ export class DataExtractionService {
             }
     
             this.logger.log(`✅ Successfully created ${bankTransactions.length}/${transactions.length} transactions`);
+            
+            // Generate document-based reconciliation suggestions first
+            try {
+                await this.generateReconciliationSuggestions(document.accountingClientId);
+                this.logger.log(`✅ Generated reconciliation suggestions for client ${document.accountingClientId}`);
+            } catch (error) {
+                this.logger.error(`❌ Failed to generate reconciliation suggestions:`, error);
+            }
             
             setTimeout(async () => {
                 for (const transaction of bankTransactions) {
@@ -2220,6 +2242,14 @@ export class DataExtractionService {
             }
           }
       
+          // Debug: Log raw suggestions before filtering
+          this.logger.log(
+            `🔍 RAW SUGGESTIONS (${suggestions.length}): ` +
+            suggestions
+              .map(s => `${s.bankTransactionId}→${s.documentId || 'account'} ${(s.confidenceScore * 100).toFixed(0)}%`)
+              .join(' | ')
+          );
+          
           const filteredSuggestions = this.filterBestSuggestions(suggestions);
       
           if (filteredSuggestions.length > 0) {
@@ -2255,7 +2285,7 @@ export class DataExtractionService {
         const amountThreshold = Math.max(documentAmount * 0.02, 1); 
       
         if (amountDiff === 0) {
-          score += 0.4;
+          score += 0.6;
           criteria.exact_amount_match = true;
           reasons.push('Exact amount match');
         } else if (amountDiff <= amountThreshold) {
@@ -2294,7 +2324,7 @@ export class DataExtractionService {
           const daysDiff = Math.abs((documentDate.getTime() - transactionDate.getTime()) / (1000 * 60 * 60 * 24));
           
           if (daysDiff === 0) {
-            score += 0.1;
+            score += 0.2;
             criteria.same_date = true;
             reasons.push('Same date');
           } else if (daysDiff <= 3) {
@@ -2343,7 +2373,7 @@ export class DataExtractionService {
       
         const seenTx = new Set<string>();
         for (const suggestion of suggestions) {
-          if (suggestion.confidenceScore >= 0.5 && !seenTx.has(suggestion.bankTransactionId)) {
+          if (suggestion.confidenceScore >= 0.3 && !seenTx.has(suggestion.bankTransactionId)) {
             
             filteredSuggestions.push(suggestion);
             seenTx.add(suggestion.bankTransactionId);
