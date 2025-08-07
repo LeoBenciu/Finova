@@ -79,14 +79,20 @@ interface ReconciliationSuggestion {
     id: number;
     name: string;
     type: string;
-  };
+  } | null;
   bankTransaction: {
     id: string;
     description: string;
     amount: number;
     transactionDate: string;
     transactionType: 'debit' | 'credit';
-  };
+  } | null;
+  chartOfAccount?: {
+    accountCode?: string;
+    accountName?: string;
+    code?: string;
+    name?: string;
+  } | null;
 }
 
 const BankPage = () => {
@@ -200,6 +206,8 @@ const BankPage = () => {
   const { data: suggestions = [], isLoading: suggestionsLoading, error: suggestionsError } = useGetReconciliationSuggestionsQuery(clientCompanyEin, {
     skip: !clientCompanyEin
   });
+  // Log suggestions to help debugging reconciliation account issue
+  console.log("SUGGESTIONS:", suggestions);
 
   // Mutation hooks
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
@@ -921,6 +929,14 @@ const BankPage = () => {
                           </p>
                           <p className="text-sm text-blue-600 font-medium">
                             {language === 'ro' ? 'Încredere' : 'Confidence'}: {Math.round(suggestion.confidenceScore * 100)}%
+                          </p>
+                          { (suggestion.chartOfAccount?.accountCode || suggestion.chartOfAccount?.code) && (
+                            <p className="text-sm text-blue-600 font-medium">
+                              {language === 'ro' ? 'Cont' : 'Account'}: {suggestion.chartOfAccount?.accountCode || suggestion.chartOfAccount?.code}
+                              { (suggestion.chartOfAccount?.accountName || suggestion.chartOfAccount?.name) ? ` - ${suggestion.chartOfAccount?.accountName || suggestion.chartOfAccount?.name}` : ''}
+                            </p>
+                          ) }
+                          <p className="sr-only">dummy
                           </p>
                         </div>
                       </div>

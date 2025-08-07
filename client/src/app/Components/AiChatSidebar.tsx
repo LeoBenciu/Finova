@@ -114,7 +114,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         z-50 transform transition-all duration-300 ease-out
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
 
-        <div className={`flex-1 ${isEmpty ? 'max-h-[150px] min-h-[130px]' : ''} overflow-y-auto p-6 space-y-6 
+        <div className={`flex-1 ${isEmpty? "mt-32":""} ${isEmpty ? 'max-h-[150px] min-h-[130px]' : ''} overflow-y-auto p-6 space-y-6 
           scrollbar-thin scrollbar-thumb-transparent scrollbar-track-transparent` }>
           {showIntro && (
                <div className={`flex flex-row justify-center items-center my-4 transition-all duration-500 ${messages.length>0 ? 'opacity-0 -translate-y-4' : 'opacity-100 translate-y-0'}`}>
@@ -130,7 +130,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 border-2 shadow-lg
                   ${message.sender === 'user' 
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white border-[var(--primary)]/60' 
-                    : 'bg-white text-[var(--text2)] border-neutral-200'
+                    : 'bg-white text-[var(--text2)] border-neutral-100'
                   }`}>
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
@@ -208,8 +208,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               <div className='flex flex-row justify-between items-center'>
 
               <div className='flex flex-row gap-2'>
-              <button className='flex items-center flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100'><Upload size={20} /> Upload</button>
-              <button className='flex items-center flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100'><RotateCw size={20} /> Reset</button>
+              <button className='flex items-center flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100 text-sm'><Upload size={15} /> Upload</button>
+              <button className='flex items-center flex-row gap-2 bg-white rounded-2xl text-black/60 border border-[var(--text4)] px-3 py-1 hover:bg-gray-100 text-sm'><RotateCw size={15} /> Reset</button>
               </div>
 
               <button
