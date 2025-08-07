@@ -294,9 +294,10 @@ const BankPage = () => {
 
   // Filtered data based on search and filters
   const filteredDocuments = useMemo(() => {
-    if (!documentsData) return [];
+    const list: Document[] = Array.isArray(documentsData) ? documentsData : [];
+    if (list.length === 0) return [];
     
-    return documentsData.filter((doc: Document) => {
+    return list.filter((doc: Document) => {
       const matchesSearch = searchTerm === '' || 
         doc.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -314,9 +315,10 @@ const BankPage = () => {
   }, [documentsData, searchTerm, filterStatus]);
 
   const filteredTransactions = useMemo(() => {
-    if (!transactionsData) return [];
+    const tList: BankTransaction[] = Array.isArray(transactionsData) ? transactionsData : [];
+    if (tList.length === 0) return [];
     
-    return transactionsData.filter((txn: BankTransaction) => {
+    return tList.filter((txn: BankTransaction) => {
       const matchesSearch = searchTerm === '' || 
         txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         txn.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1251,4 +1253,6 @@ const BankPage = () => {
   );
 };
 
+export default BankPage;
+export default BankPage;
 export default BankPage;
