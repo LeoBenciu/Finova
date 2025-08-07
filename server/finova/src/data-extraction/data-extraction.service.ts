@@ -2326,20 +2326,27 @@ export class DataExtractionService {
       }
       
       private filterBestSuggestions(suggestions: any[]): any[] {
-        suggestions.sort((a, b) => b.confidenceScore - a.confidenceScore);
+        suggestions.sort((a, b) => {
+          const aHasDoc = a.documentId !== null && a.documentId !== undefined;
+          const bHasDoc = b.documentId !== null && b.documentId !== undefined;
+
+          if (aHasDoc !== bHasDoc) {
+            return aHasDoc ? -1 : 1;
+          }
+
+          return b.confidenceScore - a.confidenceScore;
+        });
       
-        const filteredSuggestions = [];
+        const filteredSuggestions: any[] = [];
         const usedDocuments = new Set<number>();
         const usedTransactions = new Set<string>();
       
+        const seenTx = new Set<string>();
         for (const suggestion of suggestions) {
-          if (!usedDocuments.has(suggestion.documentId) && 
-              !usedTransactions.has(suggestion.bankTransactionId) &&
-              suggestion.confidenceScore >= 0.5) { 
+          if (suggestion.confidenceScore >= 0.5 && !seenTx.has(suggestion.bankTransactionId)) {
             
             filteredSuggestions.push(suggestion);
-            usedDocuments.add(suggestion.documentId);
-            usedTransactions.add(suggestion.bankTransactionId);
+            seenTx.add(suggestion.bankTransactionId);
           }
         }
       
