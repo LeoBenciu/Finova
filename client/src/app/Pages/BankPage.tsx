@@ -1254,5 +1254,3 @@ const BankPage = () => {
 };
 
 export default BankPage;
-export default BankPage;
-export default BankPage;
