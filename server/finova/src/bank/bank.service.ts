@@ -611,7 +611,10 @@ export class BankService {
             throw new NotFoundException('Suggestion not found');
           }
       
-          if (suggestion.document.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          const suggestionCompanyId = suggestion.document
+              ? suggestion.document.accountingClient.accountingCompanyId
+              : suggestion.bankTransaction?.bankStatementDocument.accountingClient.accountingCompanyId;
+            if (suggestionCompanyId !== user.accountingCompanyId) {
             throw new UnauthorizedException('No access to this suggestion');
           }
       
@@ -765,6 +768,15 @@ export class BankService {
               include: {
                 accountingClient: true
               }
+            },
+            bankTransaction: {
+              include: {
+                bankStatementDocument: {
+                  include: {
+                    accountingClient: true
+                  }
+                }
+              }
             }
           }
         });
@@ -773,7 +785,10 @@ export class BankService {
           throw new NotFoundException('Suggestion not found');
         }
       
-        if (suggestion.document.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+        const suggestionCompanyId = suggestion.document
+              ? suggestion.document.accountingClient.accountingCompanyId
+              : suggestion.bankTransaction?.bankStatementDocument.accountingClient.accountingCompanyId;
+            if (suggestionCompanyId !== user.accountingCompanyId) {
           throw new UnauthorizedException('No access to this suggestion');
         }
       
