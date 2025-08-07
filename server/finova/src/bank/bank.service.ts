@@ -1,6 +1,6 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { User, ReconciliationStatus, MatchType, SuggestionStatus } from '@prisma/client';
+import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus } from '@prisma/client';
 import * as AWS from 'aws-sdk';
 
 const s3 = new AWS.S3({
@@ -400,7 +400,8 @@ export class BankService {
           const document = await prisma.document.findUnique({
             where: { id: matchData.documentId },
             include: {
-              accountingClient: true
+              accountingClient: true,
+              processedData: true
             }
           });
       
@@ -474,6 +475,89 @@ export class BankService {
             },
             data: { status: SuggestionStatus.REJECTED }
           });
+
+          // Payment tracking for invoices
+          if (document.type.toLowerCase().includes('invoice')) {
+            const parseAmount = (value: any): number => {
+              if (!value) return 0;
+              if (typeof value === 'number') return value;
+              const numStr = value.toString().replace(/[^0-9.,-]/g, '').replace(',', '.');
+              const parsed = parseFloat(numStr);
+              return isNaN(parsed) ? 0 : parsed;
+            };
+
+            // Get existing payment summary or create new one
+            let paymentSummary = await prisma.paymentSummary.findUnique({
+              where: { documentId: document.id }
+            });
+
+            // Get total amount from payment summary or extract from document data
+            let totalAmount = paymentSummary ? paymentSummary.totalAmount : 0;
+            if (!totalAmount && document.processedData?.extractedFields) {
+              try {
+                const extractedFields = typeof document.processedData.extractedFields === 'string'
+                  ? JSON.parse(document.processedData.extractedFields)
+                  : document.processedData.extractedFields;
+                const result = (extractedFields as any).result || extractedFields;
+                totalAmount = parseAmount(result?.total_amount);
+              } catch (error) {
+                console.error('Error parsing document total amount:', error);
+              }
+            }
+
+            // Calculate new payment amounts
+            const transactionAmount = parseAmount(bankTransaction.amount);
+            const currentPaidAmount = paymentSummary ? paymentSummary.paidAmount : 0;
+            const newPaidAmount = currentPaidAmount + transactionAmount;
+            const remainingAmount = totalAmount - newPaidAmount;
+
+            // Determine payment status
+            let paymentStatus: PaymentStatus = PaymentStatus.UNPAID;
+            if (newPaidAmount > 0) {
+              if (Math.abs(remainingAmount) <= 0.01) {
+                paymentStatus = PaymentStatus.FULLY_PAID;
+              } else if (remainingAmount < -0.01) {
+                paymentStatus = PaymentStatus.OVERPAID;
+              } else if (remainingAmount > 0.01) {
+                paymentStatus = PaymentStatus.PARTIALLY_PAID;
+              }
+            }
+
+            // Update or create payment summary
+            if (paymentSummary) {
+              await prisma.paymentSummary.update({
+                where: { documentId: document.id },
+                data: {
+                  totalAmount,
+                  paidAmount: newPaidAmount,
+                  remainingAmount,
+                  paymentStatus,
+                  lastPaymentDate: bankTransaction.transactionDate
+                }
+              });
+            } else {
+              await prisma.paymentSummary.create({
+                data: {
+                  documentId: document.id,
+                  totalAmount,
+                  paidAmount: newPaidAmount,
+                  remainingAmount,
+                  paymentStatus,
+                  lastPaymentDate: bankTransaction.transactionDate
+                }
+              });
+            }
+
+            // Update document payment fields for quick access
+            await prisma.document.update({
+              where: { id: document.id },
+              data: {
+                paymentStatus,
+                totalPaidAmount: newPaidAmount,
+                lastPaymentDate: bankTransaction.transactionDate
+              }
+            });
+          }
       
           return reconciliationRecord;
         });
@@ -507,7 +591,8 @@ export class BankService {
             include: {
               document: {
                 include: {
-                  accountingClient: true
+                  accountingClient: true,
+                  processedData: true
                 }
               },
               bankTransaction: {
@@ -584,6 +669,89 @@ export class BankService {
             },
             data: { status: SuggestionStatus.REJECTED }
           });
+
+          // Payment tracking for invoices
+          if (suggestion.document && suggestion.document.type.toLowerCase().includes('invoice')) {
+            const parseAmount = (value: any): number => {
+              if (!value) return 0;
+              if (typeof value === 'number') return value;
+              const numStr = value.toString().replace(/[^0-9.,-]/g, '').replace(',', '.');
+              const parsed = parseFloat(numStr);
+              return isNaN(parsed) ? 0 : parsed;
+            };
+
+            // Get existing payment summary or create new one
+            let paymentSummary = await prisma.paymentSummary.findUnique({
+              where: { documentId: suggestion.document.id }
+            });
+
+            // Get total amount from payment summary or extract from document data
+            let totalAmount = paymentSummary ? paymentSummary.totalAmount : 0;
+            if (!totalAmount && suggestion.document.processedData?.extractedFields) {
+              try {
+                const extractedFields = typeof suggestion.document.processedData.extractedFields === 'string'
+                  ? JSON.parse(suggestion.document.processedData.extractedFields)
+                  : suggestion.document.processedData.extractedFields;
+                const result = (extractedFields as any).result || extractedFields;
+                totalAmount = parseAmount(result?.total_amount);
+              } catch (error) {
+                console.error('Error parsing document total amount:', error);
+              }
+            }
+
+            // Calculate new payment amounts
+            const transactionAmount = parseAmount(suggestion.bankTransaction.amount);
+            const currentPaidAmount = paymentSummary ? paymentSummary.paidAmount : 0;
+            const newPaidAmount = currentPaidAmount + transactionAmount;
+            const remainingAmount = totalAmount - newPaidAmount;
+
+            // Determine payment status
+            let paymentStatus: PaymentStatus = PaymentStatus.UNPAID;
+            if (newPaidAmount > 0) {
+              if (Math.abs(remainingAmount) <= 0.01) {
+                paymentStatus = PaymentStatus.FULLY_PAID;
+              } else if (remainingAmount < -0.01) {
+                paymentStatus = PaymentStatus.OVERPAID;
+              } else if (remainingAmount > 0.01) {
+                paymentStatus = PaymentStatus.PARTIALLY_PAID;
+              }
+            }
+
+            // Update or create payment summary
+            if (paymentSummary) {
+              await prisma.paymentSummary.update({
+                where: { documentId: suggestion.document.id },
+                data: {
+                  totalAmount,
+                  paidAmount: newPaidAmount,
+                  remainingAmount,
+                  paymentStatus,
+                  lastPaymentDate: suggestion.bankTransaction.transactionDate
+                }
+              });
+            } else {
+              await prisma.paymentSummary.create({
+                data: {
+                  documentId: suggestion.document.id,
+                  totalAmount,
+                  paidAmount: newPaidAmount,
+                  remainingAmount,
+                  paymentStatus,
+                  lastPaymentDate: suggestion.bankTransaction.transactionDate
+                }
+              });
+            }
+
+            // Update document payment fields for quick access
+            await prisma.document.update({
+              where: { id: suggestion.document.id },
+              data: {
+                paymentStatus,
+                totalPaidAmount: newPaidAmount,
+                lastPaymentDate: suggestion.bankTransaction.transactionDate
+              }
+            });
+          }
       
           return reconciliationRecord;
         });
