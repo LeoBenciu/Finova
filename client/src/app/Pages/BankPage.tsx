@@ -925,18 +925,12 @@ const BankPage = () => {
                           <Target size={20} className="text-blue-600" />
                         </div>
                         <div>
-                          <p className="font-semibold text-[var(--text1)]">
+                          <p className="font-semibold text-left text-[var(--text1)]">
                             {language === 'ro' ? 'Potrivire sugerată' : 'Suggested Match'}
                           </p>
-                          <p className="text-sm text-blue-600 font-medium">
+                          <p className="text-sm text-left text-blue-600 font-medium">
                             {language === 'ro' ? 'Încredere' : 'Confidence'}: {Math.round(suggestion.confidenceScore * 100)}%
                           </p>
-                          { (suggestion.chartOfAccount?.accountCode || suggestion.chartOfAccount?.code) && (
-                            <p className="text-sm text-blue-600 font-medium">
-                              {language === 'ro' ? 'Cont' : 'Account'}: {suggestion.chartOfAccount?.accountCode || suggestion.chartOfAccount?.code}
-                              { (suggestion.chartOfAccount?.accountName || suggestion.chartOfAccount?.name) ? ` - ${suggestion.chartOfAccount?.accountName || suggestion.chartOfAccount?.name}` : ''}
-                            </p>
-                          ) }
                           <p className="sr-only">dummy
                           </p>
                         </div>

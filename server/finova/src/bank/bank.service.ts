@@ -353,11 +353,25 @@ export class BankService {
           reasons: s.reasons,
           createdAt: s.createdAt,
           document: s.document
-            ? {
-                id: s.document.id,
-                name: s.document.name,
-                type: s.document.type,
-              }
+            ? (() => {
+                let totalAmount: number | null = null;
+                try {
+                  const extracted = s.document.processedData?.extractedFields;
+                  if (extracted) {
+                    const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
+                    const result = (parsed as any).result || parsed;
+                    totalAmount = result?.total_amount ?? null;
+                  }
+                } catch (_) {
+                  // ignore JSON parse errors
+                }
+                return {
+                  id: s.document.id,
+                  name: s.document.name,
+                  type: s.document.type,
+                  total_amount: totalAmount,
+                };
+              })()
             : null,
           bankTransaction: s.bankTransaction
             ? {
