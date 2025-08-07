@@ -126,7 +126,7 @@ export class BankService {
         };
       }
       
-      async getFinancialDocuments(clientEin: string, user: User, unreconciled: boolean = false) {
+      async getFinancialDocuments(clientEin: string, user: User, unreconciled: boolean = false, page = 1, size = 25) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -155,7 +155,8 @@ export class BankService {
           whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
         }
       
-        const documents = await this.prisma.document.findMany({
+        const [documents, total] = await this.prisma.$transaction([
+          this.prisma.document.findMany({
           where: whereCondition,
           include: {
             processedData: true,
@@ -165,8 +166,12 @@ export class BankService {
               }
             }
           },
-          orderBy: { createdAt: 'desc' }
-        });
+          orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * size,
+            take: size
+          }),
+          this.prisma.document.count({ where: whereCondition })
+        ]);
       
         const documentsWithUrls = await Promise.all(documents.map(async (doc) => {
           let extractedData = {};
@@ -199,10 +204,10 @@ export class BankService {
           };
         }));
       
-        return documentsWithUrls;
+        return { total, page, size, items: documentsWithUrls };
       }
       
-      async getBankTransactions(clientEin: string, user: User, unreconciled: boolean = false) {
+      async getBankTransactions(clientEin: string, user: User, unreconciled: boolean = false, page = 1, size = 25) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -232,7 +237,8 @@ export class BankService {
           whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
         }
       
-        const transactions = await this.prisma.bankTransaction.findMany({
+        const [transactions, total] = await this.prisma.$transaction([
+          this.prisma.bankTransaction.findMany({
           where: whereCondition,
           include: {
             bankStatementDocument: true,
@@ -243,8 +249,12 @@ export class BankService {
               }
             }
           },
-          orderBy: { transactionDate: 'desc' }
-        });
+          orderBy: { transactionDate: 'desc' },
+            skip: (page - 1) * size,
+            take: size
+          }),
+          this.prisma.bankTransaction.count({ where: whereCondition })
+        ]);
       
         const transactionsWithSignedUrls = await Promise.all(
           transactions.map(async (transaction) => {
@@ -287,11 +297,11 @@ export class BankService {
           })
         );
       
-        return transactionsWithSignedUrls;
+        return { total, page, size, items: transactionsWithSignedUrls };
       }
 
       
-      async getReconciliationSuggestions(clientEin: string, user: User) {
+      async getReconciliationSuggestions(clientEin: string, user: User, page = 1, size = 25) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -311,7 +321,8 @@ export class BankService {
           throw new UnauthorizedException('No access to this client company');
         }
       
-        const suggestions = await this.prisma.reconciliationSuggestion.findMany({
+        const [suggestions, total] = await this.prisma.$transaction([
+          this.prisma.reconciliationSuggestion.findMany({
           where: {
             status: SuggestionStatus.PENDING,
             OR: [
@@ -343,10 +354,30 @@ export class BankService {
             },
             chartOfAccount: true,
           },
-          orderBy: { confidenceScore: 'desc' }
-        });
+          orderBy: { confidenceScore: 'desc' },
+            skip: (page - 1) * size,
+            take: size
+          }),
+          this.prisma.reconciliationSuggestion.count({
+            where: {
+              status: SuggestionStatus.PENDING,
+              OR: [
+                {
+                  document: { accountingClientId: accountingClientRelation.id },
+                },
+                {
+                  documentId: null,
+                  bankTransaction: {
+                    bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+                  },
+                },
+              ],
+            },
+          })
+        ]);
+
       
-        return suggestions.map(s => ({
+        const items = suggestions.map(s => ({
           id: s.id,
           confidenceScore: s.confidenceScore,
           matchingCriteria: s.matchingCriteria,

@@ -430,26 +430,41 @@ export const finovaApi = createApi({
         }),
 
         getFinancialDocuments: build.query({
-            query: ({ clientEin, unreconciled }: { clientEin: string; unreconciled?: boolean }) => ({
-                url: `/bank/${clientEin}/documents${unreconciled ? '?unreconciled=true' : ''}`,
-                method: 'GET'
-            }),
+            query: ({ clientEin, unreconciled, page = 1, size = 25 }: { clientEin: string; unreconciled?: boolean; page?: number; size?: number }) => {
+                const params = new URLSearchParams();
+                params.set('page', String(page));
+                params.set('size', String(size));
+                if (unreconciled) params.set('unreconciled', 'true');
+                return {
+                    url: `/bank/${clientEin}/documents?${params.toString()}`,
+                    method: 'GET'
+                };
+            },
+            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
             providesTags: ['BankReconciliation', 'Files']
         }),
 
         getBankTransactions: build.query({
-            query: ({ clientEin, unreconciled }: { clientEin: string; unreconciled?: boolean }) => ({
-                url: `/bank/${clientEin}/transactions${unreconciled ? '?unreconciled=true' : ''}`,
-                method: 'GET'
-            }),
+            query: ({ clientEin, unreconciled, page = 1, size = 25 }: { clientEin: string; unreconciled?: boolean; page?: number; size?: number }) => {
+                const params = new URLSearchParams();
+                params.set('page', String(page));
+                params.set('size', String(size));
+                if (unreconciled) params.set('unreconciled', 'true');
+                return {
+                    url: `/bank/${clientEin}/transactions?${params.toString()}`,
+                    method: 'GET'
+                };
+            },
+            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
             providesTags: ['BankReconciliation']
         }),
 
         getReconciliationSuggestions: build.query({
-            query: (clientEin: string) => ({
-                url: `/bank/${clientEin}/suggestions`,
+            query: ({ clientEin, page = 1, size = 25 }: { clientEin: string; page?: number; size?: number }) => ({
+                url: `/bank/${clientEin}/suggestions?page=${page}&size=${size}`,
                 method: 'GET'
             }),
+            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
             providesTags: ['BankReconciliation']
         }),
 

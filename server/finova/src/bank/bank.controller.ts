@@ -21,26 +21,49 @@ export class BankController {
     async getFinancialDocuments(
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
-      @Query('unreconciled') unreconciled?: string
+      @Query('unreconciled') unreconciled?: string,
+      @Query('page') page?: string,
+      @Query('size') size?: string
     ) {
-      return this.bankService.getFinancialDocuments(clientEin, user, unreconciled === 'true');
+      return this.bankService.getFinancialDocuments(
+        clientEin,
+        user,
+        unreconciled === 'true',
+        Number(page) || 1,
+        Number(size) || 25
+      );
     }
     
     @Get(':clientEin/transactions')
     async getBankTransactions(
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
-      @Query('unreconciled') unreconciled?: string
+      @Query('unreconciled') unreconciled?: string,
+      @Query('page') page?: string,
+      @Query('size') size?: string
     ) {
-      return this.bankService.getBankTransactions(clientEin, user, unreconciled === 'true');
+      return this.bankService.getBankTransactions(
+        clientEin,
+        user,
+        unreconciled === 'true',
+        Number(page) || 1,
+        Number(size) || 25
+      );
     }
     
     @Get(':clientEin/suggestions')
     async getReconciliationSuggestions(
       @Param('clientEin') clientEin: string,
-      @GetUser() user: User
+      @GetUser() user: User,
+      @Query('page') page?: string,
+      @Query('size') size?: string
     ) {
-      return this.bankService.getReconciliationSuggestions(clientEin, user);
+      return this.bankService.getReconciliationSuggestions(
+        clientEin,
+        user,
+        Number(page) || 1,
+        Number(size) || 25
+      );
     }
     
     @Post('match')

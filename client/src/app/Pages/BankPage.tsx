@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Landmark, 
@@ -106,6 +106,23 @@ const BankPage = () => {
   const [selectedItems, setSelectedItems] = useState<{documents: number[], transactions: string[]}>({documents: [], transactions: []});
   const [draggedItem, setDraggedItem] = useState<{type: 'document' | 'transaction', id: string | number} | null>(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
+
+  // Pagination state
+  const [documentsPage, setDocumentsPage] = useState(1);
+  const [transactionsPage, setTransactionsPage] = useState(1);
+  const [suggestionsPage, setSuggestionsPage] = useState(1);
+
+  const pageSize = 25;
+
+  // refs for infinite scroll
+  const documentsEndRef = useRef<HTMLDivElement | null>(null);
+  const transactionsEndRef = useRef<HTMLDivElement | null>(null);
+  const suggestionsEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Accumulated paged data
+  const [documentsData, setDocumentsData] = useState<Document[]>([]);
+  const [transactionsData, setTransactionsData] = useState<BankTransaction[]>([]);
+  const [suggestionsData, setSuggestionsData] = useState<ReconciliationSuggestion[]>([]);
   const [matchingPair, setMatchingPair] = useState<{document: Document, transaction: BankTransaction} | null>(null);
 
   const normalizeStatus = (status: string): string => {
@@ -188,27 +205,63 @@ const BankPage = () => {
     skip: !clientCompanyEin
   });
   
-  const { data: documents = [], isLoading: documentsLoading, error: documentsError } = useGetFinancialDocumentsQuery({
+  const { data: documentsResp = { items: [], total: 0 }, isLoading: documentsLoading, error: documentsError } = useGetFinancialDocumentsQuery({
     clientEin: clientCompanyEin,
-    unreconciled: filterStatus === 'unreconciled'
+    unreconciled: filterStatus === 'unreconciled',
+    page: documentsPage,
+    size: pageSize
   }, {
     skip: !clientCompanyEin
   });
+  const { items: documentsItems, total: documentsTotal } = documentsResp;
 
-  console.log("DCS:", documents);
+  // accumulate paged data for all lists
   
-  const { data: transactions = [], isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
+
+  // console.log("DCS:", documents);
+  
+  const { data: transactionsResp = { items: [], total: 0 }, isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
     clientEin: clientCompanyEin,
-    unreconciled: filterStatus === 'unreconciled'
+    unreconciled: filterStatus === 'unreconciled',
+    page: transactionsPage,
+    size: pageSize
   }, {
     skip: !clientCompanyEin
   });
+  const { items: transactionsItems, total: transactionsTotal } = transactionsResp;
   
-  const { data: suggestions = [], isLoading: suggestionsLoading, error: suggestionsError } = useGetReconciliationSuggestionsQuery(clientCompanyEin, {
+  const { data: suggestionsResp = { items: [], total: 0 }, isLoading: suggestionsLoading, error: suggestionsError } = useGetReconciliationSuggestionsQuery({
+    clientEin: clientCompanyEin,
+    page: suggestionsPage,
+    size: pageSize
+  }, {
     skip: !clientCompanyEin
   });
+  const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp;
+
+  // documents
+  useEffect(() => {
+    if (documentsPage === 1) setDocumentsData([]);
+    if (documentsItems.length) {
+      setDocumentsData(prev => documentsPage === 1 ? documentsItems : [...prev, ...documentsItems]);
+    }
+  }, [documentsItems]);
+  // transactions
+  useEffect(() => {
+    if (transactionsPage === 1) setTransactionsData([]);
+    if (transactionsItems.length) {
+      setTransactionsData(prev => transactionsPage === 1 ? transactionsItems : [...prev, ...transactionsItems]);
+    }
+  }, [transactionsItems]);
+  // suggestions
+  useEffect(() => {
+    if (suggestionsPage === 1) setSuggestionsData([]);
+    if (suggestionsItems.length) {
+      setSuggestionsData(prev => suggestionsPage === 1 ? suggestionsItems : [...prev, ...suggestionsItems]);
+    }
+  }, [suggestionsItems]);
   // Log suggestions to help debugging reconciliation account issue
-  console.log("SUGGESTIONS:", suggestions);
+  
 
   // Mutation hooks
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
@@ -241,9 +294,9 @@ const BankPage = () => {
 
   // Filtered data based on search and filters
   const filteredDocuments = useMemo(() => {
-    if (!documents) return [];
+    if (!documentsData) return [];
     
-    return documents.filter((doc: Document) => {
+    return documentsData.filter((doc: Document) => {
       const matchesSearch = searchTerm === '' || 
         doc.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -258,12 +311,12 @@ const BankPage = () => {
       
       return matchesSearch && matchesStatus;
     });
-  }, [documents, searchTerm, filterStatus]);
+  }, [documentsData, searchTerm, filterStatus]);
 
   const filteredTransactions = useMemo(() => {
-    if (!transactions) return [];
+    if (!transactionsData) return [];
     
-    return transactions.filter((txn: BankTransaction) => {
+    return transactionsData.filter((txn: BankTransaction) => {
       const matchesSearch = searchTerm === '' || 
         txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         txn.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -276,7 +329,33 @@ const BankPage = () => {
       
       return matchesSearch && matchesStatus;
     });
-  }, [transactions, searchTerm, filterStatus]);
+  }, [transactionsData, searchTerm, filterStatus]);
+
+  // Infinite scroll observers
+  useEffect(() => {
+    const options = { root: null, rootMargin: '0px', threshold: 1.0 };
+
+    const createObserver = (ref: React.RefObject<HTMLDivElement>, hasMore: boolean, loading: boolean, incPage: () => void) => {
+      if (!ref.current) return undefined;
+      const obs = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          incPage();
+        }
+      }, options);
+      obs.observe(ref.current);
+      return obs;
+    };
+
+    const docObs = createObserver(documentsEndRef, documentsData.length < documentsTotal, documentsLoading, () => setDocumentsPage(p => p + 1));
+    const txnObs = createObserver(transactionsEndRef, transactionsData.length < transactionsTotal, transactionsLoading, () => setTransactionsPage(p => p + 1));
+    const sugObs = createObserver(suggestionsEndRef, suggestionsData.length < suggestionsTotal, suggestionsLoading, () => setSuggestionsPage(p => p + 1));
+
+    return () => {
+      docObs?.disconnect();
+      txnObs?.disconnect();
+      sugObs?.disconnect();
+    };
+  }, [documentsData.length, documentsTotal, documentsLoading, transactionsData.length, transactionsTotal, transactionsLoading, suggestionsData.length, suggestionsTotal, suggestionsLoading]);
 
   // Drag & Drop handlers
   const handleDragStart = (type: 'document' | 'transaction', id: string | number) => {
@@ -296,12 +375,12 @@ const BankPage = () => {
     if (draggedItem.type === targetType) return;
     
     const document = draggedItem.type === 'document' 
-      ? documents.find((d: Document) => d.id === draggedItem.id)
-      : documents.find((d: Document) => d.id === targetId);
+      ? documentsData.find((d: Document) => d.id === draggedItem.id)
+      : documentsData.find((d: Document) => d.id === targetId);
     
     const transaction = draggedItem.type === 'transaction'
-      ? transactions.find((t: BankTransaction) => t.id === draggedItem.id)
-      : transactions.find((t: BankTransaction) => t.id === targetId);
+      ? transactionsData.find((t: BankTransaction) => t.id === draggedItem.id)
+      : transactionsData.find((t: BankTransaction) => t.id === targetId);
     
     if (document && transaction) {
       setMatchingPair({ document, transaction });
@@ -508,7 +587,7 @@ const BankPage = () => {
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugerări' : 'Suggestions'}</p>
-                  <p className="text-xl font-bold text-[var(--text1)]">{suggestions?.length || 0}</p>
+                  <p className="text-xl font-bold text-[var(--text1)]">{suggestionsData.length}/{suggestionsTotal}</p>
                   <p className="text-xs text-purple-600">{language === 'ro' ? 'Disponibile' : 'Available'}</p>
                 </div>
               </div>
@@ -639,7 +718,7 @@ const BankPage = () => {
                   {language === 'ro' ? 'Documente' : 'Documents'}
                 </h3>
                 <span className="text-sm text-[var(--text3)]">
-                  {filteredDocuments?.length || 0} {language === 'ro' ? 'articole' : 'items'}
+                  {documentsData.length}/{documentsTotal} {language === 'ro' ? 'articole' : 'items'}
                 </span>
               </div>
             </div>
@@ -666,7 +745,7 @@ const BankPage = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredDocuments?.map((doc: Document, index: number) => {
+                  {filteredDocuments.map((doc: Document, index: number) => {
                     const Icon = getDocumentIcon(doc.type);
                     const isSelected = selectedItems.documents.includes(doc.id);
                     
@@ -749,7 +828,7 @@ const BankPage = () => {
                   {language === 'ro' ? 'Tranzacții Bancare' : 'Bank Transactions'}
                 </h3>
                 <span className="text-sm text-[var(--text3)]">
-                  {filteredTransactions?.length || 0} {language === 'ro' ? 'articole' : 'items'}
+                  {transactionsData.length}/{transactionsTotal} {language === 'ro' ? 'articole' : 'items'}
                 </span>
               </div>
             </div>
@@ -776,7 +855,7 @@ const BankPage = () => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredTransactions?.map((txn: BankTransaction, index: number) => {
+                  {filteredTransactions.map((txn: BankTransaction, index: number) => {
                     const isSelected = selectedItems.transactions.includes(txn.id);
                     
                     return (
@@ -896,28 +975,25 @@ const BankPage = () => {
                 <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
                 <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea sugerărilor' : 'Error loading suggestions'}</p>
               </div>
-            ) : suggestions?.length === 0 ? (
+            ) : suggestionsData.length === 0 ? (
               <div className="text-center py-12">
                 <Zap size={48} className="mx-auto text-[var(--text3)] mb-4" />
                 <p className="text-[var(--text2)] text-lg mb-2">
                   {language === 'ro' ? 'Nu există sugerări disponibile' : 'No suggestions available'}
                 </p>
                 <p className="text-[var(--text3)] text-sm">
-                  {language === 'ro' 
-                    ? 'Sugerările vor apărea când sistemul găsește potriviri posibile'
-                    : 'Suggestions will appear when the system finds possible matches'
-                  }
+                  {language === 'ro' ? 'Sugerările vor apărea când sistemul găsește potriviri posibile' : 'Suggestions will appear when the system finds possible matches'}
                 </p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {suggestions?.map((suggestion: ReconciliationSuggestion, index: number) => (
+              <div className="space-y-6">
+                {suggestionsData.map((suggestion) => (
                   <motion.div
                     key={suggestion.id}
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="p-4 border-2 border-blue-200 bg-blue-50 rounded-xl"
+                    transition={{ delay: 0.05 }}
+                    className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"
                   >
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
@@ -930,8 +1006,6 @@ const BankPage = () => {
                           </p>
                           <p className="text-sm text-left text-blue-600 font-medium">
                             {language === 'ro' ? 'Încredere' : 'Confidence'}: {Math.round(suggestion.confidenceScore * 100)}%
-                          </p>
-                          <p className="sr-only">dummy
                           </p>
                         </div>
                       </div>
