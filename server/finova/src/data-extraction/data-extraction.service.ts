@@ -2369,14 +2369,22 @@ export class DataExtractionService {
       
         const filteredSuggestions: any[] = [];
         const usedDocuments = new Set<number>();
-        const usedTransactions = new Set<string>();
-      
         const seenTx = new Set<string>();
+        
         for (const suggestion of suggestions) {
           if (suggestion.confidenceScore >= 0.3 && !seenTx.has(suggestion.bankTransactionId)) {
+            // If this is a document suggestion, check if document is already used
+            if (suggestion.documentId && usedDocuments.has(suggestion.documentId)) {
+              continue; // Skip this suggestion, document already matched
+            }
             
             filteredSuggestions.push(suggestion);
             seenTx.add(suggestion.bankTransactionId);
+            
+            // Mark document as used if this is a document suggestion
+            if (suggestion.documentId) {
+              usedDocuments.add(suggestion.documentId);
+            }
           }
         }
       

@@ -79,6 +79,7 @@ interface ReconciliationSuggestion {
     id: number;
     name: string;
     type: string;
+    total_amount?: number;
   } | null;
   bankTransaction: {
     id: string;
@@ -986,9 +987,31 @@ const BankPage = () => {
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">Document</p>
-                        <p className="text-sm text-[var(--text2)]">{suggestion.document?.name ? suggestion.document.name : ''}</p>
-                        <p className="text-xs text-[var(--text3)]">{suggestion.document?.type ? suggestion.document.type.replace(/^\w/, c => c.toUpperCase()) : ''}</p>
+                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">
+                          {suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
+                        </p>
+                        {suggestion.document ? (
+                          <>
+                            <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
+                            <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
+                            {suggestion.document.total_amount && (
+                              <p className="text-sm font-medium text-blue-600 mt-1">
+                                {formatCurrency(suggestion.document.total_amount)}
+                              </p>
+                            )}
+                          </>
+                        ) : suggestion.chartOfAccount ? (
+                          <>
+                            <p className="text-sm text-[var(--text2)]">
+                              {suggestion.chartOfAccount.accountCode || suggestion.chartOfAccount.code}
+                            </p>
+                            <p className="text-xs text-[var(--text3)]">
+                              {suggestion.chartOfAccount.accountName || suggestion.chartOfAccount.name}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="text-sm text-[var(--text3)] italic">{language === 'ro' ? 'Fără document' : 'No document'}</p>
+                        )}
                       </div>
                       
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
