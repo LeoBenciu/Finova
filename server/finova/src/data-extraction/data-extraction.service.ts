@@ -2186,14 +2186,24 @@ export class DataExtractionService {
             }
           });
       
-          if (unreconciled.length === 0 || unreconciliedTransactions.length === 0) {
+          if (unreconciliedTransactions.length === 0) {
             return;
           }
       
           await this.prisma.reconciliationSuggestion.deleteMany({
             where: {
-              document: { accountingClientId },
-              status: SuggestionStatus.PENDING
+              status: SuggestionStatus.PENDING,
+              OR: [
+                {
+                  document: { accountingClientId },
+                },
+                {
+                  documentId: null,
+                  bankTransaction: {
+                    bankStatementDocument: { accountingClientId },
+                  },
+                },
+              ],
             }
           });
       
@@ -2252,14 +2262,63 @@ export class DataExtractionService {
           
           const filteredSuggestions = this.filterBestSuggestions(suggestions);
       
+          // Process standalone transactions (those that don't match any documents)
+          const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
+          const standaloneTransactions = unreconciliedTransactions.filter(t => !matchedTransactionIds.has(t.id));
+          
+          this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
+          
+          for (const transaction of standaloneTransactions) {
+            try {
+              const suggestions = await this.suggestAccountForTransaction({
+                description: transaction.description,
+                amount: Number(transaction.amount),
+                transactionType: transaction.transactionType,
+                referenceNumber: transaction.referenceNumber || undefined,
+                transactionDate: transaction.transactionDate.toISOString()
+              }, accountingClientId);
+              
+              if (suggestions.length > 0) {
+                const bestSuggestion = suggestions[0];
+                const chartOfAccount = await this.getOrCreateChartOfAccount(
+                  bestSuggestion.accountCode,
+                  bestSuggestion.accountName
+                );
+                
+                const notes = bestSuggestion.confidence > 0.7 
+                  ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
+                  : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
+                
+                // Create suggestion for standalone transaction
+                await this.prisma.reconciliationSuggestion.create({
+                  data: {
+                    bankTransactionId: transaction.id,
+                    chartOfAccountId: chartOfAccount.id,
+                    documentId: null,
+                    confidenceScore: bestSuggestion.confidence.toFixed(3) as unknown as any,
+                    matchingCriteria: {},
+                    reasons: [notes],
+                  },
+                });
+                
+                this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+              }
+            } catch (error) {
+              this.logger.error(`Failed to categorize standalone transaction ${transaction.id}:`, error);
+            }
+          }
+      
           if (filteredSuggestions.length > 0) {
             await this.prisma.reconciliationSuggestion.createMany({
               data: filteredSuggestions,
               skipDuplicates: true
             });
       
-            this.logger.log(`Generated ${filteredSuggestions.length} reconciliation suggestions for client ${accountingClientId}`);
+            this.logger.log(`Generated ${filteredSuggestions.length} document-transaction match suggestions for client ${accountingClientId}`);
           }
+          
+          const totalSuggestions = filteredSuggestions.length + standaloneTransactions.length;
+          this.logger.log(`Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
       
         } catch (error) {
           this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);

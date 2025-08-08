@@ -590,7 +590,7 @@ const BankPage = () => {
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugerări' : 'Suggestions'}</p>
-                  <p className="text-xl font-bold text-[var(--text1)]">{suggestionsData.length}/{suggestionsTotal}</p>
+                  <p className="text-xl font-bold text-[var(--text1)]">{suggestionsData.length}</p>
                   <p className="text-xs text-purple-600">{language === 'ro' ? 'Disponibile' : 'Available'}</p>
                 </div>
               </div>
