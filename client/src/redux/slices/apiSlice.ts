@@ -6,6 +6,7 @@ const baseQuery = fetchBaseQuery({
     baseUrl: 'https://finova-6eeu.onrender.com',
     prepareHeaders: (headers)=>{
         const token = localStorage.getItem('token');
+        console.log('API Request - Token:', token ? 'Present' : 'Missing');
         if(token){
             headers.set('Authorization', `Bearer ${token}`);
         }
@@ -15,8 +16,15 @@ const baseQuery = fetchBaseQuery({
 
 const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>{
     const result = await baseQuery(args, api, extraOptions);
+    
+    console.log('API Response:', {
+        url: typeof args === 'string' ? args : args.url,
+        status: result.error?.status || 'success',
+        hasData: !!result.data
+    });
 
     if(result.error && result.error.status === 401){
+        console.log('401 Unauthorized - logging out');
         logout();
     }
 
