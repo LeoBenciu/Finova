@@ -448,7 +448,10 @@ export const finovaApi = createApi({
                     method: 'GET'
                 };
             },
-            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
+            transformResponse: (response: any) => {
+                if (!response) return { items: [], total: 0 };
+                return { items: response.items ?? [], total: response.total ?? 0 };
+            },
             providesTags: ['BankReconciliation', 'Files']
         }),
 
@@ -463,7 +466,10 @@ export const finovaApi = createApi({
                     method: 'GET'
                 };
             },
-            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
+            transformResponse: (response: any) => {
+                if (!response) return { items: [], total: 0 };
+                return { items: response.items ?? [], total: response.total ?? 0 };
+            },
             providesTags: ['BankReconciliation']
         }),
 
@@ -472,7 +478,10 @@ export const finovaApi = createApi({
                 url: `/bank/${clientEin}/suggestions?page=${page}&size=${size}`,
                 method: 'GET'
             }),
-            transformResponse: (response: any) => ({ items: response.items ?? [], total: response.total ?? 0 }),
+            transformResponse: (response: any) => {
+                if (!response) return { items: [], total: 0 };
+                return { items: response.items ?? [], total: response.total ?? 0 };
+            },
             providesTags: ['BankReconciliation']
         }),
 
