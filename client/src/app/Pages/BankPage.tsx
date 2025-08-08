@@ -260,7 +260,37 @@ const BankPage = () => {
       setSuggestionsData(prev => suggestionsPage === 1 ? suggestionsItems : [...prev, ...suggestionsItems]);
     }
   }, [suggestionsItems]);
+  
   // Log suggestions to help debugging reconciliation account issue
+  useEffect(() => {
+    console.log('🔍 Suggestions Debug:', {
+      suggestionsResp,
+      suggestionsItems,
+      suggestionsTotal,
+      suggestionsLoading,
+      suggestionsError,
+      clientCompanyEin
+    });
+  }, [suggestionsResp, suggestionsItems, suggestionsTotal, suggestionsLoading, suggestionsError, clientCompanyEin]);
+  
+  // Log documents and transactions for debugging
+  useEffect(() => {
+    console.log('📄 Documents Debug:', {
+      documentsResp,
+      documentsItems: documentsItems?.slice(0, 3), // Show first 3 items
+      documentsTotal,
+      unreconciled: documentsItems?.filter((d: Document) => d.reconciliation_status === 'unreconciled').length
+    });
+  }, [documentsResp, documentsItems, documentsTotal]);
+  
+  useEffect(() => {
+    console.log('🏦 Transactions Debug:', {
+      transactionsResp,
+      transactionsItems: transactionsItems?.slice(0, 3), // Show first 3 items
+      transactionsTotal,
+      unreconciled: transactionsItems?.filter((t: BankTransaction) => t.reconciliation_status === 'unreconciled').length
+    });
+  }, [transactionsResp, transactionsItems, transactionsTotal]);
   
 
   // Mutation hooks
