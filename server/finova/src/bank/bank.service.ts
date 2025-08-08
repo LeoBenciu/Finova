@@ -1,6 +1,7 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus } from '@prisma/client';
+import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 
 const s3 = new AWS.S3({
@@ -12,9 +13,10 @@ const s3 = new AWS.S3({
 @Injectable()
 export class BankService {
 
-    constructor(private readonly prisma:PrismaService){
-        
-    }
+    constructor(
+        private readonly prisma: PrismaService,
+        private readonly dataExtractionService: DataExtractionService
+    ){}
 
     async getReconciliationStats(clientEin: string, user: User) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
@@ -424,6 +426,126 @@ export class BankService {
               } as any)
             : null,
         }));
+        
+        // If no suggestions exist and this is the first page, try to generate some
+        if (total === 0 && page === 1) {
+          try {
+            await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
+            
+            // Re-fetch suggestions after generation
+            const [newSuggestions, newTotal] = await this.prisma.$transaction([
+              this.prisma.reconciliationSuggestion.findMany({
+                where: {
+                  status: SuggestionStatus.PENDING,
+                  OR: [
+                    {
+                      document: {
+                        accountingClientId: accountingClientRelation.id,
+                      },
+                    },
+                    {
+                      documentId: null,
+                      bankTransaction: {
+                        bankStatementDocument: {
+                          accountingClientId: accountingClientRelation.id,
+                        },
+                      },
+                    },
+                  ],
+                },
+                include: {
+                  document: {
+                    include: {
+                      processedData: true,
+                    },
+                  },
+                  bankTransaction: {
+                    include: {
+                      bankStatementDocument: true,
+                    },
+                  },
+                  chartOfAccount: true,
+                },
+                orderBy: { confidenceScore: 'desc' },
+                skip: (page - 1) * size,
+                take: size
+              }),
+              this.prisma.reconciliationSuggestion.count({
+                where: {
+                  status: SuggestionStatus.PENDING,
+                  OR: [
+                    {
+                      document: { accountingClientId: accountingClientRelation.id },
+                    },
+                    {
+                      documentId: null,
+                      bankTransaction: {
+                        bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+                      },
+                    },
+                  ],
+                },
+              })
+            ]);
+            
+            // Update the results with newly generated suggestions
+            const newItems = newSuggestions.map(s => ({
+              id: s.id,
+              confidenceScore: s.confidenceScore,
+              matchingCriteria: s.matchingCriteria,
+              reasons: s.reasons,
+              createdAt: s.createdAt,
+              document: s.document
+                ? (() => {
+                    let totalAmount: number | null = null;
+                    try {
+                      const extracted = s.document.processedData?.extractedFields;
+                      if (extracted) {
+                        const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
+                        const result = (parsed as any).result || parsed;
+                        totalAmount = result?.total_amount ?? null;
+                      }
+                    } catch (_) {
+                      // ignore JSON parse errors
+                    }
+                    return {
+                      id: s.document.id,
+                      name: s.document.name,
+                      type: s.document.type,
+                      total_amount: totalAmount,
+                    };
+                  })()
+                : null,
+              bankTransaction: s.bankTransaction
+                ? {
+                    id: s.bankTransaction.id,
+                    description: s.bankTransaction.description,
+                    amount: s.bankTransaction.amount,
+                    transactionDate: s.bankTransaction.transactionDate,
+                    transactionType: s.bankTransaction.transactionType,
+                  }
+                : null,
+              chartOfAccount: s.chartOfAccount
+                ? ({
+                    // legacy keys expected by frontend
+                    code: s.chartOfAccount.accountCode,
+                    name: s.chartOfAccount.accountName,
+                    // new explicit keys
+                    accountCode: s.chartOfAccount.accountCode,
+                    accountName: s.chartOfAccount.accountName,
+                  } as any)
+                : null,
+            }));
+            
+            return { items: newItems, total: newTotal };
+          } catch (error) {
+            console.error('Failed to generate suggestions:', error);
+            // Return original empty results if generation fails
+            return { items, total };
+          }
+        }
+        
+        return { items, total };
       }
 
       async createManualMatch(matchData: { documentId: number; bankTransactionId: string; notes?: string }, user: User) {
