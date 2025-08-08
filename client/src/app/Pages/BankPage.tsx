@@ -233,8 +233,7 @@ const BankPage = () => {
   const { data: suggestionsResp = { items: [], total: 0 }, isLoading: suggestionsLoading, error: suggestionsError } = useGetReconciliationSuggestionsQuery({
     clientEin: clientCompanyEin,
     page: suggestionsPage,
-    size: pageSize,
-    unreconciled: filterStatus === 'unreconciled'
+    size: pageSize
   }, {
     skip: !clientCompanyEin
   });

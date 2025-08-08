@@ -474,16 +474,10 @@ export const finovaApi = createApi({
         }),
 
         getReconciliationSuggestions: build.query({
-            query: ({ clientEin, page = 1, size = 25, unreconciled }: { clientEin: string; page?: number; size?: number; unreconciled?: boolean }) => {
-                const params = new URLSearchParams();
-                params.set('page', page.toString());
-                params.set('size', size.toString());
-                if (unreconciled) params.set('unreconciled', 'true');
-                return {
-                    url: `/bank/${clientEin}/suggestions?${params.toString()}`,
-                    method: 'GET'
-                };
-            },
+            query: ({ clientEin, page = 1, size = 25 }: { clientEin: string; page?: number; size?: number }) => ({
+                url: `/bank/${clientEin}/suggestions?page=${page}&size=${size}`,
+                method: 'GET'
+            }),
             transformResponse: (response: any) => {
                 if (!response) return { items: [], total: 0 };
                 return { items: response.items ?? [], total: response.total ?? 0 };
