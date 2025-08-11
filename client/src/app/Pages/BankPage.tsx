@@ -1058,9 +1058,26 @@ const BankPage = () => {
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">
-                          {suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
-                        </p>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-[var(--text1)]">
+                            {suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
+                          </p>
+                          {suggestion.document && (
+                            <button
+                              onClick={() => {
+                                const doc = suggestion.document as any;
+                                if (doc?.signedUrl || doc?.path) {
+                                  window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                              disabled={!(suggestion.document as any)?.signedUrl && !(suggestion.document as any)?.path}
+                              className="p-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={language === 'ro' ? 'Vezi documentul' : 'View document'}
+                            >
+                              <Eye size={14} className="text-blue-600" />
+                            </button>
+                          )}
+                        </div>
                         {suggestion.document ? (
                           <>
                             <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
@@ -1086,7 +1103,24 @@ const BankPage = () => {
                       </div>
                       
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <p className="text-sm font-semibold text-[var(--text1)] mb-2">Tranzacție</p>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-sm font-semibold text-[var(--text1)]">Tranzacție</p>
+                          {suggestion.bankTransaction && (
+                            <button
+                              onClick={() => {
+                                const txn = suggestion.bankTransaction as any;
+                                if (txn?.bankStatementDocument?.signedUrl) {
+                                  window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                              disabled={!(suggestion.bankTransaction as any)?.bankStatementDocument?.signedUrl}
+                              className="p-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
+                            >
+                              <Eye size={14} className="text-emerald-600" />
+                            </button>
+                          )}
+                        </div>
                         <p className="text-sm text-[var(--text2)] truncate">{suggestion.bankTransaction ? suggestion.bankTransaction.description : ''}</p>
                         <p className="text-xs text-[var(--text3)]">{suggestion.bankTransaction?.transactionDate ? formatDate(suggestion.bankTransaction.transactionDate) : ''}</p>
                         <p className={`text-sm font-medium ${suggestion.bankTransaction?.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>

@@ -2230,6 +2230,8 @@ export class DataExtractionService {
       
             if (documentAmount === 0) continue;
       
+            let bestMatchForDocument = { score: 0, transaction: null, suggestion: null };
+            
             for (const transaction of unreconciliedTransactions) {
               const suggestion = this.calculateMatchSuggestion(
                 document,
@@ -2239,8 +2241,13 @@ export class DataExtractionService {
                 documentNumber,
                 documentDate
               );
+              
+              // Track the best match for this document for debugging
+              if (suggestion.confidenceScore > bestMatchForDocument.score) {
+                bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
+              }
       
-              if (suggestion.confidenceScore >= 0.3) { 
+              if (suggestion.confidenceScore >= 0.25) { 
                 suggestions.push({
                   documentId: document.id,
                   bankTransactionId: transaction.id,
@@ -2248,6 +2255,36 @@ export class DataExtractionService {
                   matchingCriteria: suggestion.matchingCriteria,
                   reasons: suggestion.reasons
                 });
+              }
+            }
+            
+            // Debug: Log documents that don't have any matches above threshold
+            if (bestMatchForDocument.score < 0.25) {
+              this.logger.warn(
+                `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
+                `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bestMatchForDocument.transaction?.id} ` +
+                `(Amount: ${documentAmount} vs ${bestMatchForDocument.transaction?.amount}, ` +
+                `Date: ${documentDate?.toISOString().split('T')[0]} vs ${bestMatchForDocument.transaction?.transactionDate.toISOString().split('T')[0]})`
+              );
+              
+              // Fallback: If we have a very close amount match (within 10 RON or 10%), create a low-confidence suggestion
+              if (bestMatchForDocument.transaction) {
+                const amountDiff = Math.abs(documentAmount - Math.abs(Number(bestMatchForDocument.transaction.amount)));
+                const amountThreshold = Math.max(documentAmount * 0.1, 10); // 10% or 10 RON tolerance
+                
+                if (amountDiff <= amountThreshold) {
+                  this.logger.log(
+                    `💡 Creating fallback suggestion for document ${document.id} with close amount match (diff: ${amountDiff.toFixed(2)} RON)`
+                  );
+                  
+                  suggestions.push({
+                    documentId: document.id,
+                    bankTransactionId: bestMatchForDocument.transaction.id,
+                    confidenceScore: Math.max(bestMatchForDocument.score, 0.2), // Ensure minimum confidence
+                    matchingCriteria: { ...bestMatchForDocument.suggestion.matchingCriteria, fallback_match: true },
+                    reasons: [...bestMatchForDocument.suggestion.reasons, 'Fallback match based on amount proximity']
+                  });
+                }
               }
             }
           }
@@ -2341,7 +2378,7 @@ export class DataExtractionService {
         const transactionDate = new Date(transaction.transactionDate);
       
         const amountDiff = Math.abs(documentAmount - transactionAmount);
-        const amountThreshold = Math.max(documentAmount * 0.02, 1); 
+        const amountThreshold = Math.max(documentAmount * 0.05, 2); // Increased from 2% to 5% and min from 1 to 2 RON 
       
         if (amountDiff === 0) {
           score += 0.6;
@@ -2398,13 +2435,21 @@ export class DataExtractionService {
         }
       
         const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt';
+        const isOutgoing = documentData.direction === 'outgoing' || document.type === 'Payment Order' || document.type === 'Collection Order';
         const isCredit = transaction.transactionType === 'CREDIT';
         const isDebit = transaction.transactionType === 'DEBIT';
       
-        if ((isIncoming && isCredit) || (!isIncoming && isDebit)) {
+        if ((isIncoming && isCredit) || (isOutgoing && isDebit)) {
           score += 0.05;
           criteria.logical_transaction_type = true;
           reasons.push('Transaction type matches document direction');
+        }
+        
+        // Bonus for Payment Orders matching debit transactions (they should be prioritized)
+        if (document.type === 'Payment Order' && isDebit) {
+          score += 0.1;
+          criteria.payment_order_priority = true;
+          reasons.push('Payment Order matches debit transaction');
         }
       
         return {
@@ -2422,8 +2467,19 @@ export class DataExtractionService {
           if (aHasDoc !== bHasDoc) {
             return aHasDoc ? -1 : 1;
           }
+          
+          // If confidence scores are very close (within 0.05), prioritize by document type
+          const scoreDiff = b.confidenceScore - a.confidenceScore;
+          if (Math.abs(scoreDiff) <= 0.05) {
+            // Get document types for comparison
+            const aHasPaymentOrder = a.matchingCriteria?.payment_order_priority;
+            const bHasPaymentOrder = b.matchingCriteria?.payment_order_priority;
+            
+            if (aHasPaymentOrder && !bHasPaymentOrder) return -1;
+            if (!aHasPaymentOrder && bHasPaymentOrder) return 1;
+          }
 
-          return b.confidenceScore - a.confidenceScore;
+          return scoreDiff;
         });
       
         const filteredSuggestions: any[] = [];
@@ -2431,7 +2487,7 @@ export class DataExtractionService {
         const seenTx = new Set<string>();
         
         for (const suggestion of suggestions) {
-          if (suggestion.confidenceScore >= 0.3 && !seenTx.has(suggestion.bankTransactionId)) {
+          if (suggestion.confidenceScore >= 0.25 && !seenTx.has(suggestion.bankTransactionId)) {
             // If this is a document suggestion, check if document is already used
             if (suggestion.documentId && usedDocuments.has(suggestion.documentId)) {
               continue; // Skip this suggestion, document already matched
