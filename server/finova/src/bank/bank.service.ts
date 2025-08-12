@@ -379,60 +379,79 @@ export class BankService {
         ]);
 
       
-        const items = suggestions.map(s => ({
-          id: s.id,
-          confidenceScore: s.confidenceScore,
-          matchingCriteria: s.matchingCriteria,
-          reasons: s.reasons,
-          createdAt: s.createdAt,
-          document: s.document
-            ? (() => {
-                let totalAmount: number | null = null;
-                try {
-                  const extracted = s.document.processedData?.extractedFields;
-                  if (extracted) {
-                    const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
-                    const result = (parsed as any).result || parsed;
-                    totalAmount = result?.total_amount ?? null;
+        const items = await Promise.all(
+          suggestions.map(async (s) => {
+            // Build signed URL for document
+            let documentSignedUrl: string | null = null;
+            if (s.document) {
+              documentSignedUrl = s.document.s3Key
+                ? await s3.getSignedUrlPromise('getObject', {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: s.document.s3Key,
+                    Expires: 3600,
+                  })
+                : s.document.path;
+            }
+
+            // Build signed URL for bank statement
+            let bankStatementSignedUrl: string | null = null;
+            if (s.bankTransaction?.bankStatementDocument) {
+              const bsDoc = s.bankTransaction.bankStatementDocument;
+              bankStatementSignedUrl = bsDoc.s3Key
+                ? await s3.getSignedUrlPromise('getObject', {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: bsDoc.s3Key,
+                    Expires: 3600,
+                  })
+                : bsDoc.path;
+            }
+
+            return {
+              id: s.id,
+              confidenceScore: s.confidenceScore,
+              matchingCriteria: s.matchingCriteria,
+              reasons: s.reasons,
+              createdAt: s.createdAt,
+              document: s.document
+                ? {
+                    id: s.document.id,
+                    name: s.document.name,
+                    type: s.document.type,
+                    signedUrl: documentSignedUrl,
                   }
-                } catch (_) {
-                  // ignore JSON parse errors
-                }
-                return {
-                  id: s.document.id,
-                  name: s.document.name,
-                  type: s.document.type,
-                  total_amount: totalAmount,
-                };
-              })()
-            : null,
-          bankTransaction: s.bankTransaction
-            ? {
-                id: s.bankTransaction.id,
-                description: s.bankTransaction.description,
-                amount: s.bankTransaction.amount,
-                transactionDate: s.bankTransaction.transactionDate,
-                transactionType: s.bankTransaction.transactionType,
-              }
-            : null,
-          chartOfAccount: s.chartOfAccount
-            ? ({
-                // legacy keys expected by frontend
-                code: s.chartOfAccount.accountCode,
-                name: s.chartOfAccount.accountName,
-                // new explicit keys
-                accountCode: s.chartOfAccount.accountCode,
-                accountName: s.chartOfAccount.accountName,
-              } as any)
-            : null,
-        }));
-        
-        // If no suggestions exist and this is the first page, try to generate some
+                : null,
+              bankTransaction: s.bankTransaction
+                ? {
+                    id: s.bankTransaction.id,
+                    description: s.bankTransaction.description,
+                    amount: s.bankTransaction.amount,
+                    transactionDate: s.bankTransaction.transactionDate,
+                    transactionType: s.bankTransaction.transactionType,
+                    bankStatementDocument: s.bankTransaction.bankStatementDocument
+                      ? {
+                          id: s.bankTransaction.bankStatementDocument.id,
+                          name: s.bankTransaction.bankStatementDocument.name,
+                          signedUrl: bankStatementSignedUrl,
+                        }
+                      : null,
+                  }
+                : null,
+              chartOfAccount: s.chartOfAccount
+                ? {
+                    code: s.chartOfAccount.accountCode,
+                    name: s.chartOfAccount.accountName,
+                    accountCode: s.chartOfAccount.accountCode,
+                    accountName: s.chartOfAccount.accountName,
+                  }
+                : null,
+            };
+          })
+        );
+            
         if (total === 0 && page === 1) {
           try {
             await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
             
-            // Re-fetch suggestions after generation
             const [newSuggestions, newTotal] = await this.prisma.$transaction([
               this.prisma.reconciliationSuggestion.findMany({
                 where: {
@@ -488,7 +507,6 @@ export class BankService {
               })
             ]);
             
-            // Update the results with newly generated suggestions
             const newItems = newSuggestions.map(s => ({
               id: s.id,
               confidenceScore: s.confidenceScore,
@@ -506,7 +524,6 @@ export class BankService {
                         totalAmount = result?.total_amount ?? null;
                       }
                     } catch (_) {
-                      // ignore JSON parse errors
                     }
                     return {
                       id: s.document.id,
@@ -527,10 +544,8 @@ export class BankService {
                 : null,
               chartOfAccount: s.chartOfAccount
                 ? ({
-                    // legacy keys expected by frontend
                     code: s.chartOfAccount.accountCode,
                     name: s.chartOfAccount.accountName,
-                    // new explicit keys
                     accountCode: s.chartOfAccount.accountCode,
                     accountName: s.chartOfAccount.accountName,
                   } as any)
@@ -540,7 +555,6 @@ export class BankService {
             return { items: newItems, total: newTotal };
           } catch (error) {
             console.error('Failed to generate suggestions:', error);
-            // Return original empty results if generation fails
             return { items, total };
           }
         }
@@ -629,7 +643,6 @@ export class BankService {
             data: { status: SuggestionStatus.REJECTED }
           });
 
-          // Payment tracking for invoices
           if (document.type.toLowerCase().includes('invoice')) {
             const parseAmount = (value: any): number => {
               if (!value) return 0;
@@ -639,12 +652,10 @@ export class BankService {
               return isNaN(parsed) ? 0 : parsed;
             };
 
-            // Get existing payment summary or create new one
             let paymentSummary = await prisma.paymentSummary.findUnique({
               where: { documentId: document.id }
             });
 
-            // Get total amount from payment summary or extract from document data
             let totalAmount = paymentSummary ? paymentSummary.totalAmount : 0;
             if (!totalAmount && document.processedData?.extractedFields) {
               try {
@@ -658,13 +669,10 @@ export class BankService {
               }
             }
 
-            // Calculate new payment amounts
             const transactionAmount = parseAmount(bankTransaction.amount);
             const currentPaidAmount = paymentSummary ? paymentSummary.paidAmount : 0;
             const newPaidAmount = currentPaidAmount + transactionAmount;
             const remainingAmount = totalAmount - newPaidAmount;
-
-            // Determine payment status
             let paymentStatus: PaymentStatus = PaymentStatus.UNPAID;
             if (newPaidAmount > 0) {
               if (Math.abs(remainingAmount) <= 0.01) {
@@ -676,7 +684,6 @@ export class BankService {
               }
             }
 
-            // Update or create payment summary
             if (paymentSummary) {
               await prisma.paymentSummary.update({
                 where: { documentId: document.id },
@@ -701,7 +708,6 @@ export class BankService {
               });
             }
 
-            // Update document payment fields for quick access
             await prisma.document.update({
               where: { id: document.id },
               data: {

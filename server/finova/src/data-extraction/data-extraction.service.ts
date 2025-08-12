@@ -1062,12 +1062,15 @@ export class DataExtractionService {
             });
           }
       
-          const targetRefs = Array.isArray(targetDoc.references) ? targetDoc.references : [];
-          if (!targetRefs.includes(sourceDocId)) {
-            await this.prisma.document.update({
-              where: { id: targetDocId },
-              data: { references: [...targetRefs, sourceDocId] }
-            });
+          // Only add reverse reference when neither document is a bank statement
+          if (sourceDoc.type !== 'BANK_STATEMENT' && targetDoc.type !== 'BANK_STATEMENT') {
+            const targetRefs = Array.isArray(targetDoc.references) ? targetDoc.references : [];
+            if (!targetRefs.includes(sourceDocId)) {
+              await this.prisma.document.update({
+                where: { id: targetDocId },
+                data: { references: [...targetRefs, sourceDocId] }
+              });
+            }
           }
       
         } catch (error) {
@@ -2174,7 +2177,7 @@ export class DataExtractionService {
             where: {
               accountingClientId,
               reconciliationStatus: ReconciliationStatus.UNRECONCILED,
-              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] }
+              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z_REPORT'] }
             },
             include: { processedData: true }
           });
@@ -2434,7 +2437,7 @@ export class DataExtractionService {
           }
         }
       
-        const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt';
+        const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt' || document.type === 'Z_REPORT';
         const isOutgoing = documentData.direction === 'outgoing' || document.type === 'Payment Order' || document.type === 'Collection Order';
         const isCredit = transaction.transactionType === 'CREDIT';
         const isDebit = transaction.transactionType === 'DEBIT';
