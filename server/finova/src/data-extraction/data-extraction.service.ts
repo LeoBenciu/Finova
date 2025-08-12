@@ -2177,7 +2177,7 @@ export class DataExtractionService {
             where: {
               accountingClientId,
               reconciliationStatus: ReconciliationStatus.UNRECONCILED,
-              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z_REPORT'] }
+              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
             },
             include: { processedData: true }
           });
@@ -2230,8 +2230,23 @@ export class DataExtractionService {
             const documentAmount = this.parseAmountForReconciliation(documentData.total_amount);
             const documentNumber = documentData.document_number || documentData.receipt_number;
             const documentDate = this.parseDate(documentData.document_date);
-      
-            if (documentAmount === 0) continue;
+            
+            // Enhanced debug logging for Payment/Collection Orders
+            if (document.type === 'Payment Order' || document.type === 'Collection Order') {
+              this.logger.warn(
+                `🔍 PAYMENT/COLLECTION ORDER DEBUG: Document ${document.id} (${document.name}) ` +
+                `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber}, ` +
+                `Date: ${documentDate?.toISOString().split('T')[0]}, Direction: ${documentData.direction}, ` +
+                `Raw data keys: ${Object.keys(documentData).join(', ')}`
+              );
+            }
+  
+            if (documentAmount === 0) {
+              if (document.type === 'Payment Order' || document.type === 'Collection Order') {
+                this.logger.error(`❌ PAYMENT/COLLECTION ORDER ${document.id} has ZERO amount - skipping!`);
+              }
+              continue;
+            }
       
             let bestMatchForDocument = { score: 0, transaction: null, suggestion: null };
             
@@ -2437,7 +2452,7 @@ export class DataExtractionService {
           }
         }
       
-        const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt' || document.type === 'Z_REPORT';
+        const isIncoming = documentData.direction === 'incoming' || document.type === 'Receipt' || document.type === 'Z Report';
         const isOutgoing = documentData.direction === 'outgoing' || document.type === 'Payment Order' || document.type === 'Collection Order';
         const isCredit = transaction.transactionType === 'CREDIT';
         const isDebit = transaction.transactionType === 'DEBIT';
@@ -2453,6 +2468,18 @@ export class DataExtractionService {
           score += 0.1;
           criteria.payment_order_priority = true;
           reasons.push('Payment Order matches debit transaction');
+        }
+      
+        // Debug logging for Payment/Collection Orders
+        if (document.type === 'Payment Order' || document.type === 'Collection Order') {
+          this.logger.warn(
+            `🎯 MATCH DEBUG: ${document.type} ${document.id} vs Transaction ${transaction.id} ` +
+            `Score: ${Math.min(score, 1.0).toFixed(3)} | Amount: ${documentAmount} vs ${transactionAmount} (diff: ${amountDiff.toFixed(2)}) ` +
+            `| Date: ${documentDate?.toISOString().split('T')[0]} vs ${transactionDate.toISOString().split('T')[0]} ` +
+            `| DocNum: "${documentNumber}" vs TxnRef: "${transaction.referenceNumber}" ` +
+            `| Direction: ${documentData.direction} vs ${transaction.transactionType} ` +
+            `| Reasons: [${reasons.join(', ')}]`
+          );
         }
       
         return {

@@ -940,7 +940,7 @@ const BankPage = () => {
                               }
                             }}
                             disabled={!txn.bankStatementDocument?.signedUrl}
-                            title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
+                            title={language === 'ro' ? 'Vezi extrasul de cont bancar' : 'View bank statement'}
                           >
                             <Eye size={14} />
                           </button>
@@ -1071,10 +1071,10 @@ const BankPage = () => {
                                 }
                               }}
                               disabled={!(suggestion.document as any)?.signedUrl && !(suggestion.document as any)?.path}
-                              className="p-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="p-1 hover:bg-gray-100 bg-[var(--primary)]/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={language === 'ro' ? 'Vezi documentul' : 'View document'}
                             >
-                              <Eye size={14} className="text-blue-600" />
+                              <Eye size={14} className="text-[var(--primary)]" />
                             </button>
                           )}
                         </div>
@@ -1114,10 +1114,10 @@ const BankPage = () => {
                                 }
                               }}
                               disabled={!(suggestion.bankTransaction as any)?.bankStatementDocument?.signedUrl}
-                              className="p-1 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
                             >
-                              <Eye size={14} className="text-emerald-600" />
+                              <Eye size={14} className="text-[var(--primary)]" />
                             </button>
                           )}
                         </div>
