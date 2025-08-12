@@ -969,13 +969,15 @@ export class FilesService {
                     const uniqueReferences = [...new Set(filteredReferences)];
                     
                     try {
-                        const cluster = [...new Set([docId, ...uniqueReferences])];
-                        if (cluster.length > 1) {
-                            await this.syncReferences(prisma, cluster);
-                            console.log(`✅ Symmetrical references updated for cluster ${cluster.join(', ')}`);
-                        }
+                        // Only update the source document with its references
+                        // Don't create bidirectional references that would make all referenced docs reference each other
+                        await prisma.document.update({
+                            where: { id: docId },
+                            data: { references: uniqueReferences }
+                        });
+                        console.log(`✅ Updated document ${docId} with references: ${uniqueReferences.join(', ')}`);
                     } catch (error) {
-                        console.error('❌ Error in reference update process:', error);
+                        console.error('❌ Error updating document references:', error);
                     }
                 }
             

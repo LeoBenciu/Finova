@@ -1117,7 +1117,7 @@ const BankPage = () => {
                               className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
                             >
-                              <Eye size={14} className="text-[var(--primary)]" />
+                              <Eye size={14} className="text-emerald-500" />
                             </button>
                           )}
                         </div>
