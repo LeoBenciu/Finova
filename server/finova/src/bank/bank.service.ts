@@ -42,13 +42,13 @@ export class BankService {
           this.prisma.document.count({
             where: {
               accountingClientId: accountingClientRelation.id,
-              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] }
+              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
             }
           }),
           this.prisma.document.count({
             where: {
               accountingClientId: accountingClientRelation.id,
-              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] },
+              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
               reconciliationStatus: ReconciliationStatus.MATCHED
             }
           }),
@@ -80,7 +80,7 @@ export class BankService {
         const unmatchedDocuments = await this.prisma.document.findMany({
           where: {
             accountingClientId: accountingClientRelation.id,
-            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] },
+            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
             reconciliationStatus: ReconciliationStatus.UNRECONCILED
           },
           include: { processedData: true }
@@ -150,7 +150,7 @@ export class BankService {
       
         const whereCondition: any = {
           accountingClientId: accountingClientRelation.id,
-          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] }
+          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
         };
       
         if (unreconciled) {
@@ -995,7 +995,7 @@ export class BankService {
           by: ['reconciliationStatus'],
           where: {
             accountingClientId: accountingClientRelation.id,
-            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] },
+            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
             createdAt: { gte: startDate, lte: endDate }
           },
           _count: { id: true },
@@ -1037,7 +1037,7 @@ export class BankService {
       const documentsWithAmounts = await this.prisma.document.findMany({
         where: {
           accountingClientId: accountingClientRelation.id,
-          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] },
+          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
           createdAt: { gte: startDate, lte: endDate }
         },
         include: { processedData: true }
@@ -1267,7 +1267,7 @@ export class BankService {
         this.prisma.document.findMany({
           where: {
             accountingClientId: accountingClientRelation.id,
-            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order'] },
+            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
             reconciliationStatus: 'UNRECONCILED',
             createdAt: { lt: thresholdDate, gte: startDate, lte: endDate }
           },

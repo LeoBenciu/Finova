@@ -969,8 +969,6 @@ export class FilesService {
                     const uniqueReferences = [...new Set(filteredReferences)];
                     
                     try {
-                        // Only update the source document with its references
-                        // Don't create bidirectional references that would make all referenced docs reference each other
                         await prisma.document.update({
                             where: { id: docId },
                             data: { references: uniqueReferences }

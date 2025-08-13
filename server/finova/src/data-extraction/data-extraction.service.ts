@@ -1047,13 +1047,21 @@ export class DataExtractionService {
       
       private async createBidirectionalReference(sourceDocId: number, targetDocId: number): Promise<void> {
         try {
+          this.logger.warn(`🔗 BIDIRECTIONAL REF: Creating ${sourceDocId} <-> ${targetDocId}`);
+          
           const [sourceDoc, targetDoc] = await Promise.all([
             this.prisma.document.findUnique({ where: { id: sourceDocId } }),
             this.prisma.document.findUnique({ where: { id: targetDocId } })
           ]);
-      
-          if (!sourceDoc || !targetDoc) return;
-      
+
+          if (!sourceDoc || !targetDoc) {
+            this.logger.error(`🔗 Missing documents - source: ${!!sourceDoc}, target: ${!!targetDoc}`);
+            return;
+          }
+          
+          this.logger.warn(`🔗 BEFORE - Source ${sourceDocId} (${sourceDoc.name}): ${JSON.stringify(sourceDoc.references)}`);
+          this.logger.warn(`🔗 BEFORE - Target ${targetDocId} (${targetDoc.name}): ${JSON.stringify(targetDoc.references)}`);
+          
           const sourceRefs = Array.isArray(sourceDoc.references) ? sourceDoc.references : [];
           if (!sourceRefs.includes(targetDocId)) {
             await this.prisma.document.update({
@@ -1073,6 +1081,15 @@ export class DataExtractionService {
             }
           }
       
+          // Log final state
+          const [finalSourceDoc, finalTargetDoc] = await Promise.all([
+            this.prisma.document.findUnique({ where: { id: sourceDocId } }),
+            this.prisma.document.findUnique({ where: { id: targetDocId } })
+          ]);
+          
+          this.logger.warn(`🔗 AFTER - Source ${sourceDocId} (${finalSourceDoc?.name}): ${JSON.stringify(finalSourceDoc?.references)}`);
+          this.logger.warn(`🔗 AFTER - Target ${targetDocId} (${finalTargetDoc?.name}): ${JSON.stringify(finalTargetDoc?.references)}`);
+
         } catch (error) {
           this.logger.error(`Error creating bidirectional reference:`, error);
         }
