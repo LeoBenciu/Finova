@@ -2298,18 +2298,28 @@ export class DataExtractionService {
             
             // Enhanced debug logging for Payment/Collection Orders and Z Reports
             if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
-              this.logger.warn(
-                `🔍 ${document.type.toUpperCase()} DEBUG: Document ${document.id} (${document.name}) ` +
-                `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber}, ` +
-                `Date: ${documentDate?.toISOString().split('T')[0]}, Direction: ${documentData.direction}, ` +
-                `Raw data keys: ${Object.keys(documentData).join(', ')}`
-              );
+              try {
+                const dateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+                const keysStr = documentData && typeof documentData === 'object' ? Object.keys(documentData).join(', ') : 'none';
+                this.logger.warn(
+                  `🔍 ${document.type.toUpperCase()} DEBUG: Document ${document.id} (${document.name}) ` +
+                  `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber || 'null'}, ` +
+                  `Date: ${dateStr}, Direction: ${documentData?.direction || 'null'}, ` +
+                  `Raw data keys: ${keysStr}`
+                );
+              } catch (debugError) {
+                this.logger.error(`Debug logging error for document ${document.id}:`, debugError);
+              }
             }
   
             if (documentAmount === 0) {
               if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
                 this.logger.error(`❌ ${document.type.toUpperCase()} ${document.id} (${document.name}) has ZERO amount - skipping!`);
-                this.logger.error(`❌ Raw data for ${document.name}: ${JSON.stringify(documentData, null, 2)}`);
+                try {
+                  this.logger.error(`❌ Raw data for ${document.name}: ${JSON.stringify(documentData, null, 2)}`);
+                } catch (jsonError) {
+                  this.logger.error(`❌ Raw data logging failed for ${document.name}:`, jsonError);
+                }
               }
               continue;
             }
