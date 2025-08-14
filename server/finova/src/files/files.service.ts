@@ -80,21 +80,45 @@ export class FilesService {
 
         private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
             console.log(`🔁 syncReferences cluster=${JSON.stringify(cluster)}`);
-            await Promise.all(
-                cluster.map(async (id: number) => {
+            
+            // Use a transaction to ensure atomicity
+            await prisma.$transaction(async (tx: any) => {
+                for (const id of cluster) {
                     try {
                         const refs = cluster.filter(ref => ref !== id);
-                        const res = await prisma.document.update({
+                        console.log(`🚨 SYNC DEBUG: Document ${id} should get references: ${JSON.stringify(refs)}`);
+                        
+                        const res = await tx.document.update({
                             where: { id },
                             data: { references: refs }
                         });
-                        console.log(`✅ updated ${id} refs → ${JSON.stringify(res.references)}`);
+                        
+                        console.log(`✅ SYNC RESULT: Document ${id} now has references: ${JSON.stringify(res.references)}`);
+                        
+                        // Verify the update worked correctly
+                        if (JSON.stringify(res.references.sort()) !== JSON.stringify(refs.sort())) {
+                            console.error(`🚨 SYNC ERROR: Expected ${JSON.stringify(refs.sort())} but got ${JSON.stringify(res.references.sort())}`);
+                        }
                     } catch (e) {
-                        console.error(`❌ failed updating ${id}`, e);
+                        console.error(`❌ failed updating document ${id}:`, e);
                         throw e;
                     }
-                })
-            );
+                }
+            });
+            
+            // Final verification - check all documents have correct references
+            console.log(`🔍 Final verification of cluster ${JSON.stringify(cluster)}:`);
+            for (const id of cluster) {
+                const doc = await prisma.document.findUnique({ where: { id } });
+                const expectedRefs = cluster.filter(ref => ref !== id).sort();
+                const actualRefs = (doc?.references || []).sort();
+                
+                if (JSON.stringify(expectedRefs) === JSON.stringify(actualRefs)) {
+                    console.log(`✅ Document ${id} references are correct: ${JSON.stringify(actualRefs)}`);
+                } else {
+                    console.error(`❌ Document ${id} references are WRONG! Expected: ${JSON.stringify(expectedRefs)}, Got: ${JSON.stringify(actualRefs)}`);
+                }
+            }
         }
 
 
