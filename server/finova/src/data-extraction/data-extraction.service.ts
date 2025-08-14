@@ -1007,6 +1007,9 @@ export class DataExtractionService {
                 }
               });
       
+              this.logger.warn(`🔗 CALLING createBidirectionalReference(${pendingRef.sourceDocumentId}, ${document.id})`);
+              this.logger.warn(`🔗 MEANING: ${pendingRef.sourceDocument.name}(${pendingRef.sourceDocumentId}) <-> ${document.name}(${document.id})`);
+              
               await this.createBidirectionalReference(pendingRef.sourceDocumentId, document.id);
       
               this.logger.log(`Resolved reference: ${pendingRef.sourceDocument.name} -> ${document.name}`);
@@ -1066,26 +1069,40 @@ export class DataExtractionService {
             
             // Update source document to reference target
             const sourceRefs = Array.isArray(sourceDoc.references) ? [...sourceDoc.references] : [];
+            this.logger.warn(`🔗 Source ${sourceDocId} (${sourceDoc.name}) current refs: ${JSON.stringify(sourceRefs)}`);
+            
             if (!sourceRefs.includes(targetDocId)) {
               sourceRefs.push(targetDocId);
+              this.logger.warn(`🔗 Adding ${targetDocId} to source ${sourceDocId} refs: ${JSON.stringify(sourceRefs)}`);
+              
               await tx.document.update({
                 where: { id: sourceDocId },
                 data: { references: sourceRefs }
               });
-              this.logger.warn(`🔗 UPDATED Source ${sourceDocId} references: ${JSON.stringify(sourceRefs)}`);
+              this.logger.warn(`🔗 UPDATED Source ${sourceDocId} (${sourceDoc.name}) references: ${JSON.stringify(sourceRefs)}`);
+            } else {
+              this.logger.warn(`🔗 Source ${sourceDocId} already references ${targetDocId}`);
             }
         
             // Only add reverse reference when neither document is a bank statement
             if (sourceDoc.type !== 'BANK_STATEMENT' && targetDoc.type !== 'BANK_STATEMENT') {
               const targetRefs = Array.isArray(targetDoc.references) ? [...targetDoc.references] : [];
+              this.logger.warn(`🔗 Target ${targetDocId} (${targetDoc.name}) current refs: ${JSON.stringify(targetRefs)}`);
+              
               if (!targetRefs.includes(sourceDocId)) {
                 targetRefs.push(sourceDocId);
+                this.logger.warn(`🔗 Adding ${sourceDocId} to target ${targetDocId} refs: ${JSON.stringify(targetRefs)}`);
+                
                 await tx.document.update({
                   where: { id: targetDocId },
                   data: { references: targetRefs }
                 });
-                this.logger.warn(`🔗 UPDATED Target ${targetDocId} references: ${JSON.stringify(targetRefs)}`);
+                this.logger.warn(`🔗 UPDATED Target ${targetDocId} (${targetDoc.name}) references: ${JSON.stringify(targetRefs)}`);
+              } else {
+                this.logger.warn(`🔗 Target ${targetDocId} already references ${sourceDocId}`);
               }
+            } else {
+              this.logger.warn(`🔗 Skipping reverse reference - one document is a bank statement`);
             }
           });
       
