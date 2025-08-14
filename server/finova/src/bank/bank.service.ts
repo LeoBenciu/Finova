@@ -418,6 +418,7 @@ export class BankService {
                     name: s.document.name,
                     type: s.document.type,
                     signedUrl: documentSignedUrl,
+                    total_amount: this.extractDocumentAmount(s.document),
                   }
                 : null,
               bankTransaction: s.bankTransaction
@@ -1370,5 +1371,59 @@ export class BankService {
       };
     }
 
+    private extractDocumentAmount(document: any): number {
+      if (!document?.processedData?.extractedFields) {
+        return 0;
+      }
+
+      try {
+        const extractedFields = typeof document.processedData.extractedFields === 'string'
+          ? JSON.parse(document.processedData.extractedFields)
+          : document.processedData.extractedFields;
+
+        const documentData = extractedFields.result || extractedFields || {};
+
+        // Try primary amount field first
+        let amount = this.parseAmount(documentData.total_amount);
+        if (amount !== 0) return Math.abs(amount);
+
+        // Fallback for Payment/Collection Orders & Z-Reports
+        const candidateKeys = [
+          'amount', 'value', 'payment_amount', 'transaction_amount',
+          'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount'
+        ];
+
+        for (const key of candidateKeys) {
+          if (documentData[key]) {
+            amount = this.parseAmount(documentData[key]);
+            if (amount !== 0) {
+              return Math.abs(amount);
+            }
+          }
+        }
+
+        return 0;
+      } catch (error) {
+        console.error(`Error extracting document amount for document ${document.id}:`, error);
+        return 0;
+      }
+    }
+
+    private parseAmount(amount: any): number {
+      if (!amount) return 0;
+      
+      if (typeof amount === 'number') {
+        return amount;
+      }
+      
+      if (typeof amount === 'string') {
+        // Remove currency symbols, spaces, and commas
+        const cleaned = amount.replace(/[^\d.-]/g, '');
+        const parsed = parseFloat(cleaned);
+        return isNaN(parsed) ? 0 : parsed;
+      }
+      
+      return 0;
+    }
       
 }

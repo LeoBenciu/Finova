@@ -2252,10 +2252,10 @@ export class DataExtractionService {
             const documentNumber = documentData.document_number || documentData.receipt_number;
             const documentDate = this.parseDate(documentData.document_date);
             
-            // Enhanced debug logging for Payment/Collection Orders
-            if (document.type === 'Payment Order' || document.type === 'Collection Order') {
+            // Enhanced debug logging for Payment/Collection Orders and Z Reports
+            if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
               this.logger.warn(
-                `🔍 PAYMENT/COLLECTION ORDER DEBUG: Document ${document.id} (${document.name}) ` +
+                `🔍 ${document.type.toUpperCase()} DEBUG: Document ${document.id} (${document.name}) ` +
                 `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber}, ` +
                 `Date: ${documentDate?.toISOString().split('T')[0]}, Direction: ${documentData.direction}, ` +
                 `Raw data keys: ${Object.keys(documentData).join(', ')}`
