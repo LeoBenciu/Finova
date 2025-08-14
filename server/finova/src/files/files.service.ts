@@ -804,14 +804,16 @@ export class FilesService {
             }).promise();
     
             const result = await this.prisma.$transaction(async (prisma) => {
-                let references: number[] = [];
-                let allDocs: any[] = [];
-                
-                console.log(`🔗 POSTFILE DEBUG:`);
-                console.log(`   - processedData type: ${typeof processedData}`);
-                console.log(`   - processedData.result type: ${typeof processedData.result}`);
-                console.log(`   - processedData.result?.references: ${JSON.stringify(processedData.result?.references)}`);
-                console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
+                try {
+                    console.log(`🚨 POSTFILE TRANSACTION START`);
+                    let references: number[] = [];
+                    let allDocs: any[] = [];
+                    
+                    console.log(`🔗 POSTFILE DEBUG:`);
+                    console.log(`   - processedData type: ${typeof processedData}`);
+                    console.log(`   - processedData.result type: ${typeof processedData.result}`);
+                    console.log(`   - processedData.result?.references: ${JSON.stringify(processedData.result?.references)}`);
+                    console.log(`   - processedData.references: ${JSON.stringify(processedData.references)}`);
 
                 if (processedData.result?.document_type?.toLowerCase() === 'bank statement' && 
                 processedData.result?.transactions && 
@@ -1143,6 +1145,11 @@ export class FilesService {
                 console.log(`[AUDIT] Document ${document.id} created by user ${currentUser.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
     
                 return { savedDocument: document, savedProcessedData: processedDataDb };
+                } catch (transactionError) {
+                    console.error(`🚨 POSTFILE TRANSACTION ERROR:`, transactionError);
+                    console.error(`🚨 Error occurred during document creation for file: ${file.originalname}`);
+                    throw transactionError;
+                }
             }, {
                 timeout: 30000
             });
