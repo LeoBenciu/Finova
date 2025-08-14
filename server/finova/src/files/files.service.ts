@@ -1000,6 +1000,12 @@ export class FilesService {
                             data: { references: uniqueReferences }
                         });
                         console.log(`✅ Updated document ${docId} with references: ${uniqueReferences.join(', ')}`);
+                        
+                        // Create bidirectional references using syncReferences
+                        const cluster = [docId, ...uniqueReferences];
+                        console.log(`🔗 POSTFILE: Creating bidirectional references for cluster: ${JSON.stringify(cluster)}`);
+                        await this.syncReferences(prisma, cluster);
+                        
                     } catch (error) {
                         console.error('❌ Error updating document references:', error);
                     }
