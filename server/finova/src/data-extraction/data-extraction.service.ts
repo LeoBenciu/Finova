@@ -1050,6 +1050,12 @@ export class DataExtractionService {
       
       private async createBidirectionalReference(sourceDocId: number, targetDocId: number): Promise<void> {
         try {
+          // Validate parameters
+          if (!sourceDocId || !targetDocId || sourceDocId === targetDocId) {
+            this.logger.error(`🔗 Invalid parameters: sourceDocId=${sourceDocId}, targetDocId=${targetDocId}`);
+            return;
+          }
+          
           this.logger.warn(`🔗 BIDIRECTIONAL REF: Creating ${sourceDocId} <-> ${targetDocId}`);
           
           // Use a transaction to ensure atomicity and prevent race conditions
@@ -1090,6 +1096,12 @@ export class DataExtractionService {
               this.logger.warn(`🔗 Target ${targetDocId} (${targetDoc.name}) current refs: ${JSON.stringify(targetRefs)}`);
               
               if (!targetRefs.includes(sourceDocId)) {
+                // CRITICAL DEBUG: Log exactly what we're about to do
+                this.logger.error(`🚨 CRITICAL: About to add sourceDocId=${sourceDocId} to targetDocId=${targetDocId}`);
+                this.logger.error(`🚨 CRITICAL: Target document name: ${targetDoc.name}`);
+                this.logger.error(`🚨 CRITICAL: Source document name: ${sourceDoc.name}`);
+                this.logger.error(`🚨 CRITICAL: Expected result: ${targetDoc.name} should reference ${sourceDoc.name}`);
+                
                 targetRefs.push(sourceDocId);
                 this.logger.warn(`🔗 Adding ${sourceDocId} to target ${targetDocId} refs: ${JSON.stringify(targetRefs)}`);
                 
@@ -1098,6 +1110,10 @@ export class DataExtractionService {
                   data: { references: targetRefs }
                 });
                 this.logger.warn(`🔗 UPDATED Target ${targetDocId} (${targetDoc.name}) references: ${JSON.stringify(targetRefs)}`);
+                
+                // CRITICAL DEBUG: Verify what was actually saved
+                const verifyDoc = await tx.document.findUnique({ where: { id: targetDocId } });
+                this.logger.error(`🚨 VERIFICATION: ${targetDoc.name} now has references: ${JSON.stringify(verifyDoc?.references)}`);
               } else {
                 this.logger.warn(`🔗 Target ${targetDocId} already references ${sourceDocId}`);
               }
