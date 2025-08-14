@@ -833,7 +833,6 @@ export class BankService {
             data: { status: SuggestionStatus.REJECTED }
           });
 
-          // Payment tracking for invoices
           if (suggestion.document && suggestion.document.type.toLowerCase().includes('invoice')) {
             const parseAmount = (value: any): number => {
               if (!value) return 0;
@@ -843,12 +842,9 @@ export class BankService {
               return isNaN(parsed) ? 0 : parsed;
             };
 
-            // Get existing payment summary or create new one
             let paymentSummary = await prisma.paymentSummary.findUnique({
               where: { documentId: suggestion.document.id }
             });
-
-            // Get total amount from payment summary or extract from document data
             let totalAmount = paymentSummary ? paymentSummary.totalAmount : 0;
             if (!totalAmount && suggestion.document.processedData?.extractedFields) {
               try {
@@ -862,13 +858,10 @@ export class BankService {
               }
             }
 
-            // Calculate new payment amounts
             const transactionAmount = parseAmount(suggestion.bankTransaction.amount);
             const currentPaidAmount = paymentSummary ? paymentSummary.paidAmount : 0;
             const newPaidAmount = currentPaidAmount + transactionAmount;
             const remainingAmount = totalAmount - newPaidAmount;
-
-            // Determine payment status
             let paymentStatus: PaymentStatus = PaymentStatus.UNPAID;
             if (newPaidAmount > 0) {
               if (Math.abs(remainingAmount) <= 0.01) {
@@ -880,7 +873,6 @@ export class BankService {
               }
             }
 
-            // Update or create payment summary
             if (paymentSummary) {
               await prisma.paymentSummary.update({
                 where: { documentId: suggestion.document.id },
@@ -905,7 +897,6 @@ export class BankService {
               });
             }
 
-            // Update document payment fields for quick access
             await prisma.document.update({
               where: { id: suggestion.document.id },
               data: {
@@ -991,7 +982,6 @@ export class BankService {
       const endDate = new Date(parseInt(year), parseInt(month), 0);
     
       const [documentsStats, transactionsStats, reconciliationRecords] = await Promise.all([
-        // Documents statistics
         this.prisma.document.groupBy({
           by: ['reconciliationStatus'],
           where: {
@@ -1001,11 +991,9 @@ export class BankService {
           },
           _count: { id: true },
           _sum: { 
-            // We'll need to calculate amounts from processedData
           }
         }),
     
-        // Bank transactions statistics
         this.prisma.bankTransaction.groupBy({
           by: ['reconciliationStatus', 'transactionType'],
           where: {
@@ -1018,7 +1006,6 @@ export class BankService {
           _sum: { amount: true }
         }),
     
-        // Reconciliation activity
         this.prisma.reconciliationRecord.findMany({
           where: {
             reconciledAt: { gte: startDate, lte: endDate },
@@ -1034,7 +1021,6 @@ export class BankService {
         })
       ]);
     
-      // Calculate document amounts
       const documentsWithAmounts = await this.prisma.document.findMany({
         where: {
           accountingClientId: accountingClientRelation.id,
@@ -1373,6 +1359,7 @@ export class BankService {
 
     private extractDocumentAmount(document: any): number {
       if (!document?.processedData?.extractedFields) {
+        console.log(`📊 No processedData for document ${document.id} (${document.name})`);
         return 0;
       }
 
@@ -1382,12 +1369,16 @@ export class BankService {
           : document.processedData.extractedFields;
 
         const documentData = extractedFields.result || extractedFields || {};
+        
+        console.log(`📊 Extracting amount for ${document.type} document ${document.id} (${document.name})`);
+        console.log(`📊 Available keys: ${Object.keys(documentData).join(', ')}`);
 
-        // Try primary amount field first
         let amount = this.parseAmount(documentData.total_amount);
-        if (amount !== 0) return Math.abs(amount);
+        if (amount !== 0) {
+          console.log(`📊 Found amount ${amount} in total_amount for ${document.name}`);
+          return Math.abs(amount);
+        }
 
-        // Fallback for Payment/Collection Orders & Z-Reports
         const candidateKeys = [
           'amount', 'value', 'payment_amount', 'transaction_amount',
           'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount'
@@ -1397,11 +1388,13 @@ export class BankService {
           if (documentData[key]) {
             amount = this.parseAmount(documentData[key]);
             if (amount !== 0) {
+              console.log(`📊 Found amount ${amount} in field '${key}' for ${document.name}`);
               return Math.abs(amount);
             }
           }
         }
 
+        console.log(`📊 No valid amount found for ${document.name}`);
         return 0;
       } catch (error) {
         console.error(`Error extracting document amount for document ${document.id}:`, error);
@@ -1417,7 +1410,6 @@ export class BankService {
       }
       
       if (typeof amount === 'string') {
-        // Remove currency symbols, spaces, and commas
         const cleaned = amount.replace(/[^\d.-]/g, '');
         const parsed = parseFloat(cleaned);
         return isNaN(parsed) ? 0 : parsed;

@@ -1082,7 +1082,7 @@ const BankPage = () => {
                           <>
                             <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
                             <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
-                            {suggestion.document.total_amount && (
+                            {suggestion.document.total_amount !== undefined && suggestion.document.total_amount !== null && (
                               <p className="text-sm font-medium text-blue-600 mt-1">
                                 {formatCurrency(suggestion.document.total_amount)}
                               </p>

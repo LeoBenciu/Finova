@@ -1049,46 +1049,54 @@ export class DataExtractionService {
         try {
           this.logger.warn(`🔗 BIDIRECTIONAL REF: Creating ${sourceDocId} <-> ${targetDocId}`);
           
-          const [sourceDoc, targetDoc] = await Promise.all([
-            this.prisma.document.findUnique({ where: { id: sourceDocId } }),
-            this.prisma.document.findUnique({ where: { id: targetDocId } })
-          ]);
+          // Use a transaction to ensure atomicity and prevent race conditions
+          await this.prisma.$transaction(async (tx) => {
+            const [sourceDoc, targetDoc] = await Promise.all([
+              tx.document.findUnique({ where: { id: sourceDocId } }),
+              tx.document.findUnique({ where: { id: targetDocId } })
+            ]);
 
-          if (!sourceDoc || !targetDoc) {
-            this.logger.error(`🔗 Missing documents - source: ${!!sourceDoc}, target: ${!!targetDoc}`);
-            return;
-          }
-          
-          this.logger.warn(`🔗 BEFORE - Source ${sourceDocId} (${sourceDoc.name}): ${JSON.stringify(sourceDoc.references)}`);
-          this.logger.warn(`🔗 BEFORE - Target ${targetDocId} (${targetDoc.name}): ${JSON.stringify(targetDoc.references)}`);
-          
-          const sourceRefs = Array.isArray(sourceDoc.references) ? sourceDoc.references : [];
-          if (!sourceRefs.includes(targetDocId)) {
-            await this.prisma.document.update({
-              where: { id: sourceDocId },
-              data: { references: [...sourceRefs, targetDocId] }
-            });
-          }
-      
-          // Only add reverse reference when neither document is a bank statement
-          if (sourceDoc.type !== 'BANK_STATEMENT' && targetDoc.type !== 'BANK_STATEMENT') {
-            const targetRefs = Array.isArray(targetDoc.references) ? targetDoc.references : [];
-            if (!targetRefs.includes(sourceDocId)) {
-              await this.prisma.document.update({
-                where: { id: targetDocId },
-                data: { references: [...targetRefs, sourceDocId] }
-              });
+            if (!sourceDoc || !targetDoc) {
+              this.logger.error(`🔗 Missing documents - source: ${!!sourceDoc}, target: ${!!targetDoc}`);
+              return;
             }
-          }
+            
+            this.logger.warn(`🔗 BEFORE - Source ${sourceDocId} (${sourceDoc.name}): ${JSON.stringify(sourceDoc.references)}`);
+            this.logger.warn(`🔗 BEFORE - Target ${targetDocId} (${targetDoc.name}): ${JSON.stringify(targetDoc.references)}`);
+            
+            // Update source document to reference target
+            const sourceRefs = Array.isArray(sourceDoc.references) ? [...sourceDoc.references] : [];
+            if (!sourceRefs.includes(targetDocId)) {
+              sourceRefs.push(targetDocId);
+              await tx.document.update({
+                where: { id: sourceDocId },
+                data: { references: sourceRefs }
+              });
+              this.logger.warn(`🔗 UPDATED Source ${sourceDocId} references: ${JSON.stringify(sourceRefs)}`);
+            }
+        
+            // Only add reverse reference when neither document is a bank statement
+            if (sourceDoc.type !== 'BANK_STATEMENT' && targetDoc.type !== 'BANK_STATEMENT') {
+              const targetRefs = Array.isArray(targetDoc.references) ? [...targetDoc.references] : [];
+              if (!targetRefs.includes(sourceDocId)) {
+                targetRefs.push(sourceDocId);
+                await tx.document.update({
+                  where: { id: targetDocId },
+                  data: { references: targetRefs }
+                });
+                this.logger.warn(`🔗 UPDATED Target ${targetDocId} references: ${JSON.stringify(targetRefs)}`);
+              }
+            }
+          });
       
-          // Log final state
+          // Log final state after transaction
           const [finalSourceDoc, finalTargetDoc] = await Promise.all([
             this.prisma.document.findUnique({ where: { id: sourceDocId } }),
             this.prisma.document.findUnique({ where: { id: targetDocId } })
           ]);
           
-          this.logger.warn(`🔗 AFTER - Source ${sourceDocId} (${finalSourceDoc?.name}): ${JSON.stringify(finalSourceDoc?.references)}`);
-          this.logger.warn(`🔗 AFTER - Target ${targetDocId} (${finalTargetDoc?.name}): ${JSON.stringify(finalTargetDoc?.references)}`);
+          this.logger.warn(`🔗 FINAL - Source ${sourceDocId} (${finalSourceDoc?.name}): ${JSON.stringify(finalSourceDoc?.references)}`);
+          this.logger.warn(`🔗 FINAL - Target ${targetDocId} (${finalTargetDoc?.name}): ${JSON.stringify(finalTargetDoc?.references)}`);
 
         } catch (error) {
           this.logger.error(`Error creating bidirectional reference:`, error);
@@ -2198,6 +2206,25 @@ export class DataExtractionService {
             },
             include: { processedData: true }
           });
+          
+          this.logger.warn(`📊 RECONCILIATION DEBUG: Found ${unreconciled.length} unreconciled documents`);
+          const docsByType = unreconciled.reduce((acc, doc) => {
+            acc[doc.type] = (acc[doc.type] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          this.logger.warn(`📊 Document breakdown: ${JSON.stringify(docsByType)}`);
+          
+          // Log Payment Orders and Z Reports specifically
+          const paymentOrders = unreconciled.filter(d => d.type === 'Payment Order');
+          const zReports = unreconciled.filter(d => d.type === 'Z Report');
+          
+          if (paymentOrders.length > 0) {
+            this.logger.warn(`💰 Payment Orders found: ${paymentOrders.map(p => `${p.id}(${p.name})`).join(', ')}`);
+          }
+          
+          if (zReports.length > 0) {
+            this.logger.warn(`🏦 Z Reports found: ${zReports.map(z => `${z.id}(${z.name})`).join(', ')}`);
+          }
       
           const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
             where: {
@@ -2263,8 +2290,9 @@ export class DataExtractionService {
             }
   
             if (documentAmount === 0) {
-              if (document.type === 'Payment Order' || document.type === 'Collection Order') {
-                this.logger.error(`❌ PAYMENT/COLLECTION ORDER ${document.id} has ZERO amount - skipping!`);
+              if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
+                this.logger.error(`❌ ${document.type.toUpperCase()} ${document.id} (${document.name}) has ZERO amount - skipping!`);
+                this.logger.error(`❌ Raw data for ${document.name}: ${JSON.stringify(documentData, null, 2)}`);
               }
               continue;
             }
