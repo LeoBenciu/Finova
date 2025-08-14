@@ -2244,7 +2244,11 @@ export class DataExtractionService {
               }
             }
       
-            const documentAmount = this.parseAmountForReconciliation(documentData.total_amount);
+            const documentAmount = this.parseAmountForReconciliation(
+              documentData.total_amount,
+              documentData,
+              document.type
+            );
             const documentNumber = documentData.document_number || documentData.receipt_number;
             const documentDate = this.parseDate(documentData.document_date);
             
@@ -2557,8 +2561,30 @@ export class DataExtractionService {
         return ref.replace(/[^a-z0-9]/gi, '').toLowerCase();
       }
       
-      private parseAmountForReconciliation(amount: any): number {
-        return Math.abs(this.parseAmount(amount));
+      private parseAmountForReconciliation(amount: any, docData?: any, docType?: string): number {
+        // 1. Try the primary amount field first
+        let parsed = Math.abs(this.parseAmount(amount));
+        if (parsed !== 0) return parsed;
+
+        // 2. Fallback for Payment/Collection Orders & Z-Reports when total_amount is missing/zero
+        if (docData) {
+          const candidateKeys = [
+            'amount', 'value', 'payment_amount', 'transaction_amount',
+            'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount'
+          ];
+          
+          for (const key of candidateKeys) {
+            if (docData[key]) {
+              parsed = Math.abs(this.parseAmount(docData[key]));
+              if (parsed !== 0) {
+                this.logger.debug(`📊 Found amount ${parsed} in field '${key}' for ${docType} document`);
+                return parsed;
+              }
+            }
+          }
+        }
+        
+        return 0; // Keep existing behavior if we still can't find a valid amount
       }
       
       private parseDate(dateStr: any): Date | null {
