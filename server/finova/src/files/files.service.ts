@@ -81,11 +81,29 @@ export class FilesService {
         private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
             console.log(`🔁 syncReferences cluster=${JSON.stringify(cluster)}`);
             
+            if (cluster.length === 0) return;
+            
+            // The first document in the cluster is the "source" (newly uploaded document)
+            // It should reference all others, and all others should only reference it back
+            const sourceDocId = cluster[0];
+            const targetDocIds = cluster.slice(1);
+            
+            console.log(`🎆 STAR PATTERN: Source ${sourceDocId} -> Targets ${JSON.stringify(targetDocIds)}`);
+            
             // Use the existing transaction context (prisma is already a transaction)
             for (const id of cluster) {
                 try {
-                    const refs = cluster.filter(ref => ref !== id);
-                    console.log(`🚨 SYNC DEBUG: Document ${id} should get references: ${JSON.stringify(refs)}`);
+                    let refs: number[];
+                    
+                    if (id === sourceDocId) {
+                        // Source document references all target documents
+                        refs = targetDocIds;
+                        console.log(`🚨 SOURCE DEBUG: Document ${id} should reference all targets: ${JSON.stringify(refs)}`);
+                    } else {
+                        // Target documents only reference the source document
+                        refs = [sourceDocId];
+                        console.log(`🚨 TARGET DEBUG: Document ${id} should only reference source: ${JSON.stringify(refs)}`);
+                    }
                     
                     const res = await prisma.document.update({
                         where: { id },
