@@ -81,30 +81,28 @@ export class FilesService {
         private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
             console.log(`🔁 syncReferences cluster=${JSON.stringify(cluster)}`);
             
-            // Use a transaction to ensure atomicity
-            await prisma.$transaction(async (tx: any) => {
-                for (const id of cluster) {
-                    try {
-                        const refs = cluster.filter(ref => ref !== id);
-                        console.log(`🚨 SYNC DEBUG: Document ${id} should get references: ${JSON.stringify(refs)}`);
-                        
-                        const res = await tx.document.update({
-                            where: { id },
-                            data: { references: refs }
-                        });
-                        
-                        console.log(`✅ SYNC RESULT: Document ${id} now has references: ${JSON.stringify(res.references)}`);
-                        
-                        // Verify the update worked correctly
-                        if (JSON.stringify(res.references.sort()) !== JSON.stringify(refs.sort())) {
-                            console.error(`🚨 SYNC ERROR: Expected ${JSON.stringify(refs.sort())} but got ${JSON.stringify(res.references.sort())}`);
-                        }
-                    } catch (e) {
-                        console.error(`❌ failed updating document ${id}:`, e);
-                        throw e;
+            // Use the existing transaction context (prisma is already a transaction)
+            for (const id of cluster) {
+                try {
+                    const refs = cluster.filter(ref => ref !== id);
+                    console.log(`🚨 SYNC DEBUG: Document ${id} should get references: ${JSON.stringify(refs)}`);
+                    
+                    const res = await prisma.document.update({
+                        where: { id },
+                        data: { references: refs }
+                    });
+                    
+                    console.log(`✅ SYNC RESULT: Document ${id} now has references: ${JSON.stringify(res.references)}`);
+                    
+                    // Verify the update worked correctly
+                    if (JSON.stringify(res.references.sort()) !== JSON.stringify(refs.sort())) {
+                        console.error(`🚨 SYNC ERROR: Expected ${JSON.stringify(refs.sort())} but got ${JSON.stringify(res.references.sort())}`);
                     }
+                } catch (e) {
+                    console.error(`❌ failed updating document ${id}:`, e);
+                    throw e;
                 }
-            });
+            }
             
             // Final verification - check all documents have correct references
             console.log(`🔍 Final verification of cluster ${JSON.stringify(cluster)}:`);
