@@ -27,12 +27,33 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
     });
 
     if(result.error && result.error.status === 401){
+        const token = localStorage.getItem('token');
         console.error('🚨 401 UNAUTHORIZED ERROR DETAILS:', {
             url: typeof args === 'string' ? args : args.url,
             method: typeof args === 'object' ? args.method : 'GET',
             errorData: result.error.data,
-            token: localStorage.getItem('token') ? 'Present' : 'Missing'
+            token: token ? 'Present' : 'Missing',
+            tokenLength: token ? token.length : 0,
+            tokenStart: token ? token.substring(0, 20) : 'N/A'
         });
+        
+        // Try to decode token to check expiration
+        if (token) {
+            try {
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const now = Math.floor(Date.now() / 1000);
+                console.error('🕰️ TOKEN EXPIRATION CHECK:', {
+                    tokenExp: payload.exp,
+                    currentTime: now,
+                    isExpired: payload.exp < now,
+                    expiresIn: payload.exp - now,
+                    userId: payload.sub
+                });
+            } catch (e) {
+                console.error('🚨 INVALID TOKEN FORMAT:', e);
+            }
+        }
+        
         console.log('🔄 401 Unauthorized - logging out');
         logout();
     }
