@@ -269,8 +269,10 @@ const BankPage = () => {
   // Mutation hooks
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();
-  const [acceptSuggestion, { isLoading: isAcceptingSuggestion }] = useAcceptReconciliationSuggestionMutation();
-  const [rejectSuggestion, { isLoading: isRejectingSuggestion }] = useRejectReconciliationSuggestionMutation();
+  const [acceptSuggestion] = useAcceptReconciliationSuggestionMutation();
+  const [loadingSuggestions, setLoadingSuggestions] = useState<Set<number>>(new Set());
+  const [rejectSuggestion] = useRejectReconciliationSuggestionMutation();
+  const [rejectingSuggestions, setRejectingSuggestions] = useState<Set<number>>(new Set());
   const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
   const [regenerateTransactionSuggestions, { isLoading: isRegeneratingTransaction }] = useRegenerateTransactionSuggestionsMutation();
 
@@ -1073,9 +1075,11 @@ const BankPage = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
+                            const suggestionId = suggestion.id;
+                            setLoadingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
                               await acceptSuggestion({
-                                suggestionId: suggestion.id,
+                                suggestionId,
                                 notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
                               }).unwrap();
                               console.log('Suggestion accepted successfully');
@@ -1089,20 +1093,28 @@ const BankPage = () => {
                                 console.error('Accept suggestion error details:', errorMsg);
                                 alert(language === 'ro' ? `Eroare la acceptarea sugestiei: ${errorMsg}` : `Failed to accept suggestion: ${errorMsg}`);
                               }
+                            } finally {
+                              setLoadingSuggestions(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(suggestionId);
+                                return newSet;
+                              });
                             }
                           }}
-                          disabled={isAcceptingSuggestion}
+                          disabled={loadingSuggestions.has(suggestion.id)}
                           className="px-4 py-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                         >
-                          {isAcceptingSuggestion && <Loader2 size={16} className="animate-spin" />}
+                          {loadingSuggestions.has(suggestion.id) && <Loader2 size={16} className="animate-spin" />}
                           <Check size={16} />
                           {language === 'ro' ? 'Acceptă' : 'Accept'}
                         </button>
                          <button 
                           onClick={async () => {
+                            const suggestionId = suggestion.id;
+                            setRejectingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
                               await rejectSuggestion({
-                                suggestionId: suggestion.id,
+                                suggestionId,
                                 reason: 'Manual rejection by user'
                               }).unwrap();
                               console.log('Suggestion rejected successfully');
@@ -1116,12 +1128,18 @@ const BankPage = () => {
                                 console.error('Reject suggestion error details:', errorMsg);
                                 alert(language === 'ro' ? `Eroare la respingerea sugestiei: ${errorMsg}` : `Failed to reject suggestion: ${errorMsg}`);
                               }
+                            } finally {
+                              setRejectingSuggestions(prev => {
+                                const newSet = new Set(prev);
+                                newSet.delete(suggestionId);
+                                return newSet;
+                              });
                             }
                           }}
-                          disabled={isRejectingSuggestion}
+                          disabled={rejectingSuggestions.has(suggestion.id)}
                           className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                         >
-                          {isRejectingSuggestion && <Loader2 size={16} className="animate-spin" />}
+                          {rejectingSuggestions.has(suggestion.id) && <Loader2 size={16} className="animate-spin" />}
                           <X size={16} />
                           {language === 'ro' ? 'Respinge' : 'Reject'}
                         </button>

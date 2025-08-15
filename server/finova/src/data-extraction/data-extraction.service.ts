@@ -2529,6 +2529,12 @@ export class DataExtractionService {
   const tolerance = Math.max(transactionAmount * 0.05, 2); 
   
   if (document.type === 'Z Report') {
+    console.log(`📊 Z REPORT COMPONENT ANALYSIS for ${document.name}:`, {
+      transactionAmount,
+      tolerance,
+      availableFields: Object.keys(documentData || {})
+    });
+    
     const components = [
       { key: 'pos_amount', name: 'POS', score: 0.6 },
       { key: 'card_amount', name: 'Card', score: 0.6 },
@@ -2539,8 +2545,19 @@ export class DataExtractionService {
     
     for (const component of components) {
       const componentAmount = parseFloat(documentData[component.key]) || 0;
+      const amountDiff = Math.abs(componentAmount - transactionAmount);
+      
+      console.log(`🔍 Z REPORT COMPONENT CHECK: ${component.name} (${component.key})`, {
+        componentAmount,
+        transactionAmount,
+        amountDiff,
+        tolerance,
+        withinTolerance: amountDiff <= tolerance,
+        hasValue: componentAmount > 0
+      });
+      
       if (componentAmount > 0 && Math.abs(componentAmount - transactionAmount) <= tolerance) {
-        this.logger.warn(`🎯 Z REPORT COMPONENT MATCH: ${document.name} ${component.name} ${componentAmount} matches transaction ${transactionAmount}`);
+        console.log(`🎯 Z REPORT COMPONENT MATCH: ${document.name} ${component.name} ${componentAmount} matches transaction ${transactionAmount}`);
         return {
           found: true,
           score: component.score,
@@ -2549,6 +2566,8 @@ export class DataExtractionService {
         };
       }
     }
+    
+    console.log(`❌ Z REPORT NO COMPONENT MATCH for ${document.name}`);
   }
   
   if (document.type === 'Invoice') {
@@ -2637,13 +2656,23 @@ private calculateMatchSuggestion(
         }
         
         if (!amountMatchFound && documentData) {
+          console.log(`🔍 COMPONENT MATCHING DEBUG for ${document.name}:`, {
+            documentType: document.type,
+            documentAmount,
+            transactionAmount,
+            documentData: JSON.stringify(documentData, null, 2)
+          });
+          
           const componentMatch = this.tryComponentMatching(document, documentData, transactionAmount);
+          console.log(`🎯 COMPONENT MATCH RESULT for ${document.name}:`, componentMatch);
+          
           if (componentMatch.found) {
             score += componentMatch.score;
             criteria.component_match = true;
             criteria.component_type = componentMatch.componentType;
             reasons.push(componentMatch.reason);
             amountMatchFound = true;
+            console.log(`✅ COMPONENT MATCH SUCCESS: ${document.name} matched via ${componentMatch.componentType}`);
           }
         }
 

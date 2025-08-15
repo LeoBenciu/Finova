@@ -863,6 +863,14 @@ export class BankService {
             data: { status: SuggestionStatus.REJECTED }
           });
 
+          console.log('💰 PAYMENT STATUS UPDATE:', {
+            hasDocument: !!suggestion.document,
+            documentType: suggestion.document?.type,
+            isInvoice: suggestion.document?.type.toLowerCase().includes('invoice'),
+            documentId: suggestion.document?.id,
+            transactionAmount: suggestion.bankTransaction.amount
+          });
+          
           if (suggestion.document && suggestion.document.type.toLowerCase().includes('invoice')) {
             const parseAmount = (value: any): number => {
               if (!value) return 0;
@@ -893,6 +901,16 @@ export class BankService {
             const newPaidAmount = currentPaidAmount + transactionAmount;
             const remainingAmount = totalAmount - newPaidAmount;
             let paymentStatus: PaymentStatus = PaymentStatus.UNPAID;
+            
+            console.log('💰 PAYMENT CALCULATION:', {
+              totalAmount,
+              transactionAmount,
+              currentPaidAmount,
+              newPaidAmount,
+              remainingAmount,
+              hasPaymentSummary: !!paymentSummary
+            });
+            
             if (newPaidAmount > 0) {
               if (Math.abs(remainingAmount) <= 0.01) {
                 paymentStatus = PaymentStatus.FULLY_PAID;
@@ -902,6 +920,12 @@ export class BankService {
                 paymentStatus = PaymentStatus.PARTIALLY_PAID;
               }
             }
+            
+            console.log('💰 PAYMENT STATUS RESULT:', {
+              paymentStatus,
+              willUpdate: !!paymentSummary,
+              willCreate: !paymentSummary
+            });
 
             if (paymentSummary) {
               await prisma.paymentSummary.update({
