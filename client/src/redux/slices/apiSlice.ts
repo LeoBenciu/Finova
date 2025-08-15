@@ -521,6 +521,22 @@ export const finovaApi = createApi({
             invalidatesTags: ['BankReconciliation']
         }),
         
+        regenerateAllSuggestions: build.mutation({
+            query: (clientEin: string) => ({
+                url: `/bank/${clientEin}/suggestions/regenerate`,
+                method: 'POST'
+            }),
+            invalidatesTags: ['BankReconciliation']
+        }),
+        
+        regenerateTransactionSuggestions: build.mutation({
+            query: (transactionId: string) => ({
+                url: `/bank/transaction/${transactionId}/suggestions/regenerate`,
+                method: 'POST'
+            }),
+            invalidatesTags: ['BankReconciliation']
+        }),
+        
         updateUserConsent: build.mutation({
             query: ({ agreementType, accepted }) => ({
                 url: '/users/me/consent',
@@ -575,4 +591,5 @@ useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHeal
 useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
 useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
 useCreateBulkMatchesMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
+useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
 useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery} = finovaApi;

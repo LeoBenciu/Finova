@@ -96,11 +96,9 @@ export class FilesService {
                     let refs: number[];
                     
                     if (id === sourceDocId) {
-                        // Source document references all target documents
                         refs = targetDocIds;
                         console.log(`🚨 SOURCE DEBUG: Document ${id} should reference all targets: ${JSON.stringify(refs)}`);
                     } else {
-                        // Target documents only reference the source document
                         refs = [sourceDocId];
                         console.log(`🚨 TARGET DEBUG: Document ${id} should only reference source: ${JSON.stringify(refs)}`);
                     }
@@ -112,7 +110,6 @@ export class FilesService {
                     
                     console.log(`✅ SYNC RESULT: Document ${id} now has references: ${JSON.stringify(res.references)}`);
                     
-                    // Verify the update worked correctly
                     if (JSON.stringify(res.references.sort()) !== JSON.stringify(refs.sort())) {
                         console.error(`🚨 SYNC ERROR: Expected ${JSON.stringify(refs.sort())} but got ${JSON.stringify(res.references.sort())}`);
                     }
@@ -122,7 +119,6 @@ export class FilesService {
                 }
             }
             
-            // Final verification - check all documents have correct references
             console.log(`🔍 Final verification of cluster ${JSON.stringify(cluster)}:`);
             for (const id of cluster) {
                 const doc = await prisma.document.findUnique({ where: { id } });
@@ -139,7 +135,6 @@ export class FilesService {
 
 
     async updateReferences(docId: number, references: number[], user: User) {
-        // Validate access
         const document = await this.prisma.document.findUnique({ where: { id: docId } });
         if (!document) throw new NotFoundException('Document not found');
         const accountingClient = await this.prisma.accountingClients.findUnique({ where: { id: document.accountingClientId } });

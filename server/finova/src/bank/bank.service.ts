@@ -449,8 +449,18 @@ export class BankService {
           })
         );
             
-        if (total === 0 && page === 1) {
+        // Check if we need to regenerate suggestions based on unreconciled transactions
+        const unreconciliedTransactionCount = await this.prisma.bankTransaction.count({
+          where: {
+            bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+            reconciliationStatus: ReconciliationStatus.UNRECONCILED
+          }
+        });
+        
+        // Regenerate if we have fewer suggestions than unreconciled transactions (should be at least 1 per transaction)
+        if (total < unreconciliedTransactionCount && page === 1) {
           try {
+            console.log(`🔄 REGENERATING SUGGESTIONS: Found ${total} suggestions for ${unreconciliedTransactionCount} unreconciled transactions, regenerating...`);
             await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
             
             const [newSuggestions, newTotal] = await this.prisma.$transaction([
@@ -956,6 +966,73 @@ export class BankService {
         });
       
         return updatedSuggestion;
+      }
+      
+      async regenerateAllSuggestions(clientEin: string, user: User) {
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+          where: { ein: clientEin }
+        });
+      
+        if (!clientCompany) {
+          throw new NotFoundException('Client company not found');
+        }
+      
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+          where: {
+            accountingCompanyId: user.accountingCompanyId,
+            clientCompanyId: clientCompany.id
+          }
+        });
+      
+        if (!accountingClientRelation) {
+          throw new UnauthorizedException('No access to this client company');
+        }
+        
+        console.log(`🔄 FORCE REGENERATING ALL SUGGESTIONS for client ${clientEin}`);
+        
+        // Force regenerate all suggestions
+        await this.dataExtractionService.generateReconciliationSuggestions(accountingClientRelation.id);
+        
+        return { message: 'All suggestions regenerated successfully' };
+      }
+      
+      async regenerateTransactionSuggestions(transactionId: string, user: User) {
+        const transaction = await this.prisma.bankTransaction.findUnique({
+          where: { id: transactionId },
+          include: {
+            bankStatementDocument: {
+              include: {
+                accountingClient: true
+              }
+            }
+          }
+        });
+        
+        if (!transaction) {
+          throw new NotFoundException('Transaction not found');
+        }
+        
+        const transactionCompanyId = transaction.bankStatementDocument.accountingClient.accountingCompanyId;
+        if (transactionCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this transaction');
+        }
+        
+        console.log(`🔄 REGENERATING SUGGESTIONS for transaction ${transactionId}`);
+        
+        // Delete existing suggestions for this transaction
+        await this.prisma.reconciliationSuggestion.deleteMany({
+          where: {
+            bankTransactionId: transactionId,
+            status: SuggestionStatus.PENDING
+          }
+        });
+        
+        // Regenerate suggestions for this specific transaction
+        await this.dataExtractionService.generateReconciliationSuggestions(
+          transaction.bankStatementDocument.accountingClientId
+        );
+        
+        return { message: 'Transaction suggestions regenerated successfully' };
       }
 
     async getReconciliationSummaryReport(clientEin: string, user: User, month: string, year: string) {

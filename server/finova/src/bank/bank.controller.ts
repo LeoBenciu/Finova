@@ -108,7 +108,23 @@ export class BankController {
       @Body() data: { reason?: string }
     ) {
       return this.bankService.rejectSuggestion(suggestionId, user, data.reason);
-    }  
+    }
+    
+    @Post(':clientEin/suggestions/regenerate')
+    async regenerateAllSuggestions(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.regenerateAllSuggestions(clientEin, user);
+    }
+    
+    @Post('transaction/:transactionId/suggestions/regenerate')
+    async regenerateTransactionSuggestions(
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.regenerateTransactionSuggestions(transactionId, user);
+    }
 
     @Get(':clientEin/reports/reconciliation-summary')
     async getReconciliationSummaryReport(

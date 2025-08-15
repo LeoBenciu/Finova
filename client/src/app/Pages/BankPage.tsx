@@ -30,7 +30,9 @@ import {
   useCreateManualMatchMutation,
   useCreateBulkMatchesMutation,
   useAcceptReconciliationSuggestionMutation,
-  useRejectReconciliationSuggestionMutation
+  useRejectReconciliationSuggestionMutation,
+  useRegenerateAllSuggestionsMutation,
+  useRegenerateTransactionSuggestionsMutation
 } from '@/redux/slices/apiSlice';
 
 interface Document {
@@ -269,6 +271,8 @@ const BankPage = () => {
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();
   const [acceptSuggestion, { isLoading: isAcceptingSuggestion }] = useAcceptReconciliationSuggestionMutation();
   const [rejectSuggestion, { isLoading: isRejectingSuggestion }] = useRejectReconciliationSuggestionMutation();
+  const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
+  const [regenerateTransactionSuggestions, { isLoading: isRegeneratingTransaction }] = useRegenerateTransactionSuggestionsMutation();
 
   // Statistics
   const statsData = useMemo(() => {
@@ -440,6 +444,32 @@ const BankPage = () => {
     }
     
     console.log('Bulk action:', action, selectedItems);
+  };
+
+  const handleRegenerateAllSuggestions = async () => {
+    try {
+      await regenerateAllSuggestions(clientCompanyEin).unwrap();
+      console.log('All suggestions regenerated successfully');
+      // Refresh suggestions data
+      setSuggestionsData([]);
+      setSuggestionsPage(1);
+    } catch (error) {
+      console.error('Failed to regenerate all suggestions:', error);
+      alert(language === 'ro' ? 'Eroare la regenerarea sugestiilor' : 'Failed to regenerate suggestions');
+    }
+  };
+
+  const handleRegenerateTransactionSuggestions = async (transactionId: string) => {
+    try {
+      await regenerateTransactionSuggestions(transactionId).unwrap();
+      console.log(`Suggestions for transaction ${transactionId} regenerated successfully`);
+      // Refresh suggestions data
+      setSuggestionsData([]);
+      setSuggestionsPage(1);
+    } catch (error) {
+      console.error(`Failed to regenerate suggestions for transaction ${transactionId}:`, error);
+      alert(language === 'ro' ? 'Eroare la regenerarea sugestiilor pentru tranzacție' : 'Failed to regenerate transaction suggestions');
+    }
   };
 
   const toggleFileSelection = (fileId: number) => {
@@ -960,10 +990,24 @@ const BankPage = () => {
       {activeTab === 'suggestions' && (
         <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
           <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-            <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-              <Zap size={20} />
-              {language === 'ro' ? 'Sugerări de Reconciliere' : 'Reconciliation Suggestions'}
-            </h3>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
+                <Zap size={20} />
+                {language === 'ro' ? 'Sugerări de Reconciliere' : 'Reconciliation Suggestions'}
+              </h3>
+              <button
+                onClick={handleRegenerateAllSuggestions}
+                disabled={isRegeneratingAll}
+                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                {isRegeneratingAll ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+                {language === 'ro' ? 'Regenerează Toate' : 'Regenerate All'}
+              </button>
+            </div>
           </div>
           <div className="p-6">
             {suggestionsLoading ? (
@@ -1033,7 +1077,7 @@ const BankPage = () => {
                           <Check size={16} />
                           {language === 'ro' ? 'Acceptă' : 'Accept'}
                         </button>
-                        <button 
+                         <button 
                           onClick={async () => {
                             try {
                               await rejectSuggestion({
@@ -1053,6 +1097,21 @@ const BankPage = () => {
                           <X size={16} />
                           {language === 'ro' ? 'Respinge' : 'Reject'}
                         </button>
+                        {suggestion.bankTransaction && (
+                          <button
+                            onClick={() => suggestion.bankTransaction && handleRegenerateTransactionSuggestions(suggestion.bankTransaction.id)}
+                            disabled={isRegeneratingTransaction}
+                            className="px-3 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                            title={language === 'ro' ? 'Regenerează sugestii pentru această tranzacție' : 'Regenerate suggestions for this transaction'}
+                          >
+                            {isRegeneratingTransaction ? (
+                              <Loader2 size={16} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={16} />
+                            )}
+                            {language === 'ro' ? 'Regenerează' : 'Regenerate'}
+                          </button>
+                        )}
                       </div>
                     </div>
                     

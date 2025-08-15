@@ -2263,11 +2263,46 @@ export class DataExtractionService {
             where: {
               bankStatementDocument: { accountingClientId },
               reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            },
+            include: {
+              bankStatementDocument: true
             }
           });
       
           if (unreconciliedTransactions.length === 0) {
             return;
+          }
+          
+          // MANDATORY RULE: Get all documents referenced by bank statements
+          const bankStatementReferencedDocs = new Set<number>();
+          for (const transaction of unreconciliedTransactions) {
+            if (transaction.bankStatementDocument?.references) {
+              transaction.bankStatementDocument.references.forEach((refId: number) => {
+                bankStatementReferencedDocs.add(refId);
+              });
+            }
+          }
+          
+          this.logger.warn(`🏦 MANDATORY RULE: Bank statements reference ${bankStatementReferencedDocs.size} documents: [${Array.from(bankStatementReferencedDocs).join(', ')}]`);
+          
+          // Get the referenced documents that are unreconciled
+          const mandatoryDocs = await this.prisma.document.findMany({
+            where: {
+              id: { in: Array.from(bankStatementReferencedDocs) },
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            },
+            include: { processedData: true }
+          });
+          
+          this.logger.warn(`🎯 MANDATORY DOCS: Found ${mandatoryDocs.length} mandatory documents to suggest`);
+          
+          // Add mandatory docs to unreconciled list if not already included
+          const existingDocIds = new Set(unreconciled.map(d => d.id));
+          for (const mandatoryDoc of mandatoryDocs) {
+            if (!existingDocIds.has(mandatoryDoc.id)) {
+              unreconciled.push(mandatoryDoc);
+              this.logger.warn(`➕ Added mandatory doc: ${mandatoryDoc.name} (${mandatoryDoc.id})`);
+            }
           }
       
           await this.prisma.reconciliationSuggestion.deleteMany({
