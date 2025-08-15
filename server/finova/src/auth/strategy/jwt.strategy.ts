@@ -18,18 +18,26 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: { sub: number; email: string }) {
+    console.log('🔐 JWT VALIDATION START:', {
+      hasPayload: !!payload,
+      payloadKeys: payload ? Object.keys(payload) : [],
+      userId: payload?.sub,
+      email: payload?.email
+    });
 
     if (!payload) {
-      console.error('No payload found in JWT');
+      console.error('❌ No payload found in JWT');
       throw new UnauthorizedException('Invalid token');
     }
 
     if (!payload.sub) {
-      console.error('No user ID (sub) in JWT payload');
+      console.error('❌ No user ID (sub) in JWT payload:', payload);
       throw new UnauthorizedException('Invalid token structure');
     }
 
     try {
+      console.log('🔍 Looking up user with ID:', payload.sub);
+      
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
         select: {
@@ -40,14 +48,26 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         }
       });
 
+      console.log('👤 User lookup result:', {
+        found: !!user,
+        userId: user?.id,
+        email: user?.email,
+        role: user?.role
+      });
+
       if (!user) {
-        console.error(`No user found with ID: ${payload.sub}`);
+        console.error(`❌ No user found with ID: ${payload.sub}`);
         throw new UnauthorizedException('User not found');
       }
 
+      console.log('✅ JWT validation successful for user:', user.id);
       return user;
     } catch (error) {
-      console.error('JWT Validation Error:', error);
+      console.error('❌ JWT Validation Error:', {
+        error: error.message,
+        stack: error.stack,
+        payload: payload
+      });
       throw new UnauthorizedException('Could not validate token');
     }
   }
