@@ -1491,7 +1491,28 @@ export class FilesService {
     async getInvoicePayments(invoiceId: number, user: User) {
         console.log(`🔍 Getting invoice payments for invoice ${invoiceId}`);
 
-
+        // FIRST: Check PaymentSummary table (created by bank reconciliation)
+        const paymentSummary = await this.prisma.paymentSummary.findUnique({
+            where: { documentId: invoiceId }
+        });
+        
+        if (paymentSummary) {
+            console.log(`✅ Found PaymentSummary for invoice ${invoiceId}:`, {
+                totalAmount: paymentSummary.totalAmount,
+                paidAmount: paymentSummary.paidAmount,
+                paymentStatus: paymentSummary.paymentStatus
+            });
+            return {
+                amountPaid: paymentSummary.paidAmount,
+                payments: [{
+                    docId: invoiceId,
+                    type: 'Bank Reconciliation',
+                    amount: paymentSummary.paidAmount
+                }]
+            };
+        }
+        
+        console.log(`ℹ️ No PaymentSummary found for invoice ${invoiceId}, falling back to related documents`);
         
         const parseAmount = (raw: any): number => {
             if (raw === undefined || raw === null) return 0;
