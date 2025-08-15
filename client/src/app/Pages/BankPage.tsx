@@ -274,7 +274,8 @@ const BankPage = () => {
   const [rejectSuggestion] = useRejectReconciliationSuggestionMutation();
   const [rejectingSuggestions, setRejectingSuggestions] = useState<Set<number>>(new Set());
   const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
-  const [regenerateTransactionSuggestions, { isLoading: isRegeneratingTransaction }] = useRegenerateTransactionSuggestionsMutation();
+  const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
+  const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
 
   // Statistics
   const statsData = useMemo(() => {
@@ -469,6 +470,8 @@ const BankPage = () => {
   };
 
   const handleRegenerateTransactionSuggestions = async (transactionId: string) => {
+    const txnId = parseInt(transactionId);
+    setRegeneratingTransactions(prev => new Set(prev).add(txnId));
     try {
       await regenerateTransactionSuggestions(transactionId).unwrap();
       console.log(`Suggestions for transaction ${transactionId} regenerated successfully`);
@@ -485,6 +488,12 @@ const BankPage = () => {
         console.error('Regenerate transaction suggestions error details:', errorMsg);
         alert(language === 'ro' ? `Eroare la regenerarea sugestiilor pentru tranzacție: ${errorMsg}` : `Failed to regenerate transaction suggestions: ${errorMsg}`);
       }
+    } finally {
+      setRegeneratingTransactions(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(txnId);
+        return newSet;
+      });
     }
   };
 
@@ -1146,11 +1155,11 @@ const BankPage = () => {
                         {suggestion.bankTransaction && (
                           <button
                             onClick={() => suggestion.bankTransaction && handleRegenerateTransactionSuggestions(suggestion.bankTransaction.id)}
-                            disabled={isRegeneratingTransaction}
+                            disabled={regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id))}
                             className="px-3 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                             title={language === 'ro' ? 'Regenerează sugestii pentru această tranzacție' : 'Regenerate suggestions for this transaction'}
                           >
-                            {isRegeneratingTransaction ? (
+                            {regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id)) ? (
                               <Loader2 size={16} className="animate-spin" />
                             ) : (
                               <RefreshCw size={16} />

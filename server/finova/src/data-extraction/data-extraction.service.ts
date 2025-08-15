@@ -2893,7 +2893,8 @@ private parseAmountForReconciliation(amount: any, docData?: any, docType?: strin
         if (docData) {
           const candidateKeys = [
             'amount', 'value', 'payment_amount', 'transaction_amount',
-            'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount'
+            'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount',
+            'total_sales' // Added for Z Reports
           ];
           
           for (const key of candidateKeys) {
