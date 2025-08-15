@@ -2395,7 +2395,6 @@ export class DataExtractionService {
               }
       
               if (suggestion.confidenceScore >= 0.25) {
-                // Enhanced suggestion with component information for partial reconciliation
                 const suggestionData = {
                   documentId: document.id,
                   bankTransactionId: transaction.id,
@@ -2404,7 +2403,6 @@ export class DataExtractionService {
                   reasons: suggestion.reasons
                 };
                 
-                // Add component information if this is a component match
                 if (suggestion.matchingCriteria.component_match) {
                   suggestionData.matchingCriteria.component_type = suggestion.matchingCriteria.component_type;
                   suggestionData.matchingCriteria.is_partial_match = true;
@@ -2420,7 +2418,6 @@ export class DataExtractionService {
               }
             }
             
-            // Debug: Log documents that don't have any matches above threshold
             if (bestMatchForDocument.score < 0.25) {
               this.logger.warn(
                 `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +

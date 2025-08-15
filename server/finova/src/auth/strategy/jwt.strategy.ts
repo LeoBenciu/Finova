@@ -45,6 +45,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
           email: true,
           name: true,
           role: true,
+          accountingCompanyId: true
         }
       });
 
@@ -61,6 +62,25 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       }
 
       console.log('✅ JWT validation successful for user:', user.id);
+      
+      // TEMPORARY FIX: Ensure user has accountingCompanyId
+      if (!user.accountingCompanyId) {
+        console.warn('⚠️ User missing accountingCompanyId, setting to 1');
+        const updatedUser = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { accountingCompanyId: 1 },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            accountingCompanyId: true
+          }
+        });
+        console.log('✅ Updated user with accountingCompanyId:', updatedUser.accountingCompanyId);
+        return updatedUser;
+      }
+      
       return user;
     } catch (error) {
       console.error('❌ JWT Validation Error:', {
