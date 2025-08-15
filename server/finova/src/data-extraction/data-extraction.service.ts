@@ -2273,7 +2273,6 @@ export class DataExtractionService {
             return;
           }
           
-          // MANDATORY RULE: Get all documents referenced by bank statements
           const bankStatementReferencedDocs = new Set<number>();
           for (const transaction of unreconciliedTransactions) {
             if (transaction.bankStatementDocument?.references) {
@@ -2285,7 +2284,6 @@ export class DataExtractionService {
           
           this.logger.warn(`🏦 MANDATORY RULE: Bank statements reference ${bankStatementReferencedDocs.size} documents: [${Array.from(bankStatementReferencedDocs).join(', ')}]`);
           
-          // Get the referenced documents that are unreconciled
           const mandatoryDocs = await this.prisma.document.findMany({
             where: {
               id: { in: Array.from(bankStatementReferencedDocs) },
@@ -2296,7 +2294,6 @@ export class DataExtractionService {
           
           this.logger.warn(`🎯 MANDATORY DOCS: Found ${mandatoryDocs.length} mandatory documents to suggest`);
           
-          // Add mandatory docs to unreconciled list if not already included
           const existingDocIds = new Set(unreconciled.map(d => d.id));
           for (const mandatoryDoc of mandatoryDocs) {
             if (!existingDocIds.has(mandatoryDoc.id)) {
@@ -2378,13 +2375,18 @@ export class DataExtractionService {
             let bestMatchForDocument = { score: 0, transaction: null, suggestion: null };
             
             for (const transaction of unreconciliedTransactions) {
+              // Check if this document is mandatory (referenced by the bank statement for this transaction)
+              const isMandatory = bankStatementReferencedDocs.has(document.id) && 
+                                  transaction.bankStatementDocument?.references?.includes(document.id);
+              
               const suggestion = this.calculateMatchSuggestion(
                 document,
                 transaction,
                 documentData,
                 documentAmount,
                 documentNumber,
-                documentDate
+                documentDate,
+                isMandatory
               );
               
               // Track the best match for this document for debugging
@@ -2392,14 +2394,29 @@ export class DataExtractionService {
                 bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
               }
       
-              if (suggestion.confidenceScore >= 0.25) { 
-                suggestions.push({
+              if (suggestion.confidenceScore >= 0.25) {
+                // Enhanced suggestion with component information for partial reconciliation
+                const suggestionData = {
                   documentId: document.id,
                   bankTransactionId: transaction.id,
                   confidenceScore: suggestion.confidenceScore,
                   matchingCriteria: suggestion.matchingCriteria,
                   reasons: suggestion.reasons
-                });
+                };
+                
+                // Add component information if this is a component match
+                if (suggestion.matchingCriteria.component_match) {
+                  suggestionData.matchingCriteria.component_type = suggestion.matchingCriteria.component_type;
+                  suggestionData.matchingCriteria.is_partial_match = true;
+                  
+                  this.logger.warn(
+                    `🧩 COMPONENT SUGGESTION: Document ${document.id} (${document.name}) ` +
+                    `${suggestion.matchingCriteria.component_type} component matches Transaction ${transaction.id} ` +
+                    `(Score: ${suggestion.confidenceScore.toFixed(3)})`
+                  );
+                }
+                
+                suggestions.push(suggestionData);
               }
             }
             
@@ -2507,13 +2524,97 @@ export class DataExtractionService {
         }
       }
       
-      private calculateMatchSuggestion(
+      private tryComponentMatching(
+  document: any,
+  documentData: any,
+  transactionAmount: number
+): { found: boolean; score: number; componentType: string; reason: string } {
+  const tolerance = Math.max(transactionAmount * 0.05, 2); 
+  
+  if (document.type === 'Z Report') {
+    const components = [
+      { key: 'pos_amount', name: 'POS', score: 0.6 },
+      { key: 'card_amount', name: 'Card', score: 0.6 },
+      { key: 'cash_amount', name: 'Cash', score: 0.6 },
+      { key: 'total_pos', name: 'Total POS', score: 0.6 },
+      { key: 'card_total', name: 'Card Total', score: 0.6 }
+    ];
+    
+    for (const component of components) {
+      const componentAmount = parseFloat(documentData[component.key]) || 0;
+      if (componentAmount > 0 && Math.abs(componentAmount - transactionAmount) <= tolerance) {
+        this.logger.warn(`🎯 Z REPORT COMPONENT MATCH: ${document.name} ${component.name} ${componentAmount} matches transaction ${transactionAmount}`);
+        return {
+          found: true,
+          score: component.score,
+          componentType: component.name,
+          reason: `${component.name} component matches transaction amount`
+        };
+      }
+    }
+  }
+  
+  if (document.type === 'Invoice') {
+    const netAmount = parseFloat(documentData.net_amount) || parseFloat(documentData.subtotal) || 0;
+    const vatAmount = parseFloat(documentData.vat_amount) || 0;
+    
+    if (netAmount > 0 && Math.abs(netAmount - transactionAmount) <= tolerance) {
+      return {
+        found: true,
+        score: 0.5,
+        componentType: 'Net Amount',
+        reason: 'Net amount (excluding VAT) matches transaction'
+      };
+    }
+    
+    if (vatAmount > 0 && Math.abs(vatAmount - transactionAmount) <= tolerance) {
+      return {
+        found: true,
+        score: 0.4,
+        componentType: 'VAT Amount',
+        reason: 'VAT amount matches transaction'
+      };
+    }
+  }
+  
+  if (document.type === 'Payment Order' || document.type === 'Collection Order') {
+    const netAmount = parseFloat(documentData.net_amount) || 0;
+    const feeAmount = parseFloat(documentData.fee_amount) || parseFloat(documentData.commission) || 0;
+    
+    if (netAmount > 0 && Math.abs(netAmount - transactionAmount) <= tolerance) {
+      return {
+        found: true,
+        score: 0.5,
+        componentType: 'Net Amount',
+        reason: 'Net amount (after fees) matches transaction'
+      };
+    }
+    
+    const totalAmount = parseFloat(documentData.total_amount) || 0;
+    if (totalAmount > 0 && feeAmount > 0) {
+      const expectedNet = totalAmount - feeAmount;
+      if (Math.abs(expectedNet - transactionAmount) <= tolerance) {
+        return {
+          found: true,
+          score: 0.5,
+          componentType: 'Amount minus fees',
+          reason: `Document amount minus fees (${feeAmount}) matches transaction`
+        };
+      }
+    }
+  }
+  
+  return { found: false, score: 0, componentType: '', reason: '' };
+}
+
+private calculateMatchSuggestion(
         document: any,
         transaction: any,
         documentData: any,
         documentAmount: number,
         documentNumber: string,
-        documentDate: Date | null
+        documentDate: Date | null,
+        isMandatory: boolean = false
       ): { confidenceScore: number; matchingCriteria: any; reasons: string[] } {
         let score = 0;
         const criteria: any = {};
@@ -2523,18 +2624,32 @@ export class DataExtractionService {
         const transactionDate = new Date(transaction.transactionDate);
       
         const amountDiff = Math.abs(documentAmount - transactionAmount);
-        const amountThreshold = Math.max(documentAmount * 0.05, 2); // Increased from 2% to 5% and min from 1 to 2 RON 
-      
+        const amountThreshold = Math.max(documentAmount * 0.05, 2); 
+        let amountMatchFound = false;
+
         if (amountDiff === 0) {
           score += 0.6;
           criteria.exact_amount_match = true;
           reasons.push('Exact amount match');
+          amountMatchFound = true;
         } else if (amountDiff <= amountThreshold) {
           score += 0.3;
           criteria.close_amount_match = true;
           reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)} RON)`);
+          amountMatchFound = true;
         }
-      
+        
+        if (!amountMatchFound && documentData) {
+          const componentMatch = this.tryComponentMatching(document, documentData, transactionAmount);
+          if (componentMatch.found) {
+            score += componentMatch.score;
+            criteria.component_match = true;
+            criteria.component_type = componentMatch.componentType;
+            reasons.push(componentMatch.reason);
+            amountMatchFound = true;
+          }
+        }
+
         if (documentNumber && transaction.referenceNumber) {
           const docNumNormalized = this.normalizeReference(documentNumber);
           const txnRefNormalized = this.normalizeReference(transaction.referenceNumber);
@@ -2590,11 +2705,52 @@ export class DataExtractionService {
           reasons.push('Transaction type matches document direction');
         }
         
-        // Bonus for Payment Orders matching debit transactions (they should be prioritized)
+        // LEVEL 3: ENHANCED PAYMENT ORDER PRIORITIZATION
+        // Check transaction description for payment order indicators
+        const description = transaction.description?.toLowerCase() || '';
+        const paymentOrderIndicators = [
+          'ordin de plata', 'ordinul de plata', 'ordin plata',
+          'payment order', 'transfer', 'virament'
+        ];
+        const hasPaymentOrderDescription = paymentOrderIndicators.some(indicator => 
+          description.includes(indicator)
+        );
+        
+        // Strong bonus for Payment Orders when description indicates payment order
+        if (document.type === 'Payment Order' && hasPaymentOrderDescription) {
+          score += 0.3; // Large boost for description match
+          criteria.payment_order_description_match = true;
+          reasons.push('Payment Order matches transaction description ("Ordin de plata")');
+        }
+        
+        // Regular bonus for Payment Orders matching debit transactions
         if (document.type === 'Payment Order' && isDebit) {
           score += 0.1;
           criteria.payment_order_priority = true;
           reasons.push('Payment Order matches debit transaction');
+        }
+        
+        // Similarly for Collection Orders
+        const collectionOrderIndicators = [
+          'ordin de incasare', 'incasare', 'collection order', 'direct debit'
+        ];
+        const hasCollectionOrderDescription = collectionOrderIndicators.some(indicator => 
+          description.includes(indicator)
+        );
+        
+        if (document.type === 'Collection Order' && hasCollectionOrderDescription) {
+          score += 0.3;
+          criteria.collection_order_description_match = true;
+          reasons.push('Collection Order matches transaction description');
+        }
+        
+        // MANDATORY DOCUMENT PRIORITY: If this document is referenced by the bank statement, give it a significant boost
+        if (isMandatory) {
+          score += 0.4; // Large boost to ensure mandatory docs are prioritized
+          criteria.mandatory_document = true;
+          reasons.push('Document referenced by bank statement (mandatory)');
+          
+          this.logger.warn(`🎯 MANDATORY BOOST: Document ${document.id} (${document.name}) gets +0.4 priority boost`);
         }
       
         // Debug logging for Payment/Collection Orders
@@ -2617,57 +2773,92 @@ export class DataExtractionService {
       }
       
       private filterBestSuggestions(suggestions: any[]): any[] {
-        suggestions.sort((a, b) => {
-          const aHasDoc = a.documentId !== null && a.documentId !== undefined;
-          const bHasDoc = b.documentId !== null && b.documentId !== undefined;
+  suggestions.sort((a, b) => {
+    const aHasDoc = a.documentId !== null && a.documentId !== undefined;
+    const bHasDoc = b.documentId !== null && b.documentId !== undefined;
 
-          if (aHasDoc !== bHasDoc) {
-            return aHasDoc ? -1 : 1;
-          }
-          
-          // If confidence scores are very close (within 0.05), prioritize by document type
-          const scoreDiff = b.confidenceScore - a.confidenceScore;
-          if (Math.abs(scoreDiff) <= 0.05) {
-            // Get document types for comparison
-            const aHasPaymentOrder = a.matchingCriteria?.payment_order_priority;
-            const bHasPaymentOrder = b.matchingCriteria?.payment_order_priority;
-            
-            if (aHasPaymentOrder && !bHasPaymentOrder) return -1;
-            if (!aHasPaymentOrder && bHasPaymentOrder) return 1;
-          }
-
-          return scoreDiff;
-        });
+    if (aHasDoc !== bHasDoc) {
+      return aHasDoc ? -1 : 1;
+    }
+    
+    // If confidence scores are very close (within 0.05), prioritize by document type
+    const scoreDiff = b.confidenceScore - a.confidenceScore;
+    if (Math.abs(scoreDiff) <= 0.05) {
+      // Get document types for comparison
+      const aHasPaymentOrder = a.matchingCriteria?.payment_order_priority;
+      const bHasPaymentOrder = b.matchingCriteria?.payment_order_priority;
       
-        const filteredSuggestions: any[] = [];
-        const usedDocuments = new Set<number>();
-        const seenTx = new Set<string>();
+      if (aHasPaymentOrder !== bHasPaymentOrder) {
+        return aHasPaymentOrder ? -1 : 1;
+      }
+    }
+    
+    return scoreDiff;
+  });
+
+  const filteredSuggestions = [];
+  const seenTx = new Set();
+  const usedDocuments = new Set();
+  const componentMatches = new Map(); // Track component matches per document
+  
+  for (const suggestion of suggestions) {
+    // For component matches, allow multiple transactions per document
+    const isComponentMatch = suggestion.matchingCriteria?.component_match;
+    const componentType = suggestion.matchingCriteria?.component_type;
+    
+    if (seenTx.has(suggestion.bankTransactionId)) {
+      continue; // Skip, transaction already has a suggestion
+    }
+    
+    // Enhanced logic for component-based reconciliation
+    if (suggestion.documentId) {
+      if (isComponentMatch) {
+        // For component matches, track which components are used
+        const docKey = `${suggestion.documentId}`;
+        const componentKey = `${suggestion.documentId}-${componentType}`;
         
-        for (const suggestion of suggestions) {
-          if (suggestion.confidenceScore >= 0.25 && !seenTx.has(suggestion.bankTransactionId)) {
-            // If this is a document suggestion, check if document is already used
-            if (suggestion.documentId && usedDocuments.has(suggestion.documentId)) {
-              continue; // Skip this suggestion, document already matched
-            }
-            
-            filteredSuggestions.push(suggestion);
-            seenTx.add(suggestion.bankTransactionId);
-            
-            // Mark document as used if this is a document suggestion
-            if (suggestion.documentId) {
-              usedDocuments.add(suggestion.documentId);
-            }
-          }
+        if (!componentMatches.has(docKey)) {
+          componentMatches.set(docKey, new Set());
         }
-      
-        return filteredSuggestions;
+        
+        const usedComponents = componentMatches.get(docKey);
+        if (usedComponents.has(componentType)) {
+          continue; // This component already matched
+        }
+        
+        // Mark this component as used
+        usedComponents.add(componentType);
+        
+        this.logger.warn(
+          `✅ COMPONENT MATCH ALLOWED: Document ${suggestion.documentId} ` +
+          `component '${componentType}' → Transaction ${suggestion.bankTransactionId}`
+        );
+      } else {
+        // For non-component matches, use traditional logic
+        if (usedDocuments.has(suggestion.documentId)) {
+          continue; // Skip this suggestion, document already matched
+        }
+        usedDocuments.add(suggestion.documentId);
       }
-      
-      private normalizeReference(ref: string): string {
-        return ref.replace(/[^a-z0-9]/gi, '').toLowerCase();
-      }
-      
-      private parseAmountForReconciliation(amount: any, docData?: any, docType?: string): number {
+    }
+    
+    filteredSuggestions.push(suggestion);
+    seenTx.add(suggestion.bankTransactionId);
+  }
+
+  this.logger.warn(
+    `🔍 FILTERING RESULT: ${suggestions.length} → ${filteredSuggestions.length} suggestions ` +
+    `(${Array.from(componentMatches.entries()).map(([doc, comps]) => `Doc${doc}:${Array.from(comps).join(',')}`).join(' | ')})`
+  );
+
+  return filteredSuggestions;
+}
+
+private normalizeReference(ref: string): string {
+  return ref.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+private parseAmountForReconciliation(amount: any, docData?: any, docType?: string): number {
         // 1. Try the primary amount field first
         let parsed = Math.abs(this.parseAmount(amount));
         if (parsed !== 0) return parsed;

@@ -453,9 +453,16 @@ const BankPage = () => {
       // Refresh suggestions data
       setSuggestionsData([]);
       setSuggestionsPage(1);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to regenerate all suggestions:', error);
-      alert(language === 'ro' ? 'Eroare la regenerarea sugestiilor' : 'Failed to regenerate suggestions');
+      if (error?.status === 401 || error?.data?.statusCode === 401) {
+        console.warn('Authentication failed - redirecting to login');
+        window.location.href = '/auth/signin';
+      } else {
+        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+        console.error('Regenerate all suggestions error details:', errorMsg);
+        alert(language === 'ro' ? `Eroare la regenerarea sugestiilor: ${errorMsg}` : `Failed to regenerate suggestions: ${errorMsg}`);
+      }
     }
   };
 
@@ -466,9 +473,16 @@ const BankPage = () => {
       // Refresh suggestions data
       setSuggestionsData([]);
       setSuggestionsPage(1);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Failed to regenerate suggestions for transaction ${transactionId}:`, error);
-      alert(language === 'ro' ? 'Eroare la regenerarea sugestiilor pentru tranzacție' : 'Failed to regenerate transaction suggestions');
+      if (error?.status === 401 || error?.data?.statusCode === 401) {
+        console.warn('Authentication failed - redirecting to login');
+        window.location.href = '/auth/signin';
+      } else {
+        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+        console.error('Regenerate transaction suggestions error details:', errorMsg);
+        alert(language === 'ro' ? `Eroare la regenerarea sugestiilor pentru tranzacție: ${errorMsg}` : `Failed to regenerate transaction suggestions: ${errorMsg}`);
+      }
     }
   };
 
@@ -1064,10 +1078,17 @@ const BankPage = () => {
                                 suggestionId: suggestion.id,
                                 notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
                               }).unwrap();
-                              console.log('Suggestion accepted');
-                            } catch (error) {
+                              console.log('Suggestion accepted successfully');
+                            } catch (error: any) {
                               console.error('Failed to accept suggestion:', error);
-                              alert(language === 'ro' ? 'Eroare la acceptarea sugestiei' : 'Failed to accept suggestion');
+                              if (error?.status === 401 || error?.data?.statusCode === 401) {
+                                console.warn('Authentication failed - redirecting to login');
+                                window.location.href = '/auth/signin';
+                              } else {
+                                const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+                                console.error('Accept suggestion error details:', errorMsg);
+                                alert(language === 'ro' ? `Eroare la acceptarea sugestiei: ${errorMsg}` : `Failed to accept suggestion: ${errorMsg}`);
+                              }
                             }
                           }}
                           disabled={isAcceptingSuggestion}
@@ -1084,10 +1105,17 @@ const BankPage = () => {
                                 suggestionId: suggestion.id,
                                 reason: 'Manual rejection by user'
                               }).unwrap();
-                              console.log('Suggestion rejected');
-                            } catch (error) {
+                              console.log('Suggestion rejected successfully');
+                            } catch (error: any) {
                               console.error('Failed to reject suggestion:', error);
-                              alert(language === 'ro' ? 'Eroare la respingerea sugestiei' : 'Failed to reject suggestion');
+                              if (error?.status === 401 || error?.data?.statusCode === 401) {
+                                console.warn('Authentication failed - redirecting to login');
+                                window.location.href = '/auth/signin';
+                              } else {
+                                const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+                                console.error('Reject suggestion error details:', errorMsg);
+                                alert(language === 'ro' ? `Eroare la respingerea sugestiei: ${errorMsg}` : `Failed to reject suggestion: ${errorMsg}`);
+                              }
                             }
                           }}
                           disabled={isRejectingSuggestion}
