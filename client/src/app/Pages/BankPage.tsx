@@ -1213,9 +1213,60 @@ const BankPage = () => {
                               // Get the correct amount for different document types
                               let displayAmount = suggestion.document.total_amount;
                               
-                              // For Z Reports, use total_sales from processed data
-                              if (suggestion.document.type === 'Z Report' && suggestion.document.processedData?.[0]?.extractedFields?.result?.total_sales) {
-                                displayAmount = suggestion.document.processedData[0].extractedFields.result.total_sales;
+                              // Debug Z Report data
+                              if (suggestion.document.type === 'Z Report') {
+                                const debugData = suggestion.document.processedData as any;
+                                console.log('🔍 Z Report Debug for', suggestion.document.name, ':', {
+                                  total_amount: suggestion.document.total_amount,
+                                  processedData: debugData,
+                                  isArray: Array.isArray(debugData),
+                                  extractedFields: debugData?.extractedFields,
+                                  // Try both array and direct access patterns
+                                  arrayAccess: Array.isArray(debugData) ? debugData[0]?.extractedFields?.result?.total_sales : null,
+                                  directAccess: !Array.isArray(debugData) ? debugData?.extractedFields?.result?.total_sales : null,
+                                  directAccessAlt: !Array.isArray(debugData) ? debugData?.extractedFields?.total_sales : null
+                                });
+                              }
+                              
+                              // For Z Reports, try multiple access patterns for total_sales
+                              if (suggestion.document.type === 'Z Report') {
+                                let zReportAmount = 0;
+                                const processedData = suggestion.document.processedData as any; // Type assertion to handle flexible structure
+                                
+                                if (processedData) {
+                                  // Try array access pattern (processedData[0].extractedFields.result.total_sales)
+                                  if (Array.isArray(processedData) && processedData[0]?.extractedFields?.result?.total_sales) {
+                                    zReportAmount = processedData[0].extractedFields.result.total_sales;
+                                    console.log('✅ Z Report amount from array access:', zReportAmount);
+                                  }
+                                  // Try direct access pattern (processedData.extractedFields.result.total_sales)
+                                  else if (!Array.isArray(processedData) && processedData.extractedFields?.result?.total_sales) {
+                                    zReportAmount = processedData.extractedFields.result.total_sales;
+                                    console.log('✅ Z Report amount from direct access:', zReportAmount);
+                                  }
+                                  // Try alternative direct access (processedData.extractedFields.total_sales)
+                                  else if (!Array.isArray(processedData) && processedData.extractedFields?.total_sales) {
+                                    zReportAmount = processedData.extractedFields.total_sales;
+                                    console.log('✅ Z Report amount from alt direct access:', zReportAmount);
+                                  }
+                                  // Try parsing extractedFields if it's a string
+                                  else if (!Array.isArray(processedData) && typeof processedData.extractedFields === 'string') {
+                                    try {
+                                      const parsed = JSON.parse(processedData.extractedFields);
+                                      zReportAmount = parsed.result?.total_sales || parsed.total_sales || 0;
+                                      console.log('✅ Z Report amount from parsed string:', zReportAmount);
+                                    } catch (e) {
+                                      console.log('❌ Failed to parse Z Report extractedFields string');
+                                    }
+                                  }
+                                }
+                                
+                                if (zReportAmount > 0) {
+                                  displayAmount = zReportAmount;
+                                  console.log('✅ Final Z Report displayAmount:', displayAmount);
+                                } else {
+                                  console.log('❌ No Z Report amount found, using total_amount:', suggestion.document.total_amount);
+                                }
                               }
                               
                               // For component matches, show both component and total
