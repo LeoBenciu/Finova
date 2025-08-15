@@ -2885,16 +2885,14 @@ private normalizeReference(ref: string): string {
 }
 
 private parseAmountForReconciliation(amount: any, docData?: any, docType?: string): number {
-        // 1. Try the primary amount field first
         let parsed = Math.abs(this.parseAmount(amount));
         if (parsed !== 0) return parsed;
 
-        // 2. Fallback for Payment/Collection Orders & Z-Reports when total_amount is missing/zero
         if (docData) {
           const candidateKeys = [
             'amount', 'value', 'payment_amount', 'transaction_amount',
             'grand_total', 'total_z', 'sum', 'net_amount', 'final_amount',
-            'total_sales' // Added for Z Reports
+            'total_sales' 
           ];
           
           for (const key of candidateKeys) {
@@ -2908,7 +2906,7 @@ private parseAmountForReconciliation(amount: any, docData?: any, docType?: strin
           }
         }
         
-        return 0; // Keep existing behavior if we still can't find a valid amount
+        return 0; 
       }
       
       private parseDate(dateStr: any): Date | null {

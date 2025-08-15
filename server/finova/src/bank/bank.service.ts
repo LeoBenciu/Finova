@@ -928,7 +928,7 @@ export class BankService {
             });
 
             if (paymentSummary) {
-              await prisma.paymentSummary.update({
+              const updatedPayment = await prisma.paymentSummary.update({
                 where: { documentId: suggestion.document.id },
                 data: {
                   totalAmount,
@@ -938,8 +938,9 @@ export class BankService {
                   lastPaymentDate: suggestion.bankTransaction.transactionDate
                 }
               });
+              console.log('✅ PAYMENT SUMMARY UPDATED:', updatedPayment);
             } else {
-              await prisma.paymentSummary.create({
+              const createdPayment = await prisma.paymentSummary.create({
                 data: {
                   documentId: suggestion.document.id,
                   totalAmount,
@@ -949,15 +950,22 @@ export class BankService {
                   lastPaymentDate: suggestion.bankTransaction.transactionDate
                 }
               });
+              console.log('✅ PAYMENT SUMMARY CREATED:', createdPayment);
             }
 
-            await prisma.document.update({
+            const updatedDocument = await prisma.document.update({
               where: { id: suggestion.document.id },
               data: {
                 paymentStatus,
                 totalPaidAmount: newPaidAmount,
                 lastPaymentDate: suggestion.bankTransaction.transactionDate
               }
+            });
+            console.log('✅ DOCUMENT PAYMENT STATUS UPDATED:', {
+              documentId: updatedDocument.id,
+              paymentStatus: updatedDocument.paymentStatus,
+              totalPaidAmount: updatedDocument.totalPaidAmount,
+              lastPaymentDate: updatedDocument.lastPaymentDate
             });
           }
       
