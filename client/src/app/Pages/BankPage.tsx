@@ -1306,6 +1306,29 @@ const BankPage = () => {
                                 );
                               }
                               
+                              // For Z Reports, always show component breakdown if transaction amount differs from total
+                              if (suggestion.document.type === 'Z Report' && suggestion.bankTransaction?.amount) {
+                                const transactionAmount = Math.abs(suggestion.bankTransaction.amount);
+                                const documentTotal = displayAmount || 0;
+                                
+                                // If amounts differ significantly, show component breakdown
+                                if (Math.abs(transactionAmount - documentTotal) > 1) {
+                                  return (
+                                    <div className="mt-1">
+                                      <p className="text-sm font-medium text-blue-600">
+                                        Total: {formatCurrency(documentTotal)}
+                                      </p>
+                                      <p className="text-xs text-green-600 font-medium">
+                                        Matched: {formatCurrency(transactionAmount)} (POS)
+                                      </p>
+                                      <span className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full mt-1">
+                                        {language === 'ro' ? 'Potrivire Componentă' : 'Component Match'}
+                                      </span>
+                                    </div>
+                                  );
+                                }
+                              }
+                              
                               return displayAmount !== undefined && displayAmount !== null && displayAmount !== 0 ? (
                                 <p className="text-sm font-medium text-blue-600 mt-1">
                                   {formatCurrency(displayAmount)}
