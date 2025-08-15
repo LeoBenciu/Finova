@@ -77,32 +77,19 @@ export class BankService {
           })
         ]);
       
-        const unmatchedDocuments = await this.prisma.document.findMany({
+        // Get unreconciled transactions and sum their amounts
+        const unmatchedTransactions = await this.prisma.bankTransaction.findMany({
           where: {
-            accountingClientId: accountingClientRelation.id,
-            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] },
+            bankStatementDocument: {
+              accountingClientId: accountingClientRelation.id
+            },
             reconciliationStatus: ReconciliationStatus.UNRECONCILED
-          },
-          include: { processedData: true }
+          }
         });
       
         let unmatchedAmount = 0;
-        unmatchedDocuments.forEach(doc => {
-          try {
-            const extractedFields = doc.processedData?.extractedFields;
-            let amount = 0;
-            
-            if (typeof extractedFields === 'string') {
-              const parsed = JSON.parse(extractedFields);
-              amount = parsed.result?.total_amount || parsed.total_amount || 0;
-            } else if (extractedFields && typeof extractedFields === 'object') {
-              const result = (extractedFields as any).result || extractedFields;
-              amount = result.total_amount || 0;
-            }
-            
-            unmatchedAmount += Number(amount) || 0;
-          } catch (e) {
-          }
+        unmatchedTransactions.forEach(transaction => {
+          unmatchedAmount += Math.abs(Number(transaction.amount) || 0);
         });
       
         return {
