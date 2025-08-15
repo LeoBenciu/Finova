@@ -784,9 +784,29 @@ export class BankService {
           const suggestionCompanyId = suggestion.document
               ? suggestion.document.accountingClient.accountingCompanyId
               : suggestion.bankTransaction?.bankStatementDocument.accountingClient.accountingCompanyId;
-            if (suggestionCompanyId !== user.accountingCompanyId) {
+          
+          console.log('🏢 AUTHORIZATION CHECK:', {
+            suggestionId,
+            userId: user.id,
+            userCompanyId: user.accountingCompanyId,
+            suggestionCompanyId,
+            hasDocument: !!suggestion.document,
+            hasBankTransaction: !!suggestion.bankTransaction,
+            documentCompanyId: suggestion.document?.accountingClient?.accountingCompanyId,
+            bankTransactionCompanyId: suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.accountingCompanyId
+          });
+          
+          if (suggestionCompanyId !== user.accountingCompanyId) {
+            console.error('❌ AUTHORIZATION FAILED:', {
+              reason: 'Company ID mismatch',
+              userCompanyId: user.accountingCompanyId,
+              suggestionCompanyId,
+              suggestionId
+            });
             throw new UnauthorizedException('No access to this suggestion');
           }
+          
+          console.log('✅ Authorization passed for suggestion', suggestionId);
       
           if (suggestion.status !== SuggestionStatus.PENDING) {
             throw new Error('Suggestion is no longer pending');
@@ -941,21 +961,6 @@ export class BankService {
             }
           }
         });
-      
-        if (!suggestion) {
-          throw new NotFoundException('Suggestion not found');
-        }
-      
-        const suggestionCompanyId = suggestion.document
-              ? suggestion.document.accountingClient.accountingCompanyId
-              : suggestion.bankTransaction?.bankStatementDocument.accountingClient.accountingCompanyId;
-            if (suggestionCompanyId !== user.accountingCompanyId) {
-          throw new UnauthorizedException('No access to this suggestion');
-        }
-      
-        if (suggestion.status !== SuggestionStatus.PENDING) {
-          throw new Error('Suggestion is no longer pending');
-        }
       
         const updatedSuggestion = await this.prisma.reconciliationSuggestion.update({
           where: { id: suggestionId },
