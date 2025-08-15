@@ -6,9 +6,12 @@ const baseQuery = fetchBaseQuery({
     baseUrl: 'https://finova-6eeu.onrender.com',
     prepareHeaders: (headers)=>{
         const token = localStorage.getItem('token');
-        console.log('API Request - Token:', token ? 'Present' : 'Missing');
+        console.log('🔐 API Request - Token:', token ? 'Present' : 'Missing');
         if(token){
+            console.log('🔐 Token Preview:', token.substring(0, 50) + '...');
             headers.set('Authorization', `Bearer ${token}`);
+        } else {
+            console.error('🚨 NO TOKEN FOUND IN LOCALSTORAGE!');
         }
         return headers;
     }
@@ -17,14 +20,20 @@ const baseQuery = fetchBaseQuery({
 const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>{
     const result = await baseQuery(args, api, extraOptions);
     
-    console.log('API Response:', {
+    console.log('🌐 API Response:', {
         url: typeof args === 'string' ? args : args.url,
         status: result.error?.status || 'success',
         hasData: !!result.data
     });
 
     if(result.error && result.error.status === 401){
-        console.log('401 Unauthorized - logging out');
+        console.error('🚨 401 UNAUTHORIZED ERROR DETAILS:', {
+            url: typeof args === 'string' ? args : args.url,
+            method: typeof args === 'object' ? args.method : 'GET',
+            errorData: result.error.data,
+            token: localStorage.getItem('token') ? 'Present' : 'Missing'
+        });
+        console.log('🔄 401 Unauthorized - logging out');
         logout();
     }
 

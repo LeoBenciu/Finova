@@ -457,7 +457,7 @@ const BankPage = () => {
       console.error('Failed to regenerate all suggestions:', error);
       if (error?.status === 401 || error?.data?.statusCode === 401) {
         console.warn('Authentication failed - redirecting to login');
-        window.location.href = '/auth/signin';
+        window.location.href = '/authentication';
       } else {
         const errorMsg = error?.data?.message || error?.message || 'Unknown error';
         console.error('Regenerate all suggestions error details:', errorMsg);
@@ -477,7 +477,7 @@ const BankPage = () => {
       console.error(`Failed to regenerate suggestions for transaction ${transactionId}:`, error);
       if (error?.status === 401 || error?.data?.statusCode === 401) {
         console.warn('Authentication failed - redirecting to login');
-        window.location.href = '/auth/signin';
+        window.location.href = '/authentication';
       } else {
         const errorMsg = error?.data?.message || error?.message || 'Unknown error';
         console.error('Regenerate transaction suggestions error details:', errorMsg);
@@ -1083,7 +1083,7 @@ const BankPage = () => {
                               console.error('Failed to accept suggestion:', error);
                               if (error?.status === 401 || error?.data?.statusCode === 401) {
                                 console.warn('Authentication failed - redirecting to login');
-                                window.location.href = '/auth/signin';
+                                window.location.href = '/authentication';
                               } else {
                                 const errorMsg = error?.data?.message || error?.message || 'Unknown error';
                                 console.error('Accept suggestion error details:', errorMsg);
@@ -1110,7 +1110,7 @@ const BankPage = () => {
                               console.error('Failed to reject suggestion:', error);
                               if (error?.status === 401 || error?.data?.statusCode === 401) {
                                 console.warn('Authentication failed - redirecting to login');
-                                window.location.href = '/auth/signin';
+                                window.location.href = '/authentication';
                               } else {
                                 const errorMsg = error?.data?.message || error?.message || 'Unknown error';
                                 console.error('Reject suggestion error details:', errorMsg);
