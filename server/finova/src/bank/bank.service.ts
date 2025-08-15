@@ -377,8 +377,24 @@ export class BankService {
             },
           })
         ]);
+        
+        // Debug Z Report data in suggestions
+        const zReportSuggestions = suggestions.filter(s => s.document?.type === 'Z Report');
+        if (zReportSuggestions.length > 0) {
+          console.log(`🔍 Z REPORT SUGGESTIONS DEBUG (${zReportSuggestions.length} found):`);
+          for (const zSugg of zReportSuggestions) {
+            console.log(`📊 Z Report: ${zSugg.document?.name}`, {
+              documentId: zSugg.document?.id,
+              processedDataExists: !!zSugg.document?.processedData,
+              processedDataCount: Array.isArray(zSugg.document?.processedData) ? zSugg.document.processedData.length : 'not array',
+              processedDataType: typeof zSugg.document?.processedData,
+              extractedFields: zSugg.document?.processedData?.extractedFields || 'not found',
+              firstProcessedData: Array.isArray(zSugg.document?.processedData) ? zSugg.document.processedData[0] : 'not array',
+              rawProcessedData: zSugg.document?.processedData
+            });
+          }
+        }
 
-      
         const items = await Promise.all(
           suggestions.map(async (s) => {
             // Build signed URL for document
