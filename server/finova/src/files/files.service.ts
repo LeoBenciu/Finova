@@ -1491,28 +1491,28 @@ export class FilesService {
     async getInvoicePayments(invoiceId: number, user: User) {
         console.log(`🔍 Getting invoice payments for invoice ${invoiceId}`);
 
-        // FIRST: Check PaymentSummary table (created by bank reconciliation)
+        // STEP 1: Check PaymentSummary table (created by bank reconciliation)
         const paymentSummary = await this.prisma.paymentSummary.findUnique({
             where: { documentId: invoiceId }
         });
         
+        let bankPaymentAmount = 0;
+        const allPayments: { docId: number; type: string; amount: number }[] = [];
+        
         if (paymentSummary) {
-            console.log(`✅ Found PaymentSummary for invoice ${invoiceId}:`, {
-                totalAmount: paymentSummary.totalAmount,
-                paidAmount: paymentSummary.paidAmount,
-                paymentStatus: paymentSummary.paymentStatus
+            bankPaymentAmount = paymentSummary.paidAmount;
+            allPayments.push({
+                docId: invoiceId,
+                type: 'Bank Reconciliation',
+                amount: bankPaymentAmount
             });
-            return {
-                amountPaid: paymentSummary.paidAmount,
-                payments: [{
-                    docId: invoiceId,
-                    type: 'Bank Reconciliation',
-                    amount: paymentSummary.paidAmount
-                }]
-            };
+            console.log(`✅ Found PaymentSummary for invoice ${invoiceId}: ${bankPaymentAmount} RON`);
+        } else {
+            console.log(`ℹ️ No PaymentSummary found for invoice ${invoiceId}`);
         }
         
-        console.log(`ℹ️ No PaymentSummary found for invoice ${invoiceId}, falling back to related documents`);
+        // STEP 2: ALWAYS check related documents (receipts, payment orders, etc.)
+        console.log(`🔍 Checking related documents for additional payments...`);
         
         const parseAmount = (raw: any): number => {
             if (raw === undefined || raw === null) return 0;
@@ -1564,7 +1564,8 @@ export class FilesService {
         
         if (relatedIds.length === 0) {
             console.log(`ℹ️ Invoice ${invoiceId} has no related documents`);
-            return { amountPaid: 0, payments: [] };
+            // Return only bank payments if no related documents exist
+            return { amountPaid: bankPaymentAmount, payments: allPayments };
         }
     
         const relatedDocs = await this.prisma.document.findMany({
@@ -1572,7 +1573,7 @@ export class FilesService {
             include: { processedData: true }
         });
     
-        const payments: { docId: number; type: string; amount: number }[] = [];
+        // Note: allPayments array already initialized above for bank payments
         
         const invoiceNumber: string | undefined = invoiceData.result?.document_number || invoiceData.document_number;
         
@@ -1616,14 +1617,22 @@ export class FilesService {
             }
             
             if (amount > 0) {
-                payments.push({ docId: doc.id, type: doc.type, amount });
+                allPayments.push({ docId: doc.id, type: doc.type, amount });
                 console.log(`💰 Found payment: ${doc.type} #${doc.id} - ${amount} RON`);
             }
         }
     
-        const amountPaid = payments.reduce((sum, p) => sum + p.amount, 0);
+        // STEP 3: Calculate total from BOTH bank reconciliation AND related documents
+        const totalAmountPaid = allPayments.reduce((sum, p) => sum + p.amount, 0);
         
-        return { amountPaid, payments };
+        console.log(`💰 TOTAL PAYMENT CALCULATION for invoice ${invoiceId}:`, {
+            bankPayments: bankPaymentAmount,
+            relatedDocPayments: totalAmountPaid - bankPaymentAmount,
+            totalPaid: totalAmountPaid,
+            paymentSources: allPayments.length
+        });
+        
+        return { amountPaid: totalAmountPaid, payments: allPayments };
     }
 
     async getDuplicateAlerts(clientCompanyEin: string, user: User) {

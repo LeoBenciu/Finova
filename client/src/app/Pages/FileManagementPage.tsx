@@ -38,9 +38,32 @@ const InvoicePaymentBadge: React.FC<InvoicePaymentBadgeProps> = ({ file, languag
     return Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(v);
   };
   
+  // Calculate payment status and determine colors
+  const totalAmount = file?.processedData?.[0]?.extractedFields?.result?.total_amount || 0;
+  const paidAmount = paid || 0;
+  const remainingAmount = totalAmount - paidAmount;
+  
+  // Determine payment status
+  let paymentStatus: 'unpaid' | 'partial' | 'full' | 'overpaid' = 'unpaid';
+  let badgeClasses = '';
+  
+  if (paidAmount === 0) {
+    paymentStatus = 'unpaid';
+    badgeClasses = 'text-red-700 bg-red-100 border border-red-200';
+  } else if (Math.abs(remainingAmount) <= 0.01) {
+    paymentStatus = 'full';
+    badgeClasses = 'text-green-700 bg-green-100 border border-green-200';
+  } else if (remainingAmount < -0.01) {
+    paymentStatus = 'overpaid';
+    badgeClasses = 'text-purple-700 bg-purple-100 border border-purple-200';
+  } else if (remainingAmount > 0.01) {
+    paymentStatus = 'partial';
+    badgeClasses = 'text-orange-700 bg-orange-100 border border-orange-200';
+  }
+  
   return (
-    <span className="text-[var(--text2)] font-medium text-sm bg-[var(--primary)]/10 px-2 py-1 rounded-lg">
-      {label}: {formatCurrency(paid)}/{formatCurrency(file?.processedData?.[0]?.extractedFields?.result?.total_amount)}
+    <span className={`font-medium text-sm px-2 py-1 rounded-lg ${badgeClasses}`}>
+      {label}: {formatCurrency(paidAmount)}/{formatCurrency(totalAmount)}
     </span>
   );
 };

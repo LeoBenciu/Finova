@@ -75,13 +75,27 @@ interface ReconciliationSuggestion {
   document_id: number;
   transaction_id: string;
   confidenceScore: number;
-  matchingCriteria: string[];
+  matchingCriteria: {
+    component_match?: boolean;
+    component_type?: string;
+    is_partial_match?: boolean;
+    [key: string]: any;
+  };
   reasons: string[];
   document: {
     id: number;
     name: string;
     type: string;
     total_amount?: number;
+    processedData?: Array<{
+      extractedFields: {
+        result?: {
+          total_sales?: number;
+          [key: string]: any;
+        };
+        [key: string]: any;
+      };
+    }>;
   } | null;
   bankTransaction: {
     id: string;
@@ -475,7 +489,6 @@ const BankPage = () => {
     try {
       await regenerateTransactionSuggestions(transactionId).unwrap();
       console.log(`Suggestions for transaction ${transactionId} regenerated successfully`);
-      // Refresh suggestions data
       setSuggestionsData([]);
       setSuggestionsPage(1);
     } catch (error: any) {
@@ -1196,11 +1209,39 @@ const BankPage = () => {
                           <>
                             <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
                             <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
-                            {suggestion.document.total_amount !== undefined && suggestion.document.total_amount !== null && (
-                              <p className="text-sm font-medium text-blue-600 mt-1">
-                                {formatCurrency(suggestion.document.total_amount)}
-                              </p>
-                            )}
+                            {(() => {
+                              // Get the correct amount for different document types
+                              let displayAmount = suggestion.document.total_amount;
+                              
+                              // For Z Reports, use total_sales from processed data
+                              if (suggestion.document.type === 'Z Report' && suggestion.document.processedData?.[0]?.extractedFields?.result?.total_sales) {
+                                displayAmount = suggestion.document.processedData[0].extractedFields.result.total_sales;
+                              }
+                              
+                              // For component matches, show both component and total
+                              if (suggestion.matchingCriteria?.component_match && suggestion.matchingCriteria?.component_type) {
+                                const componentAmount = suggestion.bankTransaction?.amount;
+                                return (
+                                  <div className="mt-1">
+                                    <p className="text-sm font-medium text-blue-600">
+                                      {formatCurrency(displayAmount || 0)}
+                                    </p>
+                                    <p className="text-xs text-orange-600 font-medium">
+                                      {suggestion.matchingCriteria.component_type}: {formatCurrency(Math.abs(componentAmount || 0))}
+                                    </p>
+                                    <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full mt-1">
+                                      {language === 'ro' ? 'Potrivire Parțială' : 'Partial Match'}
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              
+                              return displayAmount !== undefined && displayAmount !== null && displayAmount !== 0 ? (
+                                <p className="text-sm font-medium text-blue-600 mt-1">
+                                  {formatCurrency(displayAmount)}
+                                </p>
+                              ) : null;
+                            })()}
                           </>
                         ) : suggestion.chartOfAccount ? (
                           <>
