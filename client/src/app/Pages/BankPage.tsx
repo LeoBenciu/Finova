@@ -123,35 +123,49 @@ interface ReconciliationSuggestion {
 
 // Utility functions to extract amount and date based on document type
 const getDocumentAmount = (doc: Document): number => {
-  switch (doc.type) {
-    case 'Invoice':
-      return doc.total_amount || 0;
-    case 'Receipt':
-      return doc.total_amount || 0;
-    case 'Payment Order':
-    case 'Collection Order':
-      return doc.amount || 0;
-    case 'Z Report':
-      return doc.total_sales || 0;
-    default:
-      return doc.total_amount || doc.amount || 0;
+  // Debug: Log the document structure to understand available fields
+  console.log(`Document ${doc.name} (${doc.type}):`, doc);
+  
+  // Try multiple possible field names for amount
+  const possibleAmountFields = [
+    'total_amount',
+    'amount', 
+    'total_sales',
+    'totalAmount',
+    'totalSales'
+  ];
+  
+  for (const field of possibleAmountFields) {
+    if (doc[field] !== undefined && doc[field] !== null && !isNaN(Number(doc[field]))) {
+      console.log(`Found amount in field '${field}':`, doc[field]);
+      return Number(doc[field]);
+    }
   }
+  
+  console.log(`No valid amount found for document ${doc.name}`);
+  return 0;
 };
 
 const getDocumentDate = (doc: Document): string => {
-  switch (doc.type) {
-    case 'Invoice':
-      return doc.document_date || '';
-    case 'Receipt':
-      return doc.document_date || '';
-    case 'Payment Order':
-    case 'Collection Order':
-      return doc.order_date || doc.document_date || '';
-    case 'Z Report':
-      return doc.business_date || doc.document_date || '';
-    default:
-      return doc.document_date || '';
+  // Try multiple possible field names for date
+  const possibleDateFields = [
+    'document_date',
+    'order_date',
+    'business_date',
+    'documentDate',
+    'orderDate',
+    'businessDate'
+  ];
+  
+  for (const field of possibleDateFields) {
+    if (doc[field] && typeof doc[field] === 'string' && doc[field].trim() !== '') {
+      console.log(`Found date in field '${field}':`, doc[field]);
+      return doc[field];
+    }
   }
+  
+  console.log(`No valid date found for document ${doc.name}`);
+  return '';
 };
 
 const BankPage = () => {
