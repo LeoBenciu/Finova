@@ -40,8 +40,8 @@ interface Document {
   name: string;
   type: 'Invoice' | 'Receipt' | 'Z Report' | 'Payment Order' | 'Collection Order';
   document_number?: string;
-  total_amount: number;
-  document_date: string;
+  total_amount?: number; // Made optional since different doc types use different field names
+  document_date?: string; // Made optional since different doc types use different field names
   vendor?: string;
   buyer?: string;
   direction?: 'incoming' | 'outgoing';
@@ -49,7 +49,16 @@ interface Document {
   matched_transactions?: string[];
   references?: number[];
   signedUrl?: string; 
-  path?: string;      
+  path?: string;
+  // Additional fields based on document type
+  receipt_number?: string;
+  order_number?: string;
+  amount?: number;
+  order_date?: string;
+  report_number?: string;
+  business_date?: string;
+  total_sales?: number;
+  [key: string]: any; // Allow for dynamic fields from extracted data
 }
 
 interface BankTransaction {
@@ -111,6 +120,39 @@ interface ReconciliationSuggestion {
     name?: string;
   } | null;
 }
+
+// Utility functions to extract amount and date based on document type
+const getDocumentAmount = (doc: Document): number => {
+  switch (doc.type) {
+    case 'Invoice':
+      return doc.total_amount || 0;
+    case 'Receipt':
+      return doc.total_amount || 0;
+    case 'Payment Order':
+    case 'Collection Order':
+      return doc.amount || 0;
+    case 'Z Report':
+      return doc.total_sales || 0;
+    default:
+      return doc.total_amount || doc.amount || 0;
+  }
+};
+
+const getDocumentDate = (doc: Document): string => {
+  switch (doc.type) {
+    case 'Invoice':
+      return doc.document_date || '';
+    case 'Receipt':
+      return doc.document_date || '';
+    case 'Payment Order':
+    case 'Collection Order':
+      return doc.order_date || doc.document_date || '';
+    case 'Z Report':
+      return doc.business_date || doc.document_date || '';
+    default:
+      return doc.document_date || '';
+  }
+};
 
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
@@ -863,10 +905,10 @@ const BankPage = () => {
                             <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
                               <span className="flex items-center gap-1">
                                 <Calendar size={12} />
-                                {formatDate(doc.document_date)}
+                                {formatDate(getDocumentDate(doc))}
                               </span>
                               <span className="flex items-center gap-1">
-                                {formatCurrency(doc.total_amount)}
+                                {formatCurrency(getDocumentAmount(doc))}
                               </span>
                             </div>
                           </div>
@@ -1456,12 +1498,12 @@ const BankPage = () => {
                     <div className="flex justify-between">
                       <span className="text-[var(--text3)]">Sumă:</span>
                       <span className="text-[var(--primary)] font-semibold">
-                        {formatCurrency(matchingPair.document.total_amount)}
+                        {formatCurrency(getDocumentAmount(matchingPair.document))}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-[var(--text3)]">Data:</span>
-                      <span className="text-[var(--text1)]">{formatDate(matchingPair.document.document_date)}</span>
+                      <span className="text-[var(--text1)]">{formatDate(getDocumentDate(matchingPair.document))}</span>
                     </div>
                   </div>
                 </div>
@@ -1503,11 +1545,11 @@ const BankPage = () => {
                   </span>
                 </div>
                 <p className="text-sm text-yellow-700">
-                  {Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)) < 0.01 
+                  {Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)) < 0.01 
                     ? (language === 'ro' ? '✓ Sumele se potrivesc perfect' : '✓ Amounts match perfectly')
                     : (language === 'ro' 
-                        ? `⚠ Diferență de sumă: ${Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`
-                        : `⚠ Amount difference: ${Math.abs(matchingPair.document.total_amount - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`)
+                        ? `⚠ Diferență de sumă: ${Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`
+                        : `⚠ Amount difference: ${Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`)
                   }
                 </p>
               </div>
