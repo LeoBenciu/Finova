@@ -184,7 +184,7 @@ export class BankService {
             name: doc.name,
             type: doc.type,
             createdAt: doc.createdAt,
-            reconciliationStatus: doc.reconciliationStatus,
+            reconciliation_status: doc.reconciliationStatus,
             ...extractedData,
             matchedTransactions: doc.reconciliationRecords.map(record => record.bankTransaction.id),
             path: doc.path, 
@@ -230,7 +230,6 @@ export class BankService {
         } else if (status === 'unreconciled') {
           whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
         }
-        // If status === 'all', no filter is applied
       
         const [transactions, total] = await this.prisma.$transaction([
           this.prisma.bankTransaction.findMany({
@@ -278,7 +277,7 @@ export class BankService {
               transactionType: transaction.transactionType,
               referenceNumber: transaction.referenceNumber,
               balanceAfter: transaction.balanceAfter,
-              reconciliationStatus: transaction.reconciliationStatus,
+              reconciliation_status: transaction.reconciliationStatus,
               chartOfAccount: transaction.chartOfAccount,
               isStandalone: transaction.isStandalone,
               accountingNotes: transaction.accountingNotes,

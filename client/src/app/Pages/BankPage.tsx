@@ -329,12 +329,23 @@ const BankPage = () => {
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
+      console.log('📄 Documents data received:', documentsItems.map((doc: any) => ({
+        name: doc.name,
+        reconciliation_status: doc.reconciliation_status,
+        normalized: normalizeStatus(doc.reconciliation_status)
+      })));
       setDocumentsData(prev => documentsPage === 1 ? documentsItems : [...prev, ...documentsItems]);
     }
   }, [documentsItems]);
   useEffect(() => {
     if (transactionsPage === 1) setTransactionsData([]);
     if (transactionsItems.length) {
+      console.log('💰 Transactions data received:', transactionsItems.map((txn: any) => ({
+        id: txn.id,
+        description: txn.description,
+        reconciliation_status: txn.reconciliation_status,
+        normalized: normalizeStatus(txn.reconciliation_status)
+      })));
       setTransactionsData(prev => transactionsPage === 1 ? transactionsItems : [...prev, ...transactionsItems]);
     }
   }, [transactionsItems]);
@@ -380,10 +391,12 @@ const BankPage = () => {
   }, [stats]);
 
   const filteredDocuments = useMemo(() => {
-    const list: Document[] = Array.isArray(documentsData) ? documentsData : [];
-    if (list.length === 0) return [];
+    const dList: Document[] = Array.isArray(documentsData) ? documentsData : [];
+    if (dList.length === 0) return [];
     
-    return list.filter((doc: Document) => {
+    console.log('🔍 Filtering documents with filterStatus:', filterStatus);
+    
+    const filtered = dList.filter((doc: Document) => {
       const matchesSearch = searchTerm === '' || 
         doc.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -393,11 +406,18 @@ const BankPage = () => {
       
       const matchesStatus = filterStatus === 'all' || 
         (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
-        (filterStatus === 'matched' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
+        (filterStatus === 'reconciled' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
         (filterStatus === 'disputed' && normalizedStatus === 'disputed');
+      
+      if (filterStatus === 'reconciled') {
+        console.log('🔍 Document:', doc.name, 'Status:', doc.reconciliation_status, 'Normalized:', normalizedStatus, 'Matches:', matchesStatus);
+      }
       
       return matchesSearch && matchesStatus;
     });
+    
+    console.log('🔍 Filtered documents count:', filtered.length, 'out of', dList.length);
+    return filtered;
   }, [documentsData, searchTerm, filterStatus]);
 
   const filteredTransactions = useMemo(() => {
@@ -413,7 +433,7 @@ const BankPage = () => {
       
       const matchesStatus = filterStatus === 'all' || 
         (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
-        (filterStatus === 'matched' && ['matched', 'auto_matched', 'manually_matched'].includes(normalizedStatus));
+        (filterStatus === 'reconciled' && ['matched', 'auto_matched', 'manually_matched'].includes(normalizedStatus));
       
       return matchesSearch && matchesStatus;
     });
