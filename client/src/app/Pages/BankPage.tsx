@@ -31,6 +31,7 @@ import {
   useCreateBulkMatchesMutation,
   useAcceptReconciliationSuggestionMutation,
   useRejectReconciliationSuggestionMutation,
+  useUnreconcileTransactionMutation,
   useRegenerateAllSuggestionsMutation,
   useRegenerateTransactionSuggestionsMutation
 } from '@/redux/slices/apiSlice';
@@ -298,7 +299,7 @@ const BankPage = () => {
   
   const { data: documentsResp = { items: [], total: 0 }, isLoading: documentsLoading, error: documentsError } = useGetFinancialDocumentsQuery({
     clientEin: clientCompanyEin,
-    unreconciled: filterStatus === 'unreconciled',
+    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
     page: documentsPage,
     size: pageSize
   }, {
@@ -308,7 +309,7 @@ const BankPage = () => {
 
   const { data: transactionsResp = { items: [], total: 0 }, isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
     clientEin: clientCompanyEin,
-    unreconciled: filterStatus === 'unreconciled',
+    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
     page: transactionsPage,
     size: pageSize
   }, {
@@ -353,6 +354,8 @@ const BankPage = () => {
   const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
   const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
+  const [unreconcileTransaction] = useUnreconcileTransactionMutation();
+  const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
 
   const statsData = useMemo(() => {
     if (!stats) return {
@@ -566,6 +569,40 @@ const BankPage = () => {
       setRegeneratingTransactions(prev => {
         const newSet = new Set(prev);
         newSet.delete(txnId);
+        return newSet;
+      });
+    }
+  };
+
+  const handleUnreconcileTransaction = async (transactionId: string) => {
+    setUnreconciling(prev => new Set(prev).add(transactionId));
+    try {
+      await unreconcileTransaction({ transactionId }).unwrap();
+      console.log(`Transaction ${transactionId} unreconciled successfully`);
+      
+      // Refresh data
+      setDocumentsData([]);
+      setTransactionsData([]);
+      setSuggestionsData([]);
+      setDocumentsPage(1);
+      setTransactionsPage(1);
+      setSuggestionsPage(1);
+      
+      alert(language === 'ro' ? 'Tranzacția a fost dereconciliată cu succes!' : 'Transaction unreconciled successfully!');
+    } catch (error: any) {
+      console.error(`Failed to unreconcile transaction ${transactionId}:`, error);
+      if (error?.status === 401 || error?.data?.statusCode === 401) {
+        console.warn('Authentication failed - redirecting to login');
+        window.location.href = '/authentication';
+      } else {
+        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+        console.error('Unreconcile transaction error details:', errorMsg);
+        alert(language === 'ro' ? `Eroare la dereconcilierea tranzacției: ${errorMsg}` : `Failed to unreconcile transaction: ${errorMsg}`);
+      }
+    } finally {
+      setUnreconciling(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(transactionId);
         return newSet;
       });
     }
@@ -1073,6 +1110,26 @@ const BankPage = () => {
                           >
                             <Eye size={14} />
                           </button>
+
+                          {/* Unreconcile button for reconciled transactions */}
+                          {(txn.reconciliation_status === 'matched') && (
+                            <button 
+                              className={`p-1 transition-colors rounded-lg ${
+                                unreconciling.has(txn.id)
+                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                  : 'hover:text-white hover:bg-red-500 bg-red-100 text-red-600 cursor-pointer'
+                              }`}
+                              onClick={() => handleUnreconcileTransaction(txn.id)}
+                              disabled={unreconciling.has(txn.id)}
+                              title={language === 'ro' ? 'Dereconciliază tranzacția' : 'Unreconcile transaction'}
+                            >
+                              {unreconciling.has(txn.id) ? (
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
+                              ) : (
+                                <X size={14} />
+                              )}
+                            </button>
+                          )}
 
                           </div>
                         </div>

@@ -22,13 +22,22 @@ export class BankController {
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
       @Query('unreconciled') unreconciled?: string,
+      @Query('status') status?: string,
       @Query('page') page?: string,
       @Query('size') size?: string
     ) {
+      // Support both old 'unreconciled' param and new 'status' param for backwards compatibility
+      let filterStatus: 'all' | 'reconciled' | 'unreconciled' = 'all';
+      if (status) {
+        filterStatus = status as 'all' | 'reconciled' | 'unreconciled';
+      } else if (unreconciled === 'true') {
+        filterStatus = 'unreconciled';
+      }
+      
       return this.bankService.getFinancialDocuments(
         clientEin,
         user,
-        unreconciled === 'true',
+        filterStatus,
         Number(page) || 1,
         Number(size) || 25
       );
@@ -39,13 +48,22 @@ export class BankController {
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
       @Query('unreconciled') unreconciled?: string,
+      @Query('status') status?: string,
       @Query('page') page?: string,
       @Query('size') size?: string
     ) {
+      // Support both old 'unreconciled' param and new 'status' param for backwards compatibility
+      let filterStatus: 'all' | 'reconciled' | 'unreconciled' = 'all';
+      if (status) {
+        filterStatus = status as 'all' | 'reconciled' | 'unreconciled';
+      } else if (unreconciled === 'true') {
+        filterStatus = 'unreconciled';
+      }
+      
       return this.bankService.getBankTransactions(
         clientEin,
         user,
-        unreconciled === 'true',
+        filterStatus,
         Number(page) || 1,
         Number(size) || 25
       );
@@ -108,6 +126,15 @@ export class BankController {
       @Body() data: { reason?: string }
     ) {
       return this.bankService.rejectSuggestion(suggestionId, user, data.reason);
+    }
+    
+    @Put('transaction/:transactionId/unreconcile')
+    async unreconcileTransaction(
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User,
+      @Body() data: { reason?: string }
+    ) {
+      return this.bankService.unreconcileTransaction(transactionId, user, data.reason);
     }
     
     @Post(':clientEin/suggestions/regenerate')

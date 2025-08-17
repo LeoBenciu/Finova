@@ -468,11 +468,18 @@ export const finovaApi = createApi({
         }),
 
         getFinancialDocuments: build.query({
-            query: ({ clientEin, unreconciled, page = 1, size = 25 }: { clientEin: string; unreconciled?: boolean; page?: number; size?: number }) => {
+            query: ({ clientEin, status = 'all', unreconciled, page = 1, size = 25 }: { clientEin: string; status?: 'all' | 'reconciled' | 'unreconciled'; unreconciled?: boolean; page?: number; size?: number }) => {
                 const params = new URLSearchParams();
                 params.set('page', String(page));
                 params.set('size', String(size));
-                if (unreconciled) params.set('unreconciled', 'true');
+                
+                // Support both new status parameter and legacy unreconciled parameter for backwards compatibility
+                if (status && status !== 'all') {
+                    params.set('status', status);
+                } else if (unreconciled) {
+                    params.set('unreconciled', 'true');
+                }
+                
                 return {
                     url: `/bank/${clientEin}/documents?${params.toString()}`,
                     method: 'GET'
@@ -486,11 +493,18 @@ export const finovaApi = createApi({
         }),
 
         getBankTransactions: build.query({
-            query: ({ clientEin, unreconciled, page = 1, size = 25 }: { clientEin: string; unreconciled?: boolean; page?: number; size?: number }) => {
+            query: ({ clientEin, status = 'all', unreconciled, page = 1, size = 25 }: { clientEin: string; status?: 'all' | 'reconciled' | 'unreconciled'; unreconciled?: boolean; page?: number; size?: number }) => {
                 const params = new URLSearchParams();
                 params.set('page', String(page));
                 params.set('size', String(size));
-                if (unreconciled) params.set('unreconciled', 'true');
+                
+                // Support both new status parameter and legacy unreconciled parameter for backwards compatibility
+                if (status && status !== 'all') {
+                    params.set('status', status);
+                } else if (unreconciled) {
+                    params.set('unreconciled', 'true');
+                }
+                
                 return {
                     url: `/bank/${clientEin}/transactions?${params.toString()}`,
                     method: 'GET'
@@ -549,6 +563,15 @@ export const finovaApi = createApi({
                 body: { reason }
             }),
             invalidatesTags: ['BankReconciliation']
+        }),
+        
+        unreconcileTransaction: build.mutation({
+            query: ({ transactionId, reason }: { transactionId: string; reason?: string }) => ({
+                url: `/bank/transaction/${transactionId}/unreconcile`,
+                method: 'PUT',
+                body: { reason }
+            }),
+            invalidatesTags: ['BankReconciliation', 'Files']
         }),
         
         regenerateAllSuggestions: build.mutation({
@@ -621,5 +644,5 @@ useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHeal
 useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
 useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
 useCreateBulkMatchesMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
-useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
+useUnreconcileTransactionMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
 useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery} = finovaApi;

@@ -1,5 +1,5 @@
 import { PrismaService } from 'src/prisma/prisma.service';
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus } from '@prisma/client';
 import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
@@ -115,7 +115,7 @@ export class BankService {
         };
       }
       
-      async getFinancialDocuments(clientEin: string, user: User, unreconciled: boolean = false, page = 1, size = 25) {
+      async getFinancialDocuments(clientEin: string, user: User, status: 'all' | 'reconciled' | 'unreconciled' = 'all', page = 1, size = 25) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -140,9 +140,12 @@ export class BankService {
           type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
         };
       
-        if (unreconciled) {
+        if (status === 'reconciled') {
+          whereCondition.reconciliationStatus = ReconciliationStatus.MATCHED;
+        } else if (status === 'unreconciled') {
           whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
         }
+        // If status === 'all', no filter is applied
       
         const [documents, total] = await this.prisma.$transaction([
           this.prisma.document.findMany({
@@ -196,7 +199,7 @@ export class BankService {
         return { total, page, size, items: documentsWithUrls };
       }
       
-      async getBankTransactions(clientEin: string, user: User, unreconciled: boolean = false, page = 1, size = 25) {
+      async getBankTransactions(clientEin: string, user: User, status: 'all' | 'reconciled' | 'unreconciled' = 'all', page = 1, size = 25) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -222,9 +225,12 @@ export class BankService {
           }
         };
       
-        if (unreconciled) {
+        if (status === 'reconciled') {
+          whereCondition.reconciliationStatus = ReconciliationStatus.MATCHED;
+        } else if (status === 'unreconciled') {
           whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
         }
+        // If status === 'all', no filter is applied
       
         const [transactions, total] = await this.prisma.$transaction([
           this.prisma.bankTransaction.findMany({
@@ -1006,6 +1012,84 @@ export class BankService {
         });
       
         return updatedSuggestion;
+      }
+      
+      async unreconcileTransaction(transactionId: string, user: User, reason?: string) {
+        // Find the transaction and verify access
+        const transaction = await this.prisma.bankTransaction.findUnique({
+          where: { id: transactionId },
+          include: {
+            bankStatementDocument: {
+              include: {
+                accountingClient: true
+              }
+            },
+            reconciliationRecords: {
+              include: {
+                document: true
+              }
+            }
+          }
+        });
+      
+        if (!transaction) {
+          throw new NotFoundException('Transaction not found');
+        }
+      
+        // Verify user has access to this transaction's client
+        if (transaction.bankStatementDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this transaction');
+        }
+      
+        // Check if transaction is currently reconciled
+        if (transaction.reconciliationStatus !== ReconciliationStatus.MATCHED) {
+          throw new BadRequestException('Transaction is not currently reconciled');
+        }
+      
+        console.log(`🔄 UNRECONCILING transaction ${transactionId} - Amount: ${transaction.amount}`);
+      
+        // Start a database transaction to ensure consistency
+        return await this.prisma.$transaction(async (prisma) => {
+          // Update transaction status to unreconciled
+          const updatedTransaction = await prisma.bankTransaction.update({
+            where: { id: transactionId },
+            data: { 
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            }
+          });
+      
+          // Find and update any associated documents through reconciliation records
+          const reconciliationRecords = transaction.reconciliationRecords;
+          for (const record of reconciliationRecords) {
+            if (record.documentId) {
+              await prisma.document.update({
+                where: { id: record.documentId },
+                data: { 
+                  reconciliationStatus: ReconciliationStatus.UNRECONCILED
+                }
+              });
+              console.log(`📄 Updated document ${record.documentId} status to UNRECONCILED`);
+            }
+          }
+      
+          // Remove reconciliation records for this transaction
+          await prisma.reconciliationRecord.deleteMany({
+            where: { bankTransactionId: transactionId }
+          });
+      
+          // Remove any payment summary entries for documents associated with this transaction
+          const documentIds = reconciliationRecords.map(record => record.documentId).filter(Boolean);
+          const deletedPayments = await prisma.paymentSummary.deleteMany({
+            where: { documentId: { in: documentIds } }
+          });
+      
+          console.log(`💰 Removed ${deletedPayments.count} payment summary entries for transaction ${transactionId}`);
+      
+          // Log the unreconciliation action
+          console.log(`✅ Successfully unreconciled transaction ${transactionId}${reason ? ` - Reason: ${reason}` : ''}`);
+      
+          return updatedTransaction;
+        });
       }
       
       async regenerateAllSuggestions(clientEin: string, user: User) {
