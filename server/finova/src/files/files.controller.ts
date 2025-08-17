@@ -126,7 +126,7 @@ export class FilesController {
         @GetUser() user: User,
         @Query('unreconciled') unreconciled?: string
     ) {
-        return this.bankService.getBankTransactions(clientEin, user, unreconciled === 'true'); 
+        return this.bankService.getBankTransactions(clientEin, user, unreconciled === 'true' ? 'unreconciled' : 'all'); 
     }
     
     @Get(':clientEin/bank/suggestions') 
