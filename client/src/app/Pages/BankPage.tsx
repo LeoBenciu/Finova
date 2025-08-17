@@ -123,10 +123,7 @@ interface ReconciliationSuggestion {
 
 // Utility functions to extract amount and date based on document type
 const getDocumentAmount = (doc: Document): number => {
-  // Debug: Log the document structure to understand available fields
-  console.log(`Document ${doc.name} (${doc.type}):`, doc);
-  
-  // Try multiple possible field names for amount
+  // Try multiple possible field names for amount based on document type
   const possibleAmountFields = [
     'total_amount',
     'amount', 
@@ -137,17 +134,15 @@ const getDocumentAmount = (doc: Document): number => {
   
   for (const field of possibleAmountFields) {
     if (doc[field] !== undefined && doc[field] !== null && !isNaN(Number(doc[field]))) {
-      console.log(`Found amount in field '${field}':`, doc[field]);
       return Number(doc[field]);
     }
   }
   
-  console.log(`No valid amount found for document ${doc.name}`);
   return 0;
 };
 
 const getDocumentDate = (doc: Document): string => {
-  // Try multiple possible field names for date
+  // Try multiple possible field names for date based on document type
   const possibleDateFields = [
     'document_date',
     'order_date',
@@ -159,12 +154,10 @@ const getDocumentDate = (doc: Document): string => {
   
   for (const field of possibleDateFields) {
     if (doc[field] && typeof doc[field] === 'string' && doc[field].trim() !== '') {
-      console.log(`Found date in field '${field}':`, doc[field]);
       return doc[field];
     }
   }
   
-  console.log(`No valid date found for document ${doc.name}`);
   return '';
 };
 
@@ -258,12 +251,39 @@ const BankPage = () => {
   };
 
   const formatDate = (dateString: string): string => {
+    if (!dateString || dateString.trim() === '') return '';
+    
     try {
+      let normalizedDate = dateString;
+      
+      if (dateString.includes('/')) {
+        normalizedDate = dateString.replace(/\//g, '-');
+      }
+      
+      const ddmmyyyyPattern = /^(\d{1,2})-(\d{1,2})-(\d{4})$/;
+      const match = normalizedDate.match(ddmmyyyyPattern);
+      
+      if (match) {
+        const [, day, month, year] = match;
+        const date = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`);
+        
+        if (!isNaN(date.getTime())) {
+          const formattedDay = date.getDate().toString().padStart(2, '0');
+          const formattedMonth = (date.getMonth() + 1).toString().padStart(2, '0');
+          const formattedYear = date.getFullYear();
+          return `${formattedDay}-${formattedMonth}-${formattedYear}`;
+        }
+      }
+      
       const date = new Date(dateString);
-      const day = date.getDate().toString().padStart(2, '0');
-      const month = (date.getMonth() + 1).toString().padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}-${month}-${year}`;
+      if (!isNaN(date.getTime())) {
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+      }
+      
+      return dateString;
     } catch (error) {
       return dateString;
     }
@@ -272,7 +292,6 @@ const BankPage = () => {
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(amount);
   };
-  // API Calls
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetBankReconciliationStatsQuery(clientCompanyEin, {
     skip: !clientCompanyEin
   });
@@ -287,11 +306,6 @@ const BankPage = () => {
   });
   const { items: documentsItems, total: documentsTotal } = documentsResp;
 
-  // accumulate paged data for all lists
-  
-
-  // console.log("DCS:", documents);
-  
   const { data: transactionsResp = { items: [], total: 0 }, isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
     clientEin: clientCompanyEin,
     unreconciled: filterStatus === 'unreconciled',
@@ -311,21 +325,18 @@ const BankPage = () => {
   });
   const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp;
 
-  // documents
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
       setDocumentsData(prev => documentsPage === 1 ? documentsItems : [...prev, ...documentsItems]);
     }
   }, [documentsItems]);
-  // transactions
   useEffect(() => {
     if (transactionsPage === 1) setTransactionsData([]);
     if (transactionsItems.length) {
       setTransactionsData(prev => transactionsPage === 1 ? transactionsItems : [...prev, ...transactionsItems]);
     }
   }, [transactionsItems]);
-  // suggestions
   useEffect(() => {
     if (suggestionsPage === 1) setSuggestionsData([]);
     if (suggestionsItems.length) {
@@ -333,10 +344,6 @@ const BankPage = () => {
     }
   }, [suggestionsItems]);
   
-  // Log suggestions to help debugging reconciliation account issue
-  
-
-  // Mutation hooks
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();
   const [acceptSuggestion] = useAcceptReconciliationSuggestionMutation();
@@ -347,7 +354,6 @@ const BankPage = () => {
   const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
 
-  // Statistics
   const statsData = useMemo(() => {
     if (!stats) return {
       documents: { total: 0, reconciled: 0, percentage: 0 },
@@ -370,7 +376,6 @@ const BankPage = () => {
     };
   }, [stats]);
 
-  // Filtered data based on search and filters
   const filteredDocuments = useMemo(() => {
     const list: Document[] = Array.isArray(documentsData) ? documentsData : [];
     if (list.length === 0) return [];
