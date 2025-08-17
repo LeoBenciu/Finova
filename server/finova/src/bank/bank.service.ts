@@ -141,9 +141,9 @@ export class BankService {
         };
       
         if (status === 'reconciled') {
-          whereCondition.reconciliationStatus = ReconciliationStatus.MATCHED;
+          whereCondition.reconciliationStatus = { in: [ReconciliationStatus.MATCHED] };
         } else if (status === 'unreconciled') {
-          whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
+          whereCondition.reconciliationStatus = { in: [ReconciliationStatus.UNRECONCILED] };
         }
         // If status === 'all', no filter is applied
       
@@ -226,9 +226,9 @@ export class BankService {
         };
       
         if (status === 'reconciled') {
-          whereCondition.reconciliationStatus = ReconciliationStatus.MATCHED;
+          whereCondition.reconciliationStatus = { in: [ReconciliationStatus.MATCHED] };
         } else if (status === 'unreconciled') {
-          whereCondition.reconciliationStatus = ReconciliationStatus.UNRECONCILED;
+          whereCondition.reconciliationStatus = { in: [ReconciliationStatus.UNRECONCILED] };
         }
       
         const [transactions, total] = await this.prisma.$transaction([

@@ -329,23 +329,14 @@ const BankPage = () => {
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
-      console.log('📄 Documents data received:', documentsItems.map((doc: any) => ({
-        name: doc.name,
-        reconciliation_status: doc.reconciliation_status,
-        normalized: normalizeStatus(doc.reconciliation_status)
-      })));
+      // Documents data loaded successfully
       setDocumentsData(prev => documentsPage === 1 ? documentsItems : [...prev, ...documentsItems]);
     }
   }, [documentsItems]);
   useEffect(() => {
     if (transactionsPage === 1) setTransactionsData([]);
     if (transactionsItems.length) {
-      console.log('💰 Transactions data received:', transactionsItems.map((txn: any) => ({
-        id: txn.id,
-        description: txn.description,
-        reconciliation_status: txn.reconciliation_status,
-        normalized: normalizeStatus(txn.reconciliation_status)
-      })));
+      // Transactions data loaded successfully
       setTransactionsData(prev => transactionsPage === 1 ? transactionsItems : [...prev, ...transactionsItems]);
     }
   }, [transactionsItems]);
@@ -394,9 +385,7 @@ const BankPage = () => {
     const dList: Document[] = Array.isArray(documentsData) ? documentsData : [];
     if (dList.length === 0) return [];
     
-    console.log('🔍 Filtering documents with filterStatus:', filterStatus);
-    
-    const filtered = dList.filter((doc: Document) => {
+    return dList.filter((doc: Document) => {
       const matchesSearch = searchTerm === '' || 
         doc.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -409,15 +398,8 @@ const BankPage = () => {
         (filterStatus === 'reconciled' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
         (filterStatus === 'disputed' && normalizedStatus === 'disputed');
       
-      if (filterStatus === 'reconciled') {
-        console.log('🔍 Document:', doc.name, 'Status:', doc.reconciliation_status, 'Normalized:', normalizedStatus, 'Matches:', matchesStatus);
-      }
-      
       return matchesSearch && matchesStatus;
     });
-    
-    console.log('🔍 Filtered documents count:', filtered.length, 'out of', dList.length);
-    return filtered;
   }, [documentsData, searchTerm, filterStatus]);
 
   const filteredTransactions = useMemo(() => {
