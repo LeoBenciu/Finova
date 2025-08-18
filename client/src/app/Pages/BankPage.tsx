@@ -872,7 +872,7 @@ const BankPage = () => {
           >
             <option value="all">{language === 'ro' ? 'Toate statusurile' : 'All statuses'}</option>
             <option value="unreconciled">{language === 'ro' ? 'Nereconciliate' : 'Unreconciled'}</option>
-            <option value="matched">{language === 'ro' ? 'Reconciliate' : 'Matched'}</option>
+            <option value="reconciled">{language === 'ro' ? 'Reconciliate' : 'Reconciled'}</option>
           </select>
 
           {/* Bulk Actions */}
@@ -1170,7 +1170,12 @@ const BankPage = () => {
                           </button>
 
                           {/* Unreconcile button for reconciled transactions */}
-                          {(txn.reconciliation_status === 'matched') && (
+                          {(() => {
+                            const normalized = normalizeStatus(txn.reconciliation_status);
+                            const shouldShow = ['matched', 'auto_matched', 'manually_matched'].includes(normalized);
+                            console.log(`🔴 X Button Debug - Txn ${txn.id}: status='${txn.reconciliation_status}' normalized='${normalized}' shouldShow=${shouldShow}`);
+                            return shouldShow;
+                          })() && (
                             <button 
                               className={`p-1 transition-colors rounded-lg ${
                                 unreconciling.has(txn.id)
