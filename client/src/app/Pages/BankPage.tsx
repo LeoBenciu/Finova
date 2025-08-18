@@ -32,7 +32,7 @@ import {
   useAcceptReconciliationSuggestionMutation,
   useRejectReconciliationSuggestionMutation,
   useUnreconcileTransactionMutation,
-  useUnreconcileDocumentMutation,
+
   useRegenerateAllSuggestionsMutation,
   useRegenerateTransactionSuggestionsMutation
 } from '@/redux/slices/apiSlice';
@@ -358,7 +358,7 @@ const BankPage = () => {
   const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
   const [unreconcileTransaction] = useUnreconcileTransactionMutation();
-  const [unreconcileDocument] = useUnreconcileDocumentMutation();
+
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
 
   const statsData = useMemo(() => {
@@ -385,9 +385,26 @@ const BankPage = () => {
 
   const filteredDocuments = useMemo(() => {
     const dList: Document[] = Array.isArray(documentsData) ? documentsData : [];
-    if (dList.length === 0) return [];
+    console.log(`🔍 DOCUMENT FILTERING DEBUG:`);
+    console.log(`📄 Total documents: ${dList.length}`);
+    console.log(`🔍 Filter status: ${filterStatus}`);
+    console.log(`🔍 Search term: '${searchTerm}'`);
     
-    return dList.filter((doc: Document) => {
+    if (dList.length === 0) {
+      console.log(`❌ No documents to filter`);
+      return [];
+    }
+    
+    // Log all document statuses for debugging
+    const statusCounts = dList.reduce((acc, doc) => {
+      const normalized = normalizeStatus(doc.reconciliation_status);
+      acc[doc.reconciliation_status] = (acc[doc.reconciliation_status] || 0) + 1;
+      acc[`normalized_${normalized}`] = (acc[`normalized_${normalized}`] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log(`📊 Document status counts:`, statusCounts);
+    
+    const filtered = dList.filter((doc: Document) => {
       const matchesSearch = searchTerm === '' || 
         doc.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         doc.document_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -400,15 +417,39 @@ const BankPage = () => {
         (filterStatus === 'reconciled' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
         (filterStatus === 'disputed' && normalizedStatus === 'disputed');
       
+      // Debug individual document filtering
+      if (filterStatus === 'reconciled') {
+        console.log(`📄 Doc ${doc.id} (${doc.name}): status='${doc.reconciliation_status}' normalized='${normalizedStatus}' matches=${matchesStatus}`);
+      }
+      
       return matchesSearch && matchesStatus;
     });
+    
+    console.log(`✅ Filtered documents: ${filtered.length}/${dList.length}`);
+    return filtered;
   }, [documentsData, searchTerm, filterStatus]);
 
   const filteredTransactions = useMemo(() => {
     const tList: BankTransaction[] = Array.isArray(transactionsData) ? transactionsData : [];
-    if (tList.length === 0) return [];
+    console.log(`🔍 TRANSACTION FILTERING DEBUG:`);
+    console.log(`💳 Total transactions: ${tList.length}`);
+    console.log(`🔍 Filter status: ${filterStatus}`);
     
-    return tList.filter((txn: BankTransaction) => {
+    if (tList.length === 0) {
+      console.log(`❌ No transactions to filter`);
+      return [];
+    }
+    
+    // Log all transaction statuses for debugging
+    const statusCounts = tList.reduce((acc, txn) => {
+      const normalized = normalizeStatus(txn.reconciliation_status);
+      acc[txn.reconciliation_status] = (acc[txn.reconciliation_status] || 0) + 1;
+      acc[`normalized_${normalized}`] = (acc[`normalized_${normalized}`] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log(`📊 Transaction status counts:`, statusCounts);
+    
+    const filtered = tList.filter((txn: BankTransaction) => {
       const matchesSearch = searchTerm === '' || 
         txn.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         txn.referenceNumber?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -419,8 +460,16 @@ const BankPage = () => {
         (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
         (filterStatus === 'reconciled' && ['matched', 'auto_matched', 'manually_matched'].includes(normalizedStatus));
       
+      // Debug individual transaction filtering
+      if (filterStatus === 'reconciled') {
+        console.log(`💳 Txn ${txn.id}: status='${txn.reconciliation_status}' normalized='${normalizedStatus}' matches=${matchesStatus}`);
+      }
+      
       return matchesSearch && matchesStatus;
     });
+    
+    console.log(`✅ Filtered transactions: ${filtered.length}/${tList.length}`);
+    return filtered;
   }, [transactionsData, searchTerm, filterStatus]);
 
   // Infinite scroll observers
@@ -612,39 +661,7 @@ const BankPage = () => {
     }
   };
 
-  const handleUnreconcileDocument = async (documentId: number) => {
-    setUnreconciling(prev => new Set(prev).add(documentId.toString()));
-    try {
-      await unreconcileDocument({ documentId }).unwrap();
-      console.log(`Document ${documentId} unreconciled successfully`);
-      
-      // Refresh data
-      setDocumentsData([]);
-      setTransactionsData([]);
-      setSuggestionsData([]);
-      setDocumentsPage(1);
-      setTransactionsPage(1);
-      setSuggestionsPage(1);
-      
-      alert(language === 'ro' ? 'Documentul a fost dereconciliat cu succes!' : 'Document unreconciled successfully!');
-    } catch (error: any) {
-      console.error(`Failed to unreconcile document ${documentId}:`, error);
-      if (error?.status === 401 || error?.data?.statusCode === 401) {
-        console.warn('Authentication failed - redirecting to login');
-        window.location.href = '/authentication';
-      } else {
-        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
-        console.error('Unreconcile document error details:', errorMsg);
-        alert(language === 'ro' ? `Eroare la dereconcilierea documentului: ${errorMsg}` : `Failed to unreconcile document: ${errorMsg}`);
-      }
-    } finally {
-      setUnreconciling(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(documentId.toString());
-        return newSet;
-      });
-    }
-  };
+
 
   const toggleFileSelection = (fileId: number) => {
     const newSelected = new Set(selectedItems.documents);
@@ -1016,26 +1033,6 @@ const BankPage = () => {
                             }}>
                               <Eye size={14} />
                             </button>
-                            
-                            {/* Unreconcile button for reconciled documents */}
-                            {(['auto_matched', 'manually_matched', 'matched'].includes(normalizeStatus(doc.reconciliation_status))) && (
-                              <button 
-                                className={`p-1 transition-colors rounded-lg ${
-                                  unreconciling.has(doc.id.toString())
-                                    ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                    : 'hover:text-white hover:bg-red-500 bg-red-100 text-red-600 cursor-pointer'
-                                }`}
-                                onClick={() => handleUnreconcileDocument(doc.id)}
-                                disabled={unreconciling.has(doc.id.toString())}
-                                title={language === 'ro' ? 'Dereconciliază documentul' : 'Unreconcile document'}
-                              >
-                                {unreconciling.has(doc.id.toString()) ? (
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
-                                ) : (
-                                  <X size={14} />
-                                )}
-                              </button>
-                            )}
                           </div>
                         </div>
                       </motion.div>
