@@ -1091,6 +1091,79 @@ export class BankService {
         });
       }
       
+      async unreconcileDocument(documentId: number, user: User, reason?: string) {
+        // Find the document and verify access
+        const document = await this.prisma.document.findUnique({
+          where: { id: documentId },
+          include: {
+            accountingClient: true,
+            reconciliationRecords: {
+              include: {
+                bankTransaction: true
+              }
+            }
+          }
+        });
+      
+        if (!document) {
+          throw new NotFoundException('Document not found');
+        }
+      
+        // Verify user has access to this document's client
+        if (document.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this document');
+        }
+      
+        // Check if document is currently reconciled
+        if (!['AUTO_MATCHED', 'MANUALLY_MATCHED', 'MATCHED'].includes(document.reconciliationStatus)) {
+          throw new BadRequestException('Document is not currently reconciled');
+        }
+      
+        console.log(`🔄 UNRECONCILING document ${documentId} - Type: ${document.type}`);
+      
+        // Start a database transaction to ensure consistency
+        return await this.prisma.$transaction(async (prisma) => {
+          // Update document status to unreconciled
+          const updatedDocument = await prisma.document.update({
+            where: { id: documentId },
+            data: { 
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            }
+          });
+      
+          // Find and update any associated transactions through reconciliation records
+          const reconciliationRecords = document.reconciliationRecords;
+          for (const record of reconciliationRecords) {
+            if (record.bankTransactionId) {
+              await prisma.bankTransaction.update({
+                where: { id: record.bankTransactionId },
+                data: { 
+                  reconciliationStatus: ReconciliationStatus.UNRECONCILED
+                }
+              });
+              console.log(`💳 Updated transaction ${record.bankTransactionId} status to UNRECONCILED`);
+            }
+          }
+      
+          // Remove reconciliation records for this document
+          await prisma.reconciliationRecord.deleteMany({
+            where: { documentId: documentId }
+          });
+      
+          // Remove any payment summary entries for this document
+          const deletedPayments = await prisma.paymentSummary.deleteMany({
+            where: { documentId: documentId }
+          });
+      
+          console.log(`💰 Removed ${deletedPayments.count} payment summary entries for document ${documentId}`);
+      
+          // Log the unreconciliation action
+          console.log(`✅ Successfully unreconciled document ${documentId}${reason ? ` - Reason: ${reason}` : ''}`);
+      
+          return updatedDocument;
+        });
+      }
+      
       async regenerateAllSuggestions(clientEin: string, user: User) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }

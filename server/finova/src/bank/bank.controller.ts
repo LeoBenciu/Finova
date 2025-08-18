@@ -137,6 +137,15 @@ export class BankController {
       return this.bankService.unreconcileTransaction(transactionId, user, data.reason);
     }
     
+    @Put('document/:documentId/unreconcile')
+    async unreconcileDocument(
+      @Param('documentId') documentId: string,
+      @GetUser() user: User,
+      @Body() data: { reason?: string }
+    ) {
+      return this.bankService.unreconcileDocument(parseInt(documentId), user, data.reason);
+    }
+    
     @Post(':clientEin/suggestions/regenerate')
     async regenerateAllSuggestions(
       @Param('clientEin') clientEin: string,
