@@ -465,6 +465,28 @@ export class BankService {
           }
         });
         
+        console.log(`🔍 SUGGESTION REGENERATION CHECK:`);
+        console.log(`📊 Current suggestions: ${total}`);
+        console.log(`💳 Unreconciled transactions: ${unreconciliedTransactionCount}`);
+        console.log(`📄 Page: ${page}`);
+        console.log(`🔄 Should regenerate: ${total < unreconciliedTransactionCount && page === 1}`);
+        
+        // Debug: List unreconciled transactions
+        const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
+          where: {
+            bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+            reconciliationStatus: ReconciliationStatus.UNRECONCILED
+          },
+          select: {
+            id: true,
+            description: true,
+            amount: true,
+            transactionDate: true
+          },
+          take: 5 // Just show first 5 for debugging
+        });
+        console.log(`🔍 Sample unreconciled transactions:`, unreconciliedTransactions);
+        
         // Regenerate if we have fewer suggestions than unreconciled transactions (should be at least 1 per transaction)
         if (total < unreconciliedTransactionCount && page === 1) {
           try {
