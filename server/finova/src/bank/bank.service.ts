@@ -471,7 +471,6 @@ export class BankService {
         console.log(`📄 Page: ${page}`);
         console.log(`🔄 Should regenerate: ${total < unreconciliedTransactionCount && page === 1}`);
         
-        // Debug: List unreconciled transactions
         const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
           where: {
             bankStatementDocument: { accountingClientId: accountingClientRelation.id },
@@ -487,7 +486,6 @@ export class BankService {
         });
         console.log(`🔍 Sample unreconciled transactions:`, unreconciliedTransactions);
         
-        // Regenerate if we have fewer suggestions than unreconciled transactions (should be at least 1 per transaction)
         if (total < unreconciliedTransactionCount && page === 1) {
           try {
             console.log(`🔄 REGENERATING SUGGESTIONS: Found ${total} suggestions for ${unreconciliedTransactionCount} unreconciled transactions, regenerating...`);
@@ -1070,7 +1068,7 @@ export class BankService {
         console.log(`🔄 UNRECONCILING transaction ${transactionId} - Amount: ${transaction.amount}`);
       
         // Start a database transaction to ensure consistency
-        return await this.prisma.$transaction(async (prisma) => {
+        const result = await this.prisma.$transaction(async (prisma) => {
           // Update transaction status to unreconciled
           const updatedTransaction = await prisma.bankTransaction.update({
             where: { id: transactionId },
@@ -1078,7 +1076,7 @@ export class BankService {
               reconciliationStatus: ReconciliationStatus.UNRECONCILED
             }
           });
-      
+
           // Find and update any associated documents through reconciliation records
           const reconciliationRecords = transaction.reconciliationRecords;
           for (const record of reconciliationRecords) {
@@ -1092,25 +1090,38 @@ export class BankService {
               console.log(`📄 Updated document ${record.documentId} status to UNRECONCILED`);
             }
           }
-      
+
           // Remove reconciliation records for this transaction
           await prisma.reconciliationRecord.deleteMany({
             where: { bankTransactionId: transactionId }
           });
-      
+
           // Remove any payment summary entries for documents associated with this transaction
           const documentIds = reconciliationRecords.map(record => record.documentId).filter(Boolean);
           const deletedPayments = await prisma.paymentSummary.deleteMany({
             where: { documentId: { in: documentIds } }
           });
-      
+
           console.log(`💰 Removed ${deletedPayments.count} payment summary entries for transaction ${transactionId}`);
-      
+
           // Log the unreconciliation action
           console.log(`✅ Successfully unreconciled transaction ${transactionId}${reason ? ` - Reason: ${reason}` : ''}`);
-      
+
           return updatedTransaction;
         });
+
+        // After successful unreconciliation, regenerate suggestions for this transaction and any affected documents
+        try {
+          console.log(`🔄 REGENERATING SUGGESTIONS after unreconciling transaction ${transactionId}`);
+          const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
+          await this.dataExtractionService.generateReconciliationSuggestions(accountingClientId);
+          console.log(`✅ Successfully regenerated suggestions after unreconciling transaction ${transactionId}`);
+        } catch (error) {
+          console.error(`❌ Failed to regenerate suggestions after unreconciling transaction ${transactionId}:`, error);
+          // Don't throw here - unreconciliation was successful, suggestion regeneration is a bonus
+        }
+
+        return result;
       }
       
       async unreconcileDocument(documentId: number, user: User, reason?: string) {
