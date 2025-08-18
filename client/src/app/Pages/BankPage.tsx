@@ -29,6 +29,7 @@ import {
   useGetReconciliationSuggestionsQuery,
   useCreateManualMatchMutation,
   useCreateBulkMatchesMutation,
+  useCreateManualAccountReconciliationMutation,
   useAcceptReconciliationSuggestionMutation,
   useRejectReconciliationSuggestionMutation,
   useUnreconcileTransactionMutation,
@@ -123,6 +124,136 @@ interface ReconciliationSuggestion {
   } | null;
 }
 
+// Account Code Selector Component
+interface AccountCodeSelectorProps {
+  onSelect: (accountCode: string, notes?: string) => void;
+  onCancel: () => void;
+  isLoading: boolean;
+  language: string;
+}
+
+const AccountCodeSelector: React.FC<AccountCodeSelectorProps> = ({ onSelect, onCancel, isLoading, language }) => {
+  const [selectedAccountCode, setSelectedAccountCode] = useState('');
+  const [notes, setNotes] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Common Romanian chart of accounts for quick selection
+  const commonAccounts = [
+    { code: '401', name: 'Furnizori' },
+    { code: '411', name: 'Clienți' },
+    { code: '421', name: 'Personal - salarii datorate' },
+    { code: '431', name: 'Asigurări sociale' },
+    { code: '437', name: 'Impozitul pe venit' },
+    { code: '461', name: 'Debitori diversi' },
+    { code: '462', name: 'Creditori diversi' },
+    { code: '512', name: 'Conturi la bănci în lei' },
+    { code: '531', name: 'Casa în lei' },
+    { code: '601', name: 'Cheltuieli cu materiile prime' },
+    { code: '602', name: 'Cheltuieli cu materialele consumabile' },
+    { code: '621', name: 'Cheltuieli cu colaboratorii' },
+    { code: '622', name: 'Cheltuieli cu remunerațiile personalului' },
+    { code: '627', name: 'Cheltuieli cu asigurările și protecția socială' },
+    { code: '635', name: 'Cheltuieli cu alte impozite, taxe și vărsăminte asimilate' },
+    { code: '701', name: 'Venituri din vânzarea produselor' },
+    { code: '704', name: 'Venituri din vânzarea mărfurilor' },
+    { code: '706', name: 'Venituri din prestări de servicii' },
+    { code: '766', name: 'Venituri din diferențe de curs valutar' },
+    { code: '667', name: 'Cheltuieli din diferențe de curs valutar' }
+  ];
+
+  const filteredAccounts = commonAccounts.filter(account => 
+    account.code.includes(searchTerm) || 
+    account.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleSubmit = () => {
+    if (selectedAccountCode.trim()) {
+      onSelect(selectedAccountCode.trim(), notes.trim() || undefined);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Account Code Input */}
+      <div>
+        <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+          {language === 'ro' ? 'Cod Cont Contabil' : 'Account Code'}
+        </label>
+        <input
+          type="text"
+          value={selectedAccountCode}
+          onChange={(e) => setSelectedAccountCode(e.target.value)}
+          placeholder={language === 'ro' ? 'Ex: 401, 512, 701...' : 'Ex: 401, 512, 701...'}
+          className="w-full px-3 py-2 border border-[var(--text4)] rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-[var(--background)] text-[var(--text1)]"
+        />
+      </div>
+
+      {/* Search for common accounts */}
+      <div>
+        <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+          {language === 'ro' ? 'Sau caută din conturile comune' : 'Or search from common accounts'}
+        </label>
+        <input
+          type="text"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          placeholder={language === 'ro' ? 'Caută cont...' : 'Search account...'}
+          className="w-full px-3 py-2 border border-[var(--text4)] rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-[var(--background)] text-[var(--text1)] mb-3"
+        />
+        
+        <div className="max-h-40 overflow-y-auto space-y-1">
+          {filteredAccounts.map((account) => (
+            <button
+              key={account.code}
+              onClick={() => setSelectedAccountCode(account.code)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                selectedAccountCode === account.code
+                  ? 'bg-[var(--primary)] text-white'
+                  : 'bg-[var(--background)] hover:bg-gray-100 text-[var(--text1)]'
+              }`}
+            >
+              <div className="font-medium">{account.code}</div>
+              <div className="text-sm opacity-75">{account.name}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Notes */}
+      <div>
+        <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+          {language === 'ro' ? 'Note (opțional)' : 'Notes (optional)'}
+        </label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder={language === 'ro' ? 'Adaugă note despre această reconciliere...' : 'Add notes about this reconciliation...'}
+          rows={3}
+          className="w-full px-3 py-2 border border-[var(--text4)] rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-[var(--background)] text-[var(--text1)]"
+        />
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-3 justify-end">
+        <button
+          onClick={onCancel}
+          className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+        >
+          {language === 'ro' ? 'Anulează' : 'Cancel'}
+        </button>
+        <button
+          onClick={handleSubmit}
+          disabled={!selectedAccountCode.trim() || isLoading}
+          className="px-6 py-3 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
+        >
+          {isLoading && <Loader2 size={16} className="animate-spin" />}
+          {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Reconciliation'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Utility functions to extract amount and date based on document type
 const getDocumentAmount = (doc: Document): number => {
   // Try multiple possible field names for amount based on document type
@@ -173,6 +304,8 @@ const BankPage = () => {
   const [selectedItems, setSelectedItems] = useState<{documents: number[], transactions: string[]}>({documents: [], transactions: []});
   const [draggedItem, setDraggedItem] = useState<{type: 'document' | 'transaction', id: string | number} | null>(null);
   const [showMatchModal, setShowMatchModal] = useState(false);
+  const [showAccountReconcileModal, setShowAccountReconcileModal] = useState(false);
+  const [selectedTransactionForAccount, setSelectedTransactionForAccount] = useState<BankTransaction | null>(null);
 
   // Pagination state
   const [documentsPage, setDocumentsPage] = useState(1);
@@ -350,6 +483,7 @@ const BankPage = () => {
   
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();
+  const [createManualAccountReconciliation, { isLoading: isCreatingAccountReconciliation }] = useCreateManualAccountReconciliationMutation();
   const [acceptSuggestion] = useAcceptReconciliationSuggestionMutation();
   const [loadingSuggestions, setLoadingSuggestions] = useState<Set<number>>(new Set());
   const [rejectSuggestion] = useRejectReconciliationSuggestionMutation();
@@ -551,6 +685,33 @@ const BankPage = () => {
     
     setMatchingPair(null);
     setShowMatchModal(false);
+  };
+
+
+
+  const handleAccountReconciliation = async (accountCode: string, notes?: string) => {
+    if (!selectedTransactionForAccount) return;
+    
+    try {
+      await createManualAccountReconciliation({
+        transactionId: selectedTransactionForAccount.id,
+        accountCode,
+        notes
+      }).unwrap();
+      
+      console.log('Manual account reconciliation created successfully');
+      setShowAccountReconcileModal(false);
+      setSelectedTransactionForAccount(null);
+    } catch (error: any) {
+      console.error('Failed to create manual account reconciliation:', error);
+      if (error?.status === 401 || error?.data?.statusCode === 401) {
+        console.warn('Authentication failed - redirecting to login');
+        window.location.href = '/authentication';
+      } else {
+        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
+        alert(language === 'ro' ? `Eroare la reconcilierea cu contul: ${errorMsg}` : `Failed to reconcile with account: ${errorMsg}`);
+      }
+    }
   };
 
   const handleBulkAction = async (action: 'match_selected' | 'ignore_selected' | 'unreconcile_selected') => {
@@ -1709,6 +1870,77 @@ const BankPage = () => {
                   {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Match'}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Account Reconciliation Modal */}
+      <AnimatePresence>
+        {showAccountReconcileModal && selectedTransactionForAccount && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
+                  <Target size={24} className="text-[var(--primary)]" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[var(--text1)]">
+                    {language === 'ro' ? 'Reconciliază cu Cont Contabil' : 'Reconcile with Account Code'}
+                  </h3>
+                  <p className="text-[var(--text2)]">
+                    {language === 'ro' ? 'Selectează contul contabil pentru această tranzacție' : 'Select the chart of account for this transaction'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Transaction Details */}
+              <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)] mb-6">
+                <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
+                  <CreditCard size={18} />
+                  {language === 'ro' ? 'Detalii Tranzacție' : 'Transaction Details'}
+                </h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Descriere:' : 'Description:'}</span>
+                    <span className="text-[var(--text1)] truncate ml-2">{selectedTransactionForAccount.description}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Sumă:' : 'Amount:'}</span>
+                    <span className={`font-semibold ${
+                      selectedTransactionForAccount.transactionType === 'credit' ? 'text-emerald-600' : 'text-red-600'
+                    }`}>
+                      {selectedTransactionForAccount.transactionType === 'credit' ? '+' : ''}
+                      {formatCurrency(selectedTransactionForAccount.amount)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Data:' : 'Date:'}</span>
+                    <span className="text-[var(--text1)]">{formatDate(selectedTransactionForAccount.transactionDate)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Account Code Selection */}
+              <AccountCodeSelector
+                onSelect={handleAccountReconciliation}
+                onCancel={() => {
+                  setShowAccountReconcileModal(false);
+                  setSelectedTransactionForAccount(null);
+                }}
+                isLoading={isCreatingAccountReconciliation}
+                language={language}
+              />
             </motion.div>
           </motion.div>
         )}

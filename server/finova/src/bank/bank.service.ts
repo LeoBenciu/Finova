@@ -1104,13 +1104,11 @@ export class BankService {
 
           console.log(`💰 Removed ${deletedPayments.count} payment summary entries for transaction ${transactionId}`);
 
-          // Log the unreconciliation action
           console.log(`✅ Successfully unreconciled transaction ${transactionId}${reason ? ` - Reason: ${reason}` : ''}`);
 
           return updatedTransaction;
         });
 
-        // After successful unreconciliation, regenerate suggestions for this transaction and any affected documents
         try {
           console.log(`🔄 REGENERATING SUGGESTIONS after unreconciling transaction ${transactionId}`);
           const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
@@ -1118,14 +1116,12 @@ export class BankService {
           console.log(`✅ Successfully regenerated suggestions after unreconciling transaction ${transactionId}`);
         } catch (error) {
           console.error(`❌ Failed to regenerate suggestions after unreconciling transaction ${transactionId}:`, error);
-          // Don't throw here - unreconciliation was successful, suggestion regeneration is a bonus
         }
 
         return result;
       }
       
       async unreconcileDocument(documentId: number, user: User, reason?: string) {
-        // Find the document and verify access
         const document = await this.prisma.document.findUnique({
           where: { id: documentId },
           include: {
@@ -1722,6 +1718,93 @@ export class BankService {
       }
       
       return 0;
+    }
+
+    async createManualAccountReconciliation(
+      transactionId: string,
+      accountCode: string,
+      notes: string,
+      user: User
+    ) {
+      // Validate transaction exists and user has access
+      const transaction = await this.prisma.bankTransaction.findUnique({
+        where: { id: transactionId },
+        include: {
+          bankStatementDocument: {
+            include: {
+              accountingClient: {
+                include: {
+                  clientCompany: true
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (!transaction) {
+        throw new NotFoundException('Transaction not found');
+      }
+
+      // Check user access to the client company
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: transaction.bankStatementDocument.accountingClient.clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Find or create chart of account entry
+      let chartOfAccount = await this.prisma.chartOfAccounts.findFirst({
+        where: {
+          accountCode: accountCode.trim()
+        }
+      });
+
+      if (!chartOfAccount) {
+        // Create new chart of account entry if it doesn't exist
+        chartOfAccount = await this.prisma.chartOfAccounts.create({
+          data: {
+            accountCode: accountCode.trim(),
+            accountName: `Account ${accountCode.trim()}`,
+            accountType: 'ASSETS' // Default account type, should be configurable
+          }
+        });
+      }
+
+      // Update transaction with chart of account and reconciliation status
+      const updatedTransaction = await this.prisma.bankTransaction.update({
+        where: { id: transactionId },
+        data: {
+          chartOfAccountId: chartOfAccount.id,
+          reconciliationStatus: ReconciliationStatus.MATCHED,
+          accountingNotes: notes || null
+        }
+      });
+
+      // Reject any pending suggestions for this transaction
+      await this.prisma.reconciliationSuggestion.updateMany({
+        where: {
+          bankTransactionId: transactionId,
+          status: SuggestionStatus.PENDING
+        },
+        data: {
+          status: SuggestionStatus.REJECTED
+        }
+      });
+
+      console.log(`✅ Manual account reconciliation created: Transaction ${transactionId} → Account ${accountCode}`);
+
+      return {
+        success: true,
+        transaction: updatedTransaction,
+        chartOfAccount,
+        message: 'Transaction successfully reconciled with account code'
+      };
     }
       
 }

@@ -192,5 +192,19 @@ export class BankController {
       return this.bankService.getExceptionReport(clientEin, user, month, year);
     }
 
+    @Put('transaction/:transactionId/reconcile-account')
+    async reconcileTransactionWithAccount(
+      @Param('transactionId') transactionId: string,
+      @Body() reconciliationData: { accountCode: string; notes?: string },
+      @GetUser() user: User
+    ) {
+      return this.bankService.createManualAccountReconciliation(
+        transactionId,
+        reconciliationData.accountCode,
+        reconciliationData.notes || '',
+        user
+      );
+    }
+
     
 }

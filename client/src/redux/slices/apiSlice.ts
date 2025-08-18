@@ -547,6 +547,15 @@ export const finovaApi = createApi({
             invalidatesTags: ['BankReconciliation', 'Files']
         }),
 
+        createManualAccountReconciliation: build.mutation({
+            query: ({ transactionId, accountCode, notes }: { transactionId: string; accountCode: string; notes?: string }) => ({
+                url: `/bank/transaction/${transactionId}/reconcile-account`,
+                method: 'PUT',
+                body: { accountCode, notes }
+            }),
+            invalidatesTags: ['BankReconciliation']
+        }),
+
         acceptReconciliationSuggestion: build.mutation({
             query: ({ suggestionId, notes }: { suggestionId: number; notes?: string }) => ({
                 url: `/bank/suggestion/${suggestionId}/accept`,
@@ -652,6 +661,6 @@ useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
 useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery, useProcessBatchMutation,
 useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
 useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
-useCreateBulkMatchesMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
+useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
 useUnreconcileTransactionMutation, useUnreconcileDocumentMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
 useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery} = finovaApi;
