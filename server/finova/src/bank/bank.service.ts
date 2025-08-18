@@ -1726,7 +1726,6 @@ export class BankService {
       notes: string,
       user: User
     ) {
-      // Validate transaction exists and user has access
       const transaction = await this.prisma.bankTransaction.findUnique({
         where: { id: transactionId },
         include: {
@@ -1746,7 +1745,6 @@ export class BankService {
         throw new NotFoundException('Transaction not found');
       }
 
-      // Check user access to the client company
       const accountingClientRelation = await this.prisma.accountingClients.findFirst({
         where: {
           accountingCompanyId: user.accountingCompanyId,
@@ -1758,7 +1756,6 @@ export class BankService {
         throw new UnauthorizedException('No access to this client company');
       }
 
-      // Find or create chart of account entry
       let chartOfAccount = await this.prisma.chartOfAccounts.findFirst({
         where: {
           accountCode: accountCode.trim()
@@ -1766,17 +1763,15 @@ export class BankService {
       });
 
       if (!chartOfAccount) {
-        // Create new chart of account entry if it doesn't exist
         chartOfAccount = await this.prisma.chartOfAccounts.create({
           data: {
             accountCode: accountCode.trim(),
             accountName: `Account ${accountCode.trim()}`,
-            accountType: 'ASSETS' // Default account type, should be configurable
+            accountType: 'ASSETS' 
           }
         });
       }
 
-      // Update transaction with chart of account and reconciliation status
       const updatedTransaction = await this.prisma.bankTransaction.update({
         where: { id: transactionId },
         data: {
@@ -1786,7 +1781,6 @@ export class BankService {
         }
       });
 
-      // Reject any pending suggestions for this transaction
       await this.prisma.reconciliationSuggestion.updateMany({
         where: {
           bankTransactionId: transactionId,

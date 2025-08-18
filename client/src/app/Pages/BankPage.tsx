@@ -1330,6 +1330,24 @@ const BankPage = () => {
                             <Eye size={14} />
                           </button>
 
+                          {/* Manual account reconciliation button for unreconciled transactions */}
+                          {(() => {
+                            const normalized = normalizeStatus(txn.reconciliation_status);
+                            const shouldShowAccountButton = normalized === 'unreconciled';
+                            return shouldShowAccountButton;
+                          })() && (
+                            <button 
+                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] cursor-pointer"
+                              onClick={() => {
+                                setSelectedTransactionForAccount(txn);
+                                setShowAccountReconcileModal(true);
+                              }}
+                              title={language === 'ro' ? 'Reconciliază cu cont contabil' : 'Reconcile with account code'}
+                            >
+                              <Target size={14} />
+                            </button>
+                          )}
+
                           {/* Unreconcile button for reconciled transactions */}
                           {(() => {
                             const normalized = normalizeStatus(txn.reconciliation_status);
