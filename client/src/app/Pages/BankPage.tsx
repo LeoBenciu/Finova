@@ -512,16 +512,44 @@ const AccountCodeSelector: React.FC<AccountCodeSelectorProps> = ({ onSelect, onC
     
     // Clasa 8 - Conturi speciale
     { code: '801', name: 'Angajamente acordate' },
-    { code: '802', name: 'Angajamente primite' },
-    { code: '803', name: 'Bunuri in custodie, administrare, consignatie' },
-    { code: '804', name: 'Bunuri date in custodie, administrare, consignatie' },
-    { code: '805', name: 'Active si pasive in afara bilantului' }
+    { code: '8011', name: 'Giruri si garantii acordate' },
+    { code: '8018', name: 'Alte angajamente acordate' },
+    { code: '803', name: 'Angajamente primite' },
+    { code: '8031', name: 'Giruri si garantii primite' },
+    { code: '8038', name: 'Alte angajamente primite' },
+    { code: '805', name: 'Bunuri in custodie' },
+    { code: '807', name: 'Bunuri date in custodie' },
+    
+    // Clasa 9 - Conturi analitice de gestiune
+    { code: '901', name: 'Cheltuieli directe' },
+    { code: '902', name: 'Cheltuieli indirecte' },
+    { code: '903', name: 'Cheltuieli pe centre de responsabilitate' },
+    { code: '904', name: 'Cheltuieli pe centre de profit' },
+    { code: '905', name: 'Cheltuieli pe activitati' },
+    { code: '906', name: 'Cheltuieli pe purtatori' },
+    { code: '921', name: 'Costuri standard' },
+    { code: '922', name: 'Abateri de la costuri standard' },
+    { code: '931', name: 'Venituri pe centre de responsabilitate' },
+    { code: '932', name: 'Venituri pe centre de profit' },
+    { code: '933', name: 'Venituri pe activitati' },
+    { code: '934', name: 'Venituri pe purtatori' },
+    { code: '951', name: 'Rezultate pe centre de responsabilitate' },
+    { code: '952', name: 'Rezultate pe centre de profit' },
+    { code: '953', name: 'Rezultate pe activitati' },
+    { code: '954', name: 'Rezultate pe purtatori' }
   ];
 
-  const filteredAccounts = allAccounts.filter(account => 
-    account.code.includes(searchTerm) || 
-    account.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Improved search functionality: code prefix match and name contains
+  const filteredAccounts = allAccounts.filter(account => {
+    const searchLower = searchTerm.toLowerCase();
+    // If search term is numeric, prioritize code prefix matching
+    if (/^\d+$/.test(searchTerm)) {
+      return account.code.startsWith(searchTerm);
+    }
+    // For text search, check both code contains and name contains
+    return account.code.toLowerCase().includes(searchLower) || 
+           account.name.toLowerCase().includes(searchLower);
+  });
 
   const handleSubmit = () => {
     if (selectedAccountCode.trim()) {
@@ -531,24 +559,10 @@ const AccountCodeSelector: React.FC<AccountCodeSelectorProps> = ({ onSelect, onC
 
   return (
     <div className="space-y-4">
-      {/* Account Code Input */}
+      {/* Search and select account */}
       <div>
         <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-          {language === 'ro' ? 'Cod Cont Contabil' : 'Account Code'}
-        </label>
-        <input
-          type="text"
-          value={selectedAccountCode}
-          onChange={(e) => setSelectedAccountCode(e.target.value)}
-          placeholder={language === 'ro' ? 'Ex: 401, 512, 701...' : 'Ex: 401, 512, 701...'}
-          className="w-full px-3 py-2 border border-[var(--text4)] rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-[var(--background)] text-[var(--text1)]"
-        />
-      </div>
-
-      {/* Search for common accounts */}
-      <div>
-        <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-          {language === 'ro' ? 'Sau caută din conturile comune' : 'Or search from common accounts'}
+          {language === 'ro' ? 'Selectează cont contabil' : 'Select account code'}
         </label>
         <input
           type="text"
