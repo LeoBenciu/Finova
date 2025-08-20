@@ -2302,6 +2302,46 @@ export class DataExtractionService {
             }
           }
       
+          // Get previously rejected suggestions to avoid regenerating them
+          const rejectedSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+            where: {
+              status: SuggestionStatus.REJECTED,
+              OR: [
+                {
+                  document: { accountingClientId },
+                },
+                {
+                  documentId: null,
+                  bankTransaction: {
+                    bankStatementDocument: { accountingClientId },
+                  },
+                },
+              ],
+            },
+            select: {
+              documentId: true,
+              bankTransactionId: true,
+              chartOfAccountId: true
+            }
+          });
+          
+          this.logger.warn(`🚫 Found ${rejectedSuggestions.length} previously rejected suggestions to avoid regenerating`);
+          
+          // Create sets of rejected combinations to avoid regenerating
+          const rejectedDocTransactionPairs = new Set<string>();
+          const rejectedTransactionAccountPairs = new Set<string>();
+          
+          rejectedSuggestions.forEach(rejected => {
+            if (rejected.documentId && rejected.bankTransactionId) {
+              rejectedDocTransactionPairs.add(`${rejected.documentId}-${rejected.bankTransactionId}`);
+            } else if (rejected.bankTransactionId && rejected.chartOfAccountId) {
+              rejectedTransactionAccountPairs.add(`${rejected.bankTransactionId}-${rejected.chartOfAccountId}`);
+            }
+          });
+          
+          this.logger.warn(`🚫 Avoiding ${rejectedDocTransactionPairs.size} doc-transaction pairs and ${rejectedTransactionAccountPairs.size} transaction-account pairs`);
+
+          // Only delete pending suggestions (keep rejected ones for reference)
           await this.prisma.reconciliationSuggestion.deleteMany({
             where: {
               status: SuggestionStatus.PENDING,
@@ -2395,6 +2435,13 @@ export class DataExtractionService {
               }
       
               if (suggestion.confidenceScore >= 0.25) {
+                // Check if this document-transaction pair was previously rejected
+                const pairKey = `${document.id}-${transaction.id}`;
+                if (rejectedDocTransactionPairs.has(pairKey)) {
+                  this.logger.warn(`🚫 SKIPPING previously rejected suggestion: Document ${document.id} + Transaction ${transaction.id}`);
+                  continue;
+                }
+                
                 const suggestionData = {
                   documentId: document.id,
                   bankTransactionId: transaction.id,
@@ -2480,6 +2527,13 @@ export class DataExtractionService {
                   bestSuggestion.accountCode,
                   bestSuggestion.accountName
                 );
+                
+                // Check if this transaction-account pair was previously rejected
+                const pairKey = `${transaction.id}-${chartOfAccount.id}`;
+                if (rejectedTransactionAccountPairs.has(pairKey)) {
+                  this.logger.warn(`🚫 SKIPPING previously rejected standalone suggestion: Transaction ${transaction.id} + Account ${chartOfAccount.id}`);
+                  continue;
+                }
                 
                 const notes = bestSuggestion.confidence > 0.7 
                   ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
