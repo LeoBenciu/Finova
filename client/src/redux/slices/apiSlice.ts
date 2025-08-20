@@ -670,6 +670,121 @@ export const finovaApi = createApi({
               url: `/bank/${clientEin}/reports/exceptions?month=${month}&year=${year}`,
               method: 'GET'
             })
+          }),
+
+          // Outstanding Items Management endpoints
+          getOutstandingItems: build.query({
+            query: ({ clientEin, type, status, startDate, endDate }: { 
+              clientEin: string; 
+              type?: string; 
+              status?: string; 
+              startDate?: string; 
+              endDate?: string; 
+            }) => {
+              const params = new URLSearchParams();
+              if (type) params.append('type', type);
+              if (status) params.append('status', status);
+              if (startDate) params.append('startDate', startDate);
+              if (endDate) params.append('endDate', endDate);
+              
+              return {
+                url: `/bank/${clientEin}/outstanding-items${params.toString() ? '?' + params.toString() : ''}`,
+                method: 'GET'
+              };
+            },
+            providesTags: ['BankReconciliation']
+          }),
+
+          getOutstandingItemsAging: build.query({
+            query: ({ clientEin }: { clientEin: string }) => ({
+              url: `/bank/${clientEin}/outstanding-items/aging`,
+              method: 'GET'
+            }),
+            providesTags: ['BankReconciliation']
+          }),
+
+          createOutstandingItem: build.mutation({
+            query: ({ clientEin, data }: { 
+              clientEin: string; 
+              data: {
+                type: 'OUTSTANDING_CHECK' | 'DEPOSIT_IN_TRANSIT' | 'PENDING_TRANSFER';
+                referenceNumber: string;
+                description: string;
+                amount: number;
+                issueDate: string;
+                expectedClearDate?: string;
+                payeeBeneficiary?: string;
+                bankAccount?: string;
+                notes?: string;
+                relatedDocumentId?: number;
+              }
+            }) => ({
+              url: `/bank/${clientEin}/outstanding-items`,
+              method: 'POST',
+              body: data
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          updateOutstandingItem: build.mutation({
+            query: ({ itemId, data }: { 
+              itemId: number; 
+              data: {
+                status?: 'OUTSTANDING' | 'CLEARED' | 'STALE' | 'VOIDED';
+                actualClearDate?: string;
+                notes?: string;
+                relatedTransactionId?: string;
+              }
+            }) => ({
+              url: `/bank/outstanding-items/${itemId}`,
+              method: 'PUT',
+              body: data
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          markOutstandingItemAsCleared: build.mutation({
+            query: ({ itemId, data }: { 
+              itemId: number; 
+              data: { transactionId?: string; clearDate?: string }
+            }) => ({
+              url: `/bank/outstanding-items/${itemId}/clear`,
+              method: 'PUT',
+              body: data
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          markOutstandingItemAsStale: build.mutation({
+            query: ({ itemId, data }: { 
+              itemId: number; 
+              data: { notes?: string }
+            }) => ({
+              url: `/bank/outstanding-items/${itemId}/stale`,
+              method: 'PUT',
+              body: data
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          voidOutstandingItem: build.mutation({
+            query: ({ itemId, data }: { 
+              itemId: number; 
+              data: { notes?: string }
+            }) => ({
+              url: `/bank/outstanding-items/${itemId}/void`,
+              method: 'PUT',
+              body: data
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          deleteOutstandingItem: build.mutation({
+            query: ({ itemId }: { itemId: number }) => ({
+              url: `/bank/outstanding-items/${itemId}/delete`,
+              method: 'PUT'
+            }),
+            invalidatesTags: ['BankReconciliation']
           })
 
     })
@@ -696,6 +811,9 @@ useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useA
 useUnreconcileTransactionMutation, useUnreconcileDocumentMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
 useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery,
 useGetBankReconciliationSummaryReportQuery,
-useGetOutstandingItemsAgingQuery,
+useGetOutstandingItemsQuery, useGetOutstandingItemsAgingQuery,
+useCreateOutstandingItemMutation, useUpdateOutstandingItemMutation,
+useMarkOutstandingItemAsClearedMutation, useMarkOutstandingItemAsStaleMutation,
+useVoidOutstandingItemMutation, useDeleteOutstandingItemMutation,
 useGetReconciliationHistoryAndAuditTrailQuery
 } = finovaApi;

@@ -19,7 +19,8 @@ import {
   RefreshCw,
   Loader2,
   Square,
-  CheckSquare
+  CheckSquare,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -37,9 +38,10 @@ import {
   useCreateBulkMatchesMutation,
   useGetBalanceReconciliationStatementQuery,
   useGetBankReconciliationSummaryReportQuery,
-  useGetOutstandingItemsAgingQuery,
-  useGetReconciliationHistoryAndAuditTrailQuery
+  useGetReconciliationHistoryAndAuditTrailQuery,
+  useGetOutstandingItemsAgingQuery
 } from '@/redux/slices/apiSlice';
+import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 
 interface Document {
   id: number;
@@ -134,7 +136,7 @@ interface ComprehensiveReportingSystemProps {
 }
 
 function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveReportingSystemProps) {
-  const [activeReport, setActiveReport] = useState<'summary' | 'outstanding' | 'audit' | 'balance'>('summary');
+  const [activeReport, setActiveReport] = useState<'summary' | 'outstanding' | 'audit' | 'balance' | 'outstanding-items'>('summary');
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
@@ -150,10 +152,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
     endDate: dateRange.endDate
   });
 
-  const { data: outstandingItems, isLoading: outstandingLoading } = useGetOutstandingItemsAgingQuery({
-    clientEin
-  });
-
   const { data: auditTrail, isLoading: auditLoading } = useGetReconciliationHistoryAndAuditTrailQuery({
     clientEin,
     startDate: dateRange.startDate,
@@ -166,6 +164,10 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
     clientEin,
     startDate: dateRange.startDate,
     endDate: dateRange.endDate
+  });
+
+  const { data: outstandingItems, isLoading: outstandingLoading } = useGetOutstandingItemsAgingQuery({
+    clientEin
   });
 
   const handleExport = async (format: 'pdf' | 'excel') => {
@@ -208,21 +210,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
           }
         }
         
-        // Add Outstanding Items data if available
-        if (outstandingItems && yPos < 250) {
-          doc.setFontSize(16);
-          doc.text(language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', 20, yPos);
-          yPos += 20;
-          
-          doc.setFontSize(10);
-          if (outstandingItems.summary) {
-            doc.text(`${language === 'ro' ? 'Total Elemente' : 'Total Items'}: ${outstandingItems.summary.totalItems || 0}`, 20, yPos);
-            yPos += 10;
-            doc.text(`${language === 'ro' ? 'Valoare Totala' : 'Total Amount'}: ${outstandingItems.summary.totalAmount?.toFixed(2) || '0.00'} RON`, 20, yPos);
-            yPos += 20;
-          }
-        }
-        
         // Add generation timestamp
         doc.setFontSize(8);
         doc.text(`${language === 'ro' ? 'Generat la' : 'Generated at'}: ${new Date().toLocaleString()}`, 20, 280);
@@ -259,36 +246,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
           
           const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
           XLSX.utils.book_append_sheet(workbook, summarySheet, language === 'ro' ? 'Sumar' : 'Summary');
-        }
-        
-        // Outstanding Items Sheet
-        if (outstandingItems) {
-          const outstandingData = [
-            [language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items'],
-            [],
-            [language === 'ro' ? 'Total Elemente' : 'Total Items', outstandingItems.summary?.totalItems || 0],
-            [language === 'ro' ? 'Valoare Totala' : 'Total Amount', outstandingItems.summary?.totalAmount?.toFixed(2) || '0.00', 'RON'],
-            []
-          ];
-          
-          if (outstandingItems.documents && outstandingItems.documents.length > 0) {
-            outstandingData.push(
-              [language === 'ro' ? 'Documente Nereconciliate' : 'Outstanding Documents'],
-              [language === 'ro' ? 'Document' : 'Document', language === 'ro' ? 'Tip' : 'Type', language === 'ro' ? 'Suma' : 'Amount', language === 'ro' ? 'Vechime (zile)' : 'Age (days)']
-            );
-            
-            outstandingItems.documents.forEach((doc: any) => {
-              outstandingData.push([
-                doc.name || doc.document_number || `Document ${doc.id}`,
-                doc.type,
-                doc.total_amount?.toFixed(2) || '0.00',
-                doc.ageInDays || 0
-              ]);
-            });
-          }
-          
-          const outstandingSheet = XLSX.utils.aoa_to_sheet(outstandingData);
-          XLSX.utils.book_append_sheet(workbook, outstandingSheet, language === 'ro' ? 'Nereconciliate' : 'Outstanding');
         }
         
         // Balance Sheet
@@ -333,6 +290,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
   const reportTabs = [
     { id: 'summary', label: language === 'ro' ? 'Sumar' : 'Summary', icon: TrendingUp },
     { id: 'outstanding', label: language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', icon: AlertTriangle },
+    { id: 'outstanding-items', label: language === 'ro' ? 'Gestionare Elemente în Așteptare' : 'Outstanding Items Management', icon: Clock },
     { id: 'audit', label: language === 'ro' ? 'Istoric Audit' : 'Audit Trail', icon: FileText },
     { id: 'balance', label: language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation', icon: Landmark }
   ];
@@ -1048,6 +1006,13 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
               </div>
             )}
           </div>
+        )}
+
+        {activeReport === 'outstanding-items' && (
+          <OutstandingItemsManagement 
+            clientEin={clientEin} 
+            language={language} 
+          />
         )}
       </div>
     </div>

@@ -2074,172 +2074,6 @@ export class BankService {
       };
     }
 
-    async getOutstandingItemsAging(clientEin: string, user: User) {
-      const clientCompany = await this.prisma.clientCompany.findUnique({
-        where: { ein: clientEin }
-      });
-
-      if (!clientCompany) {
-        throw new NotFoundException('Client company not found');
-      }
-
-      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
-        where: {
-          accountingCompanyId: user.accountingCompanyId,
-          clientCompanyId: clientCompany.id
-        }
-      });
-
-      if (!accountingClientRelation) {
-        throw new UnauthorizedException('No access to this client company');
-      }
-
-      const now = new Date();
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-
-      // Get unreconciled documents
-      const unreconciledDocuments = await this.prisma.document.findMany({
-        where: {
-          accountingClientId: accountingClientRelation.id,
-          reconciliationStatus: 'UNRECONCILED',
-          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
-        },
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          createdAt: true,
-          processedData: true
-        },
-        orderBy: { createdAt: 'asc' }
-      });
-
-      // Get unreconciled transactions
-      const unreconciledTransactions = await this.prisma.bankTransaction.findMany({
-        where: {
-          bankStatementDocument: {
-            accountingClientId: accountingClientRelation.id
-          },
-          reconciliationStatus: 'UNRECONCILED'
-        },
-        select: {
-          id: true,
-          description: true,
-          amount: true,
-          transactionDate: true,
-          createdAt: true
-        },
-        orderBy: { createdAt: 'asc' }
-      });
-
-      // Categorize documents by age
-      const categorizeByAge = (items: any[], dateField: string) => {
-        const categories = {
-          current: [] as any[],
-          thirtyDays: [] as any[],
-          sixtyDays: [] as any[],
-          ninetyDays: [] as any[],
-          overNinety: [] as any[]
-        };
-
-        items.forEach(item => {
-          const itemDate = new Date(item[dateField]);
-          if (itemDate >= thirtyDaysAgo) {
-            categories.current.push(item);
-          } else if (itemDate >= sixtyDaysAgo) {
-            categories.thirtyDays.push(item);
-          } else if (itemDate >= ninetyDaysAgo) {
-            categories.sixtyDays.push(item);
-          } else {
-            categories.overNinety.push(item);
-          }
-        });
-
-        return categories;
-      };
-
-      const documentsByAge = categorizeByAge(unreconciledDocuments, 'createdAt');
-      const transactionsByAge = categorizeByAge(unreconciledTransactions, 'createdAt');
-
-      // Calculate totals
-      const calculateTotals = (categories: any) => {
-        const totals: any = {
-          current: { count: 0, totalAmount: 0 },
-          thirtyDays: { count: 0, totalAmount: 0 },
-          sixtyDays: { count: 0, totalAmount: 0 },
-          ninetyDays: { count: 0, totalAmount: 0 },
-          overNinety: { count: 0, totalAmount: 0 }
-        };
-        
-        Object.keys(categories).forEach(key => {
-          const items = categories[key];
-          totals[key] = {
-            count: items.length,
-            totalAmount: items.reduce((sum, item) => {
-              const amount = item.total_amount || item.amount || 0;
-              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
-            }, 0)
-          };
-        });
-        return totals;
-      };
-
-      const documentTotals = calculateTotals(documentsByAge);
-      const transactionTotals = calculateTotals(transactionsByAge);
-
-      return {
-        documents: {
-          byAge: documentsByAge,
-          totals: documentTotals,
-          grandTotal: {
-            count: unreconciledDocuments.length,
-            totalAmount: unreconciledDocuments.reduce((sum, doc) => {
-              const extractedFields = Array.isArray(doc.processedData) 
-                ? doc.processedData[0]?.extractedFields 
-                : doc.processedData?.extractedFields;
-              const documentData = extractedFields?.result || extractedFields || {};
-              const amount = documentData.total_amount || 0;
-              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
-            }, 0)
-          }
-        },
-        transactions: {
-          byAge: transactionsByAge,
-          totals: transactionTotals,
-          grandTotal: {
-            count: unreconciledTransactions.length,
-            totalAmount: unreconciledTransactions.reduce((sum, trans) => {
-              const amount = trans.amount || 0;
-              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
-            }, 0)
-          }
-        },
-        summary: {
-          totalItems: unreconciledDocuments.length + unreconciledTransactions.length,
-          totalAmount: 
-            unreconciledDocuments.reduce((sum, doc) => {
-              const extractedFields = Array.isArray(doc.processedData) 
-                ? doc.processedData[0]?.extractedFields 
-                : doc.processedData?.extractedFields;
-              const documentData = extractedFields?.result || extractedFields || {};
-              const amount = documentData.total_amount || 0;
-              return sum + (parseFloat(amount?.toString() || '0') || 0);
-            }, 0) +
-            unreconciledTransactions.reduce((sum, trans) => sum + (parseFloat(trans.amount?.toString() || '0') || 0), 0),
-          byAge: {
-            current: (documentTotals.current?.count || 0) + (transactionTotals.current?.count || 0),
-            thirtyDays: (documentTotals.thirtyDays?.count || 0) + (transactionTotals.thirtyDays?.count || 0),
-            sixtyDays: (documentTotals.sixtyDays?.count || 0) + (transactionTotals.sixtyDays?.count || 0),
-            ninetyDays: (documentTotals.ninetyDays?.count || 0) + (transactionTotals.ninetyDays?.count || 0),
-            overNinety: (documentTotals.overNinety?.count || 0) + (transactionTotals.overNinety?.count || 0)
-          }
-        },
-        generatedAt: new Date().toISOString()
-      };
-    }
-
     async getReconciliationHistoryAndAuditTrail(clientEin: string, user: User, startDate?: string, endDate?: string, page: number = 1, size: number = 50) {
       const clientCompany = await this.prisma.clientCompany.findUnique({
         where: { ein: clientEin }
@@ -2385,6 +2219,366 @@ export class BankService {
         },
         generatedAt: new Date().toISOString()
       };
+    }
+
+    // Outstanding Items Management Methods
+    async getOutstandingItems(clientEin: string, user: User, type?: string, status?: string, startDate?: string, endDate?: string) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Build filters
+      const whereClause: any = {
+        accountingClientId: accountingClientRelation.id
+      };
+
+      if (type) {
+        whereClause.type = type;
+      }
+
+      if (status) {
+        whereClause.status = status;
+      }
+
+      if (startDate || endDate) {
+        whereClause.issueDate = {};
+        if (startDate) {
+          whereClause.issueDate.gte = new Date(startDate);
+        }
+        if (endDate) {
+          whereClause.issueDate.lte = new Date(endDate + 'T23:59:59.999Z');
+        }
+      }
+
+      const outstandingItems = await this.prisma.outstandingItem.findMany({
+        where: whereClause,
+        include: {
+          relatedDocument: {
+            select: {
+              id: true,
+              name: true,
+              type: true
+            }
+          },
+          relatedTransaction: {
+            select: {
+              id: true,
+              description: true,
+              amount: true,
+              transactionDate: true
+            }
+          },
+          createdByUser: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        },
+        orderBy: [
+          { status: 'asc' },
+          { daysOutstanding: 'desc' },
+          { issueDate: 'desc' }
+        ]
+      });
+
+      // Calculate days outstanding for each item
+      const itemsWithAging = outstandingItems.map(item => {
+        const today = new Date();
+        const issueDate = new Date(item.issueDate);
+        const daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        return {
+          ...item,
+          daysOutstanding,
+          amount: Number(item.amount)
+        };
+      });
+
+      return {
+        items: itemsWithAging,
+        summary: {
+          totalItems: itemsWithAging.length,
+          totalAmount: itemsWithAging.reduce((sum, item) => sum + Number(item.amount), 0),
+          byType: {
+            OUTSTANDING_CHECK: itemsWithAging.filter(item => item.type === 'OUTSTANDING_CHECK').length,
+            DEPOSIT_IN_TRANSIT: itemsWithAging.filter(item => item.type === 'DEPOSIT_IN_TRANSIT').length,
+            PENDING_TRANSFER: itemsWithAging.filter(item => item.type === 'PENDING_TRANSFER').length
+          },
+          byStatus: {
+            OUTSTANDING: itemsWithAging.filter(item => item.status === 'OUTSTANDING').length,
+            CLEARED: itemsWithAging.filter(item => item.status === 'CLEARED').length,
+            STALE: itemsWithAging.filter(item => item.status === 'STALE').length,
+            VOIDED: itemsWithAging.filter(item => item.status === 'VOIDED').length
+          }
+        },
+        generatedAt: new Date().toISOString()
+      };
+    }
+
+    async getOutstandingItemsAging(clientEin: string, user: User) {
+      const items = await this.getOutstandingItems(clientEin, user);
+      
+      const agingBuckets = {
+        current: { count: 0, totalAmount: 0, items: [] },
+        thirtyDays: { count: 0, totalAmount: 0, items: [] },
+        sixtyDays: { count: 0, totalAmount: 0, items: [] },
+        ninetyDays: { count: 0, totalAmount: 0, items: [] },
+        overNinety: { count: 0, totalAmount: 0, items: [] }
+      };
+
+      items.items.forEach(item => {
+        const amount = Number(item.amount);
+        const days = item.daysOutstanding;
+
+        if (days <= 30) {
+          agingBuckets.current.count++;
+          agingBuckets.current.totalAmount += amount;
+          agingBuckets.current.items.push(item);
+        } else if (days <= 60) {
+          agingBuckets.thirtyDays.count++;
+          agingBuckets.thirtyDays.totalAmount += amount;
+          agingBuckets.thirtyDays.items.push(item);
+        } else if (days <= 90) {
+          agingBuckets.sixtyDays.count++;
+          agingBuckets.sixtyDays.totalAmount += amount;
+          agingBuckets.sixtyDays.items.push(item);
+        } else if (days <= 120) {
+          agingBuckets.ninetyDays.count++;
+          agingBuckets.ninetyDays.totalAmount += amount;
+          agingBuckets.ninetyDays.items.push(item);
+        } else {
+          agingBuckets.overNinety.count++;
+          agingBuckets.overNinety.totalAmount += amount;
+          agingBuckets.overNinety.items.push(item);
+        }
+      });
+
+      return {
+        agingBuckets,
+        summary: {
+          totalOutstandingItems: items.items.filter(item => item.status === 'OUTSTANDING').length,
+          totalOutstandingAmount: items.items
+            .filter(item => item.status === 'OUTSTANDING')
+            .reduce((sum, item) => sum + Number(item.amount), 0),
+          oldestItem: items.items.length > 0 ? Math.max(...items.items.map(item => item.daysOutstanding)) : 0,
+          averageAge: items.items.length > 0 
+            ? Math.round(items.items.reduce((sum, item) => sum + item.daysOutstanding, 0) / items.items.length)
+            : 0
+        },
+        generatedAt: new Date().toISOString()
+      };
+    }
+
+    async createOutstandingItem(clientEin: string, user: User, data: {
+      type: 'OUTSTANDING_CHECK' | 'DEPOSIT_IN_TRANSIT' | 'PENDING_TRANSFER';
+      referenceNumber: string;
+      description: string;
+      amount: number;
+      issueDate: string;
+      expectedClearDate?: string;
+      payeeBeneficiary?: string;
+      bankAccount?: string;
+      notes?: string;
+      relatedDocumentId?: number;
+    }) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Calculate initial days outstanding
+      const today = new Date();
+      const issueDate = new Date(data.issueDate);
+      const daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      const outstandingItem = await this.prisma.outstandingItem.create({
+        data: {
+          accountingClientId: accountingClientRelation.id,
+          type: data.type,
+          referenceNumber: data.referenceNumber,
+          description: data.description,
+          amount: data.amount,
+          issueDate: new Date(data.issueDate),
+          expectedClearDate: data.expectedClearDate ? new Date(data.expectedClearDate) : null,
+          daysOutstanding,
+          payeeBeneficiary: data.payeeBeneficiary,
+          bankAccount: data.bankAccount,
+          notes: data.notes,
+          relatedDocumentId: data.relatedDocumentId,
+          createdBy: user.id
+        },
+        include: {
+          relatedDocument: {
+            select: {
+              id: true,
+              name: true,
+              type: true
+            }
+          },
+          createdByUser: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      return {
+        ...outstandingItem,
+        amount: Number(outstandingItem.amount)
+      };
+    }
+
+    async updateOutstandingItem(itemId: number, user: User, data: {
+      status?: 'OUTSTANDING' | 'CLEARED' | 'STALE' | 'VOIDED';
+      actualClearDate?: string;
+      notes?: string;
+      relatedTransactionId?: string;
+    }) {
+      // Verify the item exists and user has access
+      const existingItem = await this.prisma.outstandingItem.findFirst({
+        where: {
+          id: itemId,
+          accountingClient: {
+            accountingCompanyId: user.accountingCompanyId
+          }
+        }
+      });
+
+      if (!existingItem) {
+        throw new NotFoundException('Outstanding item not found or no access');
+      }
+
+      const updateData: any = {};
+      
+      if (data.status) {
+        updateData.status = data.status;
+      }
+      
+      if (data.actualClearDate) {
+        updateData.actualClearDate = new Date(data.actualClearDate);
+      }
+      
+      if (data.notes !== undefined) {
+        updateData.notes = data.notes;
+      }
+      
+      if (data.relatedTransactionId) {
+        updateData.relatedTransactionId = data.relatedTransactionId;
+      }
+
+      // Recalculate days outstanding
+      const today = new Date();
+      const issueDate = new Date(existingItem.issueDate);
+      updateData.daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      const updatedItem = await this.prisma.outstandingItem.update({
+        where: { id: itemId },
+        data: updateData,
+        include: {
+          relatedDocument: {
+            select: {
+              id: true,
+              name: true,
+              type: true
+            }
+          },
+          relatedTransaction: {
+            select: {
+              id: true,
+              description: true,
+              amount: true,
+              transactionDate: true
+            }
+          },
+          createdByUser: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        }
+      });
+
+      return {
+        ...updatedItem,
+        amount: Number(updatedItem.amount)
+      };
+    }
+
+    async deleteOutstandingItem(itemId: number, user: User) {
+      // Verify the item exists and user has access
+      const existingItem = await this.prisma.outstandingItem.findFirst({
+        where: {
+          id: itemId,
+          accountingClient: {
+            accountingCompanyId: user.accountingCompanyId
+          }
+        }
+      });
+
+      if (!existingItem) {
+        throw new NotFoundException('Outstanding item not found or no access');
+      }
+
+      await this.prisma.outstandingItem.delete({
+        where: { id: itemId }
+      });
+
+      return { success: true, message: 'Outstanding item deleted successfully' };
+    }
+
+    async markOutstandingItemAsCleared(itemId: number, user: User, transactionId?: string, clearDate?: string) {
+      return this.updateOutstandingItem(itemId, user, {
+        status: 'CLEARED',
+        actualClearDate: clearDate || new Date().toISOString(),
+        relatedTransactionId: transactionId
+      });
+    }
+
+    async markOutstandingItemAsStale(itemId: number, user: User, notes?: string) {
+      return this.updateOutstandingItem(itemId, user, {
+        status: 'STALE',
+        notes: notes || 'Marked as stale - requires follow-up'
+      });
+    }
+
+    async voidOutstandingItem(itemId: number, user: User, notes?: string) {
+      return this.updateOutstandingItem(itemId, user, {
+        status: 'VOIDED',
+        notes: notes || 'Item voided'
+      });
     }
       
 }

@@ -24,6 +24,7 @@ model User {
   legalAgreements          LegalAgreement[]
   userCorrections          UserCorrection[]
   reconciledRecords        ReconciliationRecord[] @relation("ReconciledByUser")
+  outstandingItems         OutstandingItem[]
 }
 
 model LegalAgreement {
@@ -73,6 +74,7 @@ model Document {
   complianceValidations     ComplianceValidation[]
   userCorrections           UserCorrection[]
   paymentSummary            PaymentSummary?
+  outstandingItems          OutstandingItem[]
 
   @@index([documentHash])
   @@index([accountingClientId])
@@ -191,6 +193,7 @@ model AccountingClients {
   rpaActions          RpaAction[]
   articles            Article[]
   managements         Management[]
+  outstandingItems    OutstandingItem[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -290,6 +293,7 @@ model BankTransaction {
   accountingNotes           String?
   reconciliationRecords     ReconciliationRecord[]
   reconciliationSuggestions ReconciliationSuggestion[]
+  outstandingItems          OutstandingItem[]
 
   @@index([bankStatementDocumentId])
   @@index([transactionDate])
@@ -371,6 +375,39 @@ model ChartOfAccounts {
   @@index([accountCode])
   @@index([accountType])
   @@index([isActive])
+}
+
+model OutstandingItem {
+  id                    Int                   @id @default(autoincrement())
+  accountingClientId    Int
+  accountingClient      AccountingClients     @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  type                  OutstandingItemType
+  status                OutstandingItemStatus @default(OUTSTANDING)
+  referenceNumber       String                // Check number, deposit slip number, transfer reference
+  description           String
+  amount                Decimal               @db.Decimal(10, 2)
+  issueDate             DateTime              // Date check was written, deposit made, transfer initiated
+  expectedClearDate     DateTime?             // Expected date to clear
+  actualClearDate       DateTime?             // Actual date cleared
+  daysOutstanding       Int                   @default(0) // Calculated field
+  payeeBeneficiary      String?               // Who the check is made out to, or deposit source
+  bankAccount           String?               // Which bank account
+  notes                 String?
+  relatedDocumentId     Int?                  // Link to related document if applicable
+  relatedDocument       Document?             @relation(fields: [relatedDocumentId], references: [id])
+  relatedTransactionId  String?               // Link to bank transaction when cleared
+  relatedTransaction    BankTransaction?      @relation(fields: [relatedTransactionId], references: [id])
+  createdBy             Int?
+  createdByUser         User?                 @relation(fields: [createdBy], references: [id])
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([accountingClientId])
+  @@index([type])
+  @@index([status])
+  @@index([issueDate])
+  @@index([daysOutstanding])
+  @@index([referenceNumber])
 }
 
 enum DocumentRelationType {
@@ -558,4 +595,17 @@ enum AccountType {
   INCOME
   EXPENSE
   EQUITY
+}
+
+enum OutstandingItemType {
+  OUTSTANDING_CHECK
+  DEPOSIT_IN_TRANSIT
+  PENDING_TRANSFER
+}
+
+enum OutstandingItemStatus {
+  OUTSTANDING
+  CLEARED
+  STALE
+  VOIDED
 }

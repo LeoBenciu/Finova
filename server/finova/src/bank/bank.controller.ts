@@ -253,5 +253,95 @@ export class BankController {
       );
     }
 
+    // Outstanding Items Management Endpoints
+    @Get(':clientEin/outstanding-items')
+    async getOutstandingItems(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('type') type?: string,
+      @Query('status') status?: string,
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string
+    ) {
+      return this.bankService.getOutstandingItems(clientEin, user, type, status, startDate, endDate);
+    }
+
+    @Get(':clientEin/outstanding-items/aging')
+    async getOutstandingItemsAging(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getOutstandingItemsAging(clientEin, user);
+    }
+
+    @Post(':clientEin/outstanding-items')
+    async createOutstandingItem(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Body() data: {
+        type: 'OUTSTANDING_CHECK' | 'DEPOSIT_IN_TRANSIT' | 'PENDING_TRANSFER';
+        referenceNumber: string;
+        description: string;
+        amount: number;
+        issueDate: string;
+        expectedClearDate?: string;
+        payeeBeneficiary?: string;
+        bankAccount?: string;
+        notes?: string;
+        relatedDocumentId?: number;
+      }
+    ) {
+      return this.bankService.createOutstandingItem(clientEin, user, data);
+    }
+
+    @Put('outstanding-items/:itemId')
+    async updateOutstandingItem(
+      @Param('itemId', ParseIntPipe) itemId: number,
+      @GetUser() user: User,
+      @Body() data: {
+        status?: 'OUTSTANDING' | 'CLEARED' | 'STALE' | 'VOIDED';
+        actualClearDate?: string;
+        notes?: string;
+        relatedTransactionId?: string;
+      }
+    ) {
+      return this.bankService.updateOutstandingItem(itemId, user, data);
+    }
+
+    @Put('outstanding-items/:itemId/clear')
+    async markOutstandingItemAsCleared(
+      @Param('itemId', ParseIntPipe) itemId: number,
+      @GetUser() user: User,
+      @Body() data: { transactionId?: string; clearDate?: string }
+    ) {
+      return this.bankService.markOutstandingItemAsCleared(itemId, user, data.transactionId, data.clearDate);
+    }
+
+    @Put('outstanding-items/:itemId/stale')
+    async markOutstandingItemAsStale(
+      @Param('itemId', ParseIntPipe) itemId: number,
+      @GetUser() user: User,
+      @Body() data: { notes?: string }
+    ) {
+      return this.bankService.markOutstandingItemAsStale(itemId, user, data.notes);
+    }
+
+    @Put('outstanding-items/:itemId/void')
+    async voidOutstandingItem(
+      @Param('itemId', ParseIntPipe) itemId: number,
+      @GetUser() user: User,
+      @Body() data: { notes?: string }
+    ) {
+      return this.bankService.voidOutstandingItem(itemId, user, data.notes);
+    }
+
+    @Put('outstanding-items/:itemId/delete')
+    async deleteOutstandingItem(
+      @Param('itemId', ParseIntPipe) itemId: number,
+      @GetUser() user: User
+    ) {
+      return this.bankService.deleteOutstandingItem(itemId, user);
+    }
+
     
 }
