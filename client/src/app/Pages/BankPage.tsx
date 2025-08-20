@@ -2220,11 +2220,44 @@ const BankPage = () => {
                             const suggestionId = suggestion.id;
                             setLoadingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
-                              await acceptSuggestion({
-                                suggestionId,
-                                notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
-                              }).unwrap();
-                              console.log('Suggestion accepted successfully');
+                              // Check if this is a document suggestion or account code suggestion
+                              const isDocumentSuggestion = suggestion.document && suggestion.document.id;
+                              const isAccountCodeSuggestion = suggestion.chartOfAccount && suggestion.chartOfAccount.accountCode;
+                              
+                              if (isDocumentSuggestion) {
+                                // Handle document-to-transaction match
+                                await acceptSuggestion({
+                                  suggestionId,
+                                  notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
+                                }).unwrap();
+                                console.log('Document suggestion accepted successfully');
+                              } else if (isAccountCodeSuggestion && suggestion.bankTransaction && suggestion.chartOfAccount) {
+                                // Handle account code reconciliation with proper null checks
+                                const transactionId = suggestion.bankTransaction.id;
+                                const accountCode = suggestion.chartOfAccount.accountCode;
+                                
+                                if (!transactionId) {
+                                  throw new Error('Transaction ID is missing');
+                                }
+                                if (!accountCode) {
+                                  throw new Error('Account code is missing');
+                                }
+                                
+                                await createManualAccountReconciliation({
+                                  transactionId,
+                                  accountCode,
+                                  notes: `Accepted account code suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
+                                }).unwrap();
+                                console.log('Account code suggestion accepted successfully');
+                                
+                                // After successful account reconciliation, reject this suggestion
+                                await rejectSuggestion({
+                                  suggestionId,
+                                  reason: 'Accepted as account code reconciliation'
+                                }).unwrap();
+                              } else {
+                                throw new Error('Unknown suggestion type - neither document nor account code, or missing required data');
+                              }
                             } catch (error: any) {
                               console.error('Failed to accept suggestion:', error);
                               if (error?.status === 401 || error?.data?.statusCode === 401) {
