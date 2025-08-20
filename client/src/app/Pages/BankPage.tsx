@@ -1213,14 +1213,14 @@ const BankPage = () => {
   });
   const { items: transactionsItems, total: transactionsTotal } = transactionsResp;
   
-  const { data: suggestionsResp = { items: [], total: 0 }, isLoading: suggestionsLoading, error: suggestionsError } = useGetReconciliationSuggestionsQuery({
+  const { data: suggestionsResp = { items: [], total: 0 }, isLoading: suggestionsLoading, error: suggestionsError, refetch: refetchSuggestions } = useGetReconciliationSuggestionsQuery({
     clientEin: clientCompanyEin,
     page: suggestionsPage,
     size: pageSize
   }, {
     skip: !clientCompanyEin
   });
-  const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp;
+  const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp as any;
 
   // Local state to optimistically remove suggestions that were just accepted/rejected
   const [removedSuggestions, setRemovedSuggestions] = useState<Set<number>>(new Set());
@@ -2296,6 +2296,8 @@ const BankPage = () => {
                                 reason: 'Manual rejection by user'
                               }).unwrap();
                               console.log('Suggestion rejected successfully');
+                               setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
+                               refetchSuggestions && refetchSuggestions();
                             } catch (error: any) {
                               console.error('Failed to reject suggestion:', error);
                               if (error?.status === 401 || error?.data?.statusCode === 401) {
