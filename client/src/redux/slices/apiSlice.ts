@@ -466,6 +466,14 @@ export const finovaApi = createApi({
             }),
             providesTags: ['BankReconciliation']
         }),
+        
+        getBalanceReconciliationStatement: build.query({
+          query: ({ clientEin, startDate, endDate }) => ({
+            url: `/bank/${clientEin}/balance-reconciliation?startDate=${startDate}&endDate=${endDate}`,
+            method: 'GET',
+          }),
+          providesTags: ['BankReconciliation'],
+        }),
 
         getFinancialDocuments: build.query({
             query: ({ clientEin, status = 'all', unreconciled, page = 1, size = 25 }: { clientEin: string; status?: 'all' | 'reconciled' | 'unreconciled'; unreconciled?: boolean; page?: number; size?: number }) => {
@@ -663,4 +671,4 @@ useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocu
 useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
 useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
 useUnreconcileTransactionMutation, useUnreconcileDocumentMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
-useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery} = finovaApi;
+useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery, useGetBalanceReconciliationStatementQuery } = finovaApi;

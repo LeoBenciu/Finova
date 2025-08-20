@@ -122,10 +122,20 @@ export class BankController {
     @Put('suggestion/:id/reject')
     async rejectSuggestion(
       @Param('id', ParseIntPipe) suggestionId: number,
-      @GetUser() user: User,
-      @Body() data: { reason?: string }
+      @Body() data: { reason?: string },
+      @GetUser() user: User
     ) {
       return this.bankService.rejectSuggestion(suggestionId, user, data.reason);
+    }
+
+    @Get(':clientEin/balance-reconciliation')
+    async getBalanceReconciliationStatement(
+      @Param('clientEin') clientEin: string,
+      @Query('startDate') startDate: string,
+      @Query('endDate') endDate: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getBalanceReconciliationStatement(clientEin, user, startDate, endDate);
     }
     
     @Put('transaction/:transactionId/unreconcile')

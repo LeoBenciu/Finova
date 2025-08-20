@@ -1033,6 +1033,166 @@ export class BankService {
         return updatedSuggestion;
       }
       
+      async getBalanceReconciliationStatement(
+        clientEin: string, 
+        user: User, 
+        startDate: string, 
+        endDate: string
+      ) {
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+          where: { ein: clientEin }
+        });
+      
+        if (!clientCompany) {
+          throw new NotFoundException('Client company not found');
+        }
+      
+        const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+          where: {
+            accountingCompanyId: user.accountingCompanyId,
+            clientCompanyId: clientCompany.id
+          }
+        });
+      
+        if (!accountingClientRelation) {
+          throw new UnauthorizedException('No access to this client company');
+        }
+      
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999); // End of day
+      
+        // Get opening balance (balance before the start date)
+        const openingBalanceTransaction = await this.prisma.bankTransaction.findFirst({
+          where: {
+            bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+            transactionDate: { lt: start },
+            balanceAfter: { not: null }
+          },
+          orderBy: { transactionDate: 'desc' }
+        });
+      
+        const openingBalance = openingBalanceTransaction?.balanceAfter || 0;
+      
+        // Get all transactions in the period
+        const periodTransactions = await this.prisma.bankTransaction.findMany({
+          where: {
+            bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+            transactionDate: {
+              gte: start,
+              lte: end
+            }
+          },
+          orderBy: { transactionDate: 'asc' },
+          include: {
+            chartOfAccount: true,
+            reconciliationRecords: {
+              include: {
+                document: true
+              }
+            }
+          }
+        });
+      
+        // Calculate totals
+        let totalDebits = 0;
+        let totalCredits = 0;
+        let reconciledDebits = 0;
+        let reconciledCredits = 0;
+        let unreconciledCount = 0;
+      
+        periodTransactions.forEach(transaction => {
+          const amount = Number(transaction.amount);
+          
+          if (transaction.transactionType === 'DEBIT') {
+            totalDebits += amount;
+            if (transaction.reconciliationStatus === ReconciliationStatus.MATCHED) {
+              reconciledDebits += amount;
+            }
+          } else {
+            totalCredits += Math.abs(amount);
+            if (transaction.reconciliationStatus === ReconciliationStatus.MATCHED) {
+              reconciledCredits += Math.abs(amount);
+            }
+          }
+          
+          if (transaction.reconciliationStatus === ReconciliationStatus.UNRECONCILED) {
+            unreconciledCount++;
+          }
+        });
+      
+        // Get closing balance (last transaction's balance after)
+        const closingBalanceTransaction = await this.prisma.bankTransaction.findFirst({
+          where: {
+            bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+            transactionDate: { lte: end },
+            balanceAfter: { not: null }
+          },
+          orderBy: { transactionDate: 'desc' }
+        });
+      
+        const actualClosingBalance = closingBalanceTransaction?.balanceAfter || 0;
+        
+        // Calculate expected closing balance
+        const calculatedClosingBalance = Number(openingBalance) + totalDebits - totalCredits;
+        
+        // Calculate reconciliation difference
+        const reconciliationDifference = Number(actualClosingBalance) - calculatedClosingBalance;
+        
+        // Reconciliation status
+        const isBalanced = Math.abs(reconciliationDifference) < 0.01; // Allow for rounding differences
+        const reconciliationPercentage = periodTransactions.length > 0 
+          ? ((periodTransactions.length - unreconciledCount) / periodTransactions.length) * 100 
+          : 100;
+      
+        return {
+          period: {
+            startDate: start.toISOString().split('T')[0],
+            endDate: end.toISOString().split('T')[0]
+          },
+          balances: {
+            openingBalance: Number(openingBalance),
+            actualClosingBalance: Number(actualClosingBalance),
+            calculatedClosingBalance,
+            reconciliationDifference
+          },
+          transactions: {
+            totalCount: periodTransactions.length,
+            totalDebits,
+            totalCredits,
+            reconciledDebits,
+            reconciledCredits,
+            unreconciledCount
+          },
+          reconciliation: {
+            isBalanced,
+            reconciliationPercentage: Math.round(reconciliationPercentage * 100) / 100,
+            status: isBalanced ? 'BALANCED' : 'UNBALANCED'
+          },
+          transactionDetails: periodTransactions.map(t => ({
+            id: t.id,
+            date: t.transactionDate,
+            description: t.description,
+            amount: Number(t.amount),
+            type: t.transactionType,
+            balanceAfter: t.balanceAfter ? Number(t.balanceAfter) : null,
+            reconciliationStatus: t.reconciliationStatus,
+            chartOfAccount: t.chartOfAccount ? {
+              code: t.chartOfAccount.accountCode,
+              name: t.chartOfAccount.accountName
+            } : null,
+            reconciliationRecords: t.reconciliationRecords.map(r => ({
+              id: r.id,
+              document: r.document ? {
+                id: r.document.id,
+                name: r.document.name,
+                type: r.document.type
+              } : null
+            }))
+          }))
+        };
+      }
+      
       async unreconcileTransaction(transactionId: string, user: User, reason?: string) {
         // Find the transaction and verify access
         const transaction = await this.prisma.bankTransaction.findUnique({

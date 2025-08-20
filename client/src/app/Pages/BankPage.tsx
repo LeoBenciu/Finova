@@ -22,21 +22,21 @@ import {
   CheckSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import {
+import { 
   useGetBankReconciliationStatsQuery,
   useGetFinancialDocumentsQuery,
   useGetBankTransactionsQuery,
   useGetReconciliationSuggestionsQuery,
   useCreateManualMatchMutation,
-  useCreateBulkMatchesMutation,
-  useCreateManualAccountReconciliationMutation,
   useAcceptReconciliationSuggestionMutation,
   useRejectReconciliationSuggestionMutation,
   useUnreconcileTransactionMutation,
-
   useRegenerateAllSuggestionsMutation,
-  useRegenerateTransactionSuggestionsMutation
+  useRegenerateTransactionSuggestionsMutation,
+  useCreateManualAccountReconciliationMutation,
+  useCreateBulkMatchesMutation
 } from '@/redux/slices/apiSlice';
+// Balance Reconciliation Statement component will be implemented here
 
 interface Document {
   id: number;
@@ -1189,6 +1189,7 @@ const BankPage = () => {
   const formatCurrency = (amount: number): string => {
     return new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(amount);
   };
+  
   const { data: stats, isLoading: statsLoading, error: statsError } = useGetBankReconciliationStatsQuery(clientCompanyEin, {
     skip: !clientCompanyEin
   });
@@ -1736,7 +1737,7 @@ const BankPage = () => {
                   <Zap size={24} className="text-purple-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugerări' : 'Suggestions'}</p>
+                  <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugestii' : 'Suggestions'}</p>
                   <p className="text-xl font-bold text-[var(--text1)]">{suggestionsData.length}</p>
                   <p className="text-xs text-purple-600">{language === 'ro' ? 'Disponibile' : 'Available'}</p>
                 </div>
@@ -1751,7 +1752,7 @@ const BankPage = () => {
         <div className="flex space-x-1 bg-[var(--foreground)] p-1 rounded-2xl border border-[var(--text4)] w-fit">
           {[
             { key: 'reconciliation', label: language === 'ro' ? 'Reconciliere' : 'Reconciliation', icon: Target },
-            { key: 'suggestions', label: language === 'ro' ? 'Sugerări' : 'Suggestions', icon: Zap },
+            { key: 'suggestions', label: language === 'ro' ? 'Sugestii' : 'Suggestions', icon: Zap },
             { key: 'reports', label: language === 'ro' ? 'Rapoarte' : 'Reports', icon: TrendingUp }
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2154,12 +2155,12 @@ const BankPage = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
                 <Zap size={20} />
-                {language === 'ro' ? 'Sugerări de Reconciliere' : 'Reconciliation Suggestions'}
+                {language === 'ro' ? 'Sugestii de Reconciliere' : 'Reconciliation Suggestions'}
               </h3>
               <button
                 onClick={handleRegenerateAllSuggestions}
                 disabled={isRegeneratingAll}
-                className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg text-sm font-medium transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg text-sm font-medium transition-colors"
               >
                 {isRegeneratingAll ? (
                   <Loader2 size={16} className="animate-spin" />
@@ -2175,22 +2176,22 @@ const BankPage = () => {
               <div className="flex items-center justify-center py-12">
                 <div className="flex items-center gap-3 text-[var(--text2)]">
                   <RefreshCw size={20} className="animate-spin" />
-                  <span>{language === 'ro' ? 'Se încarcă sugerările...' : 'Loading suggestions...'}</span>
+                  <span>{language === 'ro' ? 'Se încarcă sugestiile...' : 'Loading suggestions...'}</span>
                 </div>
               </div>
             ) : suggestionsError ? (
               <div className="text-center py-12">
                 <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
-                <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea sugerărilor' : 'Error loading suggestions'}</p>
+                <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea sugestiilor' : 'Error loading suggestions'}</p>
               </div>
             ) : suggestionsData.length === 0 ? (
               <div className="text-center py-12">
                 <Zap size={48} className="mx-auto text-[var(--text3)] mb-4" />
                 <p className="text-[var(--text2)] text-lg mb-2">
-                  {language === 'ro' ? 'Nu există sugerări disponibile' : 'No suggestions available'}
+                  {language === 'ro' ? 'Nu există sugestii disponibile' : 'No suggestions available'}
                 </p>
                 <p className="text-[var(--text3)] text-sm">
-                  {language === 'ro' ? 'Sugerările vor apărea când sistemul găsește potriviri posibile' : 'Suggestions will appear when the system finds possible matches'}
+                  {language === 'ro' ? 'Sugestiile vor apărea când sistemul găsește potriviri posibile' : 'Suggestions will appear when the system finds possible matches'}
                 </p>
               </div>
             ) : (
@@ -2327,7 +2328,7 @@ const BankPage = () => {
                           <button
                             onClick={() => suggestion.bankTransaction && handleRegenerateTransactionSuggestions(suggestion.bankTransaction.id)}
                             disabled={regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id))}
-                            className="px-3 py-2 bg-orange-500 text-white rounded-xl hover:bg-orange-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                            className="px-3 py-2 bg-[var(--primary)] text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                             title={language === 'ro' ? 'Regenerează sugestii pentru această tranzacție' : 'Regenerate suggestions for this transaction'}
                           >
                             {regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id)) ? (
@@ -2554,14 +2555,25 @@ const BankPage = () => {
             <div className="text-center py-12">
               <TrendingUp size={48} className="mx-auto text-[var(--text3)] mb-4" />
               <p className="text-[var(--text2)] text-lg mb-2">
-                {language === 'ro' ? 'Rapoarte în curs de dezvoltare' : 'Reports coming soon'}
+                {language === 'ro' ? 'Raport de Reconciliere Solduri' : 'Balance Reconciliation Report'}
               </p>
               <p className="text-[var(--text3)] text-sm">
                 {language === 'ro' 
-                  ? 'Rapoartele detaliate de reconciliere vor fi disponibile în curând'
-                  : 'Detailed reconciliation reports will be available soon'
+                  ? 'Verifică că soldurile din cărți se potrivesc cu extrasele bancare pentru perioada selectată'
+                  : 'Verify that book balances match bank statement totals for the selected period'
                 }
               </p>
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                <p className="text-blue-700 font-medium">
+                  {language === 'ro' ? 'Funcționalitate implementată în backend' : 'Backend functionality implemented'}
+                </p>
+                <p className="text-blue-600 text-sm mt-1">
+                  {language === 'ro' 
+                    ? 'API endpoint: GET /bank/:clientEin/balance-reconciliation'
+                    : 'API endpoint: GET /bank/:clientEin/balance-reconciliation'
+                  }
+                </p>
+              </div>
             </div>
           </div>
         </div>
