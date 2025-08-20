@@ -1222,6 +1222,9 @@ const BankPage = () => {
   });
   const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp;
 
+  // Local state to optimistically remove suggestions that were just accepted/rejected
+  const [removedSuggestions, setRemovedSuggestions] = useState<Set<number>>(new Set());
+
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
@@ -2192,7 +2195,9 @@ const BankPage = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {suggestionsData.map((suggestion) => (
+                {suggestionsData
+                  .filter((suggestion) => !removedSuggestions.has(suggestion.id))
+                  .map((suggestion) => (
                   <motion.div
                     key={suggestion.id}
                     initial={{ opacity: 0, y: 10 }}
@@ -2220,19 +2225,17 @@ const BankPage = () => {
                             const suggestionId = suggestion.id;
                             setLoadingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
-                              // Check if this is a document suggestion or account code suggestion
                               const isDocumentSuggestion = suggestion.document && suggestion.document.id;
                               const isAccountCodeSuggestion = suggestion.chartOfAccount && suggestion.chartOfAccount.accountCode;
                               
                               if (isDocumentSuggestion) {
-                                // Handle document-to-transaction match
                                 await acceptSuggestion({
                                   suggestionId,
                                   notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
                                 }).unwrap();
                                 console.log('Document suggestion accepted successfully');
+                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
                               } else if (isAccountCodeSuggestion && suggestion.bankTransaction && suggestion.chartOfAccount) {
-                                // Handle account code reconciliation with proper null checks
                                 const transactionId = suggestion.bankTransaction.id;
                                 const accountCode = suggestion.chartOfAccount.accountCode;
                                 
@@ -2249,8 +2252,8 @@ const BankPage = () => {
                                   notes: `Accepted account code suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
                                 }).unwrap();
                                 console.log('Account code suggestion accepted successfully');
+                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
                                 
-                                // After successful account reconciliation, reject this suggestion
                                 await rejectSuggestion({
                                   suggestionId,
                                   reason: 'Accepted as account code reconciliation'
