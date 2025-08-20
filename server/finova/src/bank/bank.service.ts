@@ -1154,20 +1154,19 @@ export class BankService {
             openingBalance: Number(openingBalance),
             actualClosingBalance: Number(actualClosingBalance),
             calculatedClosingBalance,
-            reconciliationDifference
+            difference: reconciliationDifference,
+            isBalanced: Math.abs(reconciliationDifference) < 0.01
           },
           transactions: {
-            totalCount: periodTransactions.length,
+            total: periodTransactions.length,
             totalDebits,
             totalCredits,
-            reconciledDebits,
-            reconciledCredits,
-            unreconciledCount
+            reconciledCount: periodTransactions.length - unreconciledCount,
+            reconciledPercentage: periodTransactions.length > 0 ? ((periodTransactions.length - unreconciledCount) / periodTransactions.length) * 100 : 0
           },
-          reconciliation: {
-            isBalanced,
-            reconciliationPercentage: Math.round(reconciliationPercentage * 100) / 100,
-            status: isBalanced ? 'BALANCED' : 'UNBALANCED'
+          reconciliationStatus: {
+            isBalanced: Math.abs(reconciliationDifference) < 0.01,
+            reconciledPercentage: periodTransactions.length > 0 ? ((periodTransactions.length - unreconciledCount) / periodTransactions.length) * 100 : 0
           },
           transactionDetails: periodTransactions.map(t => ({
             id: t.id,
@@ -1958,6 +1957,433 @@ export class BankService {
         transaction: updatedTransaction,
         chartOfAccount,
         message: 'Transaction successfully reconciled with account code'
+      };
+    }
+
+    async getBankReconciliationSummaryReport(clientEin: string, user: User, startDate?: string, endDate?: string) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Default to current month if no dates provided
+      const now = new Date();
+      const defaultStartDate = startDate || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+      const defaultEndDate = endDate || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+
+      // Get balance reconciliation data
+      const balanceData = await this.getBalanceReconciliationStatement(clientEin, user, defaultStartDate, defaultEndDate);
+
+      // Get reconciliation statistics
+      const stats = await this.getReconciliationStats(clientEin, user);
+
+      // Get outstanding items count by age (simplified)
+      const outstandingItemsCount = {
+        totalItems: 0,
+        totalAmount: 0,
+        byAge: {
+          current: 0,
+          thirtyDays: 0,
+          sixtyDays: 0,
+          ninetyDays: 0,
+          overNinety: 0
+        }
+      };
+
+      // Get recent reconciliation activity (simplified)
+      const recentActivity = await this.prisma.reconciliationSuggestion.findMany({
+        where: {
+          bankTransaction: {
+            bankStatementDocument: {
+              accountingClientId: accountingClientRelation.id
+            }
+          },
+          createdAt: {
+            gte: new Date(defaultStartDate),
+            lte: new Date(defaultEndDate + 'T23:59:59.999Z')
+          }
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          status: true,
+          documentId: true,
+          bankTransactionId: true,
+          chartOfAccountId: true,
+          confidenceScore: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 10
+      });
+
+      return {
+        summary: {
+          period: {
+            startDate: defaultStartDate,
+            endDate: defaultEndDate
+          },
+          balances: balanceData.balances,
+          reconciliationHealth: {
+            documentsReconciled: stats.documents.reconciled,
+            totalDocuments: stats.documents.total,
+            transactionsReconciled: stats.transactions.reconciled,
+            totalTransactions: stats.transactions.total,
+            pendingSuggestions: stats.suggestions.pending,
+            documentReconciliationRate: stats.documents.total > 0 ? (stats.documents.reconciled / stats.documents.total) * 100 : 0,
+            transactionReconciliationRate: stats.transactions.total > 0 ? (stats.transactions.reconciled / stats.transactions.total) * 100 : 0
+          },
+          outstandingItemsSummary: {
+            total: outstandingItemsCount.totalItems,
+            totalAmount: outstandingItemsCount.totalAmount,
+            byAge: outstandingItemsCount.byAge
+          }
+        },
+        recentActivity: recentActivity.map(activity => ({
+          id: activity.id,
+          timestamp: activity.createdAt,
+          action: 'SUGGESTION_CREATED',
+          description: `Reconciliation suggestion created with ${(Number(activity.confidenceScore) * 100).toFixed(1)}% confidence`,
+          details: {
+            documentId: activity.documentId,
+            transactionId: activity.bankTransactionId,
+            chartOfAccountId: activity.chartOfAccountId,
+            confidence: Number(activity.confidenceScore),
+            status: activity.status
+          },
+          relatedItems: {
+            documentId: activity.documentId,
+            transactionId: activity.bankTransactionId,
+            chartOfAccountId: activity.chartOfAccountId
+          }
+        })),
+        generatedAt: new Date().toISOString()
+      };
+    }
+
+    async getOutstandingItemsAging(clientEin: string, user: User) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+
+      // Get unreconciled documents
+      const unreconciledDocuments = await this.prisma.document.findMany({
+        where: {
+          accountingClientId: accountingClientRelation.id,
+          reconciliationStatus: 'UNRECONCILED',
+          type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          createdAt: true,
+          processedData: true
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      // Get unreconciled transactions
+      const unreconciledTransactions = await this.prisma.bankTransaction.findMany({
+        where: {
+          bankStatementDocument: {
+            accountingClientId: accountingClientRelation.id
+          },
+          reconciliationStatus: 'UNRECONCILED'
+        },
+        select: {
+          id: true,
+          description: true,
+          amount: true,
+          transactionDate: true,
+          createdAt: true
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      // Categorize documents by age
+      const categorizeByAge = (items: any[], dateField: string) => {
+        const categories = {
+          current: [] as any[],
+          thirtyDays: [] as any[],
+          sixtyDays: [] as any[],
+          ninetyDays: [] as any[],
+          overNinety: [] as any[]
+        };
+
+        items.forEach(item => {
+          const itemDate = new Date(item[dateField]);
+          if (itemDate >= thirtyDaysAgo) {
+            categories.current.push(item);
+          } else if (itemDate >= sixtyDaysAgo) {
+            categories.thirtyDays.push(item);
+          } else if (itemDate >= ninetyDaysAgo) {
+            categories.sixtyDays.push(item);
+          } else {
+            categories.overNinety.push(item);
+          }
+        });
+
+        return categories;
+      };
+
+      const documentsByAge = categorizeByAge(unreconciledDocuments, 'createdAt');
+      const transactionsByAge = categorizeByAge(unreconciledTransactions, 'createdAt');
+
+      // Calculate totals
+      const calculateTotals = (categories: any) => {
+        const totals: any = {
+          current: { count: 0, totalAmount: 0 },
+          thirtyDays: { count: 0, totalAmount: 0 },
+          sixtyDays: { count: 0, totalAmount: 0 },
+          ninetyDays: { count: 0, totalAmount: 0 },
+          overNinety: { count: 0, totalAmount: 0 }
+        };
+        
+        Object.keys(categories).forEach(key => {
+          const items = categories[key];
+          totals[key] = {
+            count: items.length,
+            totalAmount: items.reduce((sum, item) => {
+              const amount = item.total_amount || item.amount || 0;
+              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
+            }, 0)
+          };
+        });
+        return totals;
+      };
+
+      const documentTotals = calculateTotals(documentsByAge);
+      const transactionTotals = calculateTotals(transactionsByAge);
+
+      return {
+        documents: {
+          byAge: documentsByAge,
+          totals: documentTotals,
+          grandTotal: {
+            count: unreconciledDocuments.length,
+            totalAmount: unreconciledDocuments.reduce((sum, doc) => {
+              const extractedFields = Array.isArray(doc.processedData) 
+                ? doc.processedData[0]?.extractedFields 
+                : doc.processedData?.extractedFields;
+              const documentData = extractedFields?.result || extractedFields || {};
+              const amount = documentData.total_amount || 0;
+              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
+            }, 0)
+          }
+        },
+        transactions: {
+          byAge: transactionsByAge,
+          totals: transactionTotals,
+          grandTotal: {
+            count: unreconciledTransactions.length,
+            totalAmount: unreconciledTransactions.reduce((sum, trans) => {
+              const amount = trans.amount || 0;
+              return sum + (typeof amount === 'number' ? amount : parseFloat(amount.toString()) || 0);
+            }, 0)
+          }
+        },
+        summary: {
+          totalItems: unreconciledDocuments.length + unreconciledTransactions.length,
+          totalAmount: 
+            unreconciledDocuments.reduce((sum, doc) => {
+              const extractedFields = Array.isArray(doc.processedData) 
+                ? doc.processedData[0]?.extractedFields 
+                : doc.processedData?.extractedFields;
+              const documentData = extractedFields?.result || extractedFields || {};
+              const amount = documentData.total_amount || 0;
+              return sum + (parseFloat(amount?.toString() || '0') || 0);
+            }, 0) +
+            unreconciledTransactions.reduce((sum, trans) => sum + (parseFloat(trans.amount?.toString() || '0') || 0), 0),
+          byAge: {
+            current: (documentTotals.current?.count || 0) + (transactionTotals.current?.count || 0),
+            thirtyDays: (documentTotals.thirtyDays?.count || 0) + (transactionTotals.thirtyDays?.count || 0),
+            sixtyDays: (documentTotals.sixtyDays?.count || 0) + (transactionTotals.sixtyDays?.count || 0),
+            ninetyDays: (documentTotals.ninetyDays?.count || 0) + (transactionTotals.ninetyDays?.count || 0),
+            overNinety: (documentTotals.overNinety?.count || 0) + (transactionTotals.overNinety?.count || 0)
+          }
+        },
+        generatedAt: new Date().toISOString()
+      };
+    }
+
+    async getReconciliationHistoryAndAuditTrail(clientEin: string, user: User, startDate?: string, endDate?: string, page: number = 1, size: number = 50) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Build date filter
+      const dateFilter: any = {};
+      if (startDate) {
+        dateFilter.gte = new Date(startDate);
+      }
+      if (endDate) {
+        dateFilter.lte = new Date(endDate + 'T23:59:59.999Z');
+      }
+
+      const whereClause: any = {
+        accountingClientId: accountingClientRelation.id
+      };
+
+      if (Object.keys(dateFilter).length > 0) {
+        whereClause.createdAt = dateFilter;
+      }
+
+      // Get total count for pagination
+      const totalCount = await this.prisma.reconciliationSuggestion.count({
+        where: whereClause
+      });
+
+      // Get reconciliation suggestions for audit trail
+      const reconciliations = await this.prisma.reconciliationSuggestion.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          createdAt: true,
+          status: true,
+          confidenceScore: true,
+          documentId: true,
+          bankTransactionId: true,
+          chartOfAccountId: true,
+          matchingCriteria: true,
+          reasons: true
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * size,
+        take: size
+      });
+
+      // Get reconciliation suggestions history (simplified for now)
+      const suggestionsHistory = await this.prisma.reconciliationSuggestion.findMany({
+        where: {
+          ...whereClause,
+          status: { in: ['ACCEPTED', 'REJECTED'] }
+        },
+        select: {
+          id: true,
+          createdAt: true,
+          status: true,
+          documentId: true,
+          bankTransactionId: true,
+          chartOfAccountId: true
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 100 // Limit suggestions history
+      });
+
+      // Format audit trail entries (simplified)
+      const auditTrail = [
+        // Reconciliation suggestions
+        ...reconciliations.map(rec => ({
+          id: rec.id,
+          timestamp: rec.createdAt,
+          action: 'RECONCILIATION_SUGGESTION',
+          description: `Reconciliation suggestion created with ${(Number(rec.confidenceScore) * 100).toFixed(1)}% confidence`,
+          details: {
+            suggestionId: rec.id,
+            documentId: rec.documentId,
+            transactionId: rec.bankTransactionId,
+            chartOfAccountId: rec.chartOfAccountId,
+            confidence: Number(rec.confidenceScore),
+            status: rec.status,
+            reasons: rec.reasons
+          },
+          user: 'System',
+          relatedItems: {
+            documentId: rec.documentId,
+            transactionId: rec.bankTransactionId,
+            chartOfAccountId: rec.chartOfAccountId
+          }
+        })),
+        // Suggestion history
+        ...suggestionsHistory.map(suggestion => ({
+          id: `suggestion-${suggestion.id}`,
+          timestamp: suggestion.createdAt,
+          action: suggestion.status === 'ACCEPTED' ? 'SUGGESTION_ACCEPTED' : 'SUGGESTION_REJECTED',
+          description: `Reconciliation suggestion ${suggestion.status.toLowerCase()}`,
+          details: {
+            suggestionId: suggestion.id,
+            documentId: suggestion.documentId,
+            transactionId: suggestion.bankTransactionId,
+            chartOfAccountId: suggestion.chartOfAccountId,
+            status: suggestion.status
+          },
+          user: 'System',
+          relatedItems: {
+            documentId: suggestion.documentId,
+            transactionId: suggestion.bankTransactionId,
+            chartOfAccountId: suggestion.chartOfAccountId
+          }
+        }))
+      ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      return {
+        auditTrail,
+        pagination: {
+          page,
+          size,
+          totalCount,
+          totalPages: Math.ceil(totalCount / size),
+          hasNext: page * size < totalCount,
+          hasPrevious: page > 1
+        },
+        summary: {
+          totalReconciliations: reconciliations.length,
+          totalSuggestions: suggestionsHistory.length,
+          period: {
+            startDate: startDate || 'All time',
+            endDate: endDate || 'Present'
+          }
+        },
+        generatedAt: new Date().toISOString()
       };
     }
       

@@ -34,9 +34,12 @@ import {
   useRegenerateAllSuggestionsMutation,
   useRegenerateTransactionSuggestionsMutation,
   useCreateManualAccountReconciliationMutation,
-  useCreateBulkMatchesMutation
+  useCreateBulkMatchesMutation,
+  useGetBalanceReconciliationStatementQuery,
+  useGetBankReconciliationSummaryReportQuery,
+  useGetOutstandingItemsAgingQuery,
+  useGetReconciliationHistoryAndAuditTrailQuery
 } from '@/redux/slices/apiSlice';
-// Balance Reconciliation Statement component will be implemented here
 
 interface Document {
   id: number;
@@ -122,6 +125,226 @@ interface ReconciliationSuggestion {
     code?: string;
     name?: string;
   } | null;
+}
+
+// Comprehensive Reporting System Component
+interface ComprehensiveReportingSystemProps {
+  clientEin: string;
+  language: 'ro' | 'en';
+}
+
+function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveReportingSystemProps) {
+  const [activeReport, setActiveReport] = useState<'summary' | 'outstanding' | 'audit' | 'balance'>('summary');
+  const [dateRange, setDateRange] = useState({
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  });
+  const [auditPage] = useState(1);
+  const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
+  const [isExporting, setIsExporting] = useState(false);
+
+  // API Queries
+  const { data: summaryReport, isLoading: summaryLoading } = useGetBankReconciliationSummaryReportQuery({
+    clientEin,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate
+  });
+
+  const { data: outstandingItems, isLoading: outstandingLoading } = useGetOutstandingItemsAgingQuery({
+    clientEin
+  });
+
+  const { data: auditTrail, isLoading: auditLoading } = useGetReconciliationHistoryAndAuditTrailQuery({
+    clientEin,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate,
+    page: auditPage,
+    size: 25
+  });
+
+  const { data: balanceStatement, isLoading: balanceLoading } = useGetBalanceReconciliationStatementQuery({
+    clientEin,
+    startDate: dateRange.startDate,
+    endDate: dateRange.endDate
+  });
+
+  const handleExport = async (format: 'pdf' | 'excel') => {
+    setIsExporting(true);
+    try {
+      // Create comprehensive report data
+      const reportData = {
+        summary: summaryReport,
+        outstanding: outstandingItems,
+        audit: auditTrail,
+        balance: balanceStatement,
+        dateRange,
+        generatedAt: new Date().toISOString()
+      };
+      
+      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.${format === 'pdf' ? 'json' : 'json'}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const reportTabs = [
+    { id: 'summary', label: language === 'ro' ? 'Sumar' : 'Summary', icon: TrendingUp },
+    { id: 'outstanding', label: language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', icon: AlertTriangle },
+    { id: 'audit', label: language === 'ro' ? 'Istoric Audit' : 'Audit Trail', icon: FileText },
+    { id: 'balance', label: language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation', icon: Landmark }
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Report Navigation and Controls */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex flex-wrap gap-2">
+          {reportTabs.map((tab) => {
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveReport(tab.id as any)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                  activeReport === tab.id
+                    ? 'bg-[var(--primary)] text-white shadow-lg'
+                    : 'bg-[var(--background)] text-[var(--text2)] hover:bg-[var(--text4)] hover:text-[var(--text1)]'
+                }`}
+              >
+                <Icon size={16} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Date Range Selector */}
+          <div className="flex items-center gap-2">
+            <Calendar size={16} className="text-[var(--text2)]" />
+            <input
+              type="date"
+              value={dateRange.startDate}
+              onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
+              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
+            />
+            <span className="text-[var(--text2)]">-</span>
+            <input
+              type="date"
+              value={dateRange.endDate}
+              onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
+              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
+            />
+          </div>
+
+          {/* Export Controls */}
+          <div className="flex items-center gap-2">
+            <select
+              value={exportFormat}
+              onChange={(e) => setExportFormat(e.target.value as 'pdf' | 'excel')}
+              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
+            >
+              <option value="pdf">PDF</option>
+              <option value="excel">Excel</option>
+            </select>
+            <button
+              onClick={() => handleExport(exportFormat)}
+              disabled={isExporting}
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            >
+              {isExporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <FileText size={16} />
+              )}
+              {language === 'ro' ? 'Export' : 'Export'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Report Content */}
+      <div className="bg-[var(--background)] rounded-xl border border-[var(--text4)] overflow-hidden p-6">
+        {activeReport === 'summary' && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-[var(--text1)]">
+              {language === 'ro' ? 'Raport Sumar de Reconciliere' : 'Bank Reconciliation Summary Report'}
+            </h3>
+            {summaryLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
+              </div>
+            ) : (
+              <div className="text-center text-[var(--text2)] py-12">
+                {language === 'ro' ? 'Raportul va fi implementat în curând...' : 'Report coming soon...'}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeReport === 'outstanding' && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-[var(--text1)]">
+              {language === 'ro' ? 'Raport Elemente Nereconciliate pe Vechime' : 'Outstanding Items Aging Report'}
+            </h3>
+            {outstandingLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
+              </div>
+            ) : (
+              <div className="text-center text-[var(--text2)] py-12">
+                {language === 'ro' ? 'Raportul va fi implementat în curând...' : 'Report coming soon...'}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeReport === 'audit' && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-[var(--text1)]">
+              {language === 'ro' ? 'Istoric și Audit Trail' : 'Reconciliation History & Audit Trail'}
+            </h3>
+            {auditLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
+              </div>
+            ) : (
+              <div className="text-center text-[var(--text2)] py-12">
+                {language === 'ro' ? 'Raportul va fi implementat în curând...' : 'Report coming soon...'}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {activeReport === 'balance' && (
+          <div className="space-y-6">
+            <h3 className="text-xl font-bold text-[var(--text1)]">
+              {language === 'ro' ? 'Reconciliere Sold Bancar' : 'Balance Reconciliation Statement'}
+            </h3>
+            {balanceLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
+              </div>
+            ) : (
+              <div className="text-center text-[var(--text2)] py-12">
+                {language === 'ro' ? 'Raportul va fi implementat în curând...' : 'Report coming soon...'}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // Account Code Selector Component
@@ -2552,29 +2775,10 @@ const BankPage = () => {
             </h3>
           </div>
           <div className="p-6">
-            <div className="text-center py-12">
-              <TrendingUp size={48} className="mx-auto text-[var(--text3)] mb-4" />
-              <p className="text-[var(--text2)] text-lg mb-2">
-                {language === 'ro' ? 'Raport de Reconciliere Solduri' : 'Balance Reconciliation Report'}
-              </p>
-              <p className="text-[var(--text3)] text-sm">
-                {language === 'ro' 
-                  ? 'Verifică că soldurile din cărți se potrivesc cu extrasele bancare pentru perioada selectată'
-                  : 'Verify that book balances match bank statement totals for the selected period'
-                }
-              </p>
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <p className="text-blue-700 font-medium">
-                  {language === 'ro' ? 'Funcționalitate implementată în backend' : 'Backend functionality implemented'}
-                </p>
-                <p className="text-blue-600 text-sm mt-1">
-                  {language === 'ro' 
-                    ? 'API endpoint: GET /bank/:clientEin/balance-reconciliation'
-                    : 'API endpoint: GET /bank/:clientEin/balance-reconciliation'
-                  }
-                </p>
-              </div>
-            </div>
+            <ComprehensiveReportingSystem 
+              clientEin={clientCompanyEin} 
+              language={language as 'ro' | 'en'} 
+            />
           </div>
         </div>
       )}

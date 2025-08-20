@@ -131,11 +131,48 @@ export class BankController {
     @Get(':clientEin/balance-reconciliation')
     async getBalanceReconciliationStatement(
       @Param('clientEin') clientEin: string,
-      @Query('startDate') startDate: string,
-      @Query('endDate') endDate: string,
-      @GetUser() user: User
+      @GetUser() user: User,
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string
     ) {
       return this.bankService.getBalanceReconciliationStatement(clientEin, user, startDate, endDate);
+    }
+
+    @Get(':clientEin/reports/summary')
+    async getBankReconciliationSummaryReport(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string
+    ) {
+      return this.bankService.getBankReconciliationSummaryReport(clientEin, user, startDate, endDate);
+    }
+
+    @Get(':clientEin/reports/outstanding-items')
+    async getOutstandingItemsAging(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getOutstandingItemsAging(clientEin, user);
+    }
+
+    @Get(':clientEin/reports/audit-trail')
+    async getReconciliationHistoryAndAuditTrail(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('startDate') startDate?: string,
+      @Query('endDate') endDate?: string,
+      @Query('page') page?: string,
+      @Query('size') size?: string
+    ) {
+      return this.bankService.getReconciliationHistoryAndAuditTrail(
+        clientEin, 
+        user, 
+        startDate, 
+        endDate, 
+        Number(page) || 1, 
+        Number(size) || 50
+      );
     }
     
     @Put('transaction/:transactionId/unreconcile')

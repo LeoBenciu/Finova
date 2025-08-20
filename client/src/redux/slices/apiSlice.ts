@@ -467,12 +467,35 @@ export const finovaApi = createApi({
             providesTags: ['BankReconciliation']
         }),
         
-        getBalanceReconciliationStatement: build.query({
+        getBalanceReconciliationStatement: build.query<any, { clientEin: string; startDate?: string; endDate?: string }>({
           query: ({ clientEin, startDate, endDate }) => ({
-            url: `/bank/${clientEin}/balance-reconciliation?startDate=${startDate}&endDate=${endDate}`,
-            method: 'GET',
+            url: `/bank/${clientEin}/balance-reconciliation`,
+            params: { startDate, endDate }
           }),
-          providesTags: ['BankReconciliation'],
+          providesTags: ['BankReconciliation']
+        }),
+
+        getBankReconciliationSummaryReport: build.query<any, { clientEin: string; startDate?: string; endDate?: string }>({
+          query: ({ clientEin, startDate, endDate }) => ({
+            url: `/bank/${clientEin}/reports/summary`,
+            params: { startDate, endDate }
+          }),
+          providesTags: ['BankReconciliation']
+        }),
+
+        getOutstandingItemsAging: build.query<any, { clientEin: string }>({
+          query: ({ clientEin }) => ({
+            url: `/bank/${clientEin}/reports/outstanding-items`
+          }),
+          providesTags: ['BankReconciliation']
+        }),
+
+        getReconciliationHistoryAndAuditTrail: build.query<any, { clientEin: string; startDate?: string; endDate?: string; page?: number; size?: number }>({
+          query: ({ clientEin, startDate, endDate, page, size }) => ({
+            url: `/bank/${clientEin}/reports/audit-trail`,
+            params: { startDate, endDate, page, size }
+          }),
+          providesTags: ['BankReconciliation']
         }),
 
         getFinancialDocuments: build.query({
@@ -669,6 +692,10 @@ useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
 useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery, useProcessBatchMutation,
 useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
 useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
-useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation,
+useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation, useGetBalanceReconciliationStatementQuery,
 useUnreconcileTransactionMutation, useUnreconcileDocumentMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
-useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery, useGetBalanceReconciliationStatementQuery } = finovaApi;
+useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery,
+useGetBankReconciliationSummaryReportQuery,
+useGetOutstandingItemsAgingQuery,
+useGetReconciliationHistoryAndAuditTrailQuery
+} = finovaApi;
