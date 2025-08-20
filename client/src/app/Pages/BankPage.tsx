@@ -171,27 +171,160 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
   const handleExport = async (format: 'pdf' | 'excel') => {
     setIsExporting(true);
     try {
-      // Create comprehensive report data
-      const reportData = {
-        summary: summaryReport,
-        outstanding: outstandingItems,
-        audit: auditTrail,
-        balance: balanceStatement,
-        dateRange,
-        generatedAt: new Date().toISOString()
-      };
       
-      const blob = new Blob([JSON.stringify(reportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.${format === 'pdf' ? 'json' : 'json'}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      if (format === 'pdf') {
+        const { jsPDF } = await import('jspdf');
+        const doc = new jsPDF();
+        
+        doc.setFontSize(20);
+        doc.text(language === 'ro' ? 'Raport Reconciliere Bancara' : 'Bank Reconciliation Report', 20, 30);
+        
+        doc.setFontSize(12);
+        doc.text(`${language === 'ro' ? 'Perioada' : 'Period'}: ${dateRange.startDate} - ${dateRange.endDate}`, 20, 50);
+        
+        let yPos = 70;
+        
+        if (summaryReport) {
+          doc.setFontSize(16);
+          doc.text(language === 'ro' ? 'Sumar Reconciliere' : 'Reconciliation Summary', 20, yPos);
+          yPos += 20;
+          
+          doc.setFontSize(10);
+          if (summaryReport.summary?.balances) {
+            doc.text(`${language === 'ro' ? 'Sold Initial' : 'Opening Balance'}: ${summaryReport.summary.balances.openingBalance?.toFixed(2) || '0.00'} RON`, 20, yPos);
+            yPos += 10;
+            doc.text(`${language === 'ro' ? 'Sold Final' : 'Closing Balance'}: ${summaryReport.summary.balances.closingBalance?.toFixed(2) || '0.00'} RON`, 20, yPos);
+            yPos += 10;
+            doc.text(`${language === 'ro' ? 'Diferenta' : 'Difference'}: ${summaryReport.summary.balances.difference?.toFixed(2) || '0.00'} RON`, 20, yPos);
+            yPos += 20;
+          }
+          
+          if (summaryReport.summary?.reconciliationHealth) {
+            const health = summaryReport.summary.reconciliationHealth;
+            doc.text(`${language === 'ro' ? 'Documente Reconciliate' : 'Documents Reconciled'}: ${health.documentsReconciled}/${health.totalDocuments} (${health.documentReconciliationRate.toFixed(1)}%)`, 20, yPos);
+            yPos += 10;
+            doc.text(`${language === 'ro' ? 'Tranzactii Reconciliate' : 'Transactions Reconciled'}: ${health.transactionsReconciled}/${health.totalTransactions} (${health.transactionReconciliationRate.toFixed(1)}%)`, 20, yPos);
+            yPos += 20;
+          }
+        }
+        
+        // Add Outstanding Items data if available
+        if (outstandingItems && yPos < 250) {
+          doc.setFontSize(16);
+          doc.text(language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', 20, yPos);
+          yPos += 20;
+          
+          doc.setFontSize(10);
+          if (outstandingItems.summary) {
+            doc.text(`${language === 'ro' ? 'Total Elemente' : 'Total Items'}: ${outstandingItems.summary.totalItems || 0}`, 20, yPos);
+            yPos += 10;
+            doc.text(`${language === 'ro' ? 'Valoare Totala' : 'Total Amount'}: ${outstandingItems.summary.totalAmount?.toFixed(2) || '0.00'} RON`, 20, yPos);
+            yPos += 20;
+          }
+        }
+        
+        // Add generation timestamp
+        doc.setFontSize(8);
+        doc.text(`${language === 'ro' ? 'Generat la' : 'Generated at'}: ${new Date().toLocaleString()}`, 20, 280);
+        
+        // Save PDF
+        doc.save(`bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.pdf`);
+        
+      } else if (format === 'excel') {
+        // Generate Excel using xlsx
+        const XLSX = await import('xlsx');
+        const workbook = XLSX.utils.book_new();
+        
+        // Summary Sheet
+        if (summaryReport) {
+          const summaryData = [
+            [language === 'ro' ? 'Raport Sumar Reconciliere' : 'Reconciliation Summary Report'],
+            [language === 'ro' ? 'Perioada' : 'Period', `${dateRange.startDate} - ${dateRange.endDate}`],
+            [],
+            [language === 'ro' ? 'Solduri' : 'Balances'],
+            [language === 'ro' ? 'Sold Initial' : 'Opening Balance', summaryReport.summary?.balances?.openingBalance?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Sold Final' : 'Closing Balance', summaryReport.summary?.balances?.closingBalance?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Diferenta' : 'Difference', summaryReport.summary?.balances?.difference?.toFixed(2) || '0.00', 'RON'],
+            [],
+            [language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Health'],
+          ];
+          
+          if (summaryReport.summary?.reconciliationHealth) {
+            const health = summaryReport.summary.reconciliationHealth;
+            summaryData.push(
+              [language === 'ro' ? 'Documente Reconciliate' : 'Documents Reconciled', health.documentsReconciled, health.totalDocuments, `${health.documentReconciliationRate.toFixed(1)}%`],
+              [language === 'ro' ? 'Tranzactii Reconciliate' : 'Transactions Reconciled', health.transactionsReconciled, health.totalTransactions, `${health.transactionReconciliationRate.toFixed(1)}%`]
+            );
+          }
+          
+          const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+          XLSX.utils.book_append_sheet(workbook, summarySheet, language === 'ro' ? 'Sumar' : 'Summary');
+        }
+        
+        // Outstanding Items Sheet
+        if (outstandingItems) {
+          const outstandingData = [
+            [language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items'],
+            [],
+            [language === 'ro' ? 'Total Elemente' : 'Total Items', outstandingItems.summary?.totalItems || 0],
+            [language === 'ro' ? 'Valoare Totala' : 'Total Amount', outstandingItems.summary?.totalAmount?.toFixed(2) || '0.00', 'RON'],
+            []
+          ];
+          
+          if (outstandingItems.documents && outstandingItems.documents.length > 0) {
+            outstandingData.push(
+              [language === 'ro' ? 'Documente Nereconciliate' : 'Outstanding Documents'],
+              [language === 'ro' ? 'Document' : 'Document', language === 'ro' ? 'Tip' : 'Type', language === 'ro' ? 'Suma' : 'Amount', language === 'ro' ? 'Vechime (zile)' : 'Age (days)']
+            );
+            
+            outstandingItems.documents.forEach((doc: any) => {
+              outstandingData.push([
+                doc.name || doc.document_number || `Document ${doc.id}`,
+                doc.type,
+                doc.total_amount?.toFixed(2) || '0.00',
+                doc.ageInDays || 0
+              ]);
+            });
+          }
+          
+          const outstandingSheet = XLSX.utils.aoa_to_sheet(outstandingData);
+          XLSX.utils.book_append_sheet(workbook, outstandingSheet, language === 'ro' ? 'Nereconciliate' : 'Outstanding');
+        }
+        
+        // Balance Sheet
+        if (balanceStatement) {
+          const balanceData = [
+            [language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation'],
+            [language === 'ro' ? 'Perioada' : 'Period', `${balanceStatement.period?.startDate} - ${balanceStatement.period?.endDate}`],
+            [],
+            [language === 'ro' ? 'Solduri' : 'Balances'],
+            [language === 'ro' ? 'Sold Initial' : 'Opening Balance', balanceStatement.balances?.openingBalance?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Total Credite' : 'Total Credits', balanceStatement.balances?.totalCredits?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Total Debite' : 'Total Debits', balanceStatement.balances?.totalDebits?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Sold Final' : 'Closing Balance', balanceStatement.balances?.closingBalance?.toFixed(2) || '0.00', 'RON'],
+            [language === 'ro' ? 'Diferenta' : 'Difference', balanceStatement.balances?.difference?.toFixed(2) || '0.00', 'RON']
+          ];
+          
+          if (balanceStatement.reconciliationStatus) {
+            balanceData.push(
+              [],
+              [language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Status'],
+              [language === 'ro' ? 'Echilibrat' : 'Balanced', balanceStatement.reconciliationStatus.isBalanced ? 'Da' : 'Nu'],
+              [language === 'ro' ? 'Rata Reconciliere' : 'Reconciliation Rate', `${balanceStatement.reconciliationStatus.reconciliationPercentage?.toFixed(1) || '0.0'}%`]
+            );
+          }
+          
+          const balanceSheet = XLSX.utils.aoa_to_sheet(balanceData);
+          XLSX.utils.book_append_sheet(workbook, balanceSheet, language === 'ro' ? 'Sold' : 'Balance');
+        }
+        
+        // Save Excel
+        XLSX.writeFile(workbook, `bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.xlsx`);
+      }
+      
     } catch (error) {
       console.error('Export failed:', error);
+      alert(language === 'ro' ? 'Exportul a eșuat. Vă rugăm să încercați din nou.' : 'Export failed. Please try again.');
     } finally {
       setIsExporting(false);
     }
