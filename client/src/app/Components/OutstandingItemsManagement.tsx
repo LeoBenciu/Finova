@@ -190,8 +190,8 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
           onClick={() => setActiveTab('list')}
           className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'list'
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-[var(--primary)] text-white shadow-sm'
+              : 'text-[var(--primary)] hover:text-gray-900 bg-white'
           }`}
         >
           {language === 'ro' ? 'Listă Elemente' : 'Items List'}
@@ -200,8 +200,8 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
           onClick={() => setActiveTab('aging')}
           className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-colors ${
             activeTab === 'aging'
-              ? 'bg-white text-blue-600 shadow-sm'
-              : 'text-gray-600 hover:text-gray-900'
+              ? 'bg-[var(--primary)] text-white shadow-sm'
+              : 'text-[var(--primary)] hover:text-gray-900 bg-white'
           }`}
         >
           {language === 'ro' ? 'Analiza Vechimii' : 'Aging Analysis'}
@@ -217,7 +217,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
               <select
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+                className="border border-gray-300 bg-white text-gray-500 focus:outline-0 focus:ring-0 rounded-md px-3 py-1 text-sm"
               >
                 <option value="">{language === 'ro' ? 'Toate Tipurile' : 'All Types'}</option>
                 <option value="OUTSTANDING_CHECK">{language === 'ro' ? 'Cecuri în Așteptare' : 'Outstanding Checks'}</option>
@@ -229,7 +229,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="border border-gray-300 rounded-md px-3 py-1 text-sm"
+                className="border border-gray-300 bg-white text-gray-500 focus:outline-0 focus:ring-0 rounded-md px-3 py-1 text-sm"
               >
                 <option value="">{language === 'ro' ? 'Toate Statusurile' : 'All Statuses'}</option>
                 <option value="OUTSTANDING">{language === 'ro' ? 'În Așteptare' : 'Outstanding'}</option>

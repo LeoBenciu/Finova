@@ -2725,7 +2725,7 @@ const BankPage = () => {
                 className={`p-4 rounded-xl border-2 transition-all duration-200 min-w-[200px] ${
                   selectedBankAccountId === null
                     ? 'border-[var(--primary)] bg-[var(--primary)]/5'
-                    : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                    : 'border-[var(--text4)] hover:border-[var(--primary)]/50 bg-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -2751,7 +2751,7 @@ const BankPage = () => {
                   className={`p-4 rounded-xl border-2 transition-all duration-200 min-w-[250px] ${
                     selectedBankAccountId === account.id
                       ? 'border-[var(--primary)] bg-[var(--primary)]/5'
-                      : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                      : 'border-[var(--text4)] hover:border-[var(--primary)]/50 bg-white'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -2764,7 +2764,7 @@ const BankPage = () => {
                           {account.accountName}
                         </div>
                         <div className="text-sm text-[var(--text2)]">
-                          {account.iban.slice(-8)}
+                          {account.iban.slice(-6)}
                         </div>
                       </div>
                     </div>
@@ -4078,7 +4078,7 @@ const BankPage = () => {
                       required
                       defaultValue={editingBankAccount?.iban || ''}
                       placeholder="RO49 AAAA 1B31 0075 9384 0000"
-                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      className="w-full text-black px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
                     />
                   </div>
 
@@ -4093,7 +4093,7 @@ const BankPage = () => {
                       required
                       defaultValue={editingBankAccount?.accountName || ''}
                       placeholder={language === 'ro' ? 'Cont Principal Companie' : 'Company Main Account'}
-                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
                     />
                   </div>
 
@@ -4108,7 +4108,7 @@ const BankPage = () => {
                       required
                       defaultValue={editingBankAccount?.bankName || ''}
                       placeholder={language === 'ro' ? 'Banca Transilvania' : 'Bank Name'}
-                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
                     />
                   </div>
 
@@ -4122,7 +4122,7 @@ const BankPage = () => {
                       <select
                         name="currency"
                         defaultValue={editingBankAccount?.currency || 'RON'}
-                        className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                        className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
                       >
                         <option value="RON">RON</option>
                         <option value="EUR">EUR</option>
@@ -4139,7 +4139,7 @@ const BankPage = () => {
                       <select
                         name="accountType"
                         defaultValue={editingBankAccount?.accountType || 'CURRENT'}
-                        className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                        className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
                       >
                         <option value="CURRENT">{language === 'ro' ? 'Cont Curent' : 'Current Account'}</option>
                         <option value="SAVINGS">{language === 'ro' ? 'Cont de Economii' : 'Savings Account'}</option>
@@ -4158,7 +4158,7 @@ const BankPage = () => {
                       setShowBankAccountModal(false);
                       setEditingBankAccount(null);
                     }}
-                    className="flex-1 px-4 py-3 border border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors"
+                    className="flex-1 px-4 py-3 border bg-white border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors"
                   >
                     {language === 'ro' ? 'Anulează' : 'Cancel'}
                   </button>
