@@ -377,6 +377,14 @@ export class BankController {
       return this.bankService.updateBankAccount(accountId, user, updateData);
     }
 
+    @Put('accounts/:accountId/deactivate')
+    async deactivateBankAccount(
+      @Param('accountId', ParseIntPipe) accountId: number,
+      @GetUser() user: User
+    ) {
+      return this.bankService.deactivateBankAccount(accountId, user);
+    }
+
     @Get(':clientEin/transactions/by-account')
     async getBankTransactionsByAccount(
       @Param('clientEin') clientEin: string,

@@ -45,9 +45,9 @@ import {
   useGetBankAccountsQuery,
   useCreateBankAccountMutation,
   useUpdateBankAccountMutation,
+  useDeactivateBankAccountMutation,
   useGetBankTransactionsByAccountQuery,
-  useGetConsolidatedAccountViewQuery,
-  useAssociateTransactionsWithAccountsMutation
+  useGetConsolidatedAccountViewQuery
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 
@@ -2195,7 +2195,7 @@ const BankPage = () => {
   // Multi-Bank Account mutations
   const [createBankAccount] = useCreateBankAccountMutation();
   const [updateBankAccount] = useUpdateBankAccountMutation();
-  const [associateTransactionsWithAccounts] = useAssociateTransactionsWithAccountsMutation();
+  const [_deactivateBankAccount] = useDeactivateBankAccountMutation();
 
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
   const [markingAsOutstanding, setMarkingAsOutstanding] = useState<Set<number>>(new Set());
@@ -2781,27 +2781,8 @@ const BankPage = () => {
             </div>
           )}
 
-          {/* Association Helper */}
-          {bankAccounts.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-[var(--text4)]">
-              <button
-                onClick={async () => {
-                  try {
-                    await associateTransactionsWithAccounts(clientCompanyEin).unwrap();
-                    // Refresh data after association
-                    window.location.reload();
-                  } catch (error) {
-                    console.error('Failed to associate transactions:', error);
-                  }
-                }}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all duration-200 flex items-center gap-2"
-              >
-                <Link size={16} />
-                {language === 'ro' ? 'Asociază Tranzacțiile cu Conturile' : 'Associate Transactions with Accounts'}
-              </button>
-            </div>
-          )}
-        </div>
+          </div>
+        
 
         {/* Consolidated View */}
         {showConsolidatedView && consolidatedView && (

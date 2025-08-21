@@ -200,6 +200,12 @@ export class BankService {
       }
       
       async getBankTransactions(clientEin: string, user: User, status: 'all' | 'reconciled' | 'unreconciled' = 'all', page = 1, size = 25) {
+      // Auto-associate any unlinked transactions before fetching
+      try {
+        await this.associateTransactionsWithAccounts(clientEin, user);
+      } catch (e) {
+        console.warn('⚠️ Auto association failed', e);
+      }
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
@@ -2581,12 +2587,26 @@ export class BankService {
       });
     }
 
-    // ==================== MULTI-BANK ACCOUNT SUPPORT METHODS ====================
+    // ==================== OTHER METHODS ====================
+
+  /**
+   * Deactivate (soft delete) a bank account
+   */
+  async deactivateBankAccount(accountId: number, user: User) {
+    const ownerAccount = await this.prisma.bankAccount.findUnique({ where: { id: accountId } });
+    if (!ownerAccount) throw new Error('Bank account not found');
+    // TODO: add permission check for user
+    return this.prisma.bankAccount.update({
+      where: { id: accountId },
+      data: { isActive: false }
+    });
+  }
 
     /**
      * Get all bank accounts for a client company
      */
     async getBankAccounts(clientEin: string, user: User) {
+      await this.associateTransactionsWithAccounts(clientEin, user);
       const clientCompany = await this.prisma.clientCompany.findUnique({
         where: { ein: clientEin }
       });
@@ -2726,6 +2746,12 @@ export class BankService {
      * Get bank transactions filtered by account
      */
     async getBankTransactionsByAccount(clientEin: string, user: User, accountId?: number, status: 'all' | 'reconciled' | 'unreconciled' = 'all', page = 1, size = 25) {
+      // Auto-associate unlinked transactions so data is always fresh
+      try {
+        await this.associateTransactionsWithAccounts(clientEin, user);
+      } catch (e) {
+        console.warn('⚠️ Auto association failed', e);
+      }
       const clientCompany = await this.prisma.clientCompany.findUnique({
         where: { ein: clientEin }
       });

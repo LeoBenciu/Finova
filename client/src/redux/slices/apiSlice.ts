@@ -824,6 +824,14 @@ export const finovaApi = createApi({
             invalidatesTags: ['BankReconciliation']
           }),
 
+          deactivateBankAccount: build.mutation<{ success: boolean }, { accountId: number }>({
+            query: ({ accountId }) => ({
+              url: `/bank/accounts/${accountId}/deactivate`,
+              method: 'PUT'
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
           getBankTransactionsByAccount: build.query({
             query: ({ clientEin, accountId, status = 'all', page = 1, size = 25 }: {
               clientEin: string;
@@ -889,5 +897,5 @@ useVoidOutstandingItemMutation, useDeleteOutstandingItemMutation,
 useGetReconciliationHistoryAndAuditTrailQuery,
 useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
-useAssociateTransactionsWithAccountsMutation
+useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation
 } = finovaApi;
