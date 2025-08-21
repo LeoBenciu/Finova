@@ -1,6 +1,6 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus } from '@prisma/client';
+import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType } from '@prisma/client';
 import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 
@@ -2432,7 +2432,7 @@ export class BankService {
           expectedClearDate: data.expectedClearDate ? new Date(data.expectedClearDate) : null,
           daysOutstanding,
           payeeBeneficiary: data.payeeBeneficiary,
-          bankAccount: data.bankAccount,
+          bankAccountString: data.bankAccount,
           notes: data.notes,
           relatedDocumentId: data.relatedDocumentId,
           createdBy: user.id
@@ -2579,6 +2579,411 @@ export class BankService {
         status: 'VOIDED',
         notes: notes || 'Item voided'
       });
+    }
+
+    // ==================== MULTI-BANK ACCOUNT SUPPORT METHODS ====================
+
+    /**
+     * Get all bank accounts for a client company
+     */
+    async getBankAccounts(clientEin: string, user: User) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      const bankAccounts = await this.prisma.bankAccount.findMany({
+        where: {
+          accountingClientId: accountingClientRelation.id,
+          isActive: true
+        },
+        include: {
+          _count: {
+            select: {
+              bankTransactions: {
+                where: {
+                  reconciliationStatus: ReconciliationStatus.UNRECONCILED
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      return bankAccounts.map(account => ({
+        id: account.id,
+        iban: account.iban,
+        accountName: account.accountName,
+        bankName: account.bankName,
+        currency: account.currency,
+        accountType: account.accountType,
+        isActive: account.isActive,
+        unreconciledTransactionsCount: account._count.bankTransactions,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt
+      }));
+    }
+
+    /**
+     * Create a new bank account
+     */
+    async createBankAccount(clientEin: string, user: User, accountData: {
+      iban: string;
+      accountName: string;
+      bankName: string;
+      currency?: string;
+      accountType?: BankAccountType;
+    }) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Check if IBAN already exists
+      const existingAccount = await this.prisma.bankAccount.findUnique({
+        where: { iban: accountData.iban }
+      });
+
+      if (existingAccount) {
+        throw new BadRequestException('Bank account with this IBAN already exists');
+      }
+
+      const bankAccount = await this.prisma.bankAccount.create({
+        data: {
+          iban: accountData.iban,
+          accountName: accountData.accountName,
+          bankName: accountData.bankName,
+          currency: accountData.currency || 'RON',
+          accountType: accountData.accountType || BankAccountType.CURRENT,
+          accountingClientId: accountingClientRelation.id
+        }
+      });
+
+      return bankAccount;
+    }
+
+    /**
+     * Update a bank account
+     */
+    async updateBankAccount(accountId: number, user: User, updateData: {
+      accountName?: string;
+      bankName?: string;
+      currency?: string;
+      accountType?: BankAccountType;
+      isActive?: boolean;
+    }) {
+      const bankAccount = await this.prisma.bankAccount.findUnique({
+        where: { id: accountId },
+        include: { accountingClient: true }
+      });
+
+      if (!bankAccount) {
+        throw new NotFoundException('Bank account not found');
+      }
+
+      if (bankAccount.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+        throw new UnauthorizedException('No access to this bank account');
+      }
+
+      const updatedAccount = await this.prisma.bankAccount.update({
+        where: { id: accountId },
+        data: updateData
+      });
+
+      return updatedAccount;
+    }
+
+    /**
+     * Get bank transactions filtered by account
+     */
+    async getBankTransactionsByAccount(clientEin: string, user: User, accountId?: number, status: 'all' | 'reconciled' | 'unreconciled' = 'all', page = 1, size = 25) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      const whereCondition: any = {
+        bankStatementDocument: {
+          accountingClientId: accountingClientRelation.id
+        }
+      };
+
+      // Filter by specific bank account if provided
+      if (accountId) {
+        whereCondition.bankAccountId = accountId;
+      }
+
+      if (status === 'reconciled') {
+        whereCondition.reconciliationStatus = { in: [ReconciliationStatus.MATCHED] };
+      } else if (status === 'unreconciled') {
+        whereCondition.reconciliationStatus = { in: [ReconciliationStatus.UNRECONCILED] };
+      }
+
+      const [transactions, total] = await this.prisma.$transaction([
+        this.prisma.bankTransaction.findMany({
+          where: whereCondition,
+          include: {
+            bankStatementDocument: true,
+            bankAccount: true,
+            chartOfAccount: true,
+            reconciliationRecords: {
+              include: {
+                document: true
+              }
+            }
+          },
+          orderBy: { transactionDate: 'desc' },
+          skip: (page - 1) * size,
+          take: size
+        }),
+        this.prisma.bankTransaction.count({ where: whereCondition })
+      ]);
+
+      const transactionsWithSignedUrls = await Promise.all(
+        transactions.map(async (transaction) => {
+          let bankStatementSignedUrl = null;
+          
+          if (transaction.bankStatementDocument) {
+            try {
+              bankStatementSignedUrl = transaction.bankStatementDocument.s3Key 
+                ? await s3.getSignedUrlPromise('getObject', {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: transaction.bankStatementDocument.s3Key,
+                    Expires: 3600 
+                  }) 
+                : transaction.bankStatementDocument.path;
+            } catch (error) {
+              console.error(`Failed to generate signed URL for bank statement ${transaction.bankStatementDocument.id}:`, error);
+              bankStatementSignedUrl = transaction.bankStatementDocument.path;
+            }
+          }
+
+          return {
+            id: transaction.id,
+            transactionDate: transaction.transactionDate,
+            description: transaction.description,
+            amount: transaction.amount,
+            transactionType: transaction.transactionType,
+            referenceNumber: transaction.referenceNumber,
+            balanceAfter: transaction.balanceAfter,
+            reconciliation_status: transaction.reconciliationStatus,
+            chartOfAccount: transaction.chartOfAccount,
+            bankAccount: transaction.bankAccount,
+            isStandalone: transaction.isStandalone,
+            accountingNotes: transaction.accountingNotes,
+            bankStatementDocument: {
+              id: transaction.bankStatementDocument.id,
+              name: transaction.bankStatementDocument.name,
+              signedUrl: bankStatementSignedUrl 
+            },
+            matchedDocuments: transaction.reconciliationRecords.map(record => record.document.id)
+          };
+        })
+      );
+
+      return { total, page, size, items: transactionsWithSignedUrls };
+    }
+
+    /**
+     * Get consolidated view across all accounts
+     */
+    async getConsolidatedAccountView(clientEin: string, user: User) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      const bankAccounts = await this.prisma.bankAccount.findMany({
+        where: {
+          accountingClientId: accountingClientRelation.id,
+          isActive: true
+        },
+        include: {
+          bankTransactions: {
+            where: {
+              reconciliationStatus: ReconciliationStatus.UNRECONCILED
+            },
+            orderBy: { transactionDate: 'desc' },
+            take: 5
+          },
+          _count: {
+            select: {
+              bankTransactions: {
+                where: {
+                  reconciliationStatus: ReconciliationStatus.UNRECONCILED
+                }
+              }
+            }
+          }
+        },
+        orderBy: { createdAt: 'asc' }
+      });
+
+      const consolidatedStats = {
+        totalAccounts: bankAccounts.length,
+        totalUnreconciledTransactions: bankAccounts.reduce((sum, account) => sum + account._count.bankTransactions, 0),
+        accountSummaries: bankAccounts.map(account => ({
+          id: account.id,
+          iban: account.iban,
+          accountName: account.accountName,
+          bankName: account.bankName,
+          currency: account.currency,
+          accountType: account.accountType,
+          unreconciledCount: account._count.bankTransactions,
+          recentTransactions: account.bankTransactions.map(tx => ({
+            id: tx.id,
+            date: tx.transactionDate,
+            description: tx.description,
+            amount: tx.amount,
+            type: tx.transactionType
+          }))
+        }))
+      };
+
+      return consolidatedStats;
+    }
+
+    /**
+     * Associate transactions with bank accounts based on IBAN extraction
+     */
+    async associateTransactionsWithAccounts(clientEin: string, user: User) {
+      const clientCompany = await this.prisma.clientCompany.findUnique({
+        where: { ein: clientEin }
+      });
+
+      if (!clientCompany) {
+        throw new NotFoundException('Client company not found');
+      }
+
+      const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          clientCompanyId: clientCompany.id
+        }
+      });
+
+      if (!accountingClientRelation) {
+        throw new UnauthorizedException('No access to this client company');
+      }
+
+      // Get all unassociated transactions
+      const unassociatedTransactions = await this.prisma.bankTransaction.findMany({
+        where: {
+          bankStatementDocument: {
+            accountingClientId: accountingClientRelation.id
+          },
+          bankAccountId: null
+        },
+        include: {
+          bankStatementDocument: true
+        }
+      });
+
+      // Get all bank accounts for this client
+      const bankAccounts = await this.prisma.bankAccount.findMany({
+        where: {
+          accountingClientId: accountingClientRelation.id,
+          isActive: true
+        }
+      });
+
+      let associatedCount = 0;
+
+      for (const transaction of unassociatedTransactions) {
+        // Try to extract IBAN from bank statement document
+        let extractedIban: string | null = null;
+        
+        if (transaction.bankStatementDocument) {
+          const document = transaction.bankStatementDocument as any;
+          if (document.extractedData) {
+            const extractedData = document.extractedData;
+            // Look for IBAN in various possible fields
+            extractedIban = extractedData.iban || 
+                           extractedData.account_iban || 
+                           extractedData.account_number ||
+                           extractedData.bank_account;
+          }
+        }
+
+        // If we found an IBAN, try to match it with existing bank accounts
+        if (extractedIban) {
+          const matchingAccount = bankAccounts.find(account => 
+            account.iban === extractedIban || 
+            account.iban.replace(/\s/g, '') === extractedIban.replace(/\s/g, '')
+          );
+
+          if (matchingAccount) {
+            await this.prisma.bankTransaction.update({
+              where: { id: transaction.id },
+              data: { bankAccountId: matchingAccount.id }
+            });
+            associatedCount++;
+          }
+        }
+      }
+
+      return {
+        message: `Successfully associated ${associatedCount} transactions with bank accounts`,
+        associatedCount,
+        totalProcessed: unassociatedTransactions.length
+      };
     }
       
 }

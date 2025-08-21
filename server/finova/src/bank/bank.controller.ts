@@ -337,5 +337,80 @@ export class BankController {
       return this.bankService.deleteOutstandingItem(itemId, user);
     }
 
+    // ==================== MULTI-BANK ACCOUNT ENDPOINTS ====================
+
+    @Get(':clientEin/accounts')
+    async getBankAccounts(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getBankAccounts(clientEin, user);
+    }
+
+    @Post(':clientEin/accounts')
+    async createBankAccount(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Body() accountData: {
+        iban: string;
+        accountName: string;
+        bankName: string;
+        currency?: string;
+        accountType?: 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT';
+      }
+    ) {
+      return this.bankService.createBankAccount(clientEin, user, accountData);
+    }
+
+    @Put('accounts/:accountId')
+    async updateBankAccount(
+      @Param('accountId', ParseIntPipe) accountId: number,
+      @GetUser() user: User,
+      @Body() updateData: {
+        accountName?: string;
+        bankName?: string;
+        currency?: string;
+        accountType?: 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT';
+        isActive?: boolean;
+      }
+    ) {
+      return this.bankService.updateBankAccount(accountId, user, updateData);
+    }
+
+    @Get(':clientEin/transactions/by-account')
+    async getBankTransactionsByAccount(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('accountId') accountId?: string,
+      @Query('status') status?: 'all' | 'reconciled' | 'unreconciled',
+      @Query('page') page?: string,
+      @Query('size') size?: string
+    ) {
+      return this.bankService.getBankTransactionsByAccount(
+        clientEin,
+        user,
+        accountId ? Number(accountId) : undefined,
+        status || 'all',
+        Number(page) || 1,
+        Number(size) || 25
+      );
+    }
+
+    @Get(':clientEin/accounts/consolidated-view')
+    async getConsolidatedAccountView(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getConsolidatedAccountView(clientEin, user);
+    }
+
+    @Post(':clientEin/accounts/associate-transactions')
+    async associateTransactionsWithAccounts(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.associateTransactionsWithAccounts(clientEin, user);
+    }
+
     
 }

@@ -40,7 +40,14 @@ import {
   useGetBankReconciliationSummaryReportQuery,
   useGetReconciliationHistoryAndAuditTrailQuery,
   useGetOutstandingItemsAgingQuery,
-  useCreateOutstandingItemMutation
+  useCreateOutstandingItemMutation,
+  // Multi-Bank Account API hooks
+  useGetBankAccountsQuery,
+  useCreateBankAccountMutation,
+  useUpdateBankAccountMutation,
+  useGetBankTransactionsByAccountQuery,
+  useGetConsolidatedAccountViewQuery,
+  useAssociateTransactionsWithAccountsMutation
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 
@@ -1967,6 +1974,12 @@ const BankPage = () => {
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [showAccountReconcileModal, setShowAccountReconcileModal] = useState(false);
   const [selectedTransactionForAccount, setSelectedTransactionForAccount] = useState<BankTransaction | null>(null);
+  
+  // Multi-Bank Account state
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
+  const [showBankAccountModal, setShowBankAccountModal] = useState(false);
+  const [showConsolidatedView, setShowConsolidatedView] = useState(false);
+  const [editingBankAccount, setEditingBankAccount] = useState<any>(null);
 
   const [documentsPage, setDocumentsPage] = useState(1);
   const [transactionsPage, setTransactionsPage] = useState(1);
@@ -2108,7 +2121,6 @@ const BankPage = () => {
   }, {
     skip: !clientCompanyEin
   });
-  const { items: transactionsItems, total: transactionsTotal } = transactionsResp;
   
   const { data: suggestionsResp = { items: [], total: 0 }, isLoading: suggestionsLoading, error: suggestionsError, refetch: refetchSuggestions } = useGetReconciliationSuggestionsQuery({
     clientEin: clientCompanyEin,
@@ -2121,6 +2133,30 @@ const BankPage = () => {
 
   // Local state to optimistically remove suggestions that were just accepted/rejected
   const [removedSuggestions, setRemovedSuggestions] = useState<Set<number>>(new Set());
+
+  // Multi-Bank Account API queries
+  const { data: bankAccounts = [], isLoading: bankAccountsLoading } = useGetBankAccountsQuery(clientCompanyEin, {
+    skip: !clientCompanyEin
+  });
+
+  const { data: consolidatedView } = useGetConsolidatedAccountViewQuery(clientCompanyEin, {
+    skip: !clientCompanyEin || !showConsolidatedView
+  });
+
+  // Use account-filtered transactions when a specific account is selected
+  const { data: accountTransactionsResp } = useGetBankTransactionsByAccountQuery({
+    clientEin: clientCompanyEin,
+    accountId: selectedBankAccountId || undefined,
+    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
+    page: transactionsPage,
+    size: pageSize
+  }, {
+    skip: !clientCompanyEin || !selectedBankAccountId
+  });
+
+  // Use account-filtered transactions when an account is selected, otherwise use regular transactions
+  const effectiveTransactionsResp = selectedBankAccountId ? accountTransactionsResp : transactionsResp;
+  const { items: transactionsItems, total: transactionsTotal } = effectiveTransactionsResp || { items: [], total: 0 };
 
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
@@ -2155,6 +2191,11 @@ const BankPage = () => {
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
   const [unreconcileTransaction] = useUnreconcileTransactionMutation();
   const [createOutstandingItem] = useCreateOutstandingItemMutation();
+
+  // Multi-Bank Account mutations
+  const [createBankAccount] = useCreateBankAccountMutation();
+  const [updateBankAccount] = useUpdateBankAccountMutation();
+  const [associateTransactionsWithAccounts] = useAssociateTransactionsWithAccountsMutation();
 
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
   const [markingAsOutstanding, setMarkingAsOutstanding] = useState<Set<number>>(new Set());
@@ -2628,6 +2669,230 @@ const BankPage = () => {
           </div>
         </div>
 
+        {/* Multi-Bank Account Selector */}
+        <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)] shadow-sm mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
+                <CreditCard size={20} className="text-[var(--primary)]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text1)]">
+                  {language === 'ro' ? 'Conturi Bancare' : 'Bank Accounts'}
+                </h3>
+                <p className="text-sm text-[var(--text2)]">
+                  {language === 'ro' ? 'Selectează sau gestionează conturile bancare' : 'Select or manage bank accounts'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowConsolidatedView(!showConsolidatedView)}
+                className={`px-4 py-2 rounded-xl transition-all duration-200 ${
+                  showConsolidatedView
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'
+                }`}
+              >
+                <TrendingUp size={16} className="mr-2" />
+                {language === 'ro' ? 'Vedere Consolidată' : 'Consolidated View'}
+              </button>
+              <button
+                onClick={() => {
+                  setEditingBankAccount(null);
+                  setShowBankAccountModal(true);
+                }}
+                className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-all duration-200 flex items-center gap-2"
+              >
+                <Zap size={16} />
+                {language === 'ro' ? 'Adaugă Cont' : 'Add Account'}
+              </button>
+            </div>
+          </div>
+
+          {/* Bank Account Selection */}
+          {bankAccountsLoading ? (
+            <div className="flex gap-3 animate-pulse">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-20 bg-gray-200 rounded-xl flex-1"></div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-3">
+              {/* All Accounts Option */}
+              <button
+                onClick={() => setSelectedBankAccountId(null)}
+                className={`p-4 rounded-xl border-2 transition-all duration-200 min-w-[200px] ${
+                  selectedBankAccountId === null
+                    ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                    : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+                    <Landmark size={16} className="text-white" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-semibold text-[var(--text1)]">
+                      {language === 'ro' ? 'Toate Conturile' : 'All Accounts'}
+                    </div>
+                    <div className="text-sm text-[var(--text2)]">
+                      {bankAccounts.length} {language === 'ro' ? 'conturi' : 'accounts'}
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              {/* Individual Bank Accounts */}
+              {bankAccounts.map((account: any) => (
+                <button
+                  key={account.id}
+                  onClick={() => setSelectedBankAccountId(account.id)}
+                  className={`p-4 rounded-xl border-2 transition-all duration-200 min-w-[250px] ${
+                    selectedBankAccountId === account.id
+                      ? 'border-[var(--primary)] bg-[var(--primary)]/5'
+                      : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+                        <CreditCard size={16} className="text-white" />
+                      </div>
+                      <div className="text-left">
+                        <div className="font-semibold text-[var(--text1)] truncate max-w-[150px]">
+                          {account.accountName}
+                        </div>
+                        <div className="text-sm text-[var(--text2)]">
+                          {account.iban.slice(-8)}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-medium text-[var(--text1)]">
+                        {account.unreconciledTransactionsCount}
+                      </div>
+                      <div className="text-xs text-[var(--text2)]">
+                        {language === 'ro' ? 'nereconciliate' : 'unreconciled'}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Association Helper */}
+          {bankAccounts.length > 0 && (
+            <div className="mt-4 pt-4 border-t border-[var(--text4)]">
+              <button
+                onClick={async () => {
+                  try {
+                    await associateTransactionsWithAccounts(clientCompanyEin).unwrap();
+                    // Refresh data after association
+                    window.location.reload();
+                  } catch (error) {
+                    console.error('Failed to associate transactions:', error);
+                  }
+                }}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all duration-200 flex items-center gap-2"
+              >
+                <Link size={16} />
+                {language === 'ro' ? 'Asociază Tranzacțiile cu Conturile' : 'Associate Transactions with Accounts'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Consolidated View */}
+        {showConsolidatedView && consolidatedView && (
+          <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)] shadow-sm mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
+                <TrendingUp size={20} className="text-[var(--primary)]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--text1)]">
+                  {language === 'ro' ? 'Vedere Consolidată' : 'Consolidated View'}
+                </h3>
+                <p className="text-sm text-[var(--text2)]">
+                  {language === 'ro' ? 'Sumar pentru toate conturile bancare' : 'Summary across all bank accounts'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className="bg-[var(--primary)]/5 rounded-xl p-4">
+                <div className="text-2xl font-bold text-[var(--primary)]">
+                  {consolidatedView.totalAccounts}
+                </div>
+                <div className="text-sm text-[var(--text2)]">
+                  {language === 'ro' ? 'Conturi Totale' : 'Total Accounts'}
+                </div>
+              </div>
+              <div className="bg-orange-500/5 rounded-xl p-4">
+                <div className="text-2xl font-bold text-orange-600">
+                  {consolidatedView.totalUnreconciledTransactions}
+                </div>
+                <div className="text-sm text-[var(--text2)]">
+                  {language === 'ro' ? 'Tranzacții Nereconciliate' : 'Unreconciled Transactions'}
+                </div>
+              </div>
+              <div className="bg-green-500/5 rounded-xl p-4">
+                <div className="text-2xl font-bold text-green-600">
+                  {consolidatedView.accountSummaries.filter((acc: any) => acc.unreconciledCount === 0).length}
+                </div>
+                <div className="text-sm text-[var(--text2)]">
+                  {language === 'ro' ? 'Conturi Reconciliate' : 'Reconciled Accounts'}
+                </div>
+              </div>
+            </div>
+
+            {/* Account Summaries */}
+            <div className="space-y-3">
+              {consolidatedView.accountSummaries.map((account: any) => (
+                <div key={account.id} className="bg-white/50 rounded-xl p-4 border border-[var(--text4)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+                        <CreditCard size={12} className="text-white" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-[var(--text1)]">{account.accountName}</div>
+                        <div className="text-sm text-[var(--text2)]">{account.iban}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-medium ${
+                        account.unreconciledCount === 0 ? 'text-green-600' : 'text-orange-600'
+                      }`}>
+                        {account.unreconciledCount} {language === 'ro' ? 'nereconciliate' : 'unreconciled'}
+                      </div>
+                    </div>
+                  </div>
+                  {account.recentTransactions.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="text-xs text-[var(--text2)] mb-1">
+                        {language === 'ro' ? 'Tranzacții Recente:' : 'Recent Transactions:'}
+                      </div>
+                      {account.recentTransactions.slice(0, 3).map((tx: any) => (
+                        <div key={tx.id} className="text-xs bg-gray-50 rounded p-2 flex justify-between">
+                          <span className="truncate max-w-[200px]">{tx.description}</span>
+                          <span className={`font-medium ${
+                            tx.type === 'CREDIT' ? 'text-green-600' : 'text-red-600'
+                          }`}>
+                            {tx.type === 'CREDIT' ? '+' : '-'}{formatCurrency(Math.abs(tx.amount))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Loading State for Stats */}
         {statsLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -2929,7 +3194,7 @@ const BankPage = () => {
                             {unreconciledTransactionsCount === 0 && 
                              ['unreconciled', 'pending'].includes(normalizeStatus(doc.reconciliation_status)) && (
                               <button 
-                                className="p-1 hover:text-white hover:bg-orange-600 bg-orange-100 text-orange-600 transition-colors rounded-lg disabled:opacity-50"
+                                className="p-1 hover:text-white hover:bg-yellow-600 bg-yellow-100 text-yellow-600 transition-colors rounded-lg disabled:opacity-50"
                                 onClick={() => handleMarkAsOutstanding(doc)}
                                 disabled={markingAsOutstanding.has(doc.id)}
                                 title={language === 'ro' ? 'Marchează ca Element în Așteptare' : 'Mark as Outstanding'}
@@ -3731,6 +3996,184 @@ const BankPage = () => {
                 isLoading={isCreatingAccountReconciliation}
                 language={language}
               />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bank Account Management Modal */}
+      <AnimatePresence>
+        {showBankAccountModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
+            >
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
+                  <CreditCard size={24} className="text-[var(--primary)]" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[var(--text1)]">
+                    {editingBankAccount 
+                      ? (language === 'ro' ? 'Editează Cont Bancar' : 'Edit Bank Account')
+                      : (language === 'ro' ? 'Adaugă Cont Bancar Nou' : 'Add New Bank Account')
+                    }
+                  </h3>
+                  <p className="text-[var(--text2)]">
+                    {language === 'ro' 
+                      ? 'Completează informațiile contului bancar' 
+                      : 'Fill in the bank account information'
+                    }
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target as HTMLFormElement);
+                const accountData = {
+                  iban: formData.get('iban') as string,
+                  accountName: formData.get('accountName') as string,
+                  bankName: formData.get('bankName') as string,
+                  currency: formData.get('currency') as string || 'RON',
+                  accountType: formData.get('accountType') as 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT'
+                };
+
+                try {
+                  if (editingBankAccount) {
+                    await updateBankAccount({
+                      accountId: editingBankAccount.id,
+                      updateData: accountData
+                    }).unwrap();
+                  } else {
+                    await createBankAccount({
+                      clientEin: clientCompanyEin,
+                      accountData
+                    }).unwrap();
+                  }
+                  setShowBankAccountModal(false);
+                  setEditingBankAccount(null);
+                } catch (error) {
+                  console.error('Failed to save bank account:', error);
+                  alert(language === 'ro' ? 'Eroare la salvarea contului bancar' : 'Error saving bank account');
+                }
+              }}>
+                <div className="space-y-4">
+                  {/* IBAN Field */}
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                      IBAN *
+                    </label>
+                    <input
+                      type="text"
+                      name="iban"
+                      required
+                      defaultValue={editingBankAccount?.iban || ''}
+                      placeholder="RO49 AAAA 1B31 0075 9384 0000"
+                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                    />
+                  </div>
+
+                  {/* Account Name Field */}
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                      {language === 'ro' ? 'Nume Cont *' : 'Account Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      name="accountName"
+                      required
+                      defaultValue={editingBankAccount?.accountName || ''}
+                      placeholder={language === 'ro' ? 'Cont Principal Companie' : 'Company Main Account'}
+                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                    />
+                  </div>
+
+                  {/* Bank Name Field */}
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                      {language === 'ro' ? 'Nume Bancă *' : 'Bank Name *'}
+                    </label>
+                    <input
+                      type="text"
+                      name="bankName"
+                      required
+                      defaultValue={editingBankAccount?.bankName || ''}
+                      placeholder={language === 'ro' ? 'Banca Transilvania' : 'Bank Name'}
+                      className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                    />
+                  </div>
+
+                  {/* Currency and Account Type Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Currency Field */}
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                        {language === 'ro' ? 'Monedă' : 'Currency'}
+                      </label>
+                      <select
+                        name="currency"
+                        defaultValue={editingBankAccount?.currency || 'RON'}
+                        className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      >
+                        <option value="RON">RON</option>
+                        <option value="EUR">EUR</option>
+                        <option value="USD">USD</option>
+                        <option value="GBP">GBP</option>
+                      </select>
+                    </div>
+
+                    {/* Account Type Field */}
+                    <div>
+                      <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                        {language === 'ro' ? 'Tip Cont' : 'Account Type'}
+                      </label>
+                      <select
+                        name="accountType"
+                        defaultValue={editingBankAccount?.accountType || 'CURRENT'}
+                        className="w-full px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                      >
+                        <option value="CURRENT">{language === 'ro' ? 'Cont Curent' : 'Current Account'}</option>
+                        <option value="SAVINGS">{language === 'ro' ? 'Cont de Economii' : 'Savings Account'}</option>
+                        <option value="BUSINESS">{language === 'ro' ? 'Cont Business' : 'Business Account'}</option>
+                        <option value="CREDIT">{language === 'ro' ? 'Cont de Credit' : 'Credit Account'}</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[var(--text4)]">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBankAccountModal(false);
+                      setEditingBankAccount(null);
+                    }}
+                    className="flex-1 px-4 py-3 border border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors"
+                  >
+                    {language === 'ro' ? 'Anulează' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-3 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <CreditCard size={16} />
+                    {editingBankAccount 
+                      ? (language === 'ro' ? 'Actualizează Cont' : 'Update Account')
+                      : (language === 'ro' ? 'Creează Cont' : 'Create Account')
+                    }
+                  </button>
+                </div>
+              </form>
             </motion.div>
           </motion.div>
         )}

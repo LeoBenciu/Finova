@@ -779,6 +779,83 @@ export const finovaApi = createApi({
               method: 'PUT'
             }),
             invalidatesTags: ['BankReconciliation']
+          }),
+
+          // ==================== MULTI-BANK ACCOUNT API HOOKS ====================
+
+          getBankAccounts: build.query({
+            query: (clientEin: string) => `/bank/${clientEin}/accounts`,
+            providesTags: ['BankReconciliation']
+          }),
+
+          createBankAccount: build.mutation({
+            query: ({ clientEin, accountData }: {
+              clientEin: string;
+              accountData: {
+                iban: string;
+                accountName: string;
+                bankName: string;
+                currency?: string;
+                accountType?: 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT';
+              }
+            }) => ({
+              url: `/bank/${clientEin}/accounts`,
+              method: 'POST',
+              body: accountData
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          updateBankAccount: build.mutation({
+            query: ({ accountId, updateData }: {
+              accountId: number;
+              updateData: {
+                accountName?: string;
+                bankName?: string;
+                currency?: string;
+                accountType?: 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT';
+                isActive?: boolean;
+              }
+            }) => ({
+              url: `/bank/accounts/${accountId}`,
+              method: 'PUT',
+              body: updateData
+            }),
+            invalidatesTags: ['BankReconciliation']
+          }),
+
+          getBankTransactionsByAccount: build.query({
+            query: ({ clientEin, accountId, status = 'all', page = 1, size = 25 }: {
+              clientEin: string;
+              accountId?: number;
+              status?: 'all' | 'reconciled' | 'unreconciled';
+              page?: number;
+              size?: number;
+            }) => {
+              const params = new URLSearchParams({
+                status,
+                page: page.toString(),
+                size: size.toString()
+              });
+              if (accountId) {
+                params.append('accountId', accountId.toString());
+              }
+              return `/bank/${clientEin}/transactions/by-account?${params}`;
+            },
+            providesTags: ['BankReconciliation']
+          }),
+
+          getConsolidatedAccountView: build.query({
+            query: (clientEin: string) => `/bank/${clientEin}/accounts/consolidated-view`,
+            providesTags: ['BankReconciliation']
+          }),
+
+          associateTransactionsWithAccounts: build.mutation({
+            query: (clientEin: string) => ({
+              url: `/bank/${clientEin}/accounts/associate-transactions`,
+              method: 'POST'
+            }),
+            invalidatesTags: ['BankReconciliation']
           })
 
     })
@@ -809,5 +886,8 @@ useGetOutstandingItemsQuery, useGetOutstandingItemsAgingQuery,
 useCreateOutstandingItemMutation, useUpdateOutstandingItemMutation,
 useMarkOutstandingItemAsClearedMutation, useMarkOutstandingItemAsStaleMutation,
 useVoidOutstandingItemMutation, useDeleteOutstandingItemMutation,
-useGetReconciliationHistoryAndAuditTrailQuery
+useGetReconciliationHistoryAndAuditTrailQuery,
+useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
+useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
+useAssociateTransactionsWithAccountsMutation
 } = finovaApi;

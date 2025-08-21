@@ -194,6 +194,7 @@ model AccountingClients {
   articles            Article[]
   managements         Management[]
   outstandingItems    OutstandingItem[]
+  bankAccounts        BankAccount[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -274,6 +275,28 @@ model Management {
   @@index([clientCompanyId])
 }
 
+model BankAccount {
+  id                    Int                    @id @default(autoincrement())
+  iban                  String                 @unique
+  accountName           String
+  bankName              String
+  currency              String                 @default("RON")
+  accountType           BankAccountType        @default(CURRENT)
+  isActive              Boolean                @default(true)
+  accountingClient      AccountingClients      @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  accountingClientId    Int
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  
+  // Relations
+  bankTransactions      BankTransaction[]
+  outstandingItems      OutstandingItem[]
+  
+  @@index([accountingClientId])
+  @@index([iban])
+  @@index([isActive])
+}
+
 model BankTransaction {
   id                        String                     @id
   bankStatementDocument     Document                   @relation("BankStatementDocument", fields: [bankStatementDocumentId], references: [id], onDelete: Cascade)
@@ -289,6 +312,8 @@ model BankTransaction {
   updatedAt                 DateTime                   @updatedAt
   chartOfAccount            ChartOfAccounts?           @relation(fields: [chartOfAccountId], references: [id])
   chartOfAccountId          Int?
+  bankAccount               BankAccount?               @relation(fields: [bankAccountId], references: [id])
+  bankAccountId             Int?
   isStandalone              Boolean                    @default(false)
   accountingNotes           String?
   reconciliationRecords     ReconciliationRecord[]
@@ -299,6 +324,7 @@ model BankTransaction {
   @@index([transactionDate])
   @@index([reconciliationStatus])
   @@index([chartOfAccountId])
+  @@index([bankAccountId])
   @@index([isStandalone])
 }
 
@@ -391,7 +417,9 @@ model OutstandingItem {
   actualClearDate       DateTime?             // Actual date cleared
   daysOutstanding       Int                   @default(0) // Calculated field
   payeeBeneficiary      String?               // Who the check is made out to, or deposit source
-  bankAccount           String?               // Which bank account
+  bankAccountString     String?               // Legacy bank account string field
+  bankAccount           BankAccount?          @relation(fields: [bankAccountId], references: [id])
+  bankAccountId         Int?                  // Link to BankAccount entity
   notes                 String?
   relatedDocumentId     Int?                  // Link to related document if applicable
   relatedDocument       Document?             @relation(fields: [relatedDocumentId], references: [id])
@@ -552,6 +580,13 @@ enum CorrectionType {
   LINE_ITEMS
   DATES
   OTHER
+}
+
+enum BankAccountType {
+  CURRENT
+  SAVINGS
+  BUSINESS
+  CREDIT
 }
 
 enum TransactionType {
