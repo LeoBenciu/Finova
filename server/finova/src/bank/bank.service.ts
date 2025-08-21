@@ -2995,6 +2995,14 @@ export class BankService {
           };
           
           // Check extractedData first
+          // If extractedData is a JSON string, parse it
+          if (typeof document.extractedData === 'string') {
+            try {
+              document.extractedData = JSON.parse(document.extractedData);
+            } catch (_) {
+              console.warn(`⚠️ Could not parse extractedData JSON for document ${document.id}`);
+            }
+          }
           if (document.extractedData) {
             console.log(`📋 Extracted data fields:`, Object.keys(document.extractedData));
             extractedIban = findIbanInObject(document.extractedData, 'extractedData');
@@ -3004,7 +3012,15 @@ export class BankService {
           if (!extractedIban && document.processedData && Array.isArray(document.processedData)) {
             console.log(`📋 Processing ${document.processedData.length} processedData items`);
             for (let i = 0; i < document.processedData.length; i++) {
-              const processedItem = document.processedData[i];
+              let processedItem = document.processedData[i];
+              if (typeof processedItem === 'string') {
+                try {
+                  processedItem = JSON.parse(processedItem);
+                } catch (_) {
+                  console.warn(`⚠️ Could not parse processedData[${i}] JSON for document ${document.id}`);
+                  continue;
+                }
+              }
               extractedIban = findIbanInObject(processedItem, `processedData[${i}]`);
               if (extractedIban) break;
             }
