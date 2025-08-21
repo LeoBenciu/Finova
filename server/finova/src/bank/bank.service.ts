@@ -2329,7 +2329,7 @@ export class BankService {
         },
         generatedAt: new Date().toISOString()
       };
-    }
+    };
 
     async getOutstandingItemsAging(clientEin: string, user: User) {
       const items = await this.getOutstandingItems(clientEin, user);
