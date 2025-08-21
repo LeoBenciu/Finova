@@ -2934,7 +2934,11 @@ export class BankService {
           bankAccountId: null
         },
         include: {
-          bankStatementDocument: true
+          bankStatementDocument: {
+            include: {
+              processedData: true
+            }
+          }
         }
       });
 
@@ -2959,7 +2963,7 @@ export class BankService {
         
         if (transaction.bankStatementDocument) {
           const document = transaction.bankStatementDocument as any;
-          console.log(`📄 Bank statement document: ${document.filename}`);
+          console.log(`📄 Bank statement document: ${document.name}`);
           
           // Helper function to extract IBAN from any object
           const findIbanInObject = (obj: any, source: string): string | null => {
@@ -3008,11 +3012,28 @@ export class BankService {
             extractedIban = findIbanInObject(document.extractedData, 'extractedData');
           }
           
-          // Check processedData if available
-          if (!extractedIban && document.processedData && Array.isArray(document.processedData)) {
+          // Check processedData if available (can be object or array)
+          if (!extractedIban && document.processedData) {
+            const pd = document.processedData;            
+            if (!Array.isArray(pd)) {
+              // processedData is a single object (Prisma relation). Extract its extractedFields json
+              let fieldsBlock: any = (pd as any).extractedFields ?? pd;
+              if (typeof fieldsBlock === 'string') {
+                try {
+                  fieldsBlock = JSON.parse(fieldsBlock);
+                } catch (_) {
+                  console.warn(`⚠️ Could not parse processedData.extractedFields JSON for document ${document.id}`);
+                }
+              }
+              extractedIban = findIbanInObject(fieldsBlock, 'processedData.extractedFields');
+            } else {
             console.log(`📋 Processing ${document.processedData.length} processedData items`);
             for (let i = 0; i < document.processedData.length; i++) {
               let processedItem = document.processedData[i];
+              // If the item wraps extractedFields, unwrap it
+              if (processedItem && typeof processedItem === 'object' && 'extractedFields' in processedItem) {
+                processedItem = (processedItem as any).extractedFields;
+              }
               if (typeof processedItem === 'string') {
                 try {
                   processedItem = JSON.parse(processedItem);
@@ -3025,21 +3046,15 @@ export class BankService {
               if (extractedIban) break;
             }
           }
-          
-          // Check rawData if available
-          if (!extractedIban && document.rawData) {
-            console.log(`📋 Checking rawData`);
-            extractedIban = findIbanInObject(document.rawData, 'rawData');
-          }
+        }
           
           // Last resort: search in the entire document object
           if (!extractedIban) {
             console.log(`📋 Last resort: searching entire document object`);
             extractedIban = findIbanInObject(document, 'document');
           }
-          
           if (!extractedIban) {
-            console.log(`❌ No IBAN found in any data source for document ${document.filename}`);
+            console.log(`❌ No IBAN found in any data source for document ${document.name}`);
             console.log(`📋 Available document keys:`, Object.keys(document));
           }
         }
