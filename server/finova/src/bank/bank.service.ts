@@ -2904,6 +2904,8 @@ export class BankService {
      * Associate transactions with bank accounts based on IBAN extraction
      */
     async associateTransactionsWithAccounts(clientEin: string, user: User) {
+      console.log(`🏦 Starting transaction association for client: ${clientEin}`);
+      
       const clientCompany = await this.prisma.clientCompany.findUnique({
         where: { ein: clientEin }
       });
@@ -2944,30 +2946,103 @@ export class BankService {
         }
       });
 
+      console.log(`📊 Found ${unassociatedTransactions.length} unassociated transactions`);
+      console.log(`🏦 Found ${bankAccounts.length} bank accounts:`, bankAccounts.map(acc => ({ id: acc.id, iban: acc.iban, name: acc.accountName })));
+
       let associatedCount = 0;
 
       for (const transaction of unassociatedTransactions) {
+        console.log(`\n🔍 Processing transaction ${transaction.id} (${transaction.amount} RON)`);
+        
         // Try to extract IBAN from bank statement document
         let extractedIban: string | null = null;
         
         if (transaction.bankStatementDocument) {
           const document = transaction.bankStatementDocument as any;
+          console.log(`📄 Bank statement document: ${document.filename}`);
+          
+          // Helper function to extract IBAN from any object
+          const findIbanInObject = (obj: any, source: string): string | null => {
+            if (!obj || typeof obj !== 'object') return null;
+            
+            // Direct IBAN fields
+            const ibanFields = [
+              'iban', 'account_iban', 'account_number', 'bank_account', 
+              'account_info', 'bank_details', 'account', 'accountNumber',
+              'bankAccount', 'accountIban', 'bankIban', 'iban_account'
+            ];
+            
+            for (const field of ibanFields) {
+              if (obj[field] && typeof obj[field] === 'string') {
+                const value = obj[field].trim();
+                // Check if it looks like an IBAN (starts with RO and has correct length)
+                if (value.match(/^RO\d{2}[A-Z]{4}\d{16}$/i) || value.match(/^RO\d{2}\s?[A-Z]{4}\s?\d{4}\s?\d{4}\s?\d{4}\s?\d{4}$/i)) {
+                  console.log(`✅ Found IBAN in ${source}.${field}: ${value}`);
+                  return value;
+                }
+              }
+            }
+            
+            // Search recursively in nested objects
+            for (const key of Object.keys(obj)) {
+              if (typeof obj[key] === 'object' && obj[key] !== null) {
+                const nestedIban = findIbanInObject(obj[key], `${source}.${key}`);
+                if (nestedIban) return nestedIban;
+              }
+            }
+            
+            return null;
+          };
+          
+          // Check extractedData first
           if (document.extractedData) {
-            const extractedData = document.extractedData;
-            // Look for IBAN in various possible fields
-            extractedIban = extractedData.iban || 
-                           extractedData.account_iban || 
-                           extractedData.account_number ||
-                           extractedData.bank_account;
+            console.log(`📋 Extracted data fields:`, Object.keys(document.extractedData));
+            extractedIban = findIbanInObject(document.extractedData, 'extractedData');
+          }
+          
+          // Check processedData if available
+          if (!extractedIban && document.processedData && Array.isArray(document.processedData)) {
+            console.log(`📋 Processing ${document.processedData.length} processedData items`);
+            for (let i = 0; i < document.processedData.length; i++) {
+              const processedItem = document.processedData[i];
+              extractedIban = findIbanInObject(processedItem, `processedData[${i}]`);
+              if (extractedIban) break;
+            }
+          }
+          
+          // Check rawData if available
+          if (!extractedIban && document.rawData) {
+            console.log(`📋 Checking rawData`);
+            extractedIban = findIbanInObject(document.rawData, 'rawData');
+          }
+          
+          // Last resort: search in the entire document object
+          if (!extractedIban) {
+            console.log(`📋 Last resort: searching entire document object`);
+            extractedIban = findIbanInObject(document, 'document');
+          }
+          
+          if (!extractedIban) {
+            console.log(`❌ No IBAN found in any data source for document ${document.filename}`);
+            console.log(`📋 Available document keys:`, Object.keys(document));
           }
         }
 
         // If we found an IBAN, try to match it with existing bank accounts
         if (extractedIban) {
-          const matchingAccount = bankAccounts.find(account => 
-            account.iban === extractedIban || 
-            account.iban.replace(/\s/g, '') === extractedIban.replace(/\s/g, '')
-          );
+          console.log(`🔍 Trying to match IBAN: ${extractedIban}`);
+          
+          const matchingAccount = bankAccounts.find(account => {
+            const accountIban = account.iban.replace(/\s/g, '');
+            const extractedIbanClean = extractedIban.replace(/\s/g, '');
+            const matches = accountIban === extractedIbanClean || account.iban === extractedIban;
+            
+            if (matches) {
+              console.log(`✅ MATCHED with account ${account.id} (${account.accountName}): ${account.iban}`);
+            }
+            
+            return matches;
+          });
 
           if (matchingAccount) {
             await this.prisma.bankTransaction.update({
@@ -2975,9 +3050,17 @@ export class BankService {
               data: { bankAccountId: matchingAccount.id }
             });
             associatedCount++;
+            console.log(`✅ Transaction ${transaction.id} associated with account ${matchingAccount.id}`);
+          } else {
+            console.log(`❌ No matching account found for IBAN: ${extractedIban}`);
+            console.log(`Available IBANs:`, bankAccounts.map(acc => acc.iban));
           }
+        } else {
+          console.log(`❌ No IBAN extracted from transaction ${transaction.id}`);
         }
       }
+
+      console.log(`\n🎉 Association complete: ${associatedCount}/${unassociatedTransactions.length} transactions associated`);
 
       return {
         message: `Successfully associated ${associatedCount} transactions with bank accounts`,

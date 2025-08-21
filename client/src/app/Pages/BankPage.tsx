@@ -2270,12 +2270,8 @@ const BankPage = () => {
 
   const filteredTransactions = useMemo(() => {
     const tList: BankTransaction[] = Array.isArray(transactionsData) ? transactionsData : [];
-    console.log(`🔍 TRANSACTION FILTERING DEBUG:`);
-    console.log(`💳 Total transactions: ${tList.length}`);
-    console.log(`🔍 Filter status: ${filterStatus}`);
     
     if (tList.length === 0) {
-      console.log(`❌ No transactions to filter`);
       return [];
     }
     
@@ -2688,7 +2684,7 @@ const BankPage = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowConsolidatedView(!showConsolidatedView)}
-                className={`px-4 py-2 flex rounded-xl transition-all duration-200 ${
+                className={`px-4 py-2 flex items-center gap-2 rounded-xl transition-all duration-200 ${
                   showConsolidatedView
                     ? 'bg-[var(--primary)] text-white'
                     : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'
