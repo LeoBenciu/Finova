@@ -2688,18 +2688,42 @@ export class BankService {
         throw new UnauthorizedException('No access to this client company');
       }
 
-      // Check if IBAN already exists
-      const existingAccount = await this.prisma.bankAccount.findUnique({
-        where: { iban: accountData.iban }
+      // Normalize IBAN to avoid duplicates due to casing/whitespace
+      const normalizedIban = (accountData.iban || '').trim().toUpperCase();
+
+      // Check if IBAN already exists (case-insensitive)
+      const existingAccount = await this.prisma.bankAccount.findFirst({
+        where: { iban: { equals: normalizedIban, mode: 'insensitive' } },
+        include: { accountingClient: true }
       });
 
       if (existingAccount) {
+        // If it belongs to another client, do not allow reuse
+        if (existingAccount.accountingClientId !== accountingClientRelation.id) {
+          throw new BadRequestException('Bank account with this IBAN belongs to another client');
+        }
+
+        // If belongs to same client and is inactive, reactivate and update props
+        if (!existingAccount.isActive) {
+          return this.prisma.bankAccount.update({
+            where: { id: existingAccount.id },
+            data: {
+              isActive: true,
+              accountName: accountData.accountName,
+              bankName: accountData.bankName,
+              currency: accountData.currency || existingAccount.currency || 'RON',
+              accountType: accountData.accountType || existingAccount.accountType || BankAccountType.CURRENT
+            }
+          });
+        }
+
+        // Already active for this client
         throw new BadRequestException('Bank account with this IBAN already exists');
       }
 
       const bankAccount = await this.prisma.bankAccount.create({
         data: {
-          iban: accountData.iban,
+          iban: normalizedIban,
           accountName: accountData.accountName,
           bankName: accountData.bankName,
           currency: accountData.currency || 'RON',

@@ -53,6 +53,9 @@ import {
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 
+// Simple toast type
+type Toast = { id: number; type: 'success' | 'error' | 'info'; message: string };
+
 interface Document {
   id: number;
   name: string;
@@ -1983,6 +1986,34 @@ const BankPage = () => {
   const [showConsolidatedView, setShowConsolidatedView] = useState(false);
   const [editingBankAccount, setEditingBankAccount] = useState<any>(null);
 
+  // Toast notifications
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(1);
+  const addToast = (message: string, type: 'success' | 'error' | 'info' = 'info', durationMs = 3500) => {
+    const id = toastIdRef.current++;
+    const toast: Toast = { id, type, message };
+    setToasts((prev) => [...prev, toast]);
+    // Auto-remove after duration
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, durationMs);
+  };
+
+  // Confirm modal
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null);
+  const openConfirm = (message: string, onConfirm: () => Promise<void> | void) => {
+    setConfirmMessage(message);
+    confirmActionRef.current = onConfirm;
+    setConfirmOpen(true);
+  };
+  const closeConfirm = () => {
+    setConfirmOpen(false);
+    setConfirmMessage('');
+    confirmActionRef.current = null;
+  };
+
   const [documentsPage, setDocumentsPage] = useState(1);
   const [transactionsPage, setTransactionsPage] = useState(1);
   const [suggestionsPage, setSuggestionsPage] = useState(1);
@@ -2770,49 +2801,63 @@ const BankPage = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                        <div className="flex gap-1">
-    <button
-      title={language === 'ro' ? 'Modifică' : 'Edit'}
-      className="p-1 rounded hover:bg-gray-100"
-      onClick={(e) => {
-        e.stopPropagation();
-        setEditingBankAccount(account);
-        setShowBankAccountModal(true);
-      }}
-    >
-      <Edit2 size={14} className="text-[var(--text3)]" />
-    </button>
-    <button
-      title={language === 'ro' ? 'Dezactivează' : 'Deactivate'}
-      className="p-1 rounded hover:bg-gray-100"
-      onClick={async (e) => {
-        e.stopPropagation();
-        if (confirm(language === 'ro' ? 'Sigur dezactivezi contul?' : 'Deactivate this account?')) {
-          try {
-            await deactivateBankAccount({ accountId: account.id }).unwrap();
-          } catch (error) {
-            console.error(error);
-          }
-        }
-      }}
-    >
-      <Trash2 size={14} className="text-red-500" />
-    </button>
-  </div>
-  <div className="text-sm font-medium text-[var(--text1)]">
-                        {account.unreconciledTransactionsCount}
+                        <div className="flex justify-end gap-1">
+                          <button
+                            title={language === 'ro' ? 'Modifică' : 'Edit'}
+                            className="p-1 rounded text-yello-600
+                            hover:text-white bg-yellow-200 hover:bg-yellow-600"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingBankAccount(account);
+                              setShowBankAccountModal(true);
+                            }}
+                          >
+                            <Edit2 size={14} />
+                          </button>
+                          <button
+                            title={language === 'ro' ? 'Dezactivează' : 'Deactivate'}
+                            className="p-1 rounded hover:bg-red-500 bg-red-200 hover:text-white text-red-500"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openConfirm(
+                                language === 'ro' ? 'Sigur dezactivezi contul?' : 'Deactivate this account?',
+                                async () => {
+                                  try {
+                                    await deactivateBankAccount({ accountId: account.id }).unwrap();
+                                    addToast(
+                                      language === 'ro' ? 'Contul a fost dezactivat.' : 'Bank account deactivated.',
+                                      'success'
+                                    );
+                                  } catch (error) {
+                                    console.error(error);
+                                    addToast(
+                                      language === 'ro' ? 'Eroare la dezactivarea contului.' : 'Failed to deactivate account.',
+                                      'error'
+                                    );
+                                  } finally {
+                                    closeConfirm();
+                                  }
+                                }
+                              );
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <div className="text-sm font-medium text-[var(--text1)]">
+                                  {account.unreconciledTransactionsCount}
+                                </div>
+                                <div className="text-xs text-[var(--text2)]">
+                                  {language === 'ro' ? 'nereconciliate' : 'unreconciled'}
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
                       </div>
-                      <div className="text-xs text-[var(--text2)]">
-                        {language === 'ro' ? 'nereconciliate' : 'unreconciled'}
-                      </div>
-                    </div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                    )}
 
-          </div>
+            </div>
         
 
         {/* Consolidated View */}
@@ -4063,17 +4108,28 @@ const BankPage = () => {
                       accountId: editingBankAccount.id,
                       updateData: accountData
                     }).unwrap();
+                    addToast(
+                      language === 'ro' ? 'Contul bancar a fost actualizat.' : 'Bank account updated.',
+                      'success'
+                    );
                   } else {
                     await createBankAccount({
                       clientEin: clientCompanyEin,
                       accountData
                     }).unwrap();
+                    addToast(
+                      language === 'ro' ? 'Cont bancar salvat.' : 'Bank account saved.',
+                      'success'
+                    );
                   }
                   setShowBankAccountModal(false);
                   setEditingBankAccount(null);
                 } catch (error) {
                   console.error('Failed to save bank account:', error);
-                  alert(language === 'ro' ? 'Eroare la salvarea contului bancar' : 'Error saving bank account');
+                  addToast(
+                    language === 'ro' ? 'Eroare la salvarea contului bancar.' : 'Error saving bank account.',
+                    'error'
+                  );
                 }
               }}>
                 <div className="space-y-4">
@@ -4184,6 +4240,73 @@ const BankPage = () => {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notifications */}
+      <div className="fixed top-4 right-4 z-[60] space-y-2">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`min-w-[260px] max-w-sm px-4 py-3 rounded-xl shadow-lg border text-sm bg-white ${
+              t.type === 'success'
+                ? 'border-emerald-200 text-emerald-700'
+                : t.type === 'error'
+                ? 'border-red-200 text-red-700'
+                : 'border-blue-200 text-blue-700'
+            }`}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
+
+      {/* Confirm Modal */}
+      <AnimatePresence>
+        {confirmOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-md w-full p-6"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
+                  <AlertTriangle size={20} className="text-red-600" />
+                </div>
+                <div className="text-[var(--text1)]">
+                  <h4 className="font-semibold mb-1">{language === 'ro' ? 'Confirmare' : 'Confirm'}</h4>
+                  <p className="text-[var(--text2)]">{confirmMessage}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[var(--text4)]">
+                <button
+                  onClick={closeConfirm}
+                  className="flex-1 px-4 py-2 border bg-white border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors flex items-center justify-center gap-2"
+                >
+                  <X size={16} /> {language === 'ro' ? 'Anulează' : 'Cancel'}
+                </button>
+                <button
+                  onClick={async () => {
+                    if (confirmActionRef.current) {
+                      await Promise.resolve(confirmActionRef.current());
+                    } else {
+                      closeConfirm();
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Check size={16} /> {language === 'ro' ? 'Confirmă' : 'Confirm'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}
