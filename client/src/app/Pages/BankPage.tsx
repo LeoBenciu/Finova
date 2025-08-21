@@ -2191,6 +2191,26 @@ const BankPage = () => {
   const effectiveTransactionsResp = selectedBankAccountId ? accountTransactionsResp : transactionsResp;
   const { items: transactionsItems, total: transactionsTotal } = effectiveTransactionsResp || { items: [], total: 0 };
 
+  // Build a transaction ID set for the selected account to filter suggestions
+  const accountTransactionIdSet = useMemo(() => {
+    const list = (accountTransactionsResp?.items ?? []) as any[];
+    return new Set(list.map(t => t.id));
+  }, [accountTransactionsResp]);
+
+  // Suggestions displayed in UI, filtered by selected bank account (if any) and local removals
+  const displayedSuggestions = useMemo(() => {
+    const base = Array.isArray(suggestionsData) ? suggestionsData : [];
+    if (!selectedBankAccountId) {
+      return base.filter(s => !removedSuggestions.has(s.id));
+    }
+    return base.filter(s => {
+      if (removedSuggestions.has(s.id)) return false;
+      // If suggestion has a bankTransaction, ensure it belongs to selected account
+      const txnId = (s as any).bankTransaction?.id;
+      return !txnId || accountTransactionIdSet.has(txnId);
+    });
+  }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
+
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
@@ -2785,7 +2805,7 @@ const BankPage = () => {
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-blue-500 rounded-lg flex items-center justify-center">
+                      <div className="w-8 h-8 bg-[var(--primary)] rounded-lg flex items-center justify-center">
                         <CreditCard size={16} className="text-white" />
                       </div>
                       <div className="text-left">
@@ -2804,8 +2824,8 @@ const BankPage = () => {
                         <div className="flex justify-end gap-1">
                           <button
                             title={language === 'ro' ? 'Modifică' : 'Edit'}
-                            className="p-1 rounded text-yello-600
-                            hover:text-white bg-yellow-200 hover:bg-yellow-600"
+                            className="p-1 rounded text-black
+                            hover:text-white bg-neutral-300 hover:bg-black"
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingBankAccount(account);
@@ -3485,7 +3505,7 @@ const BankPage = () => {
                 <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
                 <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea sugestiilor' : 'Error loading suggestions'}</p>
               </div>
-            ) : suggestionsData.length === 0 ? (
+            ) : displayedSuggestions.length === 0 ? (
               <div className="text-center py-12">
                 <Zap size={48} className="mx-auto text-[var(--text3)] mb-4" />
                 <p className="text-[var(--text2)] text-lg mb-2">
@@ -3497,9 +3517,7 @@ const BankPage = () => {
               </div>
             ) : (
               <div className="space-y-6">
-                {suggestionsData
-                  .filter((suggestion) => !removedSuggestions.has(suggestion.id))
-                  .map((suggestion) => (
+                {displayedSuggestions.map((suggestion) => (
                   <motion.div
                     key={suggestion.id}
                     initial={{ opacity: 0, y: 10 }}
