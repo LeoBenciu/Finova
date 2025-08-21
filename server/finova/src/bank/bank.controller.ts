@@ -266,13 +266,7 @@ export class BankController {
       return this.bankService.getOutstandingItems(clientEin, user, type, status, startDate, endDate);
     }
 
-    @Get(':clientEin/outstanding-items/aging')
-    async getOutstandingItemsAging(
-      @Param('clientEin') clientEin: string,
-      @GetUser() user: User
-    ) {
-      return this.bankService.getOutstandingItemsAging(clientEin, user);
-    }
+
 
     @Post(':clientEin/outstanding-items')
     async createOutstandingItem(

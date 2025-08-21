@@ -695,13 +695,7 @@ export const finovaApi = createApi({
             providesTags: ['BankReconciliation']
           }),
 
-          getOutstandingItemsAging: build.query({
-            query: ({ clientEin }: { clientEin: string }) => ({
-              url: `/bank/${clientEin}/outstanding-items/aging`,
-              method: 'GET'
-            }),
-            providesTags: ['BankReconciliation']
-          }),
+
 
           createOutstandingItem: build.mutation({
             query: ({ clientEin, data }: { 

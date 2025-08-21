@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { 
   Clock, 
   CheckCircle, 
@@ -11,14 +10,11 @@ import {
   Calendar,
   DollarSign,
   FileText,
-  Filter,
-  Download
+  Filter
 } from 'lucide-react';
 import {
   useGetOutstandingItemsQuery,
   useGetOutstandingItemsAgingQuery,
-  useCreateOutstandingItemMutation,
-  useUpdateOutstandingItemMutation,
   useMarkOutstandingItemAsClearedMutation,
   useMarkOutstandingItemAsStaleMutation,
   useVoidOutstandingItemMutation,
@@ -79,8 +75,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
     clientEin
   });
 
-  const [createItem] = useCreateOutstandingItemMutation();
-  const [updateItem] = useUpdateOutstandingItemMutation();
+
   const [markAsCleared] = useMarkOutstandingItemAsClearedMutation();
   const [markAsStale] = useMarkOutstandingItemAsStaleMutation();
   const [voidItem] = useVoidOutstandingItemMutation();
@@ -490,6 +485,18 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
               </table>
             </div>
           </div>
+        </div>
+      )}
+      
+      {/* TODO: Implement Create/Edit Modals */}
+      {showCreateModal && (
+        <div className="hidden">
+          {/* Create modal placeholder - to be implemented */}
+        </div>
+      )}
+      {editingItem && (
+        <div className="hidden">
+          {/* Edit modal placeholder - to be implemented */}
         </div>
       )}
     </div>
