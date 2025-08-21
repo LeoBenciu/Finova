@@ -20,7 +20,9 @@ import {
   Loader2,
   Square,
   CheckSquare,
-  Clock
+  Clock,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -2195,7 +2197,7 @@ const BankPage = () => {
   // Multi-Bank Account mutations
   const [createBankAccount] = useCreateBankAccountMutation();
   const [updateBankAccount] = useUpdateBankAccountMutation();
-  const [_deactivateBankAccount] = useDeactivateBankAccountMutation();
+  const [deactivateBankAccount] = useDeactivateBankAccountMutation();
 
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
   const [markingAsOutstanding, setMarkingAsOutstanding] = useState<Set<number>>(new Set());
@@ -2768,7 +2770,36 @@ const BankPage = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium text-[var(--text1)]">
+                        <div className="flex gap-1">
+    <button
+      title={language === 'ro' ? 'Modifică' : 'Edit'}
+      className="p-1 rounded hover:bg-gray-100"
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditingBankAccount(account);
+        setShowBankAccountModal(true);
+      }}
+    >
+      <Edit2 size={14} className="text-[var(--text3)]" />
+    </button>
+    <button
+      title={language === 'ro' ? 'Dezactivează' : 'Deactivate'}
+      className="p-1 rounded hover:bg-gray-100"
+      onClick={async (e) => {
+        e.stopPropagation();
+        if (confirm(language === 'ro' ? 'Sigur dezactivezi contul?' : 'Deactivate this account?')) {
+          try {
+            await deactivateBankAccount({ accountId: account.id }).unwrap();
+          } catch (error) {
+            console.error(error);
+          }
+        }
+      }}
+    >
+      <Trash2 size={14} className="text-red-500" />
+    </button>
+  </div>
+  <div className="text-sm font-medium text-[var(--text1)]">
                         {account.unreconciledTransactionsCount}
                       </div>
                       <div className="text-xs text-[var(--text2)]">

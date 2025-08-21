@@ -64,7 +64,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation', 'BankAccounts', 'BankTransactions'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -785,7 +785,7 @@ export const finovaApi = createApi({
 
           getBankAccounts: build.query({
             query: (clientEin: string) => `/bank/${clientEin}/accounts`,
-            providesTags: ['BankReconciliation']
+            providesTags: ['BankAccounts']
           }),
 
           createBankAccount: build.mutation({
@@ -803,7 +803,7 @@ export const finovaApi = createApi({
               method: 'POST',
               body: accountData
             }),
-            invalidatesTags: ['BankReconciliation']
+            invalidatesTags: ['BankReconciliation', 'BankAccounts']
           }),
 
           updateBankAccount: build.mutation({
@@ -821,7 +821,7 @@ export const finovaApi = createApi({
               method: 'PUT',
               body: updateData
             }),
-            invalidatesTags: ['BankReconciliation']
+            invalidatesTags: ['BankReconciliation', 'BankAccounts', 'BankTransactions']
           }),
 
           deactivateBankAccount: build.mutation<{ success: boolean }, { accountId: number }>({
@@ -829,7 +829,7 @@ export const finovaApi = createApi({
               url: `/bank/accounts/${accountId}/deactivate`,
               method: 'PUT'
             }),
-            invalidatesTags: ['BankReconciliation']
+            invalidatesTags: ['BankReconciliation', 'BankAccounts', 'BankTransactions']
           }),
 
           getBankTransactionsByAccount: build.query({
@@ -850,7 +850,7 @@ export const finovaApi = createApi({
               }
               return `/bank/${clientEin}/transactions/by-account?${params}`;
             },
-            providesTags: ['BankReconciliation']
+            providesTags: ['BankTransactions']
           }),
 
           getConsolidatedAccountView: build.query({
@@ -863,7 +863,7 @@ export const finovaApi = createApi({
               url: `/bank/${clientEin}/accounts/associate-transactions`,
               method: 'POST'
             }),
-            invalidatesTags: ['BankReconciliation']
+            invalidatesTags: ['BankReconciliation', 'BankTransactions']
           })
 
     })
