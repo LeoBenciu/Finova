@@ -39,7 +39,8 @@ import {
   useGetBalanceReconciliationStatementQuery,
   useGetBankReconciliationSummaryReportQuery,
   useGetReconciliationHistoryAndAuditTrailQuery,
-  useGetOutstandingItemsAgingQuery
+  useGetOutstandingItemsAgingQuery,
+  useCreateOutstandingItemMutation
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 
@@ -290,7 +291,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
   const reportTabs = [
     { id: 'summary', label: language === 'ro' ? 'Sumar' : 'Summary', icon: TrendingUp },
     { id: 'outstanding', label: language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', icon: AlertTriangle },
-    { id: 'outstanding-items', label: language === 'ro' ? 'Gestionare Elemente în Așteptare' : 'Outstanding Items Management', icon: Clock },
+    { id: 'outstanding-items', label: language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items', icon: Clock },
     { id: 'audit', label: language === 'ro' ? 'Istoric Audit' : 'Audit Trail', icon: FileText },
     { id: 'balance', label: language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation', icon: Landmark }
   ];
@@ -2153,8 +2154,10 @@ const BankPage = () => {
   const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
   const [unreconcileTransaction] = useUnreconcileTransactionMutation();
+  const [createOutstandingItem] = useCreateOutstandingItemMutation();
 
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
+  const [markingAsOutstanding, setMarkingAsOutstanding] = useState<Set<number>>(new Set());
 
   const statsData = useMemo(() => {
     if (!stats) return {
@@ -2266,6 +2269,72 @@ const BankPage = () => {
     console.log(`✅ Filtered transactions: ${filtered.length}/${tList.length}`);
     return filtered;
   }, [transactionsData, searchTerm, filterStatus]);
+
+  // Calculate unreconciled transactions count (for Mark as Outstanding logic)
+  const unreconciledTransactionsCount = useMemo(() => {
+    const tList: BankTransaction[] = Array.isArray(transactionsData) ? transactionsData : [];
+    return tList.filter((txn: BankTransaction) => {
+      const normalizedStatus = normalizeStatus(txn.reconciliation_status);
+      return ['unreconciled', 'pending'].includes(normalizedStatus);
+    }).length;
+  }, [transactionsData]);
+
+  // Handler for marking document as outstanding item
+  const handleMarkAsOutstanding = async (doc: Document) => {
+    if (markingAsOutstanding.has(doc.id)) return;
+    
+    setMarkingAsOutstanding(prev => new Set([...prev, doc.id]));
+    
+    try {
+      // Map document type to outstanding item type
+      let outstandingType: 'OUTSTANDING_CHECK' | 'DEPOSIT_IN_TRANSIT' | 'PENDING_TRANSFER';
+      let description: string;
+      
+      if (doc.type === 'Payment Order' || doc.type === 'Collection Order') {
+        outstandingType = 'OUTSTANDING_CHECK';
+        description = `${doc.type} ${doc.document_number || doc.name}`;
+      } else if (doc.type === 'Invoice' || doc.type === 'Receipt' || doc.type === 'Z Report') {
+        outstandingType = 'DEPOSIT_IN_TRANSIT';
+        description = `${doc.type} ${doc.document_number || doc.name}`;
+      } else {
+        // Default fallback
+        outstandingType = 'DEPOSIT_IN_TRANSIT';
+        description = `${doc.type} ${doc.document_number || doc.name}`;
+      }
+      
+      const payload = {
+        type: outstandingType,
+        referenceNumber: doc.document_number || doc.name,
+        description: description,
+        amount: getDocumentAmount(doc),
+        issueDate: getDocumentDate(doc),
+        payeeBeneficiary: doc.vendor || doc.buyer || undefined,
+        notes: `Auto-created from unreconciled ${doc.type.toLowerCase()}`,
+        relatedDocumentId: doc.id
+      };
+      
+      await createOutstandingItem({ clientEin: clientCompanyEin, data: payload }).unwrap();
+      
+      // Show success message
+      alert(language === 'ro' 
+        ? `Document ${doc.document_number || doc.name} a fost marcat ca element în așteptare!` 
+        : `Document ${doc.document_number || doc.name} marked as outstanding item!`);
+      
+      // Optionally refresh data or show success indicator
+      
+    } catch (error) {
+      console.error('Failed to mark document as outstanding:', error);
+      alert(language === 'ro' 
+        ? 'Eroare la marcarea documentului ca element în așteptare' 
+        : 'Failed to mark document as outstanding');
+    } finally {
+      setMarkingAsOutstanding(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(doc.id);
+        return newSet;
+      });
+    }
+  };
 
   // Infinite scroll observers
   useEffect(() => {
@@ -2855,6 +2924,23 @@ const BankPage = () => {
                             }}>
                               <Eye size={14} />
                             </button>
+                            
+                            {/* Mark as Outstanding button - only show when no unreconciled transactions and document is unreconciled */}
+                            {unreconciledTransactionsCount === 0 && 
+                             ['unreconciled', 'pending'].includes(normalizeStatus(doc.reconciliation_status)) && (
+                              <button 
+                                className="p-1 hover:text-white hover:bg-orange-600 bg-orange-100 text-orange-600 transition-colors rounded-lg disabled:opacity-50"
+                                onClick={() => handleMarkAsOutstanding(doc)}
+                                disabled={markingAsOutstanding.has(doc.id)}
+                                title={language === 'ro' ? 'Marchează ca Element în Așteptare' : 'Mark as Outstanding'}
+                              >
+                                {markingAsOutstanding.has(doc.id) ? (
+                                  <Loader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <Clock size={14} />
+                                )}
+                              </button>
+                            )}
                           </div>
                         </div>
                       </motion.div>

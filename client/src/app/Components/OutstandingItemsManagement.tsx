@@ -4,7 +4,6 @@ import {
   CheckCircle, 
   AlertTriangle, 
   XCircle, 
-  Plus, 
   Edit, 
   Trash2,
   Calendar,
@@ -18,7 +17,8 @@ import {
   useMarkOutstandingItemAsClearedMutation,
   useMarkOutstandingItemAsStaleMutation,
   useVoidOutstandingItemMutation,
-  useDeleteOutstandingItemMutation
+  useDeleteOutstandingItemMutation,
+  useUpdateOutstandingItemMutation
 } from '@/redux/slices/apiSlice';
 
 interface OutstandingItemsManagementProps {
@@ -61,7 +61,6 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
   const [activeTab, setActiveTab] = useState<'list' | 'aging'>('list');
   const [filterType, setFilterType] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingItem, setEditingItem] = useState<OutstandingItem | null>(null);
 
   // API Hooks
@@ -80,6 +79,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
   const [markAsStale] = useMarkOutstandingItemAsStaleMutation();
   const [voidItem] = useVoidOutstandingItemMutation();
   const [deleteItem] = useDeleteOutstandingItemMutation();
+  const [updateOutstandingItem, { isLoading: updating }] = useUpdateOutstandingItemMutation();
 
   const getTypeLabel = (type: string) => {
     const labels = {
@@ -179,13 +179,9 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
         <h2 className="text-2xl font-bold text-gray-900">
           {language === 'ro' ? 'Gestionarea Elementelor în Așteptare' : 'Outstanding Items Management'}
         </h2>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          {language === 'ro' ? 'Adaugă Element' : 'Add Item'}
-        </button>
+        <div className="text-sm text-gray-500">
+          {language === 'ro' ? 'Elementele sunt create automat din documente nereconciliate' : 'Items are created automatically from unreconciled documents'}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -487,19 +483,133 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
           </div>
         </div>
       )}
-      
-      {/* TODO: Implement Create/Edit Modals */}
-      {showCreateModal && (
-        <div className="hidden">
-          {/* Create modal placeholder - to be implemented */}
-        </div>
-      )}
+
+      {/* Edit Modal - Simplified for status updates only */}
       {editingItem && (
-        <div className="hidden">
-          {/* Edit modal placeholder - to be implemented */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {language === 'ro' ? 'Actualizează Status' : 'Update Status'}
+              </h3>
+              <button
+                onClick={() => setEditingItem(null)}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                ✕
+              </button>
+            </div>
+            <SimpleEditForm
+              language={language}
+              item={editingItem}
+              onCancel={() => setEditingItem(null)}
+              onSubmit={async (form) => {
+                try {
+                  await updateOutstandingItem({ itemId: editingItem.id, data: form }).unwrap();
+                  setEditingItem(null);
+                  refetch();
+                } catch (e) {
+                  console.error('Update outstanding item failed', e);
+                  alert(language === 'ro' ? 'Actualizarea a eșuat' : 'Update failed');
+                }
+              }}
+              submitting={updating}
+            />
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+// ----- Simplified Edit Form -----
+function SimpleEditForm({
+  language,
+  item,
+  onCancel,
+  onSubmit,
+  submitting
+}: {
+  language: 'ro' | 'en';
+  item: OutstandingItem;
+  onCancel: () => void;
+  onSubmit: (form: {
+    status?: 'OUTSTANDING' | 'CLEARED' | 'STALE' | 'VOIDED';
+    actualClearDate?: string;
+    notes?: string;
+    relatedTransactionId?: string;
+  }) => void | Promise<void>;
+  submitting: boolean;
+}) {
+  const [form, setForm] = useState({
+    status: item.status as 'OUTSTANDING' | 'CLEARED' | 'STALE' | 'VOIDED',
+    actualClearDate: item.actualClearDate ? item.actualClearDate.slice(0, 10) : '',
+    notes: item.notes || '',
+    relatedTransactionId: item.relatedTransaction?.id || ''
+  });
+
+  const label = (ro: string, en: string) => (language === 'ro' ? ro : en);
+
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const payload = {
+          ...form,
+          actualClearDate: form.actualClearDate || undefined,
+          notes: form.notes || undefined,
+          relatedTransactionId: form.relatedTransactionId || undefined
+        };
+        await onSubmit(payload);
+      }}
+      className="px-6 py-4 space-y-4"
+    >
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{label('Status', 'Status')}</label>
+          <select
+            value={form.status}
+            onChange={(e) => setForm({ ...form, status: e.target.value as any })}
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          >
+            <option value="OUTSTANDING">{label('În Așteptare', 'Outstanding')}</option>
+            <option value="CLEARED">{label('Compensat', 'Cleared')}</option>
+            <option value="STALE">{label('Învechit', 'Stale')}</option>
+            <option value="VOIDED">{label('Anulat', 'Voided')}</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{label('Data Compensării', 'Actual Clear Date')}</label>
+          <input
+            type="date"
+            value={form.actualClearDate}
+            onChange={(e) => setForm({ ...form, actualClearDate: e.target.value })}
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">{label('Note', 'Notes')}</label>
+          <textarea
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
+            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2"
+            rows={3}
+          />
+        </div>
+      </div>
+      <div className="mt-6 flex justify-end gap-3 border-t pt-4">
+        <button type="button" onClick={onCancel} className="px-4 py-2 rounded-md border text-gray-700">
+          {label('Anulează', 'Cancel')}
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
+        >
+          {submitting ? label('Se salvează...', 'Saving...') : label('Salvează', 'Save')}
+        </button>
+      </div>
+    </form>
   );
 }
 
