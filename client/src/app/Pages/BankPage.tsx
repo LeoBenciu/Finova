@@ -2688,7 +2688,7 @@ const BankPage = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowConsolidatedView(!showConsolidatedView)}
-                className={`px-4 py-2 rounded-xl transition-all duration-200 ${
+                className={`px-4 py-2 flex rounded-xl transition-all duration-200 ${
                   showConsolidatedView
                     ? 'bg-[var(--primary)] text-white'
                     : 'bg-[var(--primary)]/10 text-[var(--primary)] hover:bg-[var(--primary)]/20'
@@ -3351,7 +3351,7 @@ const BankPage = () => {
                             return shouldShowAccountButton;
                           })() && (
                             <button 
-                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-purple-500 bg-purple-100 text-purple-600 cursor-pointer"
+                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-purple-500 bg-purple-200 text-purple-600 cursor-pointer"
                               onClick={() => {
                                 setSelectedTransactionForAccount(txn);
                                 setShowAccountReconcileModal(true);
@@ -3365,7 +3365,6 @@ const BankPage = () => {
                           {(() => {
                             const normalized = normalizeStatus(txn.reconciliation_status);
                             const shouldShow = ['matched', 'auto_matched', 'manually_matched'].includes(normalized);
-                            console.log(`🔴 X Button Debug - Txn ${txn.id}: status='${txn.reconciliation_status}' normalized='${normalized}' shouldShow=${shouldShow}`);
                             return shouldShow;
                           })() && (
                             <button 
