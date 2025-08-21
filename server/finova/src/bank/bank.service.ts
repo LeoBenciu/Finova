@@ -18,6 +18,13 @@ export class BankService {
         private readonly dataExtractionService: DataExtractionService
     ){}
 
+    // Safely parse incoming date strings (ISO expected). Returns null if invalid.
+    private parseDateSafe(input?: string | null): Date | null {
+      if (!input) return null;
+      const d = new Date(input);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
     async getReconciliationStats(clientEin: string, user: User) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
@@ -2422,10 +2429,10 @@ export class BankService {
         throw new UnauthorizedException('No access to this client company');
       }
 
-      // Calculate initial days outstanding
+      // Calculate initial days outstanding with safe date parsing and fallbacks
       const today = new Date();
-      const issueDate = new Date(data.issueDate);
-      const daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+      const parsedIssueDate = this.parseDateSafe(data.issueDate) || today;
+      const daysOutstanding = Math.max(0, Math.floor((today.getTime() - parsedIssueDate.getTime()) / (1000 * 60 * 60 * 24)));
 
       const outstandingItem = await this.prisma.outstandingItem.create({
         data: {
@@ -2433,12 +2440,12 @@ export class BankService {
           type: data.type,
           referenceNumber: data.referenceNumber,
           description: data.description,
-          amount: data.amount,
-          issueDate: new Date(data.issueDate),
-          expectedClearDate: data.expectedClearDate ? new Date(data.expectedClearDate) : null,
+          amount: Number(data.amount),
+          issueDate: parsedIssueDate,
+          expectedClearDate: this.parseDateSafe(data.expectedClearDate) || null,
           daysOutstanding,
           payeeBeneficiary: data.payeeBeneficiary,
-          bankAccountString: data.bankAccount,
+          bankAccountString: data.bankAccount ?? null,
           notes: data.notes,
           relatedDocumentId: data.relatedDocumentId,
           createdBy: user.id
