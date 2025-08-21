@@ -10,7 +10,7 @@ import { ClientCompaniesModule } from './client-companies/client-companies.modul
 import { AccountingCompaniesModule } from './accounting-companies/accounting-companies.module';
 import { AnafModule } from './anaf/anaf.module';
 import { UipathModule } from './uipath/uipath.module';
-import {ScheduleModule} from '@nestjs/schedule';
+// import {ScheduleModule} from '@nestjs/schedule';
 import { BankModule } from './bank/bank.module';
 
 @Module({
@@ -18,7 +18,7 @@ import { BankModule } from './bank/bank.module';
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-    ScheduleModule.forRoot(),
+    // ScheduleModule.forRoot(),
     AuthModule,
     UserModule,
     FilesModule,

@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import * as qs from 'qs';
-import {Cron} from '@nestjs/schedule';
+// import {Cron} from '@nestjs/schedule';
 import { ModifyRpaDto } from './dto';
 
 interface lineItem {
@@ -438,7 +438,7 @@ export class UipathService {
         }
     }
 
-    @Cron('0 */3 * * * *')
+    // @Cron('0 */3 * * * *')
     async updatePendingJobStatuses() {
         console.log('[UiPath CRON] Running scheduled UiPath job status update');
         

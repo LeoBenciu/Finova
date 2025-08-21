@@ -2763,6 +2763,9 @@ const BankPage = () => {
                         <div className="font-semibold text-[var(--text1)] truncate max-w-[150px]">
                           {account.accountName}
                         </div>
+                        <div className="text-xs text-[var(--text3)] truncate max-w-[150px]">
+                          {account.bankName}
+                        </div>
                         <div className="text-sm text-[var(--text2)]">
                           {account.iban.slice(-6)}
                         </div>
@@ -2807,7 +2810,7 @@ const BankPage = () => {
         {/* Consolidated View */}
         {showConsolidatedView && consolidatedView && (
           <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)] shadow-sm mb-6">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex flex-row items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
                 <TrendingUp size={20} className="text-[var(--primary)]" />
               </div>
