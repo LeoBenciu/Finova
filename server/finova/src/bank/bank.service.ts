@@ -736,6 +736,56 @@ export class BankService {
             data: { status: SuggestionStatus.REJECTED }
           });
 
+          // Auto-clear any related outstanding item when a manual match is created
+          try {
+            const accountingClientId = document.accountingClient.id;
+            const txDate = bankTransaction.transactionDate || new Date();
+
+            // 1) Prefer item explicitly linked to the document
+            let outstanding = await prisma.outstandingItem.findFirst({
+              where: {
+                accountingClientId,
+                status: 'OUTSTANDING',
+                relatedDocumentId: document.id
+              }
+            });
+
+            // 2) If none, try to find by amount and optional reference number
+            if (!outstanding) {
+              const amountNumber = Number(bankTransaction.amount);
+              const reference = bankTransaction.referenceNumber || undefined;
+              const whereAmount: any = {
+                accountingClientId,
+                status: 'OUTSTANDING',
+                relatedDocumentId: null,
+                amount: amountNumber
+              };
+              if (reference) {
+                whereAmount.referenceNumber = reference;
+              }
+              outstanding = await prisma.outstandingItem.findFirst({ where: whereAmount });
+            }
+
+            if (outstanding) {
+              // Recalculate days outstanding similar to updateOutstandingItem()
+              const issueDate = new Date(outstanding.issueDate);
+              const today = new Date();
+              const daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+              await prisma.outstandingItem.update({
+                where: { id: outstanding.id },
+                data: {
+                  status: 'CLEARED',
+                  actualClearDate: new Date(txDate),
+                  relatedTransactionId: bankTransaction.id,
+                  daysOutstanding
+                }
+              });
+            }
+          } catch (e) {
+            console.warn('⚠️ Failed to auto-clear outstanding item on manual match:', e);
+          }
+
           if (document.type.toLowerCase().includes('invoice')) {
             const parseAmount = (value: any): number => {
               if (!value) return 0;
@@ -944,6 +994,65 @@ export class BankService {
             },
             data: { status: SuggestionStatus.REJECTED }
           });
+
+          // Auto-clear any related outstanding item when a suggestion is accepted
+          try {
+            const doc = suggestion.document;
+            const bankTx = suggestion.bankTransaction;
+            const accountingClientId = doc
+              ? doc.accountingClient.id
+              : bankTx?.bankStatementDocument?.accountingClient?.id;
+
+            if (accountingClientId && bankTx) {
+              const txDate = bankTx.transactionDate || new Date();
+
+              // 1) Prefer item explicitly linked to the document
+              let outstanding = doc
+                ? await prisma.outstandingItem.findFirst({
+                    where: {
+                      accountingClientId,
+                      status: 'OUTSTANDING',
+                      relatedDocumentId: doc.id
+                    }
+                  })
+                : null;
+
+              // 2) If none, try to find by amount and optional reference number
+              if (!outstanding) {
+                const amountNumber = Number(bankTx.amount);
+                const reference = bankTx.referenceNumber || undefined;
+                const whereAmount: any = {
+                  accountingClientId,
+                  status: 'OUTSTANDING',
+                  relatedDocumentId: null,
+                  amount: amountNumber
+                };
+                if (reference) {
+                  whereAmount.referenceNumber = reference;
+                }
+                outstanding = await prisma.outstandingItem.findFirst({ where: whereAmount });
+              }
+
+              if (outstanding) {
+                // Recalculate days outstanding similar to updateOutstandingItem()
+                const issueDate = new Date(outstanding.issueDate);
+                const today = new Date();
+                const daysOutstanding = Math.floor((today.getTime() - issueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+                await prisma.outstandingItem.update({
+                  where: { id: outstanding.id },
+                  data: {
+                    status: 'CLEARED',
+                    actualClearDate: new Date(txDate),
+                    relatedTransactionId: bankTx.id,
+                    daysOutstanding
+                  }
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ Failed to auto-clear outstanding item on suggestion acceptance:', e);
+          }
 
           console.log('💰 PAYMENT STATUS UPDATE:', {
             hasDocument: !!suggestion.document,

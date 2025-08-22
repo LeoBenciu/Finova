@@ -43,6 +43,7 @@ import {
   useGetReconciliationHistoryAndAuditTrailQuery,
   useGetOutstandingItemsAgingQuery,
   useCreateOutstandingItemMutation,
+  useGetOutstandingItemsQuery,
   useUpdateDocumentReconciliationStatusMutation,
   // Multi-Bank Account API hooks
   useGetBankAccountsQuery,
@@ -333,6 +334,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
           })}
         </div>
 
+      
         <div className="flex items-center gap-3">
           {/* Date Range Selector */}
           <div className="flex items-center gap-2">
@@ -1974,6 +1976,8 @@ const BankPage = () => {
   const clientCompanyEin = useSelector((state: {clientCompany: {current: {ein: string}}}) => state.clientCompany.current.ein);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
+  const [excludeOutstanding, setExcludeOutstanding] = useState<boolean>(true);
+  const [showOutstandingPanel, setShowOutstandingPanel] = useState<boolean>(false);
   const [updatingDocStatus, setUpdatingDocStatus] = useState<Set<number>>(new Set());
   const [updateDocumentReconciliationStatus] = useUpdateDocumentReconciliationStatusMutation();
 
@@ -2211,6 +2215,25 @@ const BankPage = () => {
   });
   const { items: suggestionsItems, total: suggestionsTotal } = suggestionsResp as any;
 
+  // Outstanding items (for filtering and badges)
+  const { data: outstandingList } = useGetOutstandingItemsQuery({
+    clientEin: clientCompanyEin,
+    status: 'OUTSTANDING'
+  }, {
+    skip: !clientCompanyEin
+  });
+
+  const { outstandingDocIds, outstandingTxnIds } = useMemo(() => {
+    const res = Array.isArray(outstandingList) ? outstandingList : (outstandingList?.items || []);
+    const d = new Set<number>();
+    const t = new Set<string>();
+    for (const it of res) {
+      if (it?.relatedDocumentId != null) d.add(it.relatedDocumentId as number);
+      if (it?.relatedTransactionId != null) t.add(String(it.relatedTransactionId));
+    }
+    return { outstandingDocIds: d, outstandingTxnIds: t };
+  }, [outstandingList]);
+
   // Local state to optimistically remove suggestions that were just accepted/rejected
   const [removedSuggestions, setRemovedSuggestions] = useState<Set<number>>(new Set());
 
@@ -2356,18 +2379,20 @@ const BankPage = () => {
         (filterStatus === 'reconciled' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
         (filterStatus === 'disputed' && normalizedStatus === 'disputed') ||
         (filterStatus === 'ignored' && normalizedStatus === 'ignored');
+
+      const notOutstanding = !excludeOutstanding || !outstandingDocIds.has(doc.id);
       
       // Debug individual document filtering
       if (filterStatus === 'reconciled') {
         console.log(`📄 Doc ${doc.id} (${doc.name}): status='${doc.reconciliation_status}' normalized='${normalizedStatus}' matches=${matchesStatus}`);
       }
       
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && notOutstanding;
     });
     
     console.log(`✅ Filtered documents: ${filtered.length}/${dList.length}`);
     return filtered;
-  }, [documentsData, searchTerm, filterStatus]);
+  }, [documentsData, searchTerm, filterStatus, excludeOutstanding, outstandingDocIds]);
 
   const filteredTransactions = useMemo(() => {
     const tList: BankTransaction[] = Array.isArray(transactionsData) ? transactionsData : [];
@@ -2395,18 +2420,20 @@ const BankPage = () => {
       const matchesStatus = filterStatus === 'all' || 
         (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
         (filterStatus === 'reconciled' && ['matched', 'auto_matched', 'manually_matched'].includes(normalizedStatus));
+
+      const notOutstanding = !excludeOutstanding || !outstandingTxnIds.has(String(txn.id));
       
       // Debug individual transaction filtering
       if (filterStatus === 'reconciled') {
         console.log(`💳 Txn ${txn.id}: status='${txn.reconciliation_status}' normalized='${normalizedStatus}' matches=${matchesStatus}`);
       }
       
-      return matchesSearch && matchesStatus;
+      return matchesSearch && matchesStatus && notOutstanding;
     });
     
     console.log(`✅ Filtered transactions: ${filtered.length}/${tList.length}`);
     return filtered;
-  }, [transactionsData, searchTerm, filterStatus]);
+  }, [transactionsData, searchTerm, filterStatus, excludeOutstanding, outstandingTxnIds]);
 
   // Calculate unreconciled transactions count (for Mark as Outstanding logic)
   const unreconciledTransactionsCount = useMemo(() => {
@@ -3156,6 +3183,25 @@ const BankPage = () => {
             <option value="ignored">{language === 'ro' ? 'Ignorate' : 'Ignored'}</option>
           </select>
 
+          {/* Outstanding toggle */}
+          <label className="flex items-center gap-2 text-sm text-[var(--text1)] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={excludeOutstanding}
+              onChange={(e) => setExcludeOutstanding(e.target.checked)}
+              className="w-4 h-4 accent-[var(--primary)]"
+            />
+            {excludeOutstanding ? (
+              <span>
+                {language === 'ro' ? 'Exclude elementele în așteptare' : 'Exclude Outstanding'}
+              </span>
+            ) : (
+              <span>
+                {language === 'ro' ? 'Include elementele în așteptare' : 'Include Outstanding'}
+              </span>
+            )}
+          </label>
+
           {/* Bulk Actions */}
           {showBulkActions && (
             <div className="flex gap-2">
@@ -3175,8 +3221,36 @@ const BankPage = () => {
               </button>
             </div>
           )}
+
+          {/* Open Outstanding Items management panel (Reconciliation Filters) */}
+          <button
+            type="button"
+            onClick={() => setShowOutstandingPanel(true)}
+            className="px-4 py-2 bg-yellow-500/90 text-white rounded-xl hover:bg-yellow-600 transition-colors text-sm font-medium"
+            title={language === 'ro' ? 'Administrează elementele în așteptare' : 'Manage Outstanding Items'}
+          >
+            {language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
+          </button>
         </div>
       </div>
+
+      {/* Slide-over Outstanding Items Management Panel */}
+      {showOutstandingPanel && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowOutstandingPanel(false)}></div>
+          <div className="absolute right-0 top-0 h-full w-full max-w-3xl bg-white shadow-xl flex flex-col">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
+              </h3>
+              <button onClick={() => setShowOutstandingPanel(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+              <OutstandingItemsManagement clientEin={clientCompanyEin} language={language as any} />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bulk Actions Bar */}
       <AnimatePresence>
@@ -3292,6 +3366,11 @@ const BankPage = () => {
                               <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.reconciliation_status)}`}>
                                 {getStatusText(doc.reconciliation_status, language)}
                               </span>
+                              {outstandingDocIds.has(doc.id) && (
+                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700">
+                                  {language === 'ro' ? 'În Așteptare' : 'Outstanding'}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-[var(--text3)] mb-2 truncate text-left">{doc.vendor}</p>
                             <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
@@ -3451,6 +3530,11 @@ const BankPage = () => {
                               <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(txn.reconciliation_status)}`}>
                                 {getStatusText(txn.reconciliation_status, language)}
                               </span>
+                              {outstandingTxnIds.has(String(txn.id)) && (
+                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700">
+                                  {language === 'ro' ? 'În Așteptare' : 'Outstanding'}
+                                </span>
+                              )}
                               {txn.confidence_score && (
                                 <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium">
                                   {Math.round(txn.confidence_score * 100)}%
