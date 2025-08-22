@@ -247,7 +247,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
                 {language === 'ro' ? 'Nu există elemente în așteptare' : 'No outstanding items found'}
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto scrollbar-soft">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
@@ -305,21 +305,21 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
                               <>
                                 <button
                                   onClick={() => handleMarkAsCleared(item.id)}
-                                  className="text-green-600 hover:text-green-800"
+                                  className="bg-green-100 text-green-700 hover:bg-green-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Marchează ca Compensat' : 'Mark as Cleared'}
                                 >
                                   <CheckCircle className="h-4 w-4" />
                                 </button>
                                 <button
                                   onClick={() => handleMarkAsStale(item.id)}
-                                  className="text-orange-600 hover:text-orange-800"
+                                  className="bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Marchează ca Învechit' : 'Mark as Stale'}
                                 >
                                   <AlertTriangle className="h-4 w-4" />
                                 </button>
                                 <button
                                   onClick={() => handleVoidItem(item.id)}
-                                  className="text-red-600 hover:text-red-800"
+                                  className="bg-red-100 text-red-700 hover:bg-red-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Anulează' : 'Void'}
                                 >
                                   <XCircle className="h-4 w-4" />
@@ -328,14 +328,14 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
                             )}
                             <button
                               onClick={() => setEditingItem(item)}
-                              className="text-blue-600 hover:text-blue-800"
+                              className="bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors rounded-md p-1"
                               title={language === 'ro' ? 'Editează' : 'Edit'}
                             >
                               <Edit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteItem(item.id)}
-                              className="text-red-600 hover:text-red-800"
+                              className="bg-red-100 text-red-700 hover:bg-red-200 transition-colors rounded-md p-1"
                               title={language === 'ro' ? 'Șterge' : 'Delete'}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -494,7 +494,7 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
               </h3>
               <button
                 onClick={() => setEditingItem(null)}
-                className="text-gray-500 hover:text-gray-700"
+                className="bg-red-200 text-red-500 hover:bg-red-500 hover:text-white cursor-pointer"
               >
                 ✕
               </button>

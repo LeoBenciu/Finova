@@ -2985,17 +2985,24 @@ const BankPage = () => {
           </select>
 
           {/* Outstanding toggle */}
-          <label className="flex items-center gap-2 text-sm text-[var(--text1)] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={excludeOutstanding}
-              onChange={(e) => setExcludeOutstanding(e.target.checked)}
-              className="w-4 h-4 accent-[var(--primary)] bg-white shadow-none focus:ring-0 focus:ring-offset-0 focus:outline-none"
-            />
-              <span>
-                {language === 'ro' ? 'În așteptare' : 'Outstanding'}
-              </span>
-          </label>
+          <div className="flex items-center gap-2 text-sm text-[var(--text1)] select-none">
+            <button
+              type="button"
+              onClick={() => setExcludeOutstanding(prev => !prev)}
+              aria-pressed={excludeOutstanding}
+              aria-label={language === 'ro' ? 'Filtrează elementele în așteptare' : 'Filter outstanding items'}
+              className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
+            >
+              {excludeOutstanding ? (
+                <CheckSquare size={20} className="text-[var(--primary)]" />
+              ) : (
+                <Square size={20} className="text-[var(--text3)]" />
+              )}
+            </button>
+            <span>
+              {language === 'ro' ? 'În așteptare' : 'Outstanding'}
+            </span>
+          </div>
 
           {/* Bulk Actions */}
           {showBulkActions && (

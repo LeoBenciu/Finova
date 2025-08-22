@@ -105,6 +105,26 @@ div::-webkit-scrollbar-thumb {
   border-radius: 10px;
 }
 
+/* Softer, thicker scrollbar for horizontally scrollable tables */
+.scrollbar-soft {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #d1d5db transparent; /* thumb track */
+}
+
+.scrollbar-soft::-webkit-scrollbar {
+  height: 12px; /* horizontal */
+  width: 12px;  /* vertical fallback */
+}
+
+.scrollbar-soft::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-soft::-webkit-scrollbar-thumb {
+  background-color: #d1d5db; /* tailwind gray-300 */
+  border-radius: 8px;
+}
+
 /* transparent thumb variant */
 .scrollbar-thumb-transparent::-webkit-scrollbar-thumb {
   background-color: transparent !important;
