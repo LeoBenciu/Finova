@@ -638,6 +638,42 @@ export const finovaApi = createApi({
             }),
             invalidatesTags: ['BankReconciliation']
         }),
+
+        // ==================== TRANSACTION SPLITS API HOOKS ====================
+        getTransactionSplits: build.query<any, { transactionId: string }>({
+          query: ({ transactionId }) => ({
+            url: `/bank/transaction/${transactionId}/splits`,
+            method: 'GET'
+          }),
+          providesTags: ['BankReconciliation', 'BankTransactions']
+        }),
+
+        setTransactionSplits: build.mutation<
+          any,
+          { transactionId: string; splits: { amount: number; accountCode: string; notes?: string }[] }
+        >({
+          query: ({ transactionId, splits }) => ({
+            url: `/bank/transaction/${transactionId}/splits`,
+            method: 'PUT',
+            body: { splits }
+          }),
+          invalidatesTags: ['BankReconciliation', 'BankTransactions']
+        }),
+
+        suggestTransactionSplits: build.mutation<any, { transactionId: string }>({
+          query: ({ transactionId }) => ({
+            url: `/bank/transaction/${transactionId}/splits/suggest`,
+            method: 'POST'
+          })
+        }),
+
+        deleteTransactionSplit: build.mutation<any, { splitId: number }>({
+          query: ({ splitId }) => ({
+            url: `/bank/split/${splitId}`,
+            method: 'DELETE'
+          }),
+          invalidatesTags: ['BankReconciliation', 'BankTransactions']
+        }),
         
         updateUserConsent: build.mutation({
             query: ({ agreementType, accepted }) => ({
@@ -910,5 +946,6 @@ useGetReconciliationHistoryAndAuditTrailQuery,
 useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
 useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
-useUpdateDocumentReconciliationStatusMutation
+useUpdateDocumentReconciliationStatusMutation,
+useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation
 } = finovaApi;

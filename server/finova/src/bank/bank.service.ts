@@ -1,6 +1,6 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType } from '@prisma/client';
+import { Prisma, User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType } from '@prisma/client';
 import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 
@@ -23,6 +23,11 @@ export class BankService {
       if (!input) return null;
       const d = new Date(input);
       return isNaN(d.getTime()) ? null : d;
+    }
+
+    // Utility: compare monetary values with tolerance of 0.01
+    private amountsEqual(a: number, b: number, epsilon = 0.01): boolean {
+      return Math.abs(a - b) <= epsilon;
     }
 
   /**
@@ -346,6 +351,214 @@ export class BankService {
         );
       
         return { total, page, size, items: transactionsWithSignedUrls };
+      }
+
+      // ==================== TRANSACTION SPLITS ====================
+      async getTransactionSplits(transactionId: string, user: User) {
+        const tx = await this.prisma.bankTransaction.findUnique({
+          where: { id: transactionId },
+          include: {
+            bankStatementDocument: {
+              include: { accountingClient: true },
+            },
+          },
+        });
+        if (!tx) throw new NotFoundException('Bank transaction not found');
+        if (tx.bankStatementDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this bank transaction');
+        }
+        const splits = await this.prisma.bankTransactionSplit.findMany({
+          where: { bankTransactionId: transactionId },
+          include: { chartOfAccount: true },
+          orderBy: { id: 'asc' },
+        });
+        return splits.map((s) => ({
+          id: s.id,
+          amount: Number(s.amount),
+          notes: s.notes,
+          chartOfAccount: {
+            id: s.chartOfAccountId,
+            accountCode: s.chartOfAccount.accountCode,
+            accountName: s.chartOfAccount.accountName,
+          },
+        }));
+      }
+
+      async setTransactionSplits(
+        transactionId: string,
+        user: User,
+        data: { splits: { amount: number; accountCode: string; notes?: string }[] }
+      ) {
+        if (!data || !Array.isArray(data.splits)) {
+          throw new BadRequestException('Invalid payload: splits array required');
+        }
+
+        const tx = await this.prisma.bankTransaction.findUnique({
+          where: { id: transactionId },
+          include: {
+            bankStatementDocument: { include: { accountingClient: true } },
+          },
+        });
+        if (!tx) throw new NotFoundException('Bank transaction not found');
+        if (tx.bankStatementDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this bank transaction');
+        }
+
+        // Validate totals
+        const totalSplits = data.splits.reduce((sum, s) => sum + (Number(s.amount) || 0), 0);
+        const txAmount = Number(tx.amount) || 0;
+        if (!this.amountsEqual(totalSplits, txAmount)) {
+          throw new BadRequestException(`Sum of splits (${totalSplits.toFixed(2)}) must equal transaction amount (${txAmount.toFixed(2)})`);
+        }
+
+        // Resolve account codes -> ids, validate all exist
+        const codes = Array.from(new Set(data.splits.map((s) => s.accountCode)));
+        const accounts = await this.prisma.chartOfAccounts.findMany({ where: { accountCode: { in: codes } } });
+        const accountByCode = new Map(accounts.map((a) => [a.accountCode, a]));
+        for (const s of data.splits) {
+          if (!accountByCode.has(s.accountCode)) {
+            throw new BadRequestException(`Account code not found: ${s.accountCode}`);
+          }
+          const amt = Number(s.amount);
+          if (isNaN(amt) || Math.abs(amt) < 0.0) {
+            throw new BadRequestException('Invalid split amount');
+          }
+        }
+
+        // Replace all splits atomically
+        await this.prisma.$transaction(async (prisma) => {
+          await prisma.bankTransactionSplit.deleteMany({ where: { bankTransactionId: tx.id } });
+          if (data.splits.length > 0) {
+            await prisma.bankTransactionSplit.createMany({
+              data: data.splits.map((s) => ({
+                bankTransactionId: tx.id,
+                amount: new Prisma.Decimal(s.amount.toFixed(2)),
+                notes: s.notes || null,
+                chartOfAccountId: accountByCode.get(s.accountCode)!.id,
+              })),
+            });
+          }
+        });
+
+        // Return new splits
+        return this.getTransactionSplits(transactionId, user);
+      }
+
+      async deleteTransactionSplit(splitId: number, user: User) {
+        const split = await this.prisma.bankTransactionSplit.findUnique({
+          where: { id: splitId },
+          include: { bankTransaction: { include: { bankStatementDocument: { include: { accountingClient: true } } } } },
+        });
+        if (!split) throw new NotFoundException('Split not found');
+        if (split.bankTransaction.bankStatementDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this split');
+        }
+
+        // Delete and return remaining splits for the transaction
+        await this.prisma.bankTransactionSplit.delete({ where: { id: splitId } });
+        const remaining = await this.prisma.bankTransactionSplit.findMany({
+          where: { bankTransactionId: split.bankTransactionId },
+          include: { chartOfAccount: true },
+          orderBy: { id: 'asc' },
+        });
+        return remaining.map((s) => ({
+          id: s.id,
+          amount: Number(s.amount),
+          notes: s.notes,
+          chartOfAccount: {
+            id: s.chartOfAccountId,
+            accountCode: s.chartOfAccount.accountCode,
+            accountName: s.chartOfAccount.accountName,
+          },
+        }));
+      }
+
+      /**
+       * Suggest transaction splits for a bank transaction using simple heuristics:
+       * 1) Try to find the most recent prior transaction with the exact same description (case-insensitive) and same sign that already has splits.
+       *    If found, scale that split pattern proportionally to the current transaction absolute amount.
+       * 2) If no prior split pattern is found, but the current transaction already has a chartOfAccount assigned,
+       *    suggest a single split to that account for the full absolute amount.
+       * 3) Otherwise return an empty array (frontend can show a message or keep manual entry).
+       *
+       * Amounts returned are positive numbers to align with UI usage of absolute values.
+       */
+      async suggestTransactionSplits(transactionId: string, user: User) {
+        const tx = await this.prisma.bankTransaction.findUnique({
+          where: { id: transactionId },
+          include: {
+            bankStatementDocument: { include: { accountingClient: true } },
+            chartOfAccount: true,
+          },
+        });
+        if (!tx) throw new NotFoundException('Bank transaction not found');
+        if (tx.bankStatementDocument.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+          throw new UnauthorizedException('No access to this bank transaction');
+        }
+
+        const absAmount = Math.abs(Number(tx.amount) || 0);
+        const description = (tx.description || '').trim();
+        const isCredit = Number(tx.amount) > 0; // sign for matching history
+
+        // 1) Look for most recent prior transaction with same description and sign that has splits
+        if (description.length > 0) {
+          const priorTx = await this.prisma.bankTransaction.findFirst({
+            where: {
+              id: { not: tx.id },
+              description: { equals: description, mode: 'insensitive' },
+              bankStatementDocument: {
+                accountingClientId: tx.bankStatementDocument.accountingClientId,
+              },
+              // same sign
+              amount: isCredit ? { gt: 0 } : { lt: 0 },
+            },
+            orderBy: { transactionDate: 'desc' },
+          });
+
+          if (priorTx) {
+            const priorSplits = await this.prisma.bankTransactionSplit.findMany({
+              where: { bankTransactionId: priorTx.id },
+              include: { chartOfAccount: true },
+              orderBy: { id: 'asc' },
+            });
+            if (priorSplits.length > 0) {
+              const priorAbsTotal = priorSplits.reduce((sum, s) => sum + Math.abs(Number(s.amount) || 0), 0);
+              const denom = priorAbsTotal > 0 ? priorAbsTotal : Math.abs(Number(priorTx.amount) || 0);
+              const ratio = denom > 0 ? absAmount / denom : 1;
+
+              // Scale splits and fix rounding on the last row
+              const scaled = priorSplits.map((s) => ({
+                accountCode: s.chartOfAccount.accountCode,
+                amount: Number((Math.abs(Number(s.amount)) * ratio).toFixed(2)),
+                notes: s.notes || undefined,
+              }));
+              // Adjust last split to ensure exact sum
+              let sum = scaled.reduce((acc, r) => acc + (Number(r.amount) || 0), 0);
+              const diff = Number((absAmount - sum).toFixed(2));
+              if (scaled.length > 0 && Math.abs(diff) >= 0.01) {
+                scaled[scaled.length - 1].amount = Number((scaled[scaled.length - 1].amount + diff).toFixed(2));
+              }
+
+              return { splits: scaled };
+            }
+          }
+        }
+
+        // 2) Fallback: if current transaction already has an account, suggest single split
+        if (tx.chartOfAccount) {
+          return {
+            splits: [
+              {
+                amount: Number(absAmount.toFixed(2)),
+                accountCode: tx.chartOfAccount.accountCode,
+                notes: undefined,
+              },
+            ],
+          };
+        }
+
+        // 3) No suggestion
+        return { splits: [] };
       }
 
       

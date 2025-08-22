@@ -1,4 +1,4 @@
-import { Controller, UseGuards, Get, Post, Put, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Put, Body, Param, Query, ParseIntPipe, Delete } from '@nestjs/common';
 import { GetUser } from 'src/auth/decorator';
 import { User } from '@prisma/client';
 import { JwtGuard } from 'src/auth/guard';
@@ -434,5 +434,37 @@ export class BankController {
       return this.bankService.associateTransactionsWithAccounts(clientEin, user);
     }
 
-    
+    // ==================== TRANSACTION SPLITS ====================
+    @Get('transaction/:transactionId/splits')
+    async getTransactionSplits(
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getTransactionSplits(transactionId, user);
+    }
+
+    @Put('transaction/:transactionId/splits')
+    async setTransactionSplits(
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User,
+      @Body() data: { splits: { amount: number; accountCode: string; notes?: string }[] }
+    ) {
+      return this.bankService.setTransactionSplits(transactionId, user, data);
+    }
+
+    @Delete('split/:splitId')
+    async deleteTransactionSplit(
+      @Param('splitId', ParseIntPipe) splitId: number,
+      @GetUser() user: User
+    ) {
+      return this.bankService.deleteTransactionSplit(splitId, user);
+    }
+
+    @Post('transaction/:transactionId/splits/suggest')
+    async suggestTransactionSplits(
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.suggestTransactionSplits(transactionId, user);
+    }
 }

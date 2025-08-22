@@ -319,6 +319,7 @@ model BankTransaction {
   reconciliationRecords     ReconciliationRecord[]
   reconciliationSuggestions ReconciliationSuggestion[]
   outstandingItems          OutstandingItem[]
+  splits                    BankTransactionSplit[]
 
   @@index([bankStatementDocumentId])
   @@index([transactionDate])
@@ -326,6 +327,21 @@ model BankTransaction {
   @@index([chartOfAccountId])
   @@index([bankAccountId])
   @@index([isStandalone])
+}
+
+model BankTransactionSplit {
+  id                Int               @id @default(autoincrement())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  bankTransaction   BankTransaction   @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId String
+  amount            Decimal           @db.Decimal(12, 2)
+  notes             String?
+  chartOfAccount    ChartOfAccounts   @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccountId  Int
+
+  @@index([bankTransactionId])
+  @@index([chartOfAccountId])
 }
 
 model ReconciliationRecord {
@@ -397,6 +413,7 @@ model ChartOfAccounts {
   updatedAt        DateTime          @updatedAt
   bankTransactions          BankTransaction[]
   reconciliationSuggestions ReconciliationSuggestion[]
+  splits                     BankTransactionSplit[]
 
   @@index([accountCode])
   @@index([accountType])

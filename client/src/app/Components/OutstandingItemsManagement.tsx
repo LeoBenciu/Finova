@@ -305,21 +305,21 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
                               <>
                                 <button
                                   onClick={() => handleMarkAsCleared(item.id)}
-                                  className="bg-green-100 text-green-700 hover:bg-green-200 transition-colors rounded-md p-1"
+                                  className="bg-green-100 text-emerald-500 hover:bg-emerald-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Marchează ca Compensat' : 'Mark as Cleared'}
                                 >
                                   <CheckCircle className="h-4 w-4" />
                                 </button>
                                 <button
                                   onClick={() => handleMarkAsStale(item.id)}
-                                  className="bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors rounded-md p-1"
+                                  className="bg-orange-100 text-orange-500 hover:bg-orange-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Marchează ca Învechit' : 'Mark as Stale'}
                                 >
                                   <AlertTriangle className="h-4 w-4" />
                                 </button>
                                 <button
                                   onClick={() => handleVoidItem(item.id)}
-                                  className="bg-red-100 text-red-700 hover:bg-red-200 transition-colors rounded-md p-1"
+                                  className="bg-red-100 text-red-500 hover:bg-red-200 transition-colors rounded-md p-1"
                                   title={language === 'ro' ? 'Anulează' : 'Void'}
                                 >
                                   <XCircle className="h-4 w-4" />
@@ -328,14 +328,14 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
                             )}
                             <button
                               onClick={() => setEditingItem(item)}
-                              className="bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors rounded-md p-1"
+                              className="bg-blue-100 text-blue-500 hover:bg-blue-200 transition-colors rounded-md p-1"
                               title={language === 'ro' ? 'Editează' : 'Edit'}
                             >
                               <Edit className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleDeleteItem(item.id)}
-                              className="bg-red-100 text-red-700 hover:bg-red-200 transition-colors rounded-md p-1"
+                              className="bg-red-100 text-red-500 hover:bg-red-200 transition-colors rounded-md p-1"
                               title={language === 'ro' ? 'Șterge' : 'Delete'}
                             >
                               <Trash2 className="h-4 w-4" />

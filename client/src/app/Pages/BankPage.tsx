@@ -53,6 +53,8 @@ import {
   useGetConsolidatedAccountViewQuery
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
+import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 // Simple toast type
 type Toast = { id: number; type: 'success' | 'error' | 'info'; message: string };
@@ -488,6 +490,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
                               {new Date(activity.timestamp).toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US')}
                             </p>
                           </div>
+                        {/* Removed erroneous splits preview from Recent Activity (no txn context here) */}
                           <div className="text-sm text-[var(--text2)]">
                             {activity.details.confidence && `${(activity.details.confidence * 100).toFixed(1)}%`}
                           </div>
@@ -553,7 +556,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
                     <h4 className="font-semibold text-[var(--text1)] mb-4">
                       {language === 'ro' ? 'Istoric Activități' : 'Activity History'}
                     </h4>
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto scrollbar-soft">
                       <table className="w-full">
                         <thead>
                           <tr className="border-b border-[var(--text3)]">
@@ -1682,7 +1685,7 @@ const AccountCodeSelector: React.FC<AccountCodeSelectorProps> = ({ onSelect, onC
           className="w-full px-3 py-2 border border-[var(--text4)] rounded-lg focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-[var(--background)] text-[var(--text1)] mb-3"
         />
         
-        <div className="max-h-40 overflow-y-auto space-y-1">
+        <div className="max-h-40 overflow-y-auto scrollbar-soft space-y-1">
           {filteredAccounts.map((account) => (
             <button
               key={account.code}
@@ -1831,6 +1834,10 @@ const BankPage = () => {
   const [showMatchModal, setShowMatchModal] = useState(false);
   const [showAccountReconcileModal, setShowAccountReconcileModal] = useState(false);
   const [selectedTransactionForAccount, setSelectedTransactionForAccount] = useState<BankTransaction | null>(null);
+  const [showSplitModal, setShowSplitModal] = useState(false);
+  const [selectedTransactionForSplit, setSelectedTransactionForSplit] = useState<BankTransaction | null>(null);
+  const [expandedSplits, setExpandedSplits] = useState<Record<string, boolean>>({});
+  
   
   // Multi-Bank Account state
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<number | null>(null);
@@ -3028,7 +3035,7 @@ const BankPage = () => {
           <button
             type="button"
             onClick={() => setShowOutstandingPanel(true)}
-            className="relative group p-2 bg-yellow-500/90 text-white rounded-xl hover:bg-yellow-600 transition-colors"
+            className="relative group p-2 bg-yellow-400 text-white rounded-xl hover:bg-yellow-500 transition-colors"
             title={language === 'ro' ? 'Administrează elementele în așteptare' : 'Manage Outstanding Items'}
             aria-label={language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
           >
@@ -3053,7 +3060,7 @@ const BankPage = () => {
               </h3>
               <button onClick={() => setShowOutstandingPanel(false)} className="text-gray-500 hover:text-gray-700">✕</button>
             </div>
-            <div className="flex-1 overflow-auto p-6 bg-gray-50">
+            <div className="flex-1 overflow-auto scrollbar-soft p-6 bg-gray-50">
               <OutstandingItemsManagement clientEin={clientCompanyEin} language={language as any} />
             </div>
           </div>
@@ -3093,6 +3100,26 @@ const BankPage = () => {
         )}
       </AnimatePresence>
 
+      {/* Split Transaction Modal */}
+      {showSplitModal && selectedTransactionForSplit && (
+        <SplitTransactionModal
+          isOpen={showSplitModal}
+          onClose={() => {
+            setShowSplitModal(false);
+            setSelectedTransactionForSplit(null);
+          }}
+          transaction={{
+            id: selectedTransactionForSplit.id,
+            amount: selectedTransactionForSplit.amount,
+            description: selectedTransactionForSplit.description,
+            transactionType: selectedTransactionForSplit.transactionType,
+            referenceNumber: selectedTransactionForSplit.referenceNumber,
+            transactionDate: selectedTransactionForSplit.transactionDate,
+          }}
+          language={language as any}
+        />
+      )}
+
       {/* Main Content */}
       {activeTab === 'reconciliation' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
@@ -3110,7 +3137,7 @@ const BankPage = () => {
               </div>
             </div>
             
-            <div className="p-4 max-h-[600px] overflow-y-auto">
+            <div className="p-4 max-h-[600px] overflow-y-auto scrollbar-soft">
               {documentsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex items-center gap-3 text-[var(--text2)]">
@@ -3271,7 +3298,7 @@ const BankPage = () => {
               </div>
             </div>
             
-            <div className="p-4 max-h-[600px] overflow-y-auto">
+            <div className="p-4 max-h-[600px] overflow-y-auto scrollbar-soft">
               {transactionsLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex items-center gap-3 text-[var(--text2)]">
@@ -3404,6 +3431,32 @@ const BankPage = () => {
                               <Target size={14} />
                             </button>
                           )}
+
+                          {(() => {
+                            const normalized = normalizeStatus(txn.reconciliation_status);
+                            const shouldShowSplitButton = normalized === 'unreconciled';
+                            return shouldShowSplitButton;
+                          })() && (
+                            <button
+                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-blue-500 bg-blue-200 text-blue-600 cursor-pointer"
+                              onClick={() => {
+                                setSelectedTransactionForSplit(txn);
+                                setShowSplitModal(true);
+                              }}
+                              title={language === 'ro' ? 'Împarte tranzacția' : 'Split transaction'}
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          )}
+
+                          {/* Expand/collapse splits preview */}
+                          <button
+                            className="p-1 transition-colors rounded-lg hover:text-white hover:bg-gray-500/40 bg-gray-200 text-gray-700 cursor-pointer"
+                            onClick={() => setExpandedSplits((prev: Record<string, boolean>) => ({ ...prev, [txn.id]: !prev[txn.id] }))}
+                            title={expandedSplits[txn.id] ? (language === 'ro' ? 'Ascunde împărțirile' : 'Hide splits') : (language === 'ro' ? 'Arată împărțirile' : 'Show splits')}
+                          >
+                            {expandedSplits[txn.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                          </button>
 
                           {(() => {
                             const normalized = normalizeStatus(txn.reconciliation_status);
