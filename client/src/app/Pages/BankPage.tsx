@@ -9,7 +9,6 @@ import {
   ArrowRight,
   Link,
   Calendar,
-  AlertTriangle,
   Check,
   X,
   Zap,
@@ -41,7 +40,6 @@ import {
   useGetBalanceReconciliationStatementQuery,
   useGetBankReconciliationSummaryReportQuery,
   useGetReconciliationHistoryAndAuditTrailQuery,
-  useGetOutstandingItemsAgingQuery,
   useCreateOutstandingItemMutation,
   useGetOutstandingItemsQuery,
   useUpdateDocumentReconciliationStatusMutation,
@@ -151,7 +149,7 @@ interface ComprehensiveReportingSystemProps {
 }
 
 function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveReportingSystemProps) {
-  const [activeReport, setActiveReport] = useState<'summary' | 'outstanding' | 'audit' | 'balance' | 'outstanding-items'>('summary');
+  const [activeReport, setActiveReport] = useState<'summary' | 'audit' | 'balance'>('summary');
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
@@ -181,9 +179,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
     endDate: dateRange.endDate
   });
 
-  const { data: outstandingItems, isLoading: outstandingLoading } = useGetOutstandingItemsAgingQuery({
-    clientEin
-  });
+  
 
   const handleExport = async (format: 'pdf' | 'excel') => {
     setIsExporting(true);
@@ -304,8 +300,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
 
   const reportTabs = [
     { id: 'summary', label: language === 'ro' ? 'Sumar' : 'Summary', icon: TrendingUp },
-    { id: 'outstanding', label: language === 'ro' ? 'Elemente Nereconciliate' : 'Outstanding Items', icon: AlertTriangle },
-    { id: 'outstanding-items', label: language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items', icon: Clock },
     { id: 'audit', label: language === 'ro' ? 'Istoric Audit' : 'Audit Trail', icon: FileText },
     { id: 'balance', label: language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation', icon: Landmark }
   ];
@@ -510,193 +504,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
           </div>
         )}
         
-        {activeReport === 'outstanding' && (
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Raport Elemente Nereconciliate pe Vechime' : 'Outstanding Items Aging Report'}
-            </h3>
-            {outstandingLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
-              </div>
-            ) : outstandingItems ? (
-              <div className="space-y-6">
-                {/* Summary Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-orange-800 mb-1">
-                      {language === 'ro' ? 'Total Elemente Nereconciliate' : 'Total Outstanding Items'}
-                    </h5>
-                    <p className="text-2xl font-bold text-orange-900">
-                      {outstandingItems.summary?.totalItems || 0}
-                    </p>
-                  </div>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-red-800 mb-1">
-                      {language === 'ro' ? 'Valoare Totală' : 'Total Amount'}
-                    </h5>
-                    <p className="text-2xl font-bold text-red-900">
-                      {outstandingItems.summary?.totalAmount?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                </div>
-
-                {/* Age Buckets */}
-                {outstandingItems.ageBuckets && (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Distribuție pe Vechime' : 'Age Distribution'}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                      <div className="text-center p-4 bg-green-50 rounded-lg">
-                        <p className="text-sm text-green-600 font-medium">
-                          {language === 'ro' ? 'Curent (0-30 zile)' : 'Current (0-30 days)'}
-                        </p>
-                        <p className="text-xl font-bold text-green-800">
-                          {outstandingItems.ageBuckets.current?.count || 0}
-                        </p>
-                        <p className="text-sm text-green-600">
-                          {outstandingItems.ageBuckets.current?.amount?.toFixed(2) || '0.00'} RON
-                        </p>
-                      </div>
-                      <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                        <p className="text-sm text-yellow-600 font-medium">
-                          {language === 'ro' ? '31-60 zile' : '31-60 days'}
-                        </p>
-                        <p className="text-xl font-bold text-yellow-800">
-                          {outstandingItems.ageBuckets.thirtyDays?.count || 0}
-                        </p>
-                        <p className="text-sm text-yellow-600">
-                          {outstandingItems.ageBuckets.thirtyDays?.amount?.toFixed(2) || '0.00'} RON
-                        </p>
-                      </div>
-                      <div className="text-center p-4 bg-orange-50 rounded-lg">
-                        <p className="text-sm text-orange-600 font-medium">
-                          {language === 'ro' ? '61-90 zile' : '61-90 days'}
-                        </p>
-                        <p className="text-xl font-bold text-orange-800">
-                          {outstandingItems.ageBuckets.sixtyDays?.count || 0}
-                        </p>
-                        <p className="text-sm text-orange-600">
-                          {outstandingItems.ageBuckets.sixtyDays?.amount?.toFixed(2) || '0.00'} RON
-                        </p>
-                      </div>
-                      <div className="text-center p-4 bg-red-50 rounded-lg">
-                        <p className="text-sm text-red-600 font-medium">
-                          {language === 'ro' ? 'Peste 90 zile' : 'Over 90 days'}
-                        </p>
-                        <p className="text-xl font-bold text-red-800">
-                          {outstandingItems.ageBuckets.overNinety?.count || 0}
-                        </p>
-                        <p className="text-sm text-red-600">
-                          {outstandingItems.ageBuckets.overNinety?.amount?.toFixed(2) || '0.00'} RON
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Outstanding Documents */}
-                {outstandingItems.documents && outstandingItems.documents.length > 0 && (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Documente Nereconciliate' : 'Outstanding Documents'}
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-[var(--text3)]">
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Document' : 'Document'}
-                            </th>
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Tip' : 'Type'}
-                            </th>
-                            <th className="text-right py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Sumă' : 'Amount'}
-                            </th>
-                            <th className="text-center py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Vechime (zile)' : 'Age (days)'}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {outstandingItems.documents.slice(0, 10).map((doc: any) => (
-                            <tr key={doc.id} className="border-b border-[var(--text3)] last:border-b-0">
-                              <td className="py-3 text-[var(--text1)]">
-                                {doc.name || doc.document_number || `Document ${doc.id}`}
-                              </td>
-                              <td className="py-3 text-[var(--text2)]">
-                                {doc.type}
-                              </td>
-                              <td className="py-3 text-right text-[var(--text1)] font-medium">
-                                {doc.total_amount?.toFixed(2) || '0.00'} RON
-                              </td>
-                              <td className="py-3 text-center text-[var(--text2)]">
-                                {doc.ageInDays || 0}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-
-                {/* Outstanding Transactions */}
-                {outstandingItems.transactions && outstandingItems.transactions.length > 0 && (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Tranzacții Nereconciliate' : 'Outstanding Transactions'}
-                    </h4>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-[var(--text3)]">
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Data' : 'Date'}
-                            </th>
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Descriere' : 'Description'}
-                            </th>
-                            <th className="text-right py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Sumă' : 'Amount'}
-                            </th>
-                            <th className="text-center py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Vechime (zile)' : 'Age (days)'}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {outstandingItems.transactions.slice(0, 10).map((txn: any) => (
-                            <tr key={txn.id} className="border-b border-[var(--text3)] last:border-b-0">
-                              <td className="py-3 text-[var(--text1)]">
-                                {new Date(txn.transactionDate).toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US')}
-                              </td>
-                              <td className="py-3 text-[var(--text2)]">
-                                {txn.description}
-                              </td>
-                              <td className="py-3 text-right text-[var(--text1)] font-medium">
-                                {txn.amount?.toFixed(2) || '0.00'} RON
-                              </td>
-                              <td className="py-3 text-center text-[var(--text2)]">
-                                {txn.ageInDays || 0}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center text-[var(--text2)] py-12">
-                {language === 'ro' ? 'Nu există elemente nereconciliate' : 'No outstanding items found'}
-              </div>
-            )}
-          </div>
-        )}
         
         {activeReport === 'audit' && (
           <div className="space-y-6">
@@ -1022,13 +829,6 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
               </div>
             )}
           </div>
-        )}
-
-        {activeReport === 'outstanding-items' && (
-          <OutstandingItemsManagement 
-            clientEin={clientEin} 
-            language={language} 
-          />
         )}
       </div>
     </div>
@@ -2899,8 +2699,8 @@ const BankPage = () => {
                         <div className="flex justify-end gap-1">
                           <button
                             title={language === 'ro' ? 'Modifică' : 'Edit'}
-                            className="p-1 rounded text-black
-                            hover:text-white bg-neutral-300 hover:bg-black"
+                            className="p-1 rounded text-[var(--primary)]
+                            hover:text-white bg-[var(--primary)]/30 hover:bg-[var(--primary)]"
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingBankAccount(account);
@@ -3189,17 +2989,11 @@ const BankPage = () => {
               type="checkbox"
               checked={excludeOutstanding}
               onChange={(e) => setExcludeOutstanding(e.target.checked)}
-              className="w-4 h-4 accent-[var(--primary)]"
+              className="w-4 h-4 accent-[var(--primary)] bg-white shadow-none focus:ring-0 focus:ring-offset-0 focus:outline-none"
             />
-            {excludeOutstanding ? (
               <span>
-                {language === 'ro' ? 'Exclude elementele în așteptare' : 'Exclude Outstanding'}
+                {language === 'ro' ? 'În așteptare' : 'Outstanding'}
               </span>
-            ) : (
-              <span>
-                {language === 'ro' ? 'Include elementele în așteptare' : 'Include Outstanding'}
-              </span>
-            )}
           </label>
 
           {/* Bulk Actions */}
@@ -3226,10 +3020,16 @@ const BankPage = () => {
           <button
             type="button"
             onClick={() => setShowOutstandingPanel(true)}
-            className="px-4 py-2 bg-yellow-500/90 text-white rounded-xl hover:bg-yellow-600 transition-colors text-sm font-medium"
+            className="relative group p-2 bg-yellow-500/90 text-white rounded-xl hover:bg-yellow-600 transition-colors"
             title={language === 'ro' ? 'Administrează elementele în așteptare' : 'Manage Outstanding Items'}
+            aria-label={language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
           >
-            {language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
+            <Clock size={16} />
+            <span
+              className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity"
+            >
+              {language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
+            </span>
           </button>
         </div>
       </div>
