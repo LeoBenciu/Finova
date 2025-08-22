@@ -43,6 +43,7 @@ import {
   useGetReconciliationHistoryAndAuditTrailQuery,
   useGetOutstandingItemsAgingQuery,
   useCreateOutstandingItemMutation,
+  useUpdateDocumentReconciliationStatusMutation,
   // Multi-Bank Account API hooks
   useGetBankAccountsQuery,
   useCreateBankAccountMutation,
@@ -66,7 +67,7 @@ interface Document {
   vendor?: string;
   buyer?: string;
   direction?: 'incoming' | 'outgoing';
-  reconciliation_status: 'unreconciled' | 'auto_matched' | 'manually_matched' | 'disputed';
+  reconciliation_status: 'unreconciled' | 'auto_matched' | 'manually_matched' | 'disputed' | 'ignored' | 'pending' | 'matched';
   matched_transactions?: string[];
   references?: number[];
   signedUrl?: string; 
@@ -1973,6 +1974,30 @@ const BankPage = () => {
   const clientCompanyEin = useSelector((state: {clientCompany: {current: {ein: string}}}) => state.clientCompany.current.ein);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
+  const [updatingDocStatus, setUpdatingDocStatus] = useState<Set<number>>(new Set());
+  const [updateDocumentReconciliationStatus] = useUpdateDocumentReconciliationStatusMutation();
+
+  const handleToggleDocumentIgnored = async (doc: Document) => {
+    const normalized = normalizeStatus(doc.reconciliation_status);
+    const nextStatus: 'IGNORED' | 'UNRECONCILED' = normalized === 'ignored' ? 'UNRECONCILED' : 'IGNORED';
+    setUpdatingDocStatus(prev => new Set(prev).add(doc.id));
+    try {
+      await updateDocumentReconciliationStatus({
+        clientEin: clientCompanyEin,
+        documentId: doc.id,
+        status: nextStatus
+      }).unwrap();
+    } catch (e) {
+      console.error('Failed to update document status', e);
+      alert(language === 'ro' ? 'Actualizarea stării documentului a eșuat.' : 'Failed to update document status.');
+    } finally {
+      setUpdatingDocStatus(prev => {
+        const copy = new Set(prev);
+        copy.delete(doc.id);
+        return copy;
+      });
+    }
+  };
   const [activeTab, setActiveTab] = useState<'reconciliation' | 'suggestions' | 'reports'>('reconciliation');
   const [selectedItems, setSelectedItems] = useState<{documents: number[], transactions: string[]}>({documents: [], transactions: []});
   const [draggedItem, setDraggedItem] = useState<{type: 'document' | 'transaction', id: string | number} | null>(null);
@@ -3265,6 +3290,35 @@ const BankPage = () => {
                             }}>
                               <Eye size={14} />
                             </button>
+                            {(() => {
+                              const normalized = normalizeStatus(doc.reconciliation_status);
+                              const isIgnored = normalized === 'ignored';
+                              const isUpdating = updatingDocStatus.has(doc.id);
+                              const title = isIgnored 
+                                ? (language === 'ro' ? 'Revenire la nereconciliat' : 'Revert to Unreconciled')
+                                : (language === 'ro' ? 'Ignoră documentul' : 'Ignore document');
+                              const btnClasses = isIgnored
+                                ? (isUpdating 
+                                    ? 'p-1 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg'
+                                    : 'p-1 hover:text-white hover:bg-emerald-600 bg-emerald-100 text-emerald-600 transition-colors rounded-lg')
+                                : (isUpdating 
+                                    ? 'p-1 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg'
+                                    : 'p-1 hover:text-white hover:bg-red-600 bg-red-100 text-red-600 transition-colors rounded-lg');
+                              return (
+                                <button
+                                  className={btnClasses}
+                                  onClick={() => handleToggleDocumentIgnored(doc)}
+                                  disabled={isUpdating}
+                                  title={title}
+                                >
+                                  {isUpdating ? (
+                                    <Loader2 size={14} className="animate-spin" />
+                                  ) : (
+                                    isIgnored ? <Check size={14} /> : <Trash2 size={14} />
+                                  )}
+                                </button>
+                              );
+                            })()}
                             
                             {/* Mark as Outstanding button - only show when no unreconciled transactions and document is unreconciled */}
                             {unreconciledTransactionsCount === 0 && 

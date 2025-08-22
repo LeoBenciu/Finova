@@ -859,12 +859,24 @@ export const finovaApi = createApi({
           }),
 
           associateTransactionsWithAccounts: build.mutation({
-            query: (clientEin: string) => ({
-              url: `/bank/${clientEin}/accounts/associate-transactions`,
-              method: 'POST'
-            }),
-            invalidatesTags: ['BankReconciliation', 'BankTransactions']
-          })
+          query: (clientEin: string) => ({
+            url: `/bank/${clientEin}/accounts/associate-transactions`,
+            method: 'POST'
+          }),
+          invalidatesTags: ['BankReconciliation', 'BankTransactions']
+        }),
+
+        updateDocumentReconciliationStatus: build.mutation<
+          { id: number; reconciliationStatus: string },
+          { clientEin: string; documentId: number; status: 'IGNORED' | 'UNRECONCILED' }
+        >({
+          query: ({ clientEin, documentId, status }) => ({
+            url: `/bank/${clientEin}/document/${documentId}/status`,
+            method: 'PUT',
+            body: { status }
+          }),
+          invalidatesTags: ['BankReconciliation', 'Files']
+        })
 
     })
 })
@@ -897,5 +909,6 @@ useVoidOutstandingItemMutation, useDeleteOutstandingItemMutation,
 useGetReconciliationHistoryAndAuditTrailQuery,
 useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
-useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation
+useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
+useUpdateDocumentReconciliationStatusMutation
 } = finovaApi;

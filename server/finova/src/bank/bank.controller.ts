@@ -193,6 +193,20 @@ export class BankController {
       return this.bankService.unreconcileDocument(parseInt(documentId), user, data.reason);
     }
     
+    /**
+     * Update a document's reconciliation status (toggle exclude/include from bank rec)
+     * Allowed statuses via this endpoint: IGNORED, UNRECONCILED
+     */
+    @Put(':clientEin/document/:documentId/status')
+    async updateDocumentReconciliationStatus(
+      @Param('clientEin') clientEin: string,
+      @Param('documentId', ParseIntPipe) documentId: number,
+      @GetUser() user: User,
+      @Body() data: { status: 'IGNORED' | 'UNRECONCILED' }
+    ) {
+      return this.bankService.updateDocumentReconciliationStatus(clientEin, user, documentId, data.status);
+    }
+    
     @Post(':clientEin/suggestions/regenerate')
     async regenerateAllSuggestions(
       @Param('clientEin') clientEin: string,

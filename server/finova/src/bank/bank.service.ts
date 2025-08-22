@@ -25,6 +25,47 @@ export class BankService {
       return isNaN(d.getTime()) ? null : d;
     }
 
+  /**
+   * Update a document's reconciliationStatus (e.g., mark as IGNORED to exclude from bank rec)
+   */
+  async updateDocumentReconciliationStatus(
+    clientEin: string,
+    user: User,
+    documentId: number,
+    status: 'UNRECONCILED' | 'IGNORED'
+  ) {
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) {
+      throw new NotFoundException('Client company not found');
+    }
+    const accountingClientRelation = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id }
+    });
+    if (!accountingClientRelation) {
+      throw new UnauthorizedException('No access to this client company');
+    }
+
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document || document.accountingClientId !== accountingClientRelation.id) {
+      throw new NotFoundException('Document not found or no access');
+    }
+
+    // Only allow toggling between UNRECONCILED and IGNORED via this endpoint
+    if (![ReconciliationStatus.UNRECONCILED, ReconciliationStatus.IGNORED].includes(status)) {
+      throw new BadRequestException('Invalid status for this operation');
+    }
+
+    const updated = await this.prisma.document.update({
+      where: { id: documentId },
+      data: { reconciliationStatus: status }
+    });
+
+    return {
+      id: updated.id,
+      reconciliationStatus: updated.reconciliationStatus
+    };
+  }
+
     async getReconciliationStats(clientEin: string, user: User) {
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
