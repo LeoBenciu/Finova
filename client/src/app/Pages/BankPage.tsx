@@ -1987,6 +1987,28 @@ const BankPage = () => {
         documentId: doc.id,
         status: nextStatus
       }).unwrap();
+
+      // Optimistically hide suggestions that referenced this document
+      try {
+        const toRemove = (suggestionsData || [])
+          .filter((s: any) => s?.document?.id === doc.id || s?.document_id === doc.id)
+          .map((s: any) => s.id);
+        if (toRemove.length) {
+          setRemovedSuggestions(prev => {
+            const copy = new Set(prev);
+            toRemove.forEach(id => copy.add(id));
+            return copy;
+          });
+        }
+      } catch {}
+
+      // Regenerate suggestions backend-side and refetch
+      try {
+        await regenerateAllSuggestions(clientCompanyEin).unwrap();
+        await refetchSuggestions();
+      } catch (e) {
+        console.error('Failed to regenerate/refetch suggestions after ignore toggle', e);
+      }
     } catch (e) {
       console.error('Failed to update document status', e);
       alert(language === 'ro' ? 'Actualizarea stării documentului a eșuat.' : 'Failed to update document status.');
@@ -2163,7 +2185,7 @@ const BankPage = () => {
   
   const { data: documentsResp = { items: [], total: 0 }, isLoading: documentsLoading, error: documentsError } = useGetFinancialDocumentsQuery({
     clientEin: clientCompanyEin,
-    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
+    status: filterStatus as 'all' | 'reconciled' | 'unreconciled' | 'ignored',
     page: documentsPage,
     size: pageSize
   }, {
@@ -2173,7 +2195,7 @@ const BankPage = () => {
 
   const { data: transactionsResp = { items: [], total: 0 }, isLoading: transactionsLoading, error: transactionsError } = useGetBankTransactionsQuery({
     clientEin: clientCompanyEin,
-    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
+    status: (filterStatus === 'ignored' ? 'all' : filterStatus) as 'all' | 'reconciled' | 'unreconciled',
     page: transactionsPage,
     size: pageSize
   }, {
@@ -2205,7 +2227,7 @@ const BankPage = () => {
   const { data: accountTransactionsResp } = useGetBankTransactionsByAccountQuery({
     clientEin: clientCompanyEin,
     accountId: selectedBankAccountId || undefined,
-    status: filterStatus as 'all' | 'reconciled' | 'unreconciled',
+    status: (filterStatus === 'ignored' ? 'all' : filterStatus) as 'all' | 'reconciled' | 'unreconciled',
     page: transactionsPage,
     size: pageSize
   }, {
@@ -2332,7 +2354,8 @@ const BankPage = () => {
       const matchesStatus = filterStatus === 'all' || 
         (filterStatus === 'unreconciled' && ['unreconciled', 'pending'].includes(normalizedStatus)) ||
         (filterStatus === 'reconciled' && ['auto_matched', 'manually_matched', 'matched'].includes(normalizedStatus)) ||
-        (filterStatus === 'disputed' && normalizedStatus === 'disputed');
+        (filterStatus === 'disputed' && normalizedStatus === 'disputed') ||
+        (filterStatus === 'ignored' && normalizedStatus === 'ignored');
       
       // Debug individual document filtering
       if (filterStatus === 'reconciled') {
@@ -3130,6 +3153,7 @@ const BankPage = () => {
             <option value="all">{language === 'ro' ? 'Toate statusurile' : 'All statuses'}</option>
             <option value="unreconciled">{language === 'ro' ? 'Nereconciliate' : 'Unreconciled'}</option>
             <option value="reconciled">{language === 'ro' ? 'Reconciliate' : 'Reconciled'}</option>
+            <option value="ignored">{language === 'ro' ? 'Ignorate' : 'Ignored'}</option>
           </select>
 
           {/* Bulk Actions */}

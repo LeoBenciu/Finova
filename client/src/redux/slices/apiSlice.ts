@@ -499,7 +499,7 @@ export const finovaApi = createApi({
         }),
 
         getFinancialDocuments: build.query({
-            query: ({ clientEin, status = 'all', unreconciled, page = 1, size = 25 }: { clientEin: string; status?: 'all' | 'reconciled' | 'unreconciled'; unreconciled?: boolean; page?: number; size?: number }) => {
+            query: ({ clientEin, status = 'all', unreconciled, page = 1, size = 25 }: { clientEin: string; status?: 'all' | 'reconciled' | 'unreconciled' | 'ignored'; unreconciled?: boolean; page?: number; size?: number }) => {
                 const params = new URLSearchParams();
                 params.set('page', String(page));
                 params.set('size', String(size));
