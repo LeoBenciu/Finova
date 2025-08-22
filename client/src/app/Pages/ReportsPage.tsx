@@ -1,9 +1,10 @@
 "use client";
 import { useSelector } from "react-redux";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
 import { useGetCompanyDataQuery } from "@/redux/slices/apiSlice";
 import { Activity, BarChart3, PieChart } from "lucide-react";
+import html2pdf from "html2pdf.js";
 
 type RootState = {
   clientCompany: { current: { name: string; ein: string } };
@@ -20,6 +21,7 @@ function ReportsPage() {
   const availableYears = useMemo(() => Array.from({ length: 5 }, (_, i) => (currentYear - 2 + i).toString()), [currentYear]);
 
   const [selectedStatement, setSelectedStatement] = useState<'cashflow' | 'pnl' | 'balance'>('cashflow');
+  const reportRef = useRef<HTMLDivElement>(null);
 
   const { data: companyData, isLoading, isError } = useGetCompanyDataQuery(
     { currentCompanyEin: clientCompanyEin, year },
@@ -185,6 +187,24 @@ function ReportsPage() {
     );
   };
 
+  const handleDownloadPdf = async () => {
+    const element = reportRef.current;
+    if (!element) return;
+    const fileSafeCompany = (clientCompanyName || 'Company').replace(/[^a-z0-9_-]+/gi, '_');
+    const fileSafeReport = selectedStatement;
+    const filename = `${fileSafeCompany}_${fileSafeReport}_${year}.pdf`;
+
+    const opt = {
+      margin:       [10, 10, 10, 10],
+      filename,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    } as const;
+
+    await html2pdf().set(opt).from(element).save();
+  };
+
   if (isError) return <p>Error</p>;
 
   return (
@@ -197,17 +217,25 @@ function ReportsPage() {
 
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-4xl font-bold text-left text-[var(--text1)]">{language==='ro'?'Rapoarte':'Reports'}</h1>
-        <div className="flex items-center gap-2">
-          <label className="text-[var(--text2)]">{language==='ro'?'An':'Year'}:</label>
-          <select
-            value={year}
-            onChange={(e) => setYear(e.target.value)}
-            className="w-[160px] rounded-lg border border-[var(--text4)] bg-[var(--foreground)] text-[var(--text1)] px-3 py-2"
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-[var(--text2)]">{language==='ro'?'An':'Year'}:</label>
+            <select
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+              className="w-[160px] rounded-lg border border-[var(--text4)] bg-[var(--foreground)] text-[var(--text1)] px-3 py-2"
+            >
+              {availableYears.map((y) => (
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            onClick={handleDownloadPdf}
+            className="px-4 py-2 rounded-xl border border-[var(--text4)] bg-[var(--foreground)] text-[var(--text1)] hover:border-[var(--text3)] transition"
           >
-            {availableYears.map((y) => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </select>
+            {language==='ro'?'Descarcă PDF':'Download PDF'}
+          </button>
         </div>
       </div>
 
@@ -249,7 +277,7 @@ function ReportsPage() {
         </button>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-6" ref={reportRef}>
         {renderFinancialStatement()}
       </div>
 

@@ -11,9 +11,11 @@ import {
   Zap, 
   AlertTriangle, 
   CheckCircle,
-  Eye
+  Eye,
+  CalendarDays
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { format, differenceInCalendarDays, endOfYear, setDate, addMonths, isAfter } from "date-fns";
 
 type clientCompany = {
   clientCompany:{
@@ -78,6 +80,48 @@ const HomePage = () => {
       description: language === 'ro' ? '5 tranzacții bancare necesită reconciliere manuală' : '5 bank transactions require manual reconciliation'
     }
   ];
+
+  // Compliance reminders (generic schedule)
+  const today = new Date();
+  const nextOnDay = (day: number) => {
+    const thisMonth = setDate(new Date(today.getFullYear(), today.getMonth(), 1), day);
+    return isAfter(thisMonth, today) ? thisMonth : setDate(addMonths(thisMonth, 1), day);
+  };
+  const dueDates = {
+    vat: nextOnDay(25), // VAT return by 25th
+    payroll: nextOnDay(15), // Payroll taxes by 15th
+    supplierCutoff: nextOnDay(5), // Book previous month invoices by 5th
+    annual: endOfYear(today),
+  } as const;
+  const complianceReminders = [
+    {
+      key: 'vat',
+      title: language==='ro' ? 'Declarație TVA' : 'VAT Return',
+      description: language==='ro' ? 'Depune declarația TVA pentru perioada anterioară.' : 'File the VAT return for the previous period.',
+      due: dueDates.vat,
+    },
+    {
+      key: 'payroll',
+      title: language==='ro' ? 'Impozite și Contribuții Salariale' : 'Payroll Taxes & Contributions',
+      description: language==='ro' ? 'Plătește și depune declarațiile salariale.' : 'Pay and file payroll taxes and declarations.',
+      due: dueDates.payroll,
+    },
+    {
+      key: 'supplier',
+      title: language==='ro' ? 'Înregistrare Facturi Furnizori' : 'Supplier Invoices Booking',
+      description: language==='ro' ? 'Închide înregistrarea facturilor pentru luna anterioară.' : 'Close booking of supplier invoices for last month.',
+      due: dueDates.supplierCutoff,
+    },
+    {
+      key: 'annual',
+      title: language==='ro' ? 'Situații Financiare Anuale' : 'Annual Financial Statements',
+      description: language==='ro' ? 'Pregătește și depune situațiile la final de an.' : 'Prepare and file year-end financial statements.',
+      due: dueDates.annual,
+    },
+  ].map(item => ({
+    ...item,
+    daysLeft: Math.max(0, differenceInCalendarDays(item.due, today)),
+  }));
 
   // Financial statements moved to ReportsPage
 
@@ -207,7 +251,6 @@ const HomePage = () => {
               {language === 'ro' ? 'AI Insights' : 'AI Smart Insights'}
             </h2>
           </div>
-          
           <div className="h-80 overflow-y-auto space-y-3">
             {insights.map((insight, index) => (
               <motion.div 
@@ -238,14 +281,31 @@ const HomePage = () => {
         </div>
       </div>
 
-      {/* Quick Links replacing moved financial statements */}
+      {/* Compliance Reminders (full width) */}
       <div className='grid grid-cols-3 gap-6 mb-6'>
-        <div className='h-35 rounded-lg bg-[var(--foreground)] flex flex-col justify-between p-5 col-span-3'>
-          <p className="text-left text-[var(--text1)] font-semibold mb-3">{language==='ro'?'Link-uri rapide':'Quick Links'}</p>
-          <div className="flex gap-3 flex-wrap">
-            <a href="/bank" className="px-4 py-2 rounded-xl border border-[var(--text4)] bg-[var(--background)] text-[var(--text1)] hover:border-[var(--text3)] transition">{language==='ro'?'Reconciliere Bancară':'Bank Reconciliation'}</a>
-            <a href="/files" className="px-4 py-2 rounded-xl border border-[var(--text4)] bg-[var(--background)] text-[var(--text1)] hover:border-[var(--text3)] transition">{language==='ro'?'Documente':'Documents'}</a>
-            <a href="/reports" className="px-4 py-2 rounded-xl border border-[var(--text4)] bg-[var(--background)] text-[var(--text1)] hover:border-[var(--text3)] transition">{language==='ro'?'Rapoarte':'Reports'}</a>
+        <div className='rounded-lg bg-[var(--foreground)] flex flex-col justify-between p-5 col-span-3'>
+          <div className="flex items-center gap-2 mb-3">
+            <CalendarDays size={20} className="text-[var(--primary)]"/>
+            <p className="text-left text-[var(--text1)] font-semibold">{language==='ro'?'Memento Conformitate':'Compliance Reminders'}</p>
+          </div>
+          <div className="flex flex-col divide-y divide-[var(--text4)]">
+            {complianceReminders.map((item) => {
+              const badgeColor = item.daysLeft <= 3 ? 'bg-red-500/20 text-red-600' : item.daysLeft <= 10 ? 'bg-yellow-500/20 text-yellow-700' : 'bg-emerald-500/20 text-emerald-600';
+              return (
+                <div key={item.key} className="py-3 flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-[var(--text1)] font-medium">{item.title}</span>
+                    <span className="text-xs text-[var(--text3)]">{item.description}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-[var(--text2)]">{language==='ro'?'Scadent la':'Due'}: {format(item.due, 'dd MMM yyyy')}</span>
+                    <span className={`text-xs px-2 py-1 rounded-full font-semibold ${badgeColor}`}>
+                      {item.daysLeft} {language==='ro'?'zile':'days'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
