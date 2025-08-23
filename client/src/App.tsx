@@ -14,6 +14,7 @@ import PrivacyPolicyPage from './app/Pages/PrivacyPolicyPage';
 import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage';
 import BankPage from './app/Pages/BankPage';
 import ClientsPage from './app/Pages/ClientsPage';
+import TodosPage from './app/Pages/TodosPage';
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Route path='/settings' element={<SettingsPage/>}></Route>
           <Route path='/clients' element={<ClientsPage/>}></Route>
           <Route path='/bank' element={<BankPage/>}></Route>
+          <Route path='/todos' element={<TodosPage/>}></Route>
         </Route>
       </Routes>
     </BrowserRouter>
@@ -42,3 +44,4 @@ function App() {
 }
 
 export default App
+

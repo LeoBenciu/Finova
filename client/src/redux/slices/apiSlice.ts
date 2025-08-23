@@ -1080,6 +1080,18 @@ export const finovaApi = createApi({
             body: { status }
           }),
           invalidatesTags: ['BankReconciliation', 'Files']
+        }),
+
+        // ==================== CHAT API ====================
+        sendChatMessage: build.mutation<
+          { reply: string },
+          { clientEin: string; message: string; history?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> }
+        >({
+          query: ({ clientEin, message, history }) => ({
+            url: `/chat/${clientEin}/message`,
+            method: 'POST',
+            body: { message, history: history || [] }
+          })
         })
 
     })
@@ -1114,9 +1126,10 @@ useGetReconciliationHistoryAndAuditTrailQuery,
 useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
 useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
-useGetBankAccountAnalyticsQuery, useCreateBankAccountAnalyticMutation, useUpdateBankAccountAnalyticMutation, useDeleteBankAccountAnalyticMutation,
-useUpdateDocumentReconciliationStatusMutation,
-useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
-useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
-  useGetTransferReconciliationCandidatesForTransactionQuery
+  useGetBankAccountAnalyticsQuery, useCreateBankAccountAnalyticMutation, useUpdateBankAccountAnalyticMutation, useDeleteBankAccountAnalyticMutation,
+  useUpdateDocumentReconciliationStatusMutation,
+  useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
+  useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
+  useGetTransferReconciliationCandidatesForTransactionQuery,
+  useSendChatMessageMutation
 } = finovaApi;

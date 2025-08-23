@@ -1,6 +1,7 @@
 import { Send, User, Zap, Aperture, Upload, RotateCw } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useSelector } from 'react-redux';
+import { useSendChatMessageMutation } from '@/redux/slices/apiSlice';
 
 interface AIChatSidebarProps {
   isOpen: boolean;
@@ -23,6 +24,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
+  const clientEin = useSelector((state: {clientCompany:{current:{ein:string}}}) => state.clientCompany.current.ein);
+  const [sendChatMessage, { isLoading: isSending } ] = useSendChatMessageMutation();
   const isEmpty = messages.length === 0;
 
   const scrollToBottom = () => {
@@ -60,8 +63,12 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
     }
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputMessage.trim()) return;
+    if (!clientEin) {
+      alert(language === 'ro' ? 'Selectează o companie înainte de a trimite mesaje.' : 'Please select a company before chatting.');
+      return;
+    }
 
     const newMessage: Message = {
       id: Date.now().toString(),
@@ -72,19 +79,37 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
     setMessages(prev => [...prev, newMessage]);
     setInputMessage('');
-    
-    // Simulate AI typing
     setIsTyping(true);
-    setTimeout(() => {
+
+    try {
+      // Build short history for context (last 10 messages)
+      const history: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = messages
+        .slice(-10)
+        .map((m) => ({
+          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content,
+        }));
+
+      const res = await sendChatMessage({ clientEin, message: newMessage.content, history }).unwrap();
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: 'Înțeleg! Voi lucra la cererea ta și îți voi oferi un răspuns detaliat în curând.',
+        content: res.reply || (language === 'ro' ? 'Niciun răspuns.' : 'No response.'),
         sender: 'ai',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, aiResponse]);
+    } catch (err: any) {
+      const aiError: Message = {
+        id: (Date.now() + 2).toString(),
+        content: language === 'ro' ? 'Eroare la trimiterea mesajului. Încearcă din nou.' : 'Error sending message. Please try again.',
+        sender: 'ai',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, aiError]);
+      console.error('Chat error:', err);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -202,7 +227,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 className="relative w-full px-0 pt-2 pb-4 bg-transparent max-h-[200px] 
                 text-[var(--text1)] placeholder:text-[var(--text3)] font-medium
                 focus:outline-none overflow-auto"
-                disabled={isTyping}
+                disabled={isTyping || isSending}
               />
 
               <div className='flex flex-row justify-between items-center'>
@@ -214,7 +239,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
               <button
                 onClick={handleSendMessage}
-                disabled={!inputMessage.trim() || isTyping}
+                disabled={!inputMessage.trim() || isTyping || isSending}
                 className="relative w-11 h-11 bg-[var(--primary)] hover:bg-[var(--primary)]/90 disabled:bg-[var(--text4)] 
                 hover:from-[var(--primary)]/90 hover:to-blue-400 disabled:from-[var(--text4)] disabled:to-[var(--text4)]
                 disabled:cursor-not-allowed text-white rounded-3xl flex items-center justify-center 

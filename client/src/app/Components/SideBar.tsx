@@ -1,4 +1,4 @@
-import { House, Settings, CloudUpload, FileStack, FileChartColumn, LogOut, ChevronDown, Building, Landmark } from 'lucide-react';
+import { House, Settings, CloudUpload, FileStack, FileChartColumn, LogOut, ChevronDown, Building, Landmark, ListChecks } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../helper/authHelpers';
@@ -46,6 +46,11 @@ const SideBar = () => {
       hover:bg-[var(--primary)] text-[var(--primaryText)] px-3
       min-w-full max-h-9 flex flex-row items-center gap-3 text-base mb-2 cursor-pointer`}
       onClick={()=>navigate('/bank')}><Landmark size={19}/> {language==='ro'?'Banca':'Bank'}</button>   
+
+      <button className='bg-[var(--primary-foreground)] focus:bg-[var(--background)] focus:text-[var(--primary)]
+      hover:bg-[var(--primary)] text-[var(--primaryText)] px-3
+      min-w-full max-h-9 flex flex-row items-center gap-3 text-base mb-2 cursor-pointer'
+      onClick={()=>navigate('/todos')}><ListChecks size={19}/> {language==='ro'?'Sarcini':'TODOs'}</button>
 
       <button className='bg-[var(--primary-foreground)] focus:bg-[var(--background)] focus:text-[var(--primary)]
       hover:bg-[var(--primary)] text-[var(--primaryText)] px-3

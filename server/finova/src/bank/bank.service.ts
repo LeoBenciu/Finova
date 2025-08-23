@@ -185,6 +185,20 @@ export class BankService {
       }
     }
 
+    // Debug: summarize fetched unreconciled transactions
+    let creditsCount = 0;
+    for (const arr of creditsByAmt.values()) creditsCount += arr.length;
+    const nullCurrency = txs.filter((t) => !t.bankAccount?.currency).length;
+    const currenciesSet = new Set((txs.map((t) => t.bankAccount?.currency).filter(Boolean) as string[]));
+    console.log('[TransferCandidates] dataset', {
+      totalTxs: txs.length,
+      debits: debits.length,
+      credits: creditsCount,
+      nullCurrency,
+      currencies: Array.from(currenciesSet),
+      options: { daysWindow, maxResults, allowCrossCurrency, fxTolerancePct },
+    });
+
     const results: any[] = [];
 
     // Helper: keyword boost for descriptions suggesting transfers/FX
@@ -241,6 +255,23 @@ export class BankService {
       return ranges[key] || null;
     };
 
+    // Debug accumulators for analysis
+    const stats = {
+      sameCurrPairsChecked: 0,
+      sameCurrPushed: 0,
+      crossCurrPairsChecked: 0,
+      crossCurrPushed: 0,
+      skippedByDay: 0,
+      skippedByFxRange: 0,
+      skippedByCurrMissing: 0,
+    };
+    const samples: any = { same: [] as any[], cross: [] as any[] };
+    const pairStats: Record<string, { checked: number; pushed: number; skippedFxRange: number; skippedDay: number }> = {};
+    const bumpPair = (key: string, field: keyof typeof pairStats[string]) => {
+      if (!pairStats[key]) pairStats[key] = { checked: 0, pushed: 0, skippedFxRange: 0, skippedDay: 0 };
+      (pairStats[key][field] as number)++;
+    };
+
     for (const d of debits) {
       const dAmt = Math.abs(Number(d.amount));
       const dCurr = d.bankAccount?.currency || null;
@@ -252,6 +283,7 @@ export class BankService {
         const dayDiff = Math.abs(
           Math.round((+new Date(d.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
         );
+        stats.sameCurrPairsChecked++;
         if (dayDiff <= daysWindow) {
           const differentAccount = (d.bankAccountId || 0) !== (c.bankAccountId || 0);
           const kwBoost = (hasTransferKeyword(d.description) || hasTransferKeyword(c.description)) ? 0.05 : 0;
@@ -274,7 +306,16 @@ export class BankService {
             dateDiffDays: dayDiff,
             score: (differentAccount ? 1 : 0.9) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05,
           });
+          stats.sameCurrPushed++;
+          if (samples.same.length < 5) {
+            samples.same.push({
+              srcId: d.id, dstId: c.id, amt: dAmt, dayDiff,
+              srcCurr: dCurr, dstCurr: c.bankAccount?.currency || null,
+            });
+          }
           if (results.length >= maxResults) break;
+        } else {
+          stats.skippedByDay++;
         }
       }
       if (results.length >= maxResults) break;
@@ -284,18 +325,20 @@ export class BankService {
         for (const c of txs) {
           if (Number(c.amount) <= 0) continue; // need a credit counterpart
           const cCurr = c.bankAccount?.currency || null;
-          if (!dCurr || !cCurr || dCurr === cCurr) continue;
+          if (!dCurr || !cCurr || dCurr === cCurr) { stats.skippedByCurrMissing++; continue; }
           const dayDiff = Math.abs(
             Math.round((+new Date(d.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
           );
-          if (dayDiff > daysWindow) continue;
+          if (dayDiff > daysWindow) { stats.skippedByDay++; bumpPair(`${dCurr}_${cCurr}`, 'skippedDay'); continue; }
+          stats.crossCurrPairsChecked++;
+          bumpPair(`${dCurr}_${cCurr}`, 'checked');
           const cAmt = Math.abs(Number(c.amount));
           if (cAmt === 0 || dAmt === 0) continue;
 
           const impliedRate = cAmt / dAmt; // how many cCurr per dCurr
 
           // Basic sanity bounds to avoid absurd ratios
-          if (!(impliedRate > 0.05 && impliedRate < 50)) continue;
+          if (!(impliedRate > 0.05 && impliedRate < 50)) { stats.skippedByFxRange++; bumpPair(`${dCurr}_${cCurr}`, 'skippedFxRange'); continue; }
 
           // If we know plausible ranges, filter further optionally using fxTolerancePct
           const baseRange = plausibleFxRange(dCurr, cCurr);
@@ -306,7 +349,7 @@ export class BankService {
               minR = minR * (1 - mult);
               maxR = maxR * (1 + mult);
             }
-            if (impliedRate < minR || impliedRate > maxR) continue;
+            if (impliedRate < minR || impliedRate > maxR) { stats.skippedByFxRange++; bumpPair(`${dCurr}_${cCurr}`, 'skippedFxRange'); continue; }
           }
 
           const differentAccount = (d.bankAccountId || 0) !== (c.bankAccountId || 0);
@@ -338,6 +381,16 @@ export class BankService {
             dateDiffDays: dayDiff,
             score,
           });
+          stats.crossCurrPushed++;
+          bumpPair(`${dCurr}_${cCurr}`, 'pushed');
+          if (samples.cross.length < 5) {
+            samples.cross.push({
+              srcId: d.id, dstId: c.id,
+              amountSource: dAmt, amountDestination: cAmt,
+              sourceCurrency: dCurr, destinationCurrency: cCurr,
+              impliedFxRate: Number(impliedRate.toFixed(6)), dayDiff,
+            });
+          }
 
           if (results.length >= maxResults) break;
         }
@@ -347,6 +400,16 @@ export class BankService {
 
     // Sort by score desc and return
     results.sort((a, b) => b.score - a.score);
+    // Debug summary for this run
+    console.log('[TransferCandidates] summary', {
+      totals: { results: results.length },
+      stats,
+      pairStats,
+      samples: {
+        same: samples.same,
+        cross: samples.cross,
+      },
+    });
     return { total: results.length, items: results };
   }
 
@@ -1394,6 +1457,10 @@ export class BankService {
           allowCrossCurrency: true,
           fxTolerancePct: 2,
         });
+        console.log('[TransferSuggestions] normal transferCand.items count =', (transferCand.items || []).length);
+        if ((transferCand.items || []).length) {
+          console.log('[TransferSuggestions] normal sample transferCand.items (max 3) =', (transferCand.items || []).slice(0, 3));
+        }
 
         // 2) Keep the best candidate per source (debit) to avoid duplicates
         const bestBySource = new Map<string, any>();
@@ -1408,11 +1475,13 @@ export class BankService {
         const srcIds = Array.from(bestBySource.keys());
         const dstIds = Array.from(new Set(Array.from(bestBySource.values()).map((v: any) => v.destinationTransactionId)));
         const allIds = Array.from(new Set([...srcIds, ...dstIds]));
+        console.log('[TransferSuggestions] normal bestBySource size =', bestBySource.size, 'srcIds =', srcIds.length, 'dstIds =', dstIds.length);
 
         const txs = await this.prisma.bankTransaction.findMany({
           where: { id: { in: allIds } },
           include: { bankStatementDocument: true },
         });
+        console.log('[TransferSuggestions] normal fetched txs count =', txs.length, 'for allIds =', allIds.length);
         const txById = new Map<string, typeof txs[number]>();
         for (const t of txs) txById.set(t.id, t);
 
@@ -1421,7 +1490,13 @@ export class BankService {
           Array.from(bestBySource.values()).map(async (cand: any) => {
             const src = txById.get(cand.sourceTransactionId);
             const dst = txById.get(cand.destinationTransactionId);
-            if (!src || !dst) return null;
+            if (!src || !dst) {
+              console.log('[TransferSuggestions] normal missing tx for cand', {
+                srcExists: !!src, dstExists: !!dst,
+                srcId: cand.sourceTransactionId, dstId: cand.destinationTransactionId,
+              });
+              return null;
+            }
 
             // Signed URL for source bank statement
             let srcBankStmtUrl: string | null = null;
@@ -1503,10 +1578,15 @@ export class BankService {
         );
 
         const transferItems = (extraTransferItems.filter(Boolean) as any[]);
+        console.log('[TransferSuggestions] normal built transferItems count =', transferItems.length);
+        if (transferItems.length) {
+          console.log('[TransferSuggestions] normal sample transferItems ids (max 5) =', transferItems.slice(0, 5).map((i: any) => i.id));
+        }
 
         // Merge and adjust totals. Keep original order by confidenceScore across both.
         const merged = [...items, ...transferItems].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
         const mergedTotal = total + transferItems.length;
+        console.log('[TransferSuggestions] normal merged suggestions =', { base: items.length, transfers: transferItems.length, total: mergedTotal });
 
         // NOTE: We return merged for the normal path below unless regeneration triggers.
 
