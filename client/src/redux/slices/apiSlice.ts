@@ -717,6 +717,31 @@ export const finovaApi = createApi({
           providesTags: ['BankReconciliation']
         }),
 
+        // Per-transaction transfer candidates
+        getTransferReconciliationCandidatesForTransaction: build.query<
+          { total: number; items: Array<{
+            counterpartyTransactionId: string;
+            sourceTransactionId?: string;
+            destinationTransactionId?: string;
+            amount: number;
+            dateDiffDays: number;
+            score: number;
+            sourceCurrency?: string;
+            destinationCurrency?: string;
+            inferredFxRate?: number;
+            direction?: 'DEBIT_TO_CREDIT' | 'CREDIT_TO_DEBIT';
+            counterparty?: { description?: string; transactionDate?: string; accountName?: string; amount?: number; transactionType?: 'debit' | 'credit' };
+          }> },
+          { clientEin: string; transactionId: string; daysWindow?: number; maxResults?: number; allowCrossCurrency?: boolean; fxTolerancePct?: number }
+        >({
+          query: ({ clientEin, transactionId, daysWindow = 3, maxResults = 50, allowCrossCurrency = true, fxTolerancePct }) => ({
+            url: `/bank/${clientEin}/transaction/${transactionId}/transfer-candidates`,
+            method: 'GET',
+            params: { daysWindow, maxResults, allowCrossCurrency, ...(fxTolerancePct !== undefined ? { fxTolerancePct } : {}) }
+          }),
+          providesTags: ['BankReconciliation']
+        }),
+
         createTransferReconciliation: build.mutation<
           any,
           {
@@ -1092,5 +1117,6 @@ useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
 useGetBankAccountAnalyticsQuery, useCreateBankAccountAnalyticMutation, useUpdateBankAccountAnalyticMutation, useDeleteBankAccountAnalyticMutation,
 useUpdateDocumentReconciliationStatusMutation,
 useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
-useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation
+useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
+  useGetTransferReconciliationCandidatesForTransactionQuery
 } = finovaApi;

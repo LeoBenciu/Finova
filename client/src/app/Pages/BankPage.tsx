@@ -58,7 +58,8 @@ import {
   // Transfer Reconciliation API hooks
   useCreateTransferReconciliationMutation,
   useGetPendingTransferReconciliationsQuery,
-  useDeleteTransferReconciliationMutation
+  useDeleteTransferReconciliationMutation,
+  useGetTransferReconciliationCandidatesForTransactionQuery
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
@@ -1855,6 +1856,9 @@ const BankPage = () => {
 
   // Transfer Reconciliation state
   const [showTransferModal, setShowTransferModal] = useState(false);
+  // Suggestions-tab transfer candidates modal state
+  const [showTransferCandidatesModal, setShowTransferCandidatesModal] = useState(false);
+  const [transferCandidatesTxn, setTransferCandidatesTxn] = useState<BankTransaction | null>(null);
   
   // Bank Account Analytic Suffix (simple field handled via form input)
   const [transferForm, setTransferForm] = useState<{
@@ -1867,6 +1871,18 @@ const BankPage = () => {
     { skip: !clientCompanyEin }
   );
   const [deleteTransferReconciliation, { isLoading: deletingTransfer }] = useDeleteTransferReconciliationMutation();
+
+  // Fetch transfer candidates for a specific transaction when modal is open
+  const { data: perTxnCandidatesResp, isFetching: perTxnCandidatesLoading } = useGetTransferReconciliationCandidatesForTransactionQuery(
+    {
+      clientEin: clientCompanyEin,
+      transactionId: transferCandidatesTxn?.id || '',
+      daysWindow: 3,
+      maxResults: 50,
+      allowCrossCurrency: true
+    },
+    { skip: !clientCompanyEin || !transferCandidatesTxn || !showTransferCandidatesModal }
+  );
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -3095,6 +3111,93 @@ const BankPage = () => {
         </div>
       )}
 
+      {/* Transfer Candidates Modal for Suggestions tab */}
+      {showTransferCandidatesModal && transferCandidatesTxn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-[var(--text1)]">
+                {language === 'ro' ? 'Sugestii de Transfer' : 'Transfer Candidates'}
+              </h3>
+              <button className="text-[var(--text2)] hover:text-[var(--text1)]" onClick={() => setShowTransferCandidatesModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="mb-3">
+              <p className="text-sm text-[var(--text2)]">
+                {language === 'ro' ? 'Tranzacție selectată:' : 'Selected transaction:'} {formatDate(transferCandidatesTxn.transactionDate)} · {formatCurrency(transferCandidatesTxn.amount)} · {transferCandidatesTxn.transactionType}
+              </p>
+            </div>
+            {perTxnCandidatesLoading ? (
+              <div className="py-10 text-center text-[var(--text2)] flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> {language === 'ro' ? 'Se încarcă...' : 'Loading...'}</div>
+            ) : (
+              <div className="space-y-3 max-h-[60vh] overflow-auto">
+                {(perTxnCandidatesResp?.items || []).length === 0 ? (
+                  <div className="text-center text-[var(--text2)] py-10">
+                    {language === 'ro' ? 'Nu s-au găsit sugestii de transfer' : 'No transfer candidates found'}
+                  </div>
+                ) : (
+                  (perTxnCandidatesResp?.items || []).map((c, idx) => (
+                    <div key={idx} className="border border-gray-200 rounded-xl p-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-[var(--text1)]">{language === 'ro' ? 'Candidat' : 'Candidate'}</p>
+                        <p className="text-xs text-[var(--text3)]">
+                          {language === 'ro' ? 'Diferență zile' : 'Date diff'}: {c.dateDiffDays} · Score: {Math.round((c.score || 0) * 100)}%
+                        </p>
+                        <p className="text-sm text-[var(--text2)]">{language === 'ro' ? 'Suma' : 'Amount'}: {formatCurrency(Math.abs(c.amount || 0))}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 disabled:opacity-50"
+                          onClick={async () => {
+                            try {
+                              // Prefer explicit source/destination if provided by API
+                              const preferredSource = (c as any).sourceTransactionId;
+                              const preferredDest = (c as any).destinationTransactionId;
+                              let sourceId: string;
+                              let destId: string;
+                              if (preferredSource && preferredDest) {
+                                sourceId = preferredSource;
+                                destId = preferredDest;
+                              } else {
+                                // Fallback: assume debit -> credit
+                                if (transferCandidatesTxn.transactionType === 'debit') {
+                                  sourceId = transferCandidatesTxn.id;
+                                  destId = c.counterpartyTransactionId as string;
+                                } else {
+                                  sourceId = c.counterpartyTransactionId as string;
+                                  destId = transferCandidatesTxn.id;
+                                }
+                              }
+                              await createTransferReconciliation({
+                                clientEin: clientCompanyEin,
+                                data: { sourceTransactionId: sourceId, destinationTransactionId: destId }
+                              }).unwrap();
+                              addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
+                              setShowTransferCandidatesModal(false);
+                              setTransferCandidatesTxn(null);
+                              // Refresh lists
+                              setSuggestionsData([]);
+                              setSuggestionsPage(1);
+                              refetchPendingTransfers && refetchPendingTransfers();
+                            } catch (e: any) {
+                              const msg = e?.data?.message || e?.message || 'Unknown error';
+                              addToast((language === 'ro' ? 'Eroare la crearea transferului: ' : 'Failed to create transfer: ') + msg, 'error');
+                            }
+                          }}
+                        >
+                          {language === 'ro' ? 'Acceptă' : 'Accept'}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Bulk Actions Bar */}
       <AnimatePresence>
         {showBulkActions && (
@@ -4053,6 +4156,20 @@ const BankPage = () => {
                         <p className={`text-sm font-medium ${suggestion.bankTransaction?.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
                           {suggestion.bankTransaction ? `${suggestion.bankTransaction.transactionType === 'credit' ? '+' : ''}${formatCurrency(suggestion.bankTransaction.amount)}` : ''}
                         </p>
+                        {suggestion.bankTransaction && (
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => {
+                                setTransferCandidatesTxn(suggestion.bankTransaction as any);
+                                setShowTransferCandidatesModal(true);
+                              }}
+                              className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs hover:bg-purple-100"
+                              title={language === 'ro' ? 'Vezi sugestii de transfer pentru această tranzacție' : 'View transfer candidates for this transaction'}
+                            >
+                              {language === 'ro' ? 'Sugestii Transfer' : 'Transfer Candidates'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </motion.div>

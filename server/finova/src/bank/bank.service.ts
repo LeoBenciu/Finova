@@ -2453,7 +2453,51 @@ export class BankService {
         await this.dataExtractionService.generateReconciliationSuggestions(
           transaction.bankStatementDocument.accountingClientId
         );
-        
+        // After regeneration, if transfer candidates exist, avoid showing standalone account-code suggestions
+        try {
+          const pendingStandalone = await this.prisma.reconciliationSuggestion.findMany({
+            where: {
+              bankTransactionId: transactionId,
+              status: SuggestionStatus.PENDING,
+              documentId: null,
+              chartOfAccountId: { not: null }
+            },
+            select: { id: true }
+          });
+
+          if (pendingStandalone.length > 0) {
+            // Fetch client EIN
+            const clientCompany = await this.prisma.clientCompany.findUnique({
+              where: { id: transaction.bankStatementDocument.accountingClient.clientCompanyId },
+              select: { ein: true }
+            });
+            const clientEin = clientCompany?.ein || '';
+            const candidates = await this.getTransferReconciliationCandidatesForTransaction(
+              clientEin,
+              user,
+              transactionId,
+              {
+                daysWindow: 3,
+                maxResults: 50,
+                allowCrossCurrency: true,
+              }
+            );
+
+            if (Array.isArray(candidates) && candidates.length > 0) {
+              await this.prisma.reconciliationSuggestion.deleteMany({
+                where: {
+                  id: { in: pendingStandalone.map(s => s.id) }
+                }
+              });
+              console.log(`🧹 Removed ${pendingStandalone.length} standalone account-code suggestions for transaction ${transactionId} due to available transfer candidates (${candidates.length}).`);
+            } else {
+              console.log(`ℹ️ No transfer candidates found for transaction ${transactionId}; keeping ${pendingStandalone.length} standalone account-code suggestions.`);
+            }
+          }
+        } catch (postProcessErr) {
+          console.warn(`⚠️ Post-regeneration transfer check failed for transaction ${transactionId}:`, postProcessErr);
+        }
+
         return { message: 'Transaction suggestions regenerated successfully' };
       }
 
