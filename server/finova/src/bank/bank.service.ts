@@ -145,10 +145,12 @@ export class BankService {
   async getTransferReconciliationCandidates(
     clientEin: string,
     user: User,
-    options?: { daysWindow?: number; maxResults?: number }
+    options?: { daysWindow?: number; maxResults?: number; allowCrossCurrency?: boolean; fxTolerancePct?: number }
   ) {
     const daysWindow = options?.daysWindow ?? 2;
     const maxResults = Math.min(options?.maxResults ?? 50, 200);
+    const allowCrossCurrency = options?.allowCrossCurrency ?? false;
+    const fxTolerancePct = options?.fxTolerancePct ?? 2; // percentage window when comparing implied FX, used for scoring only
 
     const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
     if (!clientCompany) throw new NotFoundException('Client company not found');
@@ -157,7 +159,7 @@ export class BankService {
     });
     if (!accountingClient) throw new UnauthorizedException('No access to this client company');
 
-    // Fetch recent unreconciled transactions for this client
+    // Fetch recent unreconciled transactions for this client (include bankAccount for currency)
     const txs = await this.prisma.bankTransaction.findMany({
       where: {
         bankStatementDocument: { accountingClientId: accountingClient.id },
@@ -165,6 +167,7 @@ export class BankService {
       },
       orderBy: { transactionDate: 'desc' },
       take: 1000,
+      include: { bankAccount: true },
     });
 
     // Index by rounded absolute amount for quick matching
@@ -183,23 +186,159 @@ export class BankService {
     }
 
     const results: any[] = [];
+
+    // Helper: keyword boost for descriptions suggesting transfers/FX
+    const hasTransferKeyword = (text?: string | null) => {
+      if (!text) return false;
+      const t = text.toLowerCase();
+      return (
+        t.includes('transfer') ||
+        t.includes('virament') ||
+        t.includes('intrabank') ||
+        t.includes('interbank') ||
+        t.includes('fx') ||
+        t.includes('exchange') ||
+        t.includes('convert') ||
+        t.includes('schimb')
+      );
+    };
+
+    // Helper: basic IBAN/name/reference matching boosts
+    const normalize = (s?: string | null) => (s || '').toLowerCase();
+    const containsIbanTail = (hay?: string | null, iban?: string | null) => {
+      if (!hay || !iban) return false;
+      const tail = iban.replace(/\s|-/g, '').slice(-6);
+      return tail.length >= 4 && hay.replace(/\s|-/g, '').toLowerCase().includes(tail.toLowerCase());
+    };
+    const containsName = (hay?: string | null, name?: string | null) => {
+      if (!hay || !name) return false;
+      return hay.toLowerCase().includes(name.toLowerCase());
+    };
+    const sharedLongNumberToken = (a?: string | null, b?: string | null) => {
+      if (!a || !b) return false;
+      const re = /[0-9]{6,}/g;
+      const set = new Set((a.match(re) || []));
+      for (const tok of (b.match(re) || [])) {
+        if (set.has(tok)) return true;
+      }
+      return false;
+    };
+
+    // Helper: plausible FX ranges per currency pair (from -> to)
+    const plausibleFxRange = (from?: string | null, to?: string | null): [number, number] | null => {
+      if (!from || !to) return null;
+      const key = `${from.toUpperCase()}_${to.toUpperCase()}`;
+      const ranges: Record<string, [number, number]> = {
+        'RON_EUR': [0.15, 0.30],
+        'EUR_RON': [3.0, 7.0],
+        'USD_EUR': [0.7, 1.2],
+        'EUR_USD': [0.7, 1.5],
+        'RON_USD': [0.10, 0.30],
+        'USD_RON': [3.0, 7.0],
+        'GBP_EUR': [1.0, 1.3],
+        'EUR_GBP': [0.7, 1.1],
+      };
+      return ranges[key] || null;
+    };
+
     for (const d of debits) {
-      const key = Math.abs(Number(d.amount)).toFixed(2);
+      const dAmt = Math.abs(Number(d.amount));
+      const dCurr = d.bankAccount?.currency || null;
+
+      // Same-currency exact matches (fast path)
+      const key = dAmt.toFixed(2);
       const candidates = creditsByAmt.get(key) || [];
       for (const c of candidates) {
         const dayDiff = Math.abs(
           Math.round((+new Date(d.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
         );
         if (dayDiff <= daysWindow) {
-          // Prefer different bank accounts where available
           const differentAccount = (d.bankAccountId || 0) !== (c.bankAccountId || 0);
+          const kwBoost = (hasTransferKeyword(d.description) || hasTransferKeyword(c.description)) ? 0.05 : 0;
+          const descD = normalize(d.description);
+          const descC = normalize(c.description);
+          const ibanBoost = (containsIbanTail(descD, c.bankAccount?.iban) || containsIbanTail(descC, d.bankAccount?.iban)) ? 0.05 : 0;
+          const nameBoost = (
+            containsName(descD, c.bankAccount?.bankName) ||
+            containsName(descD, (c.bankAccount as any)?.accountName || (c.bankAccount as any)?.accountAlias) ||
+            containsName(descC, d.bankAccount?.bankName) ||
+            containsName(descC, (d.bankAccount as any)?.accountName || (d.bankAccount as any)?.accountAlias)
+          ) ? 0.03 : 0;
+          const refBoost = sharedLongNumberToken(descD, descC) ? 0.04 : 0;
           results.push({
             sourceTransactionId: d.id,
             destinationTransactionId: c.id,
-            amount: Math.abs(Number(d.amount)),
+            amount: dAmt,
+            crossCurrency: false,
+            impliedFxRate: 1,
             dateDiffDays: dayDiff,
-            score: (differentAccount ? 1 : 0.9) - dayDiff * 0.05,
+            score: (differentAccount ? 1 : 0.9) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05,
           });
+          if (results.length >= maxResults) break;
+        }
+      }
+      if (results.length >= maxResults) break;
+
+      // Cross-currency heuristic matches
+      if (allowCrossCurrency) {
+        for (const c of txs) {
+          if (Number(c.amount) <= 0) continue; // need a credit counterpart
+          const cCurr = c.bankAccount?.currency || null;
+          if (!dCurr || !cCurr || dCurr === cCurr) continue;
+          const dayDiff = Math.abs(
+            Math.round((+new Date(d.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
+          );
+          if (dayDiff > daysWindow) continue;
+          const cAmt = Math.abs(Number(c.amount));
+          if (cAmt === 0 || dAmt === 0) continue;
+
+          const impliedRate = cAmt / dAmt; // how many cCurr per dCurr
+
+          // Basic sanity bounds to avoid absurd ratios
+          if (!(impliedRate > 0.05 && impliedRate < 50)) continue;
+
+          // If we know plausible ranges, filter further optionally using fxTolerancePct
+          const baseRange = plausibleFxRange(dCurr, cCurr);
+          if (baseRange) {
+            let [minR, maxR] = baseRange;
+            if (fxTolerancePct && fxTolerancePct > 0) {
+              const mult = fxTolerancePct / 100;
+              minR = minR * (1 - mult);
+              maxR = maxR * (1 + mult);
+            }
+            if (impliedRate < minR || impliedRate > maxR) continue;
+          }
+
+          const differentAccount = (d.bankAccountId || 0) !== (c.bankAccountId || 0);
+          const kwBoost = (hasTransferKeyword(d.description) || hasTransferKeyword(c.description)) ? 0.1 : 0;
+          const descD = normalize(d.description);
+          const descC = normalize(c.description);
+          const ibanBoost = (containsIbanTail(descD, c.bankAccount?.iban) || containsIbanTail(descC, d.bankAccount?.iban)) ? 0.07 : 0;
+          const nameBoost = (
+            containsName(descD, c.bankAccount?.bankName) ||
+            containsName(descD, (c.bankAccount as any)?.accountName || (c.bankAccount as any)?.accountAlias) ||
+            containsName(descC, d.bankAccount?.bankName) ||
+            containsName(descC, (d.bankAccount as any)?.accountName || (d.bankAccount as any)?.accountAlias)
+          ) ? 0.05 : 0;
+          const refBoost = sharedLongNumberToken(descD, descC) ? 0.06 : 0;
+
+          // Score: base lower than same-currency, boosted by keywords and account difference, penalized by day diff
+          const base = 0.7;
+          const score = base + (differentAccount ? 0.2 : 0.05) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05;
+
+          results.push({
+            sourceTransactionId: d.id,
+            destinationTransactionId: c.id,
+            amountSource: dAmt,
+            amountDestination: cAmt,
+            sourceCurrency: dCurr,
+            destinationCurrency: cCurr,
+            crossCurrency: true,
+            impliedFxRate: impliedRate,
+            dateDiffDays: dayDiff,
+            score,
+          });
+
           if (results.length >= maxResults) break;
         }
       }
@@ -207,6 +346,159 @@ export class BankService {
     }
 
     // Sort by score desc and return
+    results.sort((a, b) => b.score - a.score);
+    return { total: results.length, items: results };
+  }
+
+  async getTransferReconciliationCandidatesForTransaction(
+    clientEin: string,
+    user: User,
+    transactionId: string,
+    options?: { daysWindow?: number; maxResults?: number; allowCrossCurrency?: boolean; fxTolerancePct?: number }
+  ) {
+    const daysWindow = options?.daysWindow ?? 2;
+    const maxResults = Math.min(options?.maxResults ?? 50, 200);
+    const allowCrossCurrency = options?.allowCrossCurrency ?? false;
+    const fxTolerancePct = options?.fxTolerancePct ?? 2;
+
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    const src = await this.prisma.bankTransaction.findFirst({
+      where: { id: transactionId, bankStatementDocument: { accountingClientId: accountingClient.id } },
+      include: { bankAccount: true },
+    });
+    if (!src) throw new NotFoundException('Transaction not found');
+
+    // Pull potential counterparts in a time window around src date
+    const all = await this.prisma.bankTransaction.findMany({
+      where: {
+        bankStatementDocument: { accountingClientId: accountingClient.id },
+        reconciliationStatus: ReconciliationStatus.UNRECONCILED,
+      },
+      orderBy: { transactionDate: 'desc' },
+      take: 2000,
+      include: { bankAccount: true },
+    });
+
+    const isDebit = Number(src.amount) < 0;
+    const srcAmtAbs = Math.abs(Number(src.amount));
+    const srcCurr = src.bankAccount?.currency || null;
+
+    const results: any[] = [];
+
+    const hasTransferKeyword = (text?: string | null) => {
+      if (!text) return false;
+      const t = text.toLowerCase();
+      return t.includes('transfer') || t.includes('virament') || t.includes('fx') || t.includes('exchange') || t.includes('convert') || t.includes('schimb');
+    };
+    const normalize = (s?: string | null) => (s || '').toLowerCase();
+    const containsIbanTail = (hay?: string | null, iban?: string | null) => {
+      if (!hay || !iban) return false;
+      const tail = iban.replace(/\s|-/g, '').slice(-6);
+      return tail.length >= 4 && hay.replace(/\s|-/g, '').toLowerCase().includes(tail.toLowerCase());
+    };
+    const containsName = (hay?: string | null, name?: string | null) => {
+      if (!hay || !name) return false;
+      return hay.toLowerCase().includes(name.toLowerCase());
+    };
+    const sharedLongNumberToken = (a?: string | null, b?: string | null) => {
+      if (!a || !b) return false;
+      const re = /[0-9]{6,}/g;
+      const set = new Set((a.match(re) || []));
+      for (const tok of (b.match(re) || [])) {
+        if (set.has(tok)) return true;
+      }
+      return false;
+    };
+    const plausibleFxRange = (from?: string | null, to?: string | null): [number, number] | null => {
+      if (!from || !to) return null;
+      const key = `${from.toUpperCase()}_${to.toUpperCase()}`;
+      const ranges: Record<string, [number, number]> = {
+        'RON_EUR': [0.15, 0.30],
+        'EUR_RON': [3.0, 7.0],
+        'USD_EUR': [0.7, 1.2],
+        'EUR_USD': [0.7, 1.5],
+        'RON_USD': [0.10, 0.30],
+        'USD_RON': [3.0, 7.0],
+        'GBP_EUR': [1.0, 1.3],
+        'EUR_GBP': [0.7, 1.1],
+      };
+      return ranges[key] || null;
+    };
+
+    for (const c of all) {
+      if (c.id === src.id) continue;
+      const signOk = isDebit ? Number(c.amount) > 0 : Number(c.amount) < 0;
+      if (!signOk) continue;
+      const dayDiff = Math.abs(
+        Math.round((+new Date(src.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
+      );
+      if (dayDiff > daysWindow) continue;
+
+      const cAmtAbs = Math.abs(Number(c.amount));
+      const cCurr = c.bankAccount?.currency || null;
+      const differentAccount = (src.bankAccountId || 0) !== (c.bankAccountId || 0);
+      const descS = normalize(src.description);
+      const descC = normalize(c.description);
+      const kwBoost = (hasTransferKeyword(src.description) || hasTransferKeyword(c.description)) ? 0.08 : 0;
+      const ibanBoost = (containsIbanTail(descS, c.bankAccount?.iban) || containsIbanTail(descC, src.bankAccount?.iban)) ? 0.06 : 0;
+      const nameBoost = (
+        containsName(descS, c.bankAccount?.bankName) ||
+        containsName(descS, (c.bankAccount as any)?.accountName || (c.bankAccount as any)?.accountAlias) ||
+        containsName(descC, src.bankAccount?.bankName) ||
+        containsName(descC, (src.bankAccount as any)?.accountName || (src.bankAccount as any)?.accountAlias)
+      ) ? 0.04 : 0;
+      const refBoost = sharedLongNumberToken(descS, descC) ? 0.05 : 0;
+
+      if (srcCurr && cCurr && srcCurr === cCurr) {
+        if (Math.abs(srcAmtAbs - cAmtAbs) <= 0.01) {
+          const score = (differentAccount ? 1 : 0.9) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05;
+          results.push({
+            sourceTransactionId: isDebit ? src.id : c.id,
+            destinationTransactionId: isDebit ? c.id : src.id,
+            amount: Math.min(srcAmtAbs, cAmtAbs),
+            crossCurrency: false,
+            impliedFxRate: 1,
+            dateDiffDays: dayDiff,
+            score,
+          });
+        }
+      } else if (allowCrossCurrency && srcCurr && cCurr && srcCurr !== cCurr) {
+        const impliedRate = isDebit ? (cAmtAbs / srcAmtAbs) : (srcAmtAbs / cAmtAbs);
+        if (impliedRate <= 0.05 || impliedRate >= 50) continue;
+        const baseRange = plausibleFxRange(isDebit ? srcCurr : cCurr, isDebit ? cCurr : srcCurr);
+        if (baseRange) {
+          let [minR, maxR] = baseRange;
+          if (fxTolerancePct && fxTolerancePct > 0) {
+            const mult = fxTolerancePct / 100;
+            minR = minR * (1 - mult);
+            maxR = maxR * (1 + mult);
+          }
+          if (impliedRate < minR || impliedRate > maxR) continue;
+        }
+        const base = 0.7;
+        const score = base + (differentAccount ? 0.2 : 0.05) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05;
+        results.push({
+          sourceTransactionId: isDebit ? src.id : c.id,
+          destinationTransactionId: isDebit ? c.id : src.id,
+          amountSource: isDebit ? srcAmtAbs : cAmtAbs,
+          amountDestination: isDebit ? cAmtAbs : srcAmtAbs,
+          sourceCurrency: isDebit ? srcCurr : cCurr,
+          destinationCurrency: isDebit ? cCurr : srcCurr,
+          crossCurrency: true,
+          impliedFxRate: impliedRate,
+          dateDiffDays: dayDiff,
+          score,
+        });
+      }
+      if (results.length >= maxResults) break;
+    }
+
     results.sort((a, b) => b.score - a.score);
     return { total: results.length, items: results };
   }

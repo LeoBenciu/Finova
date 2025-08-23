@@ -538,11 +538,15 @@ export class BankController {
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
       @Query('daysWindow') daysWindow?: string,
-      @Query('maxResults') maxResults?: string
+      @Query('maxResults') maxResults?: string,
+      @Query('allowCrossCurrency') allowCrossCurrency?: string,
+      @Query('fxTolerancePct') fxTolerancePct?: string
     ) {
       return this.bankService.getTransferReconciliationCandidates(clientEin, user, {
         daysWindow: daysWindow ? Number(daysWindow) : 2,
         maxResults: maxResults ? Number(maxResults) : 50,
+        allowCrossCurrency: allowCrossCurrency === 'true',
+        fxTolerancePct: fxTolerancePct ? Number(fxTolerancePct) : undefined,
       });
     }
 
@@ -552,6 +556,29 @@ export class BankController {
       @GetUser() user: User
     ) {
       return this.bankService.getPendingTransferReconciliations(clientEin, user);
+    }
+
+    @Get(':clientEin/transaction/:transactionId/transfer-candidates')
+    async getTransferReconciliationCandidatesForTransaction(
+      @Param('clientEin') clientEin: string,
+      @Param('transactionId') transactionId: string,
+      @GetUser() user: User,
+      @Query('daysWindow') daysWindow?: string,
+      @Query('maxResults') maxResults?: string,
+      @Query('allowCrossCurrency') allowCrossCurrency?: string,
+      @Query('fxTolerancePct') fxTolerancePct?: string
+    ) {
+      return this.bankService.getTransferReconciliationCandidatesForTransaction(
+        clientEin,
+        user,
+        transactionId,
+        {
+          daysWindow: daysWindow ? Number(daysWindow) : 2,
+          maxResults: maxResults ? Number(maxResults) : 50,
+          allowCrossCurrency: allowCrossCurrency === 'true',
+          fxTolerancePct: fxTolerancePct ? Number(fxTolerancePct) : undefined,
+        }
+      );
     }
 
     @Delete(':clientEin/transfer-reconcile/:id')
