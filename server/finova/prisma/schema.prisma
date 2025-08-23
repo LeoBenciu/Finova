@@ -9,22 +9,23 @@ datasource db {
 }
 
 model User {
-  id                       Int                    @id @default(autoincrement())
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  email                    String                 @unique
-  role                     Role                   @default(ADMIN)
-  createdDocumentRelations DocumentRelationship[]
-  hashPassword             String
-  name                     String
-  phoneNumber              String
-  accountingCompanyId      Int
-  accountingCompany        AccountingCompany      @relation(fields: [accountingCompanyId], references: [id])
-  rpaActionsTriggered      RpaAction[]            @relation("TriggeredByUser")
-  legalAgreements          LegalAgreement[]
-  userCorrections          UserCorrection[]
-  reconciledRecords        ReconciliationRecord[] @relation("ReconciledByUser")
-  outstandingItems         OutstandingItem[]
+  id                             Int                      @id @default(autoincrement())
+  createdAt                      DateTime                 @default(now())
+  updatedAt                      DateTime                 @updatedAt
+  email                          String                   @unique
+  role                           Role                     @default(ADMIN)
+  createdDocumentRelations       DocumentRelationship[]
+  hashPassword                   String
+  name                           String
+  phoneNumber                    String
+  accountingCompanyId            Int
+  accountingCompany              AccountingCompany        @relation(fields: [accountingCompanyId], references: [id])
+  rpaActionsTriggered            RpaAction[]              @relation("TriggeredByUser")
+  legalAgreements                LegalAgreement[]
+  userCorrections                UserCorrection[]
+  reconciledRecords              ReconciliationRecord[]   @relation("ReconciledByUser")
+  outstandingItems               OutstandingItem[]
+  transferReconciliationsCreated TransferReconciliation[] @relation("TransferCreatedBy")
 }
 
 model LegalAgreement {
@@ -183,18 +184,19 @@ model AccountingCompany {
 }
 
 model AccountingClients {
-  id                  Int               @id @default(autoincrement())
-  accountingCompanyId Int
-  clientCompanyId     Int
-  accountingCompany   AccountingCompany @relation(fields: [accountingCompanyId], references: [id])
-  clientCompany       ClientCompany     @relation(fields: [clientCompanyId], references: [id])
-  createdAt           DateTime          @default(now())
-  documents           Document[]
-  rpaActions          RpaAction[]
-  articles            Article[]
-  managements         Management[]
-  outstandingItems    OutstandingItem[]
-  bankAccounts        BankAccount[]
+  id                   Int                   @id @default(autoincrement())
+  accountingCompanyId  Int
+  clientCompanyId      Int
+  accountingCompany    AccountingCompany     @relation(fields: [accountingCompanyId], references: [id])
+  clientCompany        ClientCompany         @relation(fields: [clientCompanyId], references: [id])
+  createdAt            DateTime              @default(now())
+  documents            Document[]
+  rpaActions           RpaAction[]
+  articles             Article[]
+  managements          Management[]
+  outstandingItems     OutstandingItem[]
+  bankAccounts         BankAccount[]
+  bankAccountAnalytics BankAccountAnalytic[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -276,22 +278,22 @@ model Management {
 }
 
 model BankAccount {
-  id                    Int                    @id @default(autoincrement())
-  iban                  String                 @unique
-  accountName           String
-  bankName              String
-  currency              String                 @default("RON")
-  accountType           BankAccountType        @default(CURRENT)
-  isActive              Boolean                @default(true)
-  accountingClient      AccountingClients      @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
-  accountingClientId    Int
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
-  
+  id                 Int               @id @default(autoincrement())
+  iban               String            @unique
+  accountName        String
+  bankName           String
+  currency           String            @default("RON")
+  accountType        BankAccountType   @default(CURRENT)
+  isActive           Boolean           @default(true)
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  accountingClientId Int
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
   // Relations
-  bankTransactions      BankTransaction[]
-  outstandingItems      OutstandingItem[]
-  
+  bankTransactions BankTransaction[]
+  outstandingItems OutstandingItem[]
+
   @@index([accountingClientId])
   @@index([iban])
   @@index([isActive])
@@ -320,6 +322,8 @@ model BankTransaction {
   reconciliationSuggestions ReconciliationSuggestion[]
   outstandingItems          OutstandingItem[]
   splits                    BankTransactionSplit[]
+  transferAsSource          TransferReconciliation[]   @relation("SourceTx")
+  transferAsDestination     TransferReconciliation[]   @relation("DestTx")
 
   @@index([bankStatementDocumentId])
   @@index([transactionDate])
@@ -330,14 +334,14 @@ model BankTransaction {
 }
 
 model BankTransactionSplit {
-  id                Int               @id @default(autoincrement())
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  bankTransaction   BankTransaction   @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  id                Int             @id @default(autoincrement())
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
   bankTransactionId String
-  amount            Decimal           @db.Decimal(12, 2)
+  amount            Decimal         @db.Decimal(12, 2)
   notes             String?
-  chartOfAccount    ChartOfAccounts   @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccount    ChartOfAccounts @relation(fields: [chartOfAccountId], references: [id])
   chartOfAccountId  Int
 
   @@index([bankTransactionId])
@@ -366,18 +370,18 @@ model ReconciliationRecord {
 }
 
 model ReconciliationSuggestion {
-  id                    Int               @id @default(autoincrement())
-  document              Document?         @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  documentId            Int?
-  bankTransaction       BankTransaction   @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
-  bankTransactionId     String
-  chartOfAccount        ChartOfAccounts?  @relation(fields: [chartOfAccountId], references: [id])
-  chartOfAccountId      Int?
-  confidenceScore       Decimal           @db.Decimal(4, 3)
-  matchingCriteria      Json
-  reasons               String[]
-  status                SuggestionStatus  @default(PENDING)
-  createdAt             DateTime          @default(now())
+  id                Int              @id @default(autoincrement())
+  document          Document?        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId        Int?
+  bankTransaction   BankTransaction  @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+  bankTransactionId String
+  chartOfAccount    ChartOfAccounts? @relation(fields: [chartOfAccountId], references: [id])
+  chartOfAccountId  Int?
+  confidenceScore   Decimal          @db.Decimal(4, 3)
+  matchingCriteria  Json
+  reasons           String[]
+  status            SuggestionStatus @default(PENDING)
+  createdAt         DateTime         @default(now())
 
   @@unique([documentId, bankTransactionId])
   @@index([status])
@@ -401,19 +405,19 @@ model PotentialReference {
 }
 
 model ChartOfAccounts {
-  id               Int               @id @default(autoincrement())
-  accountCode      String            @unique
-  accountName      String
-  accountType      AccountType
-  parentAccount    ChartOfAccounts?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
-  parentAccountId  Int?
-  childAccounts    ChartOfAccounts[] @relation("AccountHierarchy")
-  isActive         Boolean           @default(true)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                        Int                        @id @default(autoincrement())
+  accountCode               String                     @unique
+  accountName               String
+  accountType               AccountType
+  parentAccount             ChartOfAccounts?           @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  parentAccountId           Int?
+  childAccounts             ChartOfAccounts[]          @relation("AccountHierarchy")
+  isActive                  Boolean                    @default(true)
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
   bankTransactions          BankTransaction[]
   reconciliationSuggestions ReconciliationSuggestion[]
-  splits                     BankTransactionSplit[]
+  splits                    BankTransactionSplit[]
 
   @@index([accountCode])
   @@index([accountType])
@@ -421,31 +425,31 @@ model ChartOfAccounts {
 }
 
 model OutstandingItem {
-  id                    Int                   @id @default(autoincrement())
-  accountingClientId    Int
-  accountingClient      AccountingClients     @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
-  type                  OutstandingItemType
-  status                OutstandingItemStatus @default(OUTSTANDING)
-  referenceNumber       String                // Check number, deposit slip number, transfer reference
-  description           String
-  amount                Decimal               @db.Decimal(10, 2)
-  issueDate             DateTime              // Date check was written, deposit made, transfer initiated
-  expectedClearDate     DateTime?             // Expected date to clear
-  actualClearDate       DateTime?             // Actual date cleared
-  daysOutstanding       Int                   @default(0) // Calculated field
-  payeeBeneficiary      String?               // Who the check is made out to, or deposit source
-  bankAccountString     String?               // Legacy bank account string field
-  bankAccount           BankAccount?          @relation(fields: [bankAccountId], references: [id])
-  bankAccountId         Int?                  // Link to BankAccount entity
-  notes                 String?
-  relatedDocumentId     Int?                  // Link to related document if applicable
-  relatedDocument       Document?             @relation(fields: [relatedDocumentId], references: [id])
-  relatedTransactionId  String?               // Link to bank transaction when cleared
-  relatedTransaction    BankTransaction?      @relation(fields: [relatedTransactionId], references: [id])
-  createdBy             Int?
-  createdByUser         User?                 @relation(fields: [createdBy], references: [id])
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
+  id                   Int                   @id @default(autoincrement())
+  accountingClientId   Int
+  accountingClient     AccountingClients     @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  type                 OutstandingItemType
+  status               OutstandingItemStatus @default(OUTSTANDING)
+  referenceNumber      String // Check number, deposit slip number, transfer reference
+  description          String
+  amount               Decimal               @db.Decimal(10, 2)
+  issueDate            DateTime // Date check was written, deposit made, transfer initiated
+  expectedClearDate    DateTime? // Expected date to clear
+  actualClearDate      DateTime? // Actual date cleared
+  daysOutstanding      Int                   @default(0) // Calculated field
+  payeeBeneficiary     String? // Who the check is made out to, or deposit source
+  bankAccountString    String? // Legacy bank account string field
+  bankAccount          BankAccount?          @relation(fields: [bankAccountId], references: [id])
+  bankAccountId        Int? // Link to BankAccount entity
+  notes                String?
+  relatedDocumentId    Int? // Link to related document if applicable
+  relatedDocument      Document?             @relation(fields: [relatedDocumentId], references: [id])
+  relatedTransactionId String? // Link to bank transaction when cleared
+  relatedTransaction   BankTransaction?      @relation(fields: [relatedTransactionId], references: [id])
+  createdBy            Int?
+  createdByUser        User?                 @relation(fields: [createdBy], references: [id])
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
 
   @@index([accountingClientId])
   @@index([type])
@@ -453,6 +457,44 @@ model OutstandingItem {
   @@index([issueDate])
   @@index([daysOutstanding])
   @@index([referenceNumber])
+}
+
+/// Maps bank accounts to Romanian analytic codes (e.g., 5121.03 / 5124.02)
+model BankAccountAnalytic {
+  id                 Int               @id @default(autoincrement())
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+  iban               String
+  currency           String
+  syntheticCode      String // 5121 (RON) or 5124 (FX)
+  analyticSuffix     String // 01, 02, etc.
+  fullCode           String // 5121.03
+  bankName           String
+  accountAlias       String?
+
+  @@unique([accountingClientId, fullCode])
+  @@index([accountingClientId, iban])
+}
+
+/// Pairs two opposite-sign bank transactions as an internal transfer
+model TransferReconciliation {
+  id                       Int      @id @default(autoincrement())
+  createdAt                DateTime @default(now())
+  sourceTransactionId      String
+  destinationTransactionId String
+  sourceAccountCode        String
+  destinationAccountCode   String
+  fxRate                   Decimal? @db.Decimal(12, 6)
+  notes                    String?
+  createdByUserId          Int
+
+  createdBy              User            @relation("TransferCreatedBy", fields: [createdByUserId], references: [id])
+  sourceTransaction      BankTransaction @relation("SourceTx", fields: [sourceTransactionId], references: [id])
+  destinationTransaction BankTransaction @relation("DestTx", fields: [destinationTransactionId], references: [id])
+
+  @@unique([sourceTransactionId, destinationTransactionId])
 }
 
 enum DocumentRelationType {

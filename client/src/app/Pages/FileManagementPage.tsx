@@ -784,7 +784,7 @@ const FileManagementPage = () => {
               <select
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
-                className="border border-[var(--text4)] rounded-lg px-2 py-1 text-sm bg-[var(--background)] text-[var(--text1)]"
+                className="border border-[var(--text4)] bg-white rounded-lg px-2 py-1 text-sm text-[var(--text1)]"
                 disabled={isFilesLoading}
               >
                 <option value="createdAt_desc">{language==='ro'?'Cele mai noi':'Newest'}</option>
@@ -797,7 +797,7 @@ const FileManagementPage = () => {
               <select
                 value={limit}
                 onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
-                className="border border-[var(--text4)] rounded-lg px-2 py-1 text-sm bg-[var(--background)] text-[var(--text1)]"
+                className="border border-[var(--text4)] bg-white rounded-lg px-2 py-1 text-sm text-[var(--text1)]"
                 disabled={isFilesLoading}
               >
                 <option value={10}>10</option>
@@ -811,7 +811,7 @@ const FileManagementPage = () => {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1 || isFilesLoading}
-                  className={`px-3 py-1 rounded-lg text-sm border ${page<=1?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
+                  className={`px-3 py-1 rounded-lg text-sm border bg-white ${page<=1?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
                 >
                   {language==='ro'?'Înapoi':'Prev'}
                 </button>
@@ -825,7 +825,7 @@ const FileManagementPage = () => {
                           key={`pg-${p}`}
                           onClick={() => setPage(p as number)}
                           disabled={isFilesLoading}
-                          className={`px-2.5 py-1 rounded-md text-sm border ${page===p? 'bg-[var(--primary)] text-white border-[var(--primary)]': 'text-[var(--text2)] border-[var(--text4)] hover:bg-[var(--primary)]/10'} ${isFilesLoading?' opacity-50 cursor-not-allowed':''}`}
+                          className={`px-2.5 py-1 rounded-md bg-white text-sm border ${page===p? 'bg-[var(--primary)] text-white border-[var(--primary)]': 'text-[var(--text2)] border-[var(--text4)] hover:bg-[var(--primary)]/10'} ${isFilesLoading?' opacity-50 cursor-not-allowed':''}`}
                         >
                           {p}
                         </button>
@@ -835,7 +835,7 @@ const FileManagementPage = () => {
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages || isFilesLoading}
-                  className={`px-3 py-1 rounded-lg text-sm border ${page>=totalPages?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
+                  className={`px-3 py-1 rounded-lg text-sm border bg-white ${page>=totalPages?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
                 >
                   {language==='ro'?'Înainte':'Next'}
                 </button>

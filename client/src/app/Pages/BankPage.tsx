@@ -50,7 +50,11 @@ import {
   useUpdateBankAccountMutation,
   useDeactivateBankAccountMutation,
   useGetBankTransactionsByAccountQuery,
-  useGetConsolidatedAccountViewQuery
+  useGetConsolidatedAccountViewQuery,
+  // Transfer Reconciliation API hooks
+  useCreateTransferReconciliationMutation,
+  useGetPendingTransferReconciliationsQuery,
+  useDeleteTransferReconciliationMutation
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
@@ -1845,6 +1849,21 @@ const BankPage = () => {
   const [showConsolidatedView, setShowConsolidatedView] = useState(false);
   const [editingBankAccount, setEditingBankAccount] = useState<any>(null);
 
+  // Transfer Reconciliation state
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferForm, setTransferForm] = useState<{
+    sourceAnalyticCode: string;
+    destinationAnalyticCode: string;
+    fxRate: string;
+    notes: string;
+  }>({ sourceAnalyticCode: '', destinationAnalyticCode: '', fxRate: '1', notes: '' });
+  const [createTransferReconciliation, { isLoading: creatingTransfer }] = useCreateTransferReconciliationMutation();
+  const { data: pendingTransfersData, refetch: refetchPendingTransfers } = useGetPendingTransferReconciliationsQuery(
+    { clientEin: clientCompanyEin },
+    { skip: !clientCompanyEin }
+  );
+  const [deleteTransferReconciliation, { isLoading: deletingTransfer }] = useDeleteTransferReconciliationMutation();
+
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(1);
@@ -1912,7 +1931,7 @@ const BankPage = () => {
         return 'text-emerald-500 bg-emerald-50';
       case 'unreconciled':
       case 'pending':
-        return 'text-yellow-500 bg-yellow-50';
+        return 'text-purple-800 bg-purple-50';
       case 'disputed':
         return 'text-red-500 bg-red-50';
       case 'ignored':
@@ -3087,6 +3106,22 @@ const BankPage = () => {
                 >
                   {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
                 </button>
+                {/* Mark as Transfer button */}
+                <button
+                  onClick={() => {
+                    const txns = selectedItems.transactions;
+                    if (txns.length !== 2) {
+                      alert(language === 'ro' ? 'Selectați exact 2 tranzacții pentru transfer' : 'Select exactly 2 transactions to mark as transfer');
+                      return;
+                    }
+                    setShowTransferModal(true);
+                  }}
+                  className={`text-white text-sm px-3 py-1 rounded-lg transition-colors ${selectedItems.transactions.length === 2 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300 cursor-not-allowed'}`}
+                  disabled={selectedItems.transactions.length !== 2}
+                  title={language === 'ro' ? 'Marchează ca Transfer' : 'Mark as Transfer'}
+                >
+                  {language === 'ro' ? 'Transfer' : 'Transfer'}
+                </button>
               </div>
               
               <button
@@ -3099,6 +3134,155 @@ const BankPage = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Transfer Modal */}
+      {showTransferModal && (
+        <div className="fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTransferModal(false)}></div>
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-2xl shadow-xl">
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {language === 'ro' ? 'Marchează Transfer' : 'Mark Transfer'}
+              </h3>
+              <button onClick={() => setShowTransferModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Cont Analitic Sursă (ex. 5121.NN)' : 'Source Analytic Account (e.g., 5121.NN)'}</label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  value={transferForm.sourceAnalyticCode}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, sourceAnalyticCode: e.target.value }))}
+                  placeholder={language === 'ro' ? '5121.NN' : '5121.NN'}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Cont Analitic Destinație (ex. 5124.NN)' : 'Destination Analytic Account (e.g., 5124.NN)'}</label>
+                <input
+                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  value={transferForm.destinationAnalyticCode}
+                  onChange={(e) => setTransferForm(prev => ({ ...prev, destinationAnalyticCode: e.target.value }))}
+                  placeholder={language === 'ro' ? '5124.NN' : '5124.NN'}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">FX</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={transferForm.fxRate}
+                    onChange={(e) => setTransferForm(prev => ({ ...prev, fxRate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Notițe' : 'Notes'}</label>
+                  <input
+                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    value={transferForm.notes}
+                    onChange={(e) => setTransferForm(prev => ({ ...prev, notes: e.target.value }))}
+                    placeholder={language === 'ro' ? 'Optional' : 'Optional'}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t flex items-center justify-end gap-2">
+              <button
+                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
+                onClick={() => setShowTransferModal(false)}
+              >
+                {language === 'ro' ? 'Anulează' : 'Cancel'}
+              </button>
+              <button
+                className={`px-4 py-2 rounded-lg text-white ${creatingTransfer ? 'bg-emerald-400 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                onClick={async () => {
+                  try {
+                    const txns = selectedItems.transactions;
+                    if (txns.length !== 2) {
+                      alert(language === 'ro' ? 'Selectați exact 2 tranzacții' : 'Select exactly 2 transactions');
+                      return;
+                    }
+                    const t1 = transactionsData.find((t: any) => t.id === txns[0]);
+                    const t2 = transactionsData.find((t: any) => t.id === txns[1]);
+                    if (!t1 || !t2) {
+                      alert(language === 'ro' ? 'Tranzacții invalide' : 'Invalid transactions');
+                      return;
+                    }
+                    // Determine source (debit/outgoing) and destination (credit/incoming)
+                    const debit = (t1.transactionType === 'debit') ? t1 : (t2.transactionType === 'debit') ? t2 : t1;
+                    const credit = (debit.id === t1.id) ? t2 : t1;
+                    const payload: any = {
+                      sourceTransactionId: debit.id,
+                      destinationTransactionId: credit.id,
+                      sourceAnalyticCode: transferForm.sourceAnalyticCode || undefined,
+                      destinationAnalyticCode: transferForm.destinationAnalyticCode || undefined,
+                      fxRate: transferForm.fxRate ? parseFloat(transferForm.fxRate) : undefined,
+                      notes: transferForm.notes || undefined,
+                    };
+                    await createTransferReconciliation({ clientEin: clientCompanyEin, data: payload }).unwrap();
+                    addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
+                    setShowTransferModal(false);
+                    setTransferForm({ sourceAnalyticCode: '', destinationAnalyticCode: '', fxRate: '1', notes: '' });
+                    setSelectedItems({ documents: [], transactions: [] });
+                    setShowBulkActions(false);
+                    refetchPendingTransfers();
+                  } catch (error: any) {
+                    if (error?.status === 401 || error?.data?.statusCode === 401) {
+                      window.location.href = '/authentication';
+                      return;
+                    }
+                    const msg = error?.data?.message || error?.message || 'Unknown error';
+                    addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
+                  }
+                }}
+                disabled={creatingTransfer}
+              >
+                {creatingTransfer ? (language === 'ro' ? 'Se salvează...' : 'Saving...') : (language === 'ro' ? 'Salvează' : 'Save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending Transfers */}
+      {pendingTransfersData && Array.isArray(pendingTransfersData) && pendingTransfersData.length > 0 && (
+        <div className="bg-[var(--foreground)] border border-[var(--text4)] rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Transferuri în așteptare' : 'Pending Transfers'}</h4>
+            <button className="text-sm text-[var(--primary)] hover:underline" onClick={() => refetchPendingTransfers()}>{language === 'ro' ? 'Reîncarcă' : 'Refresh'}</button>
+          </div>
+          <div className="space-y-2">
+            {pendingTransfersData.map((tr: any) => (
+              <div key={tr.id} className="flex items-center justify-between bg-[var(--background)] border border-[var(--text4)] rounded-lg px-3 py-2">
+                <div className="text-sm text-[var(--text2)] truncate">
+                  <span className="font-medium text-[var(--text1)] mr-2">#{tr.id}</span>
+                  <span>{tr.description || ''}</span>
+                </div>
+                <button
+                  className={`px-2 py-1 text-xs rounded-lg ${deletingTransfer ? 'bg-red-300 text-white cursor-wait' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                  onClick={async () => {
+                    try {
+                      await deleteTransferReconciliation({ clientEin: clientCompanyEin, id: tr.id }).unwrap();
+                      addToast(language === 'ro' ? 'Transfer șters' : 'Transfer deleted', 'success');
+                      refetchPendingTransfers();
+                    } catch (error: any) {
+                      if (error?.status === 401 || error?.data?.statusCode === 401) {
+                        window.location.href = '/authentication';
+                        return;
+                      }
+                      const msg = error?.data?.message || error?.message || 'Unknown error';
+                      addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
+                    }
+                  }}
+                >
+                  {language === 'ro' ? 'Șterge' : 'Delete'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Split Transaction Modal */}
       {showSplitModal && selectedTransactionForSplit && (

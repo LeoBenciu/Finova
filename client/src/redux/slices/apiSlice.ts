@@ -704,6 +704,60 @@ export const finovaApi = createApi({
           invalidatesTags: ['BankReconciliation', 'BankTransactions']
         }),
         
+        // ==================== TRANSFER RECONCILIATION API HOOKS ====================
+        getTransferReconciliationCandidates: build.query<
+          { total: number; items: Array<{ sourceTransactionId: string; destinationTransactionId: string; amount: number; dateDiffDays: number; score: number }> },
+          { clientEin: string; daysWindow?: number; maxResults?: number }
+        >({
+          query: ({ clientEin, daysWindow = 2, maxResults = 50 }) => ({
+            url: `/bank/${clientEin}/transfer-candidates`,
+            method: 'GET',
+            params: { daysWindow, maxResults }
+          }),
+          providesTags: ['BankReconciliation']
+        }),
+
+        createTransferReconciliation: build.mutation<
+          any,
+          {
+            clientEin: string;
+            data: {
+              sourceTransactionId: string;
+              destinationTransactionId: string;
+              sourceAccountCode: string;
+              destinationAccountCode: string;
+              fxRate?: number;
+              notes?: string;
+            };
+          }
+        >({
+          query: ({ clientEin, data }) => ({
+            url: `/bank/${clientEin}/transfer-reconcile`,
+            method: 'POST',
+            body: data,
+          }),
+          invalidatesTags: ['BankReconciliation', 'BankTransactions']
+        }),
+
+        getPendingTransferReconciliations: build.query<any[], { clientEin: string }>({
+          query: ({ clientEin }) => ({
+            url: `/bank/${clientEin}/pending-transfers`,
+            method: 'GET'
+          }),
+          providesTags: ['BankReconciliation']
+        }),
+
+        deleteTransferReconciliation: build.mutation<
+          { id: number; deleted: true },
+          { clientEin: string; id: number }
+        >({
+          query: ({ clientEin, id }) => ({
+            url: `/bank/${clientEin}/transfer-reconcile/${id}`,
+            method: 'DELETE'
+          }),
+          invalidatesTags: ['BankReconciliation', 'BankTransactions']
+        }),
+        
         updateUserConsent: build.mutation({
             query: ({ agreementType, accepted }) => ({
                 url: '/users/me/consent',
@@ -976,5 +1030,6 @@ useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutat
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
 useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
 useUpdateDocumentReconciliationStatusMutation,
-useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation
+useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
+useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation
 } = finovaApi;

@@ -197,12 +197,12 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900">{language === 'ro' ? 'Împarte Tranzacția' : 'Split Transaction'}</h3>
+            <h3 className="text-lg text-left font-semibold text-gray-900">{language === 'ro' ? 'Împarte Tranzacția' : 'Split Transaction'}</h3>
             <p className="text-sm text-gray-500">
               {transaction.description || ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-500 hover:text-white text-red-500 bg-red-200">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-500 hover:text-white text-neutral-800 bg-neutral-200">
             <X size={18} />
           </button>
         </div>

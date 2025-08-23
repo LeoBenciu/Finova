@@ -25,6 +25,202 @@ export class BankService {
       return isNaN(d.getTime()) ? null : d;
     }
 
+  // ==================== TRANSFER RECONCILIATION ====================
+  async createTransferReconciliation(
+    clientEin: string,
+    user: User,
+    data: {
+      sourceTransactionId: string;
+      destinationTransactionId: string;
+      sourceAccountCode: string;
+      destinationAccountCode: string;
+      fxRate?: number;
+      notes?: string;
+    }
+  ) {
+    if (!data?.sourceTransactionId || !data?.destinationTransactionId) {
+      throw new BadRequestException('sourceTransactionId and destinationTransactionId are required');
+    }
+    if (data.sourceTransactionId === data.destinationTransactionId) {
+      throw new BadRequestException('Source and destination transactions must be different');
+    }
+
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    const [src, dst] = await this.prisma.$transaction([
+      this.prisma.bankTransaction.findUnique({
+        where: { id: data.sourceTransactionId },
+        include: { bankStatementDocument: true },
+      }),
+      this.prisma.bankTransaction.findUnique({
+        where: { id: data.destinationTransactionId },
+        include: { bankStatementDocument: true },
+      }),
+    ]);
+    if (!src || !dst) throw new NotFoundException('One or both transactions not found');
+    if (
+      src.bankStatementDocument.accountingClientId !== accountingClient.id ||
+      dst.bankStatementDocument.accountingClientId !== accountingClient.id
+    ) {
+      throw new UnauthorizedException('Transactions do not belong to this client');
+    }
+    // Validate signs and absolute amount equality (within 0.01)
+    const srcAmt = Number(src.amount);
+    const dstAmt = Number(dst.amount);
+    if (!(srcAmt < 0 && dstAmt > 0)) {
+      throw new BadRequestException('Source must be negative and destination positive');
+    }
+    if (!this.amountsEqual(Math.abs(srcAmt), Math.abs(dstAmt))) {
+      throw new BadRequestException('Amounts do not match');
+    }
+
+    // Prevent duplicates
+    const existing = await this.prisma.transferReconciliation.findFirst({
+      where: {
+        sourceTransactionId: data.sourceTransactionId,
+        destinationTransactionId: data.destinationTransactionId,
+      },
+    });
+    if (existing) {
+      return existing;
+    }
+
+    const created = await this.prisma.transferReconciliation.create({
+      data: {
+        sourceTransactionId: data.sourceTransactionId,
+        destinationTransactionId: data.destinationTransactionId,
+        sourceAccountCode: data.sourceAccountCode,
+        destinationAccountCode: data.destinationAccountCode,
+        fxRate: data.fxRate != null ? new Prisma.Decimal(data.fxRate) : null,
+        notes: data.notes || null,
+        createdByUserId: user.id,
+      },
+    });
+
+    return created;
+  }
+
+  async getTransferReconciliationCandidates(
+    clientEin: string,
+    user: User,
+    options?: { daysWindow?: number; maxResults?: number }
+  ) {
+    const daysWindow = options?.daysWindow ?? 2;
+    const maxResults = Math.min(options?.maxResults ?? 50, 200);
+
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    // Fetch recent unreconciled transactions for this client
+    const txs = await this.prisma.bankTransaction.findMany({
+      where: {
+        bankStatementDocument: { accountingClientId: accountingClient.id },
+        reconciliationStatus: ReconciliationStatus.UNRECONCILED,
+      },
+      orderBy: { transactionDate: 'desc' },
+      take: 1000,
+    });
+
+    // Index by rounded absolute amount for quick matching
+    const creditsByAmt = new Map<string, typeof txs>();
+    const debits = [] as typeof txs;
+    for (const t of txs) {
+      const amt = Number(t.amount);
+      const key = Math.abs(amt).toFixed(2);
+      if (amt > 0) {
+        const arr = creditsByAmt.get(key) || ([] as typeof txs);
+        arr.push(t);
+        creditsByAmt.set(key, arr);
+      } else if (amt < 0) {
+        debits.push(t);
+      }
+    }
+
+    const results: any[] = [];
+    for (const d of debits) {
+      const key = Math.abs(Number(d.amount)).toFixed(2);
+      const candidates = creditsByAmt.get(key) || [];
+      for (const c of candidates) {
+        const dayDiff = Math.abs(
+          Math.round((+new Date(d.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
+        );
+        if (dayDiff <= daysWindow) {
+          // Prefer different bank accounts where available
+          const differentAccount = (d.bankAccountId || 0) !== (c.bankAccountId || 0);
+          results.push({
+            sourceTransactionId: d.id,
+            destinationTransactionId: c.id,
+            amount: Math.abs(Number(d.amount)),
+            dateDiffDays: dayDiff,
+            score: (differentAccount ? 1 : 0.9) - dayDiff * 0.05,
+          });
+          if (results.length >= maxResults) break;
+        }
+      }
+      if (results.length >= maxResults) break;
+    }
+
+    // Sort by score desc and return
+    results.sort((a, b) => b.score - a.score);
+    return { total: results.length, items: results };
+  }
+
+  async getPendingTransferReconciliations(clientEin: string, user: User) {
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    const transfers = await this.prisma.transferReconciliation.findMany({
+      where: {
+        OR: [
+          { sourceTransaction: { bankStatementDocument: { accountingClientId: accountingClient.id } } },
+          { destinationTransaction: { bankStatementDocument: { accountingClientId: accountingClient.id } } },
+        ],
+      },
+      orderBy: { id: 'desc' },
+    });
+    return transfers;
+  }
+
+  async deleteTransferReconciliation(clientEin: string, id: number, user: User) {
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    const tr = await this.prisma.transferReconciliation.findUnique({
+      where: { id },
+      include: {
+        sourceTransaction: { include: { bankStatementDocument: true } },
+        destinationTransaction: { include: { bankStatementDocument: true } },
+      },
+    });
+    if (!tr) throw new NotFoundException('Transfer reconciliation not found');
+    if (
+      tr.sourceTransaction.bankStatementDocument.accountingClientId !== accountingClient.id &&
+      tr.destinationTransaction.bankStatementDocument.accountingClientId !== accountingClient.id
+    ) {
+      throw new UnauthorizedException('No access to this transfer reconciliation');
+    }
+
+    await this.prisma.transferReconciliation.delete({ where: { id } });
+    return { id, deleted: true };
+  }
+
     // Utility: compare monetary values with tolerance of 0.01
     private amountsEqual(a: number, b: number, epsilon = 0.01): boolean {
       return Math.abs(a - b) <= epsilon;

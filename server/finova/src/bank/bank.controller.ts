@@ -467,4 +467,51 @@ export class BankController {
     ) {
       return this.bankService.suggestTransactionSplits(transactionId, user);
     }
+
+    // ==================== TRANSFER RECONCILIATION ENDPOINTS ====================
+    @Post(':clientEin/transfer-reconcile')
+    async createTransferReconciliation(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Body() data: {
+        sourceTransactionId: string;
+        destinationTransactionId: string;
+        sourceAccountCode: string; // e.g., 5121.01
+        destinationAccountCode: string; // e.g., 5124.02
+        fxRate?: number;
+        notes?: string;
+      }
+    ) {
+      return this.bankService.createTransferReconciliation(clientEin, user, data);
+    }
+
+    @Get(':clientEin/transfer-candidates')
+    async getTransferReconciliationCandidates(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Query('daysWindow') daysWindow?: string,
+      @Query('maxResults') maxResults?: string
+    ) {
+      return this.bankService.getTransferReconciliationCandidates(clientEin, user, {
+        daysWindow: daysWindow ? Number(daysWindow) : 2,
+        maxResults: maxResults ? Number(maxResults) : 50,
+      });
+    }
+
+    @Get(':clientEin/pending-transfers')
+    async getPendingTransferReconciliations(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getPendingTransferReconciliations(clientEin, user);
+    }
+
+    @Delete(':clientEin/transfer-reconcile/:id')
+    async deleteTransferReconciliation(
+      @Param('clientEin') clientEin: string,
+      @Param('id', ParseIntPipe) id: number,
+      @GetUser() user: User
+    ) {
+      return this.bankService.deleteTransferReconciliation(clientEin, id, user);
+    }
 }

@@ -20,6 +20,10 @@ import {
   useDeleteOutstandingItemMutation,
   useUpdateOutstandingItemMutation
 } from '@/redux/slices/apiSlice';
+import { 
+  useGetPendingTransferReconciliationsQuery,
+  useDeleteTransferReconciliationMutation
+} from '@/redux/slices/apiSlice';
 
 interface OutstandingItemsManagementProps {
   clientEin: string;
@@ -62,6 +66,13 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
   const [filterType, setFilterType] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('');
   const [editingItem, setEditingItem] = useState<OutstandingItem | null>(null);
+
+  // Pending Transfers integration
+  const { data: pendingTransfers, refetch: refetchPendingTransfers, isLoading: pendingTransfersLoading } = useGetPendingTransferReconciliationsQuery(
+    { clientEin },
+    { skip: !clientEin }
+  );
+  const [deleteTransferReconciliation, { isLoading: deletingTransfer }] = useDeleteTransferReconciliationMutation();
 
   // API Hooks
   const { data: outstandingItems, isLoading: itemsLoading, refetch } = useGetOutstandingItemsQuery({
@@ -181,6 +192,57 @@ function OutstandingItemsManagement({ clientEin, language }: OutstandingItemsMan
         </h2>
         <div className="text-sm text-gray-500">
           {language === 'ro' ? 'Elementele sunt create automat din documente nereconciliate' : 'Items are created automatically from unreconciled documents'}
+        </div>
+      </div>
+
+      {/* Pending Transfers Section */}
+      <div className="bg-white rounded-lg shadow border border-gray-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-emerald-600" />
+            <h3 className="text-sm font-semibold text-gray-900">{language === 'ro' ? 'Transferuri în așteptare' : 'Pending Transfers'}</h3>
+          </div>
+          <button
+            className="text-xs text-emerald-700 hover:underline"
+            onClick={() => refetchPendingTransfers()}
+          >
+            {language === 'ro' ? 'Reîncarcă' : 'Refresh'}
+          </button>
+        </div>
+        <div className="px-4 py-3">
+          {pendingTransfersLoading ? (
+            <div className="text-sm text-gray-500">{language === 'ro' ? 'Se încarcă...' : 'Loading...'}</div>
+          ) : !pendingTransfers || pendingTransfers.length === 0 ? (
+            <div className="text-sm text-gray-500">{language === 'ro' ? 'Nu există transferuri în așteptare' : 'No pending transfers'}</div>
+          ) : (
+            <div className="space-y-2 max-h-56 overflow-auto scrollbar-soft">
+              {pendingTransfers.map((tr: any) => (
+                <div key={tr.id} className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-900 truncate">#{tr.id} {tr.description || ''}</div>
+                    <div className="text-xs text-gray-500 truncate">{tr.createdAt ? new Date(tr.createdAt).toLocaleString() : ''}</div>
+                  </div>
+                  <button
+                    className={`ml-3 px-2 py-1 text-xs rounded-md ${deletingTransfer ? 'bg-red-300 text-white cursor-wait' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
+                    onClick={async () => {
+                      try {
+                        await deleteTransferReconciliation({ clientEin, id: tr.id }).unwrap();
+                        refetchPendingTransfers();
+                      } catch (error: any) {
+                        if (error?.status === 401 || error?.data?.statusCode === 401) {
+                          window.location.href = '/authentication';
+                          return;
+                        }
+                        alert((language === 'ro' ? 'Eroare: ' : 'Error: ') + (error?.data?.message || error?.message || 'Unknown error'));
+                      }
+                    }}
+                  >
+                    {language === 'ro' ? 'Șterge' : 'Delete'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
