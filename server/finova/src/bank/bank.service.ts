@@ -32,8 +32,8 @@ export class BankService {
     data: {
       sourceTransactionId: string;
       destinationTransactionId: string;
-      sourceAccountCode: string;
-      destinationAccountCode: string;
+      sourceAccountCode?: string;
+      destinationAccountCode?: string;
       fxRate?: number;
       notes?: string;
     }
@@ -55,11 +55,11 @@ export class BankService {
     const [src, dst] = await this.prisma.$transaction([
       this.prisma.bankTransaction.findUnique({
         where: { id: data.sourceTransactionId },
-        include: { bankStatementDocument: true },
+        include: { bankStatementDocument: true, bankAccount: true },
       }),
       this.prisma.bankTransaction.findUnique({
         where: { id: data.destinationTransactionId },
-        include: { bankStatementDocument: true },
+        include: { bankStatementDocument: true, bankAccount: true },
       }),
     ]);
     if (!src || !dst) throw new NotFoundException('One or both transactions not found');
@@ -90,13 +90,50 @@ export class BankService {
       return existing;
     }
 
+    // Auto-derive analytic account codes if missing
+    const resolveAnalyticForTx = async (tx: typeof src): Promise<string> => {
+      if (!tx) throw new NotFoundException('Transaction not found');
+      if (!tx.bankAccount) {
+        throw new BadRequestException('Bank account is not associated with one of the transactions. Please run association and set analytics for the IBAN.');
+      }
+      const analytic = await this.prisma.bankAccountAnalytic.findFirst({
+        where: {
+          accountingClientId: accountingClient.id,
+          iban: tx.bankAccount.iban,
+        },
+      });
+      if (!analytic) {
+        throw new BadRequestException(`No analytic mapping found for IBAN ${tx.bankAccount.iban}. Please set an analytic code for this bank account.`);
+      }
+      return analytic.fullCode;
+    };
+
+    let srcAccountCode = data.sourceAccountCode;
+    let dstAccountCode = data.destinationAccountCode;
+    if (!srcAccountCode) {
+      srcAccountCode = await resolveAnalyticForTx(src);
+    }
+    if (!dstAccountCode) {
+      dstAccountCode = await resolveAnalyticForTx(dst);
+    }
+
+    // Default FX rate to 1 when both accounts have the same currency and none provided
+    let fxRateToUse: number | null = null;
+    if (data.fxRate != null) {
+      fxRateToUse = data.fxRate;
+    } else if (src.bankAccount && dst.bankAccount && src.bankAccount.currency === dst.bankAccount.currency) {
+      fxRateToUse = 1;
+    } else {
+      fxRateToUse = null;
+    }
+
     const created = await this.prisma.transferReconciliation.create({
       data: {
         sourceTransactionId: data.sourceTransactionId,
         destinationTransactionId: data.destinationTransactionId,
-        sourceAccountCode: data.sourceAccountCode,
-        destinationAccountCode: data.destinationAccountCode,
-        fxRate: data.fxRate != null ? new Prisma.Decimal(data.fxRate) : null,
+        sourceAccountCode: srcAccountCode,
+        destinationAccountCode: dstAccountCode,
+        fxRate: fxRateToUse != null ? new Prisma.Decimal(fxRateToUse) : null,
         notes: data.notes || null,
         createdByUserId: user.id,
       },

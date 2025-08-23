@@ -1852,11 +1852,9 @@ const BankPage = () => {
   // Transfer Reconciliation state
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferForm, setTransferForm] = useState<{
-    sourceAnalyticCode: string;
-    destinationAnalyticCode: string;
     fxRate: string;
     notes: string;
-  }>({ sourceAnalyticCode: '', destinationAnalyticCode: '', fxRate: '1', notes: '' });
+  }>({ fxRate: '1', notes: '' });
   const [createTransferReconciliation, { isLoading: creatingTransfer }] = useCreateTransferReconciliationMutation();
   const { data: pendingTransfersData, refetch: refetchPendingTransfers } = useGetPendingTransferReconciliationsQuery(
     { clientEin: clientCompanyEin },
@@ -3147,24 +3145,11 @@ const BankPage = () => {
               <button onClick={() => setShowTransferModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
             </div>
             <div className="px-6 py-4 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Cont Analitic Sursă (ex. 5121.NN)' : 'Source Analytic Account (e.g., 5121.NN)'}</label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={transferForm.sourceAnalyticCode}
-                  onChange={(e) => setTransferForm(prev => ({ ...prev, sourceAnalyticCode: e.target.value }))}
-                  placeholder={language === 'ro' ? '5121.NN' : '5121.NN'}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Cont Analitic Destinație (ex. 5124.NN)' : 'Destination Analytic Account (e.g., 5124.NN)'}</label>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  value={transferForm.destinationAnalyticCode}
-                  onChange={(e) => setTransferForm(prev => ({ ...prev, destinationAnalyticCode: e.target.value }))}
-                  placeholder={language === 'ro' ? '5124.NN' : '5124.NN'}
-                />
-              </div>
+              <p className="text-sm text-gray-600">
+                {language === 'ro'
+                  ? 'Conturile analitice vor fi atribuite automat pe baza mapping-ului IBAN. Completați doar cursul (dacă este necesar) și notițele.'
+                  : 'Analytic accounts will be assigned automatically based on IBAN mappings. Only fill FX (if needed) and notes.'}
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">FX</label>
@@ -3215,15 +3200,13 @@ const BankPage = () => {
                     const payload: any = {
                       sourceTransactionId: debit.id,
                       destinationTransactionId: credit.id,
-                      sourceAnalyticCode: transferForm.sourceAnalyticCode || undefined,
-                      destinationAnalyticCode: transferForm.destinationAnalyticCode || undefined,
                       fxRate: transferForm.fxRate ? parseFloat(transferForm.fxRate) : undefined,
                       notes: transferForm.notes || undefined,
                     };
                     await createTransferReconciliation({ clientEin: clientCompanyEin, data: payload }).unwrap();
                     addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
                     setShowTransferModal(false);
-                    setTransferForm({ sourceAnalyticCode: '', destinationAnalyticCode: '', fxRate: '1', notes: '' });
+                    setTransferForm({ fxRate: '1', notes: '' });
                     setSelectedItems({ documents: [], transactions: [] });
                     setShowBulkActions(false);
                     refetchPendingTransfers();

@@ -724,8 +724,8 @@ export const finovaApi = createApi({
             data: {
               sourceTransactionId: string;
               destinationTransactionId: string;
-              sourceAccountCode: string;
-              destinationAccountCode: string;
+              sourceAccountCode?: string;
+              destinationAccountCode?: string;
               fxRate?: number;
               notes?: string;
             };

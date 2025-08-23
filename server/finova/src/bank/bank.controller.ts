@@ -476,8 +476,8 @@ export class BankController {
       @Body() data: {
         sourceTransactionId: string;
         destinationTransactionId: string;
-        sourceAccountCode: string; // e.g., 5121.01
-        destinationAccountCode: string; // e.g., 5124.02
+        sourceAccountCode?: string; // optional; derived from IBAN mapping if omitted
+        destinationAccountCode?: string; // optional; derived from IBAN mapping if omitted
         fxRate?: number;
         notes?: string;
       }
