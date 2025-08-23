@@ -58,8 +58,7 @@ import {
   // Transfer Reconciliation API hooks
   useCreateTransferReconciliationMutation,
   useGetPendingTransferReconciliationsQuery,
-  useDeleteTransferReconciliationMutation,
-  useGetTransferReconciliationCandidatesForTransactionQuery
+  useDeleteTransferReconciliationMutation
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
@@ -113,7 +112,7 @@ interface BankTransaction {
 }
 
 interface ReconciliationSuggestion {
-  id: number;
+  id: number | string;
   document_id: number;
   transaction_id: string;
   confidenceScore: number;
@@ -121,6 +120,10 @@ interface ReconciliationSuggestion {
     component_match?: boolean;
     component_type?: string;
     is_partial_match?: boolean;
+    type?: 'TRANSFER' | string;
+    dateDiffDays?: number;
+    crossCurrency?: boolean;
+    impliedFxRate?: number;
     [key: string]: any;
   };
   reasons: string[];
@@ -145,6 +148,11 @@ interface ReconciliationSuggestion {
     amount: number;
     transactionDate: string;
     transactionType: 'debit' | 'credit';
+    bankStatementDocument?: {
+      id: number;
+      name: string;
+      signedUrl?: string;
+    } | null;
   } | null;
   chartOfAccount?: {
     accountCode?: string;
@@ -152,6 +160,26 @@ interface ReconciliationSuggestion {
     code?: string;
     name?: string;
   } | null;
+  // Present only for unified transfer suggestions
+  transfer?: {
+    sourceTransactionId: string;
+    destinationTransactionId: string;
+    counterpartyTransaction: {
+      id: string;
+      description: string;
+      amount: number;
+      transactionDate: string;
+      transactionType: 'debit' | 'credit';
+      bankStatementDocument?: {
+        id: number;
+        name: string;
+        signedUrl?: string;
+      } | null;
+    };
+    crossCurrency?: boolean;
+    impliedFxRate?: number;
+    dateDiffDays?: number;
+  };
 }
 
 // Comprehensive Reporting System Component
@@ -1856,9 +1884,6 @@ const BankPage = () => {
 
   // Transfer Reconciliation state
   const [showTransferModal, setShowTransferModal] = useState(false);
-  // Suggestions-tab transfer candidates modal state
-  const [showTransferCandidatesModal, setShowTransferCandidatesModal] = useState(false);
-  const [transferCandidatesTxn, setTransferCandidatesTxn] = useState<BankTransaction | null>(null);
   
   // Bank Account Analytic Suffix (simple field handled via form input)
   const [transferForm, setTransferForm] = useState<{
@@ -1872,17 +1897,7 @@ const BankPage = () => {
   );
   const [deleteTransferReconciliation, { isLoading: deletingTransfer }] = useDeleteTransferReconciliationMutation();
 
-  // Fetch transfer candidates for a specific transaction when modal is open
-  const { data: perTxnCandidatesResp, isFetching: perTxnCandidatesLoading } = useGetTransferReconciliationCandidatesForTransactionQuery(
-    {
-      clientEin: clientCompanyEin,
-      transactionId: transferCandidatesTxn?.id || '',
-      daysWindow: 3,
-      maxResults: 50,
-      allowCrossCurrency: true
-    },
-    { skip: !clientCompanyEin || !transferCandidatesTxn || !showTransferCandidatesModal }
-  );
+  // Removed per-transaction transfer candidates modal/query to simplify UI
 
   // Toast notifications
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -2082,7 +2097,7 @@ const BankPage = () => {
   }, [outstandingList]);
 
   // Local state to optimistically remove suggestions that were just accepted/rejected
-  const [removedSuggestions, setRemovedSuggestions] = useState<Set<number>>(new Set());
+  const [removedSuggestions, setRemovedSuggestions] = useState<Set<string>>(new Set());
 
   // Multi-Bank Account API queries
   const { data: bankAccounts = [], isLoading: bankAccountsLoading } = useGetBankAccountsQuery(clientCompanyEin, {
@@ -2118,10 +2133,10 @@ const BankPage = () => {
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     if (!selectedBankAccountId) {
-      return base.filter(s => !removedSuggestions.has(s.id));
+      return base.filter(s => !removedSuggestions.has(String(s.id)));
     }
     return base.filter(s => {
-      if (removedSuggestions.has(s.id)) return false;
+      if (removedSuggestions.has(String(s.id))) return false;
       // If suggestion has a bankTransaction, ensure it belongs to selected account
       const txnId = (s as any).bankTransaction?.id;
       return !txnId || accountTransactionIdSet.has(txnId);
@@ -2153,9 +2168,9 @@ const BankPage = () => {
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();
   const [createManualAccountReconciliation, { isLoading: isCreatingAccountReconciliation }] = useCreateManualAccountReconciliationMutation();
   const [acceptSuggestion] = useAcceptReconciliationSuggestionMutation();
-  const [loadingSuggestions, setLoadingSuggestions] = useState<Set<number>>(new Set());
+  const [loadingSuggestions, setLoadingSuggestions] = useState<Set<string>>(new Set());
   const [rejectSuggestion] = useRejectReconciliationSuggestionMutation();
-  const [rejectingSuggestions, setRejectingSuggestions] = useState<Set<number>>(new Set());
+  const [rejectingSuggestions, setRejectingSuggestions] = useState<Set<string>>(new Set());
   const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
   const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
   const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
@@ -3111,92 +3126,7 @@ const BankPage = () => {
         </div>
       )}
 
-      {/* Transfer Candidates Modal for Suggestions tab */}
-      {showTransferCandidatesModal && transferCandidatesTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-xl p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-[var(--text1)]">
-                {language === 'ro' ? 'Sugestii de Transfer' : 'Transfer Candidates'}
-              </h3>
-              <button className="text-[var(--text2)] hover:text-[var(--text1)]" onClick={() => setShowTransferCandidatesModal(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            <div className="mb-3">
-              <p className="text-sm text-[var(--text2)]">
-                {language === 'ro' ? 'Tranzacție selectată:' : 'Selected transaction:'} {formatDate(transferCandidatesTxn.transactionDate)} · {formatCurrency(transferCandidatesTxn.amount)} · {transferCandidatesTxn.transactionType}
-              </p>
-            </div>
-            {perTxnCandidatesLoading ? (
-              <div className="py-10 text-center text-[var(--text2)] flex items-center justify-center gap-2"><Loader2 className="animate-spin" size={18} /> {language === 'ro' ? 'Se încarcă...' : 'Loading...'}</div>
-            ) : (
-              <div className="space-y-3 max-h-[60vh] overflow-auto">
-                {(perTxnCandidatesResp?.items || []).length === 0 ? (
-                  <div className="text-center text-[var(--text2)] py-10">
-                    {language === 'ro' ? 'Nu s-au găsit sugestii de transfer' : 'No transfer candidates found'}
-                  </div>
-                ) : (
-                  (perTxnCandidatesResp?.items || []).map((c, idx) => (
-                    <div key={idx} className="border border-gray-200 rounded-xl p-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-[var(--text1)]">{language === 'ro' ? 'Candidat' : 'Candidate'}</p>
-                        <p className="text-xs text-[var(--text3)]">
-                          {language === 'ro' ? 'Diferență zile' : 'Date diff'}: {c.dateDiffDays} · Score: {Math.round((c.score || 0) * 100)}%
-                        </p>
-                        <p className="text-sm text-[var(--text2)]">{language === 'ro' ? 'Suma' : 'Amount'}: {formatCurrency(Math.abs(c.amount || 0))}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 disabled:opacity-50"
-                          onClick={async () => {
-                            try {
-                              // Prefer explicit source/destination if provided by API
-                              const preferredSource = (c as any).sourceTransactionId;
-                              const preferredDest = (c as any).destinationTransactionId;
-                              let sourceId: string;
-                              let destId: string;
-                              if (preferredSource && preferredDest) {
-                                sourceId = preferredSource;
-                                destId = preferredDest;
-                              } else {
-                                // Fallback: assume debit -> credit
-                                if (transferCandidatesTxn.transactionType === 'debit') {
-                                  sourceId = transferCandidatesTxn.id;
-                                  destId = c.counterpartyTransactionId as string;
-                                } else {
-                                  sourceId = c.counterpartyTransactionId as string;
-                                  destId = transferCandidatesTxn.id;
-                                }
-                              }
-                              await createTransferReconciliation({
-                                clientEin: clientCompanyEin,
-                                data: { sourceTransactionId: sourceId, destinationTransactionId: destId }
-                              }).unwrap();
-                              addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
-                              setShowTransferCandidatesModal(false);
-                              setTransferCandidatesTxn(null);
-                              // Refresh lists
-                              setSuggestionsData([]);
-                              setSuggestionsPage(1);
-                              refetchPendingTransfers && refetchPendingTransfers();
-                            } catch (e: any) {
-                              const msg = e?.data?.message || e?.message || 'Unknown error';
-                              addToast((language === 'ro' ? 'Eroare la crearea transferului: ' : 'Failed to create transfer: ') + msg, 'error');
-                            }
-                          }}
-                        >
-                          {language === 'ro' ? 'Acceptă' : 'Accept'}
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Transfer candidates modal and button removed to keep UI simple as requested */}
 
       {/* Bulk Actions Bar */}
       <AnimatePresence>
@@ -3846,22 +3776,37 @@ const BankPage = () => {
                       <div className="flex gap-2">
                         <button
                           onClick={async () => {
-                            const suggestionId = suggestion.id;
+                            const suggestionId = String(suggestion.id);
                             setLoadingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
-                              const isDocumentSuggestion = suggestion.document && suggestion.document.id;
-                              const isAccountCodeSuggestion = suggestion.chartOfAccount && suggestion.chartOfAccount.accountCode;
+                              const isTransferSuggestion = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
+                              const isDocumentSuggestion = suggestion.document && (suggestion as any).document.id;
+                              const isAccountCodeSuggestion = suggestion.chartOfAccount && (suggestion.chartOfAccount.accountCode || (suggestion.chartOfAccount as any).code);
                               
-                              if (isDocumentSuggestion) {
+                              if (isTransferSuggestion) {
+                                const srcId = suggestion.transfer!.sourceTransactionId;
+                                const dstId = suggestion.transfer!.destinationTransactionId;
+                                if (!srcId || !dstId) throw new Error('Missing transaction ids for transfer');
+                                await createTransferReconciliation({
+                                  clientEin: clientCompanyEin,
+                                  data: {
+                                    sourceTransactionId: srcId,
+                                    destinationTransactionId: dstId,
+                                    fxRate: suggestion.transfer?.impliedFxRate,
+                                    notes: `Accepted transfer suggestion (Δdays ${suggestion.transfer?.dateDiffDays ?? '-'})`
+                                  }
+                                }).unwrap();
+                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
+                              } else if (isDocumentSuggestion) {
                                 await acceptSuggestion({
-                                  suggestionId,
+                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for document suggestion'); })(),
                                   notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
                                 }).unwrap();
                                 console.log('Document suggestion accepted successfully');
                                 setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
                               } else if (isAccountCodeSuggestion && suggestion.bankTransaction && suggestion.chartOfAccount) {
                                 const transactionId = suggestion.bankTransaction.id;
-                                const accountCode = suggestion.chartOfAccount.accountCode;
+                                const accountCode = suggestion.chartOfAccount.accountCode || (suggestion.chartOfAccount as any).code;
                                 
                                 if (!transactionId) {
                                   throw new Error('Transaction ID is missing');
@@ -3879,7 +3824,7 @@ const BankPage = () => {
                                 setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
                                 
                                 await rejectSuggestion({
-                                  suggestionId,
+                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for account code reject'); })(),
                                   reason: 'Accepted as account code reconciliation'
                                 }).unwrap();
                               } else {
@@ -3903,25 +3848,32 @@ const BankPage = () => {
                               });
                             }
                           }}
-                          disabled={loadingSuggestions.has(suggestion.id)}
+                          disabled={loadingSuggestions.has(String(suggestion.id))}
                           className="px-4 py-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                         >
-                          {loadingSuggestions.has(suggestion.id) && <Loader2 size={16} className="animate-spin" />}
+                          {loadingSuggestions.has(String(suggestion.id)) && <Loader2 size={16} className="animate-spin" />}
                           <Check size={16} />
                           {language === 'ro' ? 'Acceptă' : 'Accept'}
                         </button>
                          <button 
                           onClick={async () => {
-                            const suggestionId = suggestion.id;
+                            const suggestionId = String(suggestion.id);
                             setRejectingSuggestions(prev => new Set(prev).add(suggestionId));
                             try {
-                              await rejectSuggestion({
-                                suggestionId,
-                                reason: 'Manual rejection by user'
-                              }).unwrap();
-                              console.log('Suggestion rejected successfully');
-                               setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                               refetchSuggestions && refetchSuggestions();
+                              const isTransferSuggestion = suggestion.matchingCriteria?.type === 'TRANSFER';
+                              if (isTransferSuggestion) {
+                                // Synthetic ID: no backend reject. Optimistically remove.
+                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
+                                console.log('Transfer suggestion removed locally');
+                              } else {
+                                await rejectSuggestion({
+                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for reject'); })(),
+                                  reason: 'Manual rejection by user'
+                                }).unwrap();
+                                console.log('Suggestion rejected successfully');
+                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
+                                refetchSuggestions && refetchSuggestions();
+                              }
                             } catch (error: any) {
                               console.error('Failed to reject suggestion:', error);
                               if (error?.status === 401 || error?.data?.statusCode === 401) {
@@ -3940,10 +3892,10 @@ const BankPage = () => {
                               });
                             }
                           }}
-                          disabled={rejectingSuggestions.has(suggestion.id)}
+                          disabled={rejectingSuggestions.has(String(suggestion.id))}
                           className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
                         >
-                          {rejectingSuggestions.has(suggestion.id) && <Loader2 size={16} className="animate-spin" />}
+                          {rejectingSuggestions.has(String(suggestion.id)) && <Loader2 size={16} className="animate-spin" />}
                           <X size={16} />
                           {language === 'ro' ? 'Respinge' : 'Reject'}
                         </button>
@@ -3969,9 +3921,25 @@ const BankPage = () => {
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-sm font-semibold text-[var(--text1)]">
-                            {suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
+                            {suggestion.matchingCriteria?.type === 'TRANSFER'
+                              ? (language === 'ro' ? 'Tranzacție contraparte' : 'Counterparty Transaction')
+                              : suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
                           </p>
-                          {suggestion.document && (
+                          {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
+                            <button
+                              onClick={() => {
+                                const cp = suggestion.transfer!.counterpartyTransaction as any;
+                                if (cp?.bankStatementDocument?.signedUrl) {
+                                  window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
+                                }
+                              }}
+                              disabled={!(suggestion.transfer.counterpartyTransaction as any)?.bankStatementDocument?.signedUrl}
+                              className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={language === 'ro' ? 'Vezi extrasul băncii (contraparte)' : 'View bank statement (counterparty)'}
+                            >
+                              <Eye size={14} className="text-emerald-500" />
+                            </button>
+                          ) : suggestion.document && (
                             <button
                               onClick={() => {
                                 const doc = suggestion.document as any;
@@ -3987,7 +3955,20 @@ const BankPage = () => {
                             </button>
                           )}
                         </div>
-                        {suggestion.document ? (
+                        {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
+                          <>
+                            <p className="text-sm text-[var(--text2)] truncate">{suggestion.transfer.counterpartyTransaction.description}</p>
+                            <p className="text-xs text-[var(--text3)]">{formatDate(suggestion.transfer.counterpartyTransaction.transactionDate)}</p>
+                            <p className={`text-sm font-medium ${suggestion.transfer.counterpartyTransaction.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
+                              {(suggestion.transfer.counterpartyTransaction.transactionType === 'credit' ? '+' : '') + formatCurrency(Math.abs(suggestion.transfer.counterpartyTransaction.amount))}
+                            </p>
+                            {suggestion.transfer.crossCurrency && (
+                              <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full mt-1">
+                                FX {suggestion.transfer.impliedFxRate}
+                              </span>
+                            )}
+                          </>
+                        ) : suggestion.document ? (
                           <>
                             <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
                             <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
@@ -4156,20 +4137,7 @@ const BankPage = () => {
                         <p className={`text-sm font-medium ${suggestion.bankTransaction?.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
                           {suggestion.bankTransaction ? `${suggestion.bankTransaction.transactionType === 'credit' ? '+' : ''}${formatCurrency(suggestion.bankTransaction.amount)}` : ''}
                         </p>
-                        {suggestion.bankTransaction && (
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              onClick={() => {
-                                setTransferCandidatesTxn(suggestion.bankTransaction as any);
-                                setShowTransferCandidatesModal(true);
-                              }}
-                              className="px-3 py-1.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-xs hover:bg-purple-100"
-                              title={language === 'ro' ? 'Vezi sugestii de transfer pentru această tranzacție' : 'View transfer candidates for this transaction'}
-                            >
-                              {language === 'ro' ? 'Sugestii Transfer' : 'Transfer Candidates'}
-                            </button>
-                          </div>
-                        )}
+                        {/* Transfer candidates quick action removed as requested */}
                       </div>
                     </div>
                   </motion.div>

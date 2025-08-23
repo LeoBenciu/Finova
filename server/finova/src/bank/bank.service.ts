@@ -1323,10 +1323,10 @@ export class BankService {
             if (s.document) {
               documentSignedUrl = s.document.s3Key
                 ? await s3.getSignedUrlPromise('getObject', {
-                    Bucket: process.env.AWS_S3_BUCKET_NAME,
-                    Key: s.document.s3Key,
-                    Expires: 3600,
-                  })
+                  Bucket: process.env.AWS_S3_BUCKET_NAME,
+                  Key: s.document.s3Key,
+                  Expires: 3600,
+                })
                 : s.document.path;
             }
 
@@ -1336,10 +1336,10 @@ export class BankService {
               const bsDoc = s.bankTransaction.bankStatementDocument;
               bankStatementSignedUrl = bsDoc.s3Key
                 ? await s3.getSignedUrlPromise('getObject', {
-                    Bucket: process.env.AWS_S3_BUCKET_NAME,
-                    Key: bsDoc.s3Key,
-                    Expires: 3600,
-                  })
+                  Bucket: process.env.AWS_S3_BUCKET_NAME,
+                  Key: bsDoc.s3Key,
+                  Expires: 3600,
+                })
                 : bsDoc.path;
             }
 
@@ -1351,41 +1351,165 @@ export class BankService {
               createdAt: s.createdAt,
               document: s.document
                 ? {
-                    id: s.document.id,
-                    name: s.document.name,
-                    type: s.document.type,
-                    signedUrl: documentSignedUrl,
-                    total_amount: this.extractDocumentAmount(s.document),
-                  }
+                  id: s.document.id,
+                  name: s.document.name,
+                  type: s.document.type,
+                  signedUrl: documentSignedUrl,
+                  total_amount: this.extractDocumentAmount(s.document),
+                }
                 : null,
               bankTransaction: s.bankTransaction
                 ? {
-                    id: s.bankTransaction.id,
-                    description: s.bankTransaction.description,
-                    amount: s.bankTransaction.amount,
-                    transactionDate: s.bankTransaction.transactionDate,
-                    transactionType: s.bankTransaction.transactionType,
-                    bankStatementDocument: s.bankTransaction.bankStatementDocument
-                      ? {
-                          id: s.bankTransaction.bankStatementDocument.id,
-                          name: s.bankTransaction.bankStatementDocument.name,
-                          signedUrl: bankStatementSignedUrl,
-                        }
-                      : null,
-                  }
+                  id: s.bankTransaction.id,
+                  description: s.bankTransaction.description,
+                  amount: s.bankTransaction.amount,
+                  transactionDate: s.bankTransaction.transactionDate,
+                  transactionType: s.bankTransaction.transactionType,
+                  bankStatementDocument: s.bankTransaction.bankStatementDocument
+                    ? {
+                      id: s.bankTransaction.bankStatementDocument.id,
+                      name: s.bankTransaction.bankStatementDocument.name,
+                      signedUrl: bankStatementSignedUrl,
+                    }
+                    : null,
+                }
                 : null,
               chartOfAccount: s.chartOfAccount
                 ? {
-                    code: s.chartOfAccount.accountCode,
-                    name: s.chartOfAccount.accountName,
-                    accountCode: s.chartOfAccount.accountCode,
-                    accountName: s.chartOfAccount.accountName,
-                  }
+                  code: s.chartOfAccount.accountCode,
+                  name: s.chartOfAccount.accountName,
+                  accountCode: s.chartOfAccount.accountCode,
+                  accountName: s.chartOfAccount.accountName,
+                }
                 : null,
             };
           })
         );
-            
+
+        // === Augment with unified TRANSFER suggestions (debit-side only, no DB insert) ===
+        // 1) Fetch top transfer candidates (service already scans debit->credit)
+        const transferCand = await this.getTransferReconciliationCandidates(clientEin, user, {
+          daysWindow: 2,
+          maxResults: 200,
+          allowCrossCurrency: true,
+          fxTolerancePct: 2,
+        });
+
+        // 2) Keep the best candidate per source (debit) to avoid duplicates
+        const bestBySource = new Map<string, any>();
+        for (const it of transferCand.items || []) {
+          const prev = bestBySource.get(it.sourceTransactionId);
+          if (!prev || (it.score ?? 0) > (prev.score ?? 0)) {
+            bestBySource.set(it.sourceTransactionId, it);
+          }
+        }
+
+        // 3) Load involved transactions in bulk (src + dst) with bank statements for signed URLs
+        const srcIds = Array.from(bestBySource.keys());
+        const dstIds = Array.from(new Set(Array.from(bestBySource.values()).map((v: any) => v.destinationTransactionId)));
+        const allIds = Array.from(new Set([...srcIds, ...dstIds]));
+
+        const txs = await this.prisma.bankTransaction.findMany({
+          where: { id: { in: allIds } },
+          include: { bankStatementDocument: true },
+        });
+        const txById = new Map<string, typeof txs[number]>();
+        for (const t of txs) txById.set(t.id, t);
+
+        // 4) Build transfer suggestion items
+        const extraTransferItems = await Promise.all(
+          Array.from(bestBySource.values()).map(async (cand: any) => {
+            const src = txById.get(cand.sourceTransactionId);
+            const dst = txById.get(cand.destinationTransactionId);
+            if (!src || !dst) return null;
+
+            // Signed URL for source bank statement
+            let srcBankStmtUrl: string | null = null;
+            if (src.bankStatementDocument) {
+              srcBankStmtUrl = src.bankStatementDocument.s3Key
+                ? await s3.getSignedUrlPromise('getObject', {
+                  Bucket: process.env.AWS_S3_BUCKET_NAME,
+                  Key: src.bankStatementDocument.s3Key,
+                  Expires: 3600,
+                })
+                : src.bankStatementDocument.path;
+            }
+
+            // Signed URL for destination bank statement (for counterparty preview if needed)
+            let dstBankStmtUrl: string | null = null;
+            if (dst.bankStatementDocument) {
+              dstBankStmtUrl = dst.bankStatementDocument.s3Key
+                ? await s3.getSignedUrlPromise('getObject', {
+                  Bucket: process.env.AWS_S3_BUCKET_NAME,
+                  Key: dst.bankStatementDocument.s3Key,
+                  Expires: 3600,
+                })
+                : dst.bankStatementDocument.path;
+            }
+
+            return {
+              // Synthetic id to avoid clashing with DB suggestion ids
+              id: `transfer:${cand.sourceTransactionId}:${cand.destinationTransactionId}`,
+              confidenceScore: cand.score ?? 0.75,
+              matchingCriteria: {
+                type: 'TRANSFER',
+                dateDiffDays: cand.dateDiffDays,
+                crossCurrency: !!cand.crossCurrency,
+                impliedFxRate: cand.impliedFxRate ?? 1,
+              },
+              reasons: [{ label: 'Transfer candidate', value: 'System-detected inter-account transfer' }],
+              createdAt: new Date(),
+              document: null,
+              // Keep the main bankTransaction as the source (debit) side for consistency and deduplication
+              bankTransaction: {
+                id: src.id,
+                description: src.description,
+                amount: src.amount,
+                transactionDate: src.transactionDate,
+                transactionType: src.transactionType,
+                bankStatementDocument: src.bankStatementDocument
+                  ? {
+                    id: src.bankStatementDocument.id,
+                    name: src.bankStatementDocument.name,
+                    signedUrl: srcBankStmtUrl,
+                  }
+                  : null,
+              },
+              chartOfAccount: null,
+              // Embed counterparty so UI can render it on the left like a document
+              transfer: {
+                sourceTransactionId: cand.sourceTransactionId,
+                destinationTransactionId: cand.destinationTransactionId,
+                counterpartyTransaction: {
+                  id: dst.id,
+                  description: dst.description,
+                  amount: dst.amount,
+                  transactionDate: dst.transactionDate,
+                  transactionType: dst.transactionType,
+                  bankStatementDocument: dst.bankStatementDocument
+                    ? {
+                      id: dst.bankStatementDocument.id,
+                      name: dst.bankStatementDocument.name,
+                      signedUrl: dstBankStmtUrl,
+                    }
+                    : null,
+                },
+                crossCurrency: !!cand.crossCurrency,
+                impliedFxRate: cand.impliedFxRate ?? 1,
+                dateDiffDays: cand.dateDiffDays,
+              },
+            } as any;
+          })
+        );
+
+        const transferItems = (extraTransferItems.filter(Boolean) as any[]);
+
+        // Merge and adjust totals. Keep original order by confidenceScore across both.
+        const merged = [...items, ...transferItems].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
+        const mergedTotal = total + transferItems.length;
+
+        // NOTE: We return merged for the normal path below unless regeneration triggers.
+
         // Check if we need to regenerate suggestions based on unreconciled transactions
         const unreconciliedTransactionCount = await this.prisma.bankTransaction.count({
           where: {
@@ -1519,15 +1643,83 @@ export class BankService {
                   } as any)
                 : null,
             }));
-            
-            return { items: newItems, total: newTotal };
+            // Also augment regenerated items with transfer suggestions
+            const regenAug = await this.getTransferReconciliationCandidates(clientEin, user, {
+              daysWindow: 2,
+              maxResults: 200,
+              allowCrossCurrency: true,
+              fxTolerancePct: 2,
+            });
+            const bestBySrc2 = new Map<string, any>();
+            for (const it of regenAug.items || []) {
+              const prev = bestBySrc2.get(it.sourceTransactionId);
+              if (!prev || (it.score ?? 0) > (prev.score ?? 0)) bestBySrc2.set(it.sourceTransactionId, it);
+            }
+            const srcIds2 = Array.from(bestBySrc2.keys());
+            const dstIds2 = Array.from(new Set(Array.from(bestBySrc2.values()).map((v: any) => v.destinationTransactionId)));
+            const allIds2 = Array.from(new Set([...srcIds2, ...dstIds2]));
+            const txs2 = await this.prisma.bankTransaction.findMany({ where: { id: { in: allIds2 } }, include: { bankStatementDocument: true } });
+            const byId2 = new Map<string, typeof txs2[number]>();
+            for (const t of txs2) byId2.set(t.id, t);
+            const extra2 = await Promise.all(Array.from(bestBySrc2.values()).map(async (cand: any) => {
+              const src = byId2.get(cand.sourceTransactionId);
+              const dst = byId2.get(cand.destinationTransactionId);
+              if (!src || !dst) return null;
+              let srcUrl: string | null = null;
+              if (src.bankStatementDocument) {
+                srcUrl = src.bankStatementDocument.s3Key
+                  ? await s3.getSignedUrlPromise('getObject', { Bucket: process.env.AWS_S3_BUCKET_NAME, Key: src.bankStatementDocument.s3Key, Expires: 3600 })
+                  : src.bankStatementDocument.path;
+              }
+              let dstUrl: string | null = null;
+              if (dst.bankStatementDocument) {
+                dstUrl = dst.bankStatementDocument.s3Key
+                  ? await s3.getSignedUrlPromise('getObject', { Bucket: process.env.AWS_S3_BUCKET_NAME, Key: dst.bankStatementDocument.s3Key, Expires: 3600 })
+                  : dst.bankStatementDocument.path;
+              }
+              return {
+                id: `transfer:${cand.sourceTransactionId}:${cand.destinationTransactionId}`,
+                confidenceScore: cand.score ?? 0.75,
+                matchingCriteria: { type: 'TRANSFER', dateDiffDays: cand.dateDiffDays, crossCurrency: !!cand.crossCurrency, impliedFxRate: cand.impliedFxRate ?? 1 },
+                reasons: [{ label: 'Transfer candidate', value: 'System-detected inter-account transfer' }],
+                createdAt: new Date(),
+                document: null,
+                bankTransaction: {
+                  id: src.id,
+                  description: src.description,
+                  amount: src.amount,
+                  transactionDate: src.transactionDate,
+                  transactionType: src.transactionType,
+                  bankStatementDocument: src.bankStatementDocument ? { id: src.bankStatementDocument.id, name: src.bankStatementDocument.name, signedUrl: srcUrl } : null,
+                },
+                chartOfAccount: null,
+                transfer: {
+                  sourceTransactionId: cand.sourceTransactionId,
+                  destinationTransactionId: cand.destinationTransactionId,
+                  counterpartyTransaction: {
+                    id: dst.id,
+                    description: dst.description,
+                    amount: dst.amount,
+                    transactionDate: dst.transactionDate,
+                    transactionType: dst.transactionType,
+                    bankStatementDocument: dst.bankStatementDocument ? { id: dst.bankStatementDocument.id, name: dst.bankStatementDocument.name, signedUrl: dstUrl } : null,
+                  },
+                  crossCurrency: !!cand.crossCurrency,
+                  impliedFxRate: cand.impliedFxRate ?? 1,
+                  dateDiffDays: cand.dateDiffDays,
+                },
+              } as any;
+            }));
+            const transferItems2 = (extra2.filter(Boolean) as any[]);
+            const merged2 = [...newItems, ...transferItems2].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
+            return { items: merged2, total: newTotal + transferItems2.length };
           } catch (error) {
             console.error('Failed to generate suggestions:', error);
-            return { items, total };
+            return { items: merged, total: mergedTotal };
           }
         }
         
-        return { items, total };
+        return { items: merged, total: mergedTotal };
       }
 
       async createManualMatch(matchData: { documentId: number; bankTransactionId: string; notes?: string }, user: User) {
