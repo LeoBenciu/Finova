@@ -51,11 +51,10 @@ import {
   useDeactivateBankAccountMutation,
   useGetBankTransactionsByAccountQuery,
   useGetConsolidatedAccountViewQuery,
-  // Bank Account Analytic Mappings API hooks
+  // Bank Account Analytic minimal hooks
   useGetBankAccountAnalyticsQuery,
   useCreateBankAccountAnalyticMutation,
   useUpdateBankAccountAnalyticMutation,
-  useDeleteBankAccountAnalyticMutation,
   // Transfer Reconciliation API hooks
   useCreateTransferReconciliationMutation,
   useGetPendingTransferReconciliationsQuery,
@@ -1857,11 +1856,7 @@ const BankPage = () => {
   // Transfer Reconciliation state
   const [showTransferModal, setShowTransferModal] = useState(false);
   
-  // Bank Account Analytic Mapping state (for modal)
-  const [editingAnalytic, setEditingAnalytic] = useState<any | null>(null);
-  const [analyticForm, setAnalyticForm] = useState<{ syntheticCode: string; analyticSuffix: string; currency: string; bankName?: string; accountAlias?: string }>(
-    { syntheticCode: '', analyticSuffix: '', currency: 'RON', bankName: '', accountAlias: '' }
-  );
+  // Bank Account Analytic Suffix (simple field handled via form input)
   const [transferForm, setTransferForm] = useState<{
     fxRate: string;
     notes: string;
@@ -2156,11 +2151,10 @@ const BankPage = () => {
   const [updateBankAccount] = useUpdateBankAccountMutation();
   const [deactivateBankAccount] = useDeactivateBankAccountMutation();
 
-  // Bank Account Analytic Mappings
+  // Bank Account Analytic lookups and mutations (no UI list)
   const { data: accountAnalytics = [], refetch: refetchAccountAnalytics } = useGetBankAccountAnalyticsQuery({ clientEin: clientCompanyEin }, { skip: !clientCompanyEin });
-  const [createAccountAnalytic, { isLoading: creatingAnalytic }] = useCreateBankAccountAnalyticMutation();
-  const [updateAccountAnalytic, { isLoading: updatingAnalytic }] = useUpdateBankAccountAnalyticMutation();
-  const [deleteAccountAnalytic, { isLoading: deletingAnalytic }] = useDeleteBankAccountAnalyticMutation();
+  const [createAccountAnalytic] = useCreateBankAccountAnalyticMutation();
+  const [updateAccountAnalytic] = useUpdateBankAccountAnalyticMutation();
 
   const [unreconciling, setUnreconciling] = useState<Set<string>>(new Set());
   const [markingAsOutstanding, setMarkingAsOutstanding] = useState<Set<number>>(new Set());
@@ -4326,6 +4320,7 @@ const BankPage = () => {
                   currency: formData.get('currency') as string || 'RON',
                   accountType: formData.get('accountType') as 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT'
                 };
+                const analyticSuffix = ((formData.get('analyticSuffix') as string) || '').trim();
 
                 try {
                   if (editingBankAccount) {
@@ -4346,6 +4341,41 @@ const BankPage = () => {
                       language === 'ro' ? 'Cont bancar salvat.' : 'Bank account saved.',
                       'success'
                     );
+                  }
+
+                  // Create/Update Analytic mapping if suffix provided
+                  if (analyticSuffix) {
+                    const syntheticCode = (accountData.currency === 'RON') ? '5121' : '5124';
+                    try {
+                      const existing = (accountAnalytics as any[]).find(
+                        (m) => m.iban === accountData.iban && m.currency === accountData.currency
+                      );
+                      if (existing) {
+                        await updateAccountAnalytic({
+                          id: existing.id,
+                          data: {
+                            syntheticCode,
+                            analyticSuffix,
+                            currency: accountData.currency,
+                            bankName: accountData.bankName
+                          }
+                        }).unwrap();
+                      } else {
+                        await createAccountAnalytic({
+                          clientEin: clientCompanyEin,
+                          data: {
+                            iban: accountData.iban,
+                            currency: accountData.currency,
+                            syntheticCode,
+                            analyticSuffix,
+                            bankName: accountData.bankName
+                          }
+                        }).unwrap();
+                      }
+                      await refetchAccountAnalytics();
+                    } catch (err) {
+                      console.error('Failed to save analytic mapping', err);
+                    }
                   }
                   setShowBankAccountModal(false);
                   setEditingBankAccount(null);
@@ -4440,205 +4470,24 @@ const BankPage = () => {
                     </div>
                   </div>
 
-                  {/* Analytic Mappings Management (only for existing accounts) */}
-                  {editingBankAccount && (
-                    <div className="mt-6 border-t border-[var(--text4)] pt-6">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-lg font-semibold text-[var(--text1)]">
-                          {language === 'ro' ? 'Mapping Conturi Analitice' : 'Analytic Account Mappings'}
-                        </h4>
-                        <span className="text-[var(--text2)] text-sm">IBAN: {editingBankAccount?.iban}</span>
-                      </div>
-                      <p className="text-sm text-[var(--text2)] mb-4">
-                        {language === 'ro'
-                          ? 'Definește codurile conturilor analitice pentru transferuri automate. Codul complet este format din Sintetic.Sufix (ex: 5121.03).'
-                          : 'Define analytic account codes for automatic assignment during transfers. Full code is Synthetic.Suffix (e.g., 5121.03).'}
-                      </p>
-
-                      {/* Existing mappings list for this IBAN */}
-                      <div className="space-y-2 mb-4">
-                        {(accountAnalytics as any[]).filter(m => m.iban === editingBankAccount?.iban).length === 0 ? (
-                          <div className="text-sm text-[var(--text2)]">{language === 'ro' ? 'Niciun mapping existent pentru acest IBAN.' : 'No mappings for this IBAN yet.'}</div>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="text-left border-b border-[var(--text4)]">
-                                  <th className="py-2 pr-2">{language === 'ro' ? 'Cod Complet' : 'Full Code'}</th>
-                                  <th className="py-2 pr-2">{language === 'ro' ? 'Valută' : 'Currency'}</th>
-                                  <th className="py-2 pr-2">{language === 'ro' ? 'Alias Cont' : 'Account Alias'}</th>
-                                  <th className="py-2 pr-2">{language === 'ro' ? 'Acțiuni' : 'Actions'}</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {(accountAnalytics as any[])
-                                  .filter(m => m.iban === editingBankAccount?.iban)
-                                  .map((m) => (
-                                    <tr key={m.id} className="border-b border-[var(--text4)] last:border-b-0">
-                                      <td className="py-2 pr-2 font-medium text-[var(--text1)]">{m.fullCode}</td>
-                                      <td className="py-2 pr-2">{m.currency}</td>
-                                      <td className="py-2 pr-2">{m.accountAlias || '-'}</td>
-                                      <td className="py-2 pr-2">
-                                        <div className="flex gap-2">
-                                          <button
-                                            type="button"
-                                            className="px-2 py-1 text-xs rounded-lg bg-blue-100 text-blue-700 hover:bg-blue-200"
-                                            onClick={() => {
-                                              setEditingAnalytic(m);
-                                              setAnalyticForm({
-                                                syntheticCode: m.syntheticCode || '',
-                                                analyticSuffix: m.analyticSuffix || '',
-                                                currency: m.currency || editingBankAccount?.currency || 'RON',
-                                                bankName: m.bankName || editingBankAccount?.bankName || '',
-                                                accountAlias: m.accountAlias || ''
-                                              });
-                                            }}
-                                          >
-                                            {language === 'ro' ? 'Editează' : 'Edit'}
-                                          </button>
-                                          <button
-                                            type="button"
-                                            disabled={deletingAnalytic}
-                                            className={`px-2 py-1 text-xs rounded-lg ${deletingAnalytic ? 'bg-red-300 text-white cursor-wait' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                                            onClick={async () => {
-                                              try {
-                                                await deleteAccountAnalytic({ id: m.id }).unwrap();
-                                                await refetchAccountAnalytics();
-                                                addToast(language === 'ro' ? 'Mapping șters' : 'Mapping deleted', 'success');
-                                              } catch (e: any) {
-                                                console.error(e);
-                                                addToast(e?.data?.message || 'Delete failed', 'error');
-                                              }
-                                            }}
-                                          >
-                                            {language === 'ro' ? 'Șterge' : 'Delete'}
-                                          </button>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Create / Edit mapping form */}
-                      <div className="bg-[var(--text4)] rounded-xl p-4">
-                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
-                          <div>
-                            <label className="block text-xs text-[var(--text2)] mb-1">{language === 'ro' ? 'Cod Sintetic' : 'Synthetic Code'}</label>
-                            <input
-                              type="text"
-                              value={analyticForm.syntheticCode}
-                              onChange={(e) => setAnalyticForm(prev => ({ ...prev, syntheticCode: e.target.value }))}
-                              placeholder="5121"
-                              className="w-full px-3 py-2 text-black border border-[var(--text4)] rounded-lg bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-[var(--text2)] mb-1">{language === 'ro' ? 'Sufix Analitic' : 'Analytic Suffix'}</label>
-                            <input
-                              type="text"
-                              value={analyticForm.analyticSuffix}
-                              onChange={(e) => setAnalyticForm(prev => ({ ...prev, analyticSuffix: e.target.value }))}
-                              placeholder="03"
-                              className="w-full px-3 py-2 text-black border border-[var(--text4)] rounded-lg bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-[var(--text2)] mb-1">{language === 'ro' ? 'Valută' : 'Currency'}</label>
-                            <select
-                              value={analyticForm.currency}
-                              onChange={(e) => setAnalyticForm(prev => ({ ...prev, currency: e.target.value }))}
-                              className="w-full px-3 py-2 text-black border border-[var(--text4)] rounded-lg bg-white"
-                            >
-                              <option value="RON">RON</option>
-                              <option value="EUR">EUR</option>
-                              <option value="USD">USD</option>
-                            </select>
-                          </div>
-                          <div>
-                            <label className="block text-xs text-[var(--text2)] mb-1">{language === 'ro' ? 'Alias Cont (opțional)' : 'Account Alias (optional)'}</label>
-                            <input
-                              type="text"
-                              value={analyticForm.accountAlias || ''}
-                              onChange={(e) => setAnalyticForm(prev => ({ ...prev, accountAlias: e.target.value }))}
-                              placeholder={language === 'ro' ? 'Ex: BT Principal' : 'e.g., Main BT'}
-                              className="w-full px-3 py-2 text-black border border-[var(--text4)] rounded-lg bg-white"
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <div className="text-xs text-[var(--text2)]">
-                              {language === 'ro' ? 'Cod Complet' : 'Full Code'}: 
-                              <span className="ml-1 font-semibold text-[var(--text1)]">{analyticForm.syntheticCode && analyticForm.analyticSuffix ? `${analyticForm.syntheticCode}.${analyticForm.analyticSuffix}` : '-'}</span>
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                disabled={creatingAnalytic || updatingAnalytic}
-                                className={`px-3 py-2 rounded-lg text-white ${editingAnalytic ? 'bg-blue-600 hover:bg-blue-700' : 'bg-[var(--primary)] hover:bg-[var(--primary)]/90'} disabled:opacity-50`}
-                                onClick={async () => {
-                                  try {
-                                    if (!analyticForm.syntheticCode || !analyticForm.analyticSuffix) {
-                                      addToast(language === 'ro' ? 'Completați codurile' : 'Fill in the codes', 'error');
-                                      return;
-                                    }
-                                    if (editingAnalytic) {
-                                      await updateAccountAnalytic({
-                                        id: editingAnalytic.id,
-                                        data: {
-                                          currency: analyticForm.currency,
-                                          syntheticCode: analyticForm.syntheticCode,
-                                          analyticSuffix: analyticForm.analyticSuffix,
-                                          accountAlias: analyticForm.accountAlias || undefined,
-                                          bankName: analyticForm.bankName || undefined,
-                                        }
-                                      }).unwrap();
-                                      addToast(language === 'ro' ? 'Mapping actualizat' : 'Mapping updated', 'success');
-                                    } else {
-                                      await createAccountAnalytic({
-                                        clientEin: clientCompanyEin,
-                                        data: {
-                                          iban: editingBankAccount.iban,
-                                          currency: analyticForm.currency || editingBankAccount.currency || 'RON',
-                                          syntheticCode: analyticForm.syntheticCode,
-                                          analyticSuffix: analyticForm.analyticSuffix,
-                                          bankName: editingBankAccount.bankName,
-                                          accountAlias: analyticForm.accountAlias || undefined,
-                                        }
-                                      }).unwrap();
-                                      addToast(language === 'ro' ? 'Mapping creat' : 'Mapping created', 'success');
-                                    }
-                                    setEditingAnalytic(null);
-                                    setAnalyticForm({ syntheticCode: '', analyticSuffix: '', currency: editingBankAccount?.currency || 'RON', bankName: editingBankAccount?.bankName || '', accountAlias: '' });
-                                    await refetchAccountAnalytics();
-                                  } catch (e: any) {
-                                    console.error(e);
-                                    addToast(e?.data?.message || 'Save failed', 'error');
-                                  }
-                                }}
-                              >
-                                {editingAnalytic ? (language === 'ro' ? 'Actualizează' : 'Update') : (language === 'ro' ? 'Adaugă' : 'Add')}
-                              </button>
-                              {editingAnalytic && (
-                                <button
-                                  type="button"
-                                  className="px-3 py-2 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300"
-                                  onClick={() => {
-                                    setEditingAnalytic(null);
-                                    setAnalyticForm({ syntheticCode: '', analyticSuffix: '', currency: editingBankAccount?.currency || 'RON', bankName: editingBankAccount?.bankName || '', accountAlias: '' });
-                                  }}
-                                >
-                                  {language === 'ro' ? 'Anulează' : 'Cancel'}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  {/* Analytic Suffix simple input (applies to both create and edit) */}
+                  <div>
+                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
+                      {language === 'ro' ? 'Sufix Analitic' : 'Analytic Suffix'}
+                    </label>
+                    <input
+                      type="text"
+                      name="analyticSuffix"
+                      defaultValue={editingBankAccount ? ((accountAnalytics as any[]).find(m => m.iban === editingBankAccount.iban && m.currency === (editingBankAccount.currency || 'RON'))?.analyticSuffix || '') : ''}
+                      placeholder="01"
+                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
+                    />
+                    <p className="text-xs text-[var(--text2)] mt-1">
+                      {language === 'ro' 
+                        ? 'Codul sintetic se setează automat: 5121 pentru RON, 5124 pentru alte valute.' 
+                        : 'Synthetic code is auto-set: 5121 for RON, 5124 for other currencies.'}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Modal Actions */}
