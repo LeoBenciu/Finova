@@ -2133,14 +2133,20 @@ const BankPage = () => {
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     if (!selectedBankAccountId) {
-      return base.filter(s => !removedSuggestions.has(String(s.id)));
+      const result = base.filter(s => !removedSuggestions.has(String(s.id)));
+      const transfers = result.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
+      console.log('[UI] displayedSuggestions (no account filter)', { base: base.length, removed: removedSuggestions.size, result: result.length, transfers: transfers.length });
+      return result;
     }
-    return base.filter(s => {
+    const result = base.filter(s => {
       if (removedSuggestions.has(String(s.id))) return false;
       // If suggestion has a bankTransaction, ensure it belongs to selected account
       const txnId = (s as any).bankTransaction?.id;
       return !txnId || accountTransactionIdSet.has(txnId);
     });
+    const transfers = result.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
+    console.log('[UI] displayedSuggestions (with account filter)', { base: base.length, removed: removedSuggestions.size, selectedBankAccountId, result: result.length, transfers: transfers.length });
+    return result;
   }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
   useEffect(() => {
@@ -2161,8 +2167,17 @@ const BankPage = () => {
     if (suggestionsPage === 1) setSuggestionsData([]);
     if (suggestionsItems.length) {
       setSuggestionsData(prev => suggestionsPage === 1 ? suggestionsItems : [...prev, ...suggestionsItems]);
+      const transfers = (suggestionsItems as any[]).filter(it => it?.matchingCriteria?.type === 'TRANSFER');
+      console.log('[UI] suggestionsItems fetched', { page: suggestionsPage, pageSize: suggestionsItems.length, transferCount: transfers.length, sampleTransfers: transfers.slice(0, 3).map(t => t.id) });
     }
   }, [suggestionsItems]);
+
+  useEffect(() => {
+    // Log aggregated view when local data changes
+    const base = Array.isArray(suggestionsData) ? suggestionsData : [];
+    const transfers = (base as any[]).filter(s => s?.matchingCriteria?.type === 'TRANSFER');
+    console.log('[UI] suggestionsData aggregate', { total: base.length, transfers: transfers.length, removedLocal: removedSuggestions.size });
+  }, [suggestionsData, removedSuggestions]);
   
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
   const [createBulkMatches, { isLoading: isCreatingBulkMatches }] = useCreateBulkMatchesMutation();

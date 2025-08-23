@@ -1651,6 +1651,10 @@ export class BankService {
               fxTolerancePct: 2,
             });
             const bestBySrc2 = new Map<string, any>();
+            console.log('[TransferSuggestions] regenAug.items count =', (regenAug.items || []).length);
+            if ((regenAug.items || []).length) {
+              console.log('[TransferSuggestions] sample regenAug.items (max 3) =', (regenAug.items || []).slice(0, 3));
+            }
             for (const it of regenAug.items || []) {
               const prev = bestBySrc2.get(it.sourceTransactionId);
               if (!prev || (it.score ?? 0) > (prev.score ?? 0)) bestBySrc2.set(it.sourceTransactionId, it);
@@ -1658,6 +1662,7 @@ export class BankService {
             const srcIds2 = Array.from(bestBySrc2.keys());
             const dstIds2 = Array.from(new Set(Array.from(bestBySrc2.values()).map((v: any) => v.destinationTransactionId)));
             const allIds2 = Array.from(new Set([...srcIds2, ...dstIds2]));
+            console.log('[TransferSuggestions] bestBySrc2 size =', bestBySrc2.size, 'srcIds2 =', srcIds2.length, 'dstIds2 =', dstIds2.length);
             const txs2 = await this.prisma.bankTransaction.findMany({ where: { id: { in: allIds2 } }, include: { bankStatementDocument: true } });
             const byId2 = new Map<string, typeof txs2[number]>();
             for (const t of txs2) byId2.set(t.id, t);
@@ -1711,7 +1716,12 @@ export class BankService {
               } as any;
             }));
             const transferItems2 = (extra2.filter(Boolean) as any[]);
+            console.log('[TransferSuggestions] built transferItems2 count =', transferItems2.length);
+            if (transferItems2.length) {
+              console.log('[TransferSuggestions] sample transferItems2 ids (max 5) =', transferItems2.slice(0, 5).map((i: any) => i.id));
+            }
             const merged2 = [...newItems, ...transferItems2].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
+            console.log('[TransferSuggestions] merged suggestions =', { base: newItems.length, transfers: transferItems2.length, total: newTotal + transferItems2.length });
             return { items: merged2, total: newTotal + transferItems2.length };
           } catch (error) {
             console.error('Failed to generate suggestions:', error);
