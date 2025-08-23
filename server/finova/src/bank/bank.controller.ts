@@ -434,6 +434,54 @@ export class BankController {
       return this.bankService.associateTransactionsWithAccounts(clientEin, user);
     }
 
+    // ==================== BANK ACCOUNT ANALYTIC MAPPINGS ====================
+    @Get(':clientEin/account-analytics')
+    async getBankAccountAnalytics(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User
+    ) {
+      return this.bankService.getBankAccountAnalytics(clientEin, user);
+    }
+
+    @Post(':clientEin/account-analytics')
+    async createBankAccountAnalytic(
+      @Param('clientEin') clientEin: string,
+      @GetUser() user: User,
+      @Body() data: {
+        iban: string;
+        currency: string;
+        syntheticCode: string;
+        analyticSuffix: string;
+        bankName?: string;
+        accountAlias?: string;
+      }
+    ) {
+      return this.bankService.createBankAccountAnalytic(clientEin, user, data);
+    }
+
+    @Put('account-analytics/:id')
+    async updateBankAccountAnalytic(
+      @Param('id', ParseIntPipe) id: number,
+      @GetUser() user: User,
+      @Body() data: {
+        currency?: string;
+        syntheticCode?: string;
+        analyticSuffix?: string;
+        bankName?: string;
+        accountAlias?: string;
+      }
+    ) {
+      return this.bankService.updateBankAccountAnalytic(id, user, data);
+    }
+
+    @Delete('account-analytics/:id')
+    async deleteBankAccountAnalytic(
+      @Param('id', ParseIntPipe) id: number,
+      @GetUser() user: User
+    ) {
+      return this.bankService.deleteBankAccountAnalytic(id, user);
+    }
+
     // ==================== TRANSACTION SPLITS ====================
     @Get('transaction/:transactionId/splits')
     async getTransactionSplits(

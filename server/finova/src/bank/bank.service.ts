@@ -258,6 +258,143 @@ export class BankService {
     return { id, deleted: true };
   }
 
+  // ==================== BANK ACCOUNT ANALYTIC MAPPINGS ====================
+  async getBankAccountAnalytics(clientEin: string, user: User) {
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    const items = await this.prisma.bankAccountAnalytic.findMany({
+      where: { accountingClientId: accountingClient.id },
+      orderBy: { id: 'asc' },
+    });
+    return items;
+  }
+
+  async createBankAccountAnalytic(
+    clientEin: string,
+    user: User,
+    data: {
+      iban: string;
+      currency: string;
+      syntheticCode: string;
+      analyticSuffix: string;
+      bankName?: string;
+      accountAlias?: string;
+    }
+  ) {
+    const clientCompany = await this.prisma.clientCompany.findUnique({ where: { ein: clientEin } });
+    if (!clientCompany) throw new NotFoundException('Client company not found');
+    const accountingClient = await this.prisma.accountingClients.findFirst({
+      where: { accountingCompanyId: user.accountingCompanyId, clientCompanyId: clientCompany.id },
+    });
+    if (!accountingClient) throw new UnauthorizedException('No access to this client company');
+
+    if (!data?.iban || !data?.currency || !data?.syntheticCode || !data?.analyticSuffix) {
+      throw new BadRequestException('iban, currency, syntheticCode and analyticSuffix are required');
+    }
+
+    const account = await this.prisma.bankAccount.findFirst({
+      where: { accountingClientId: accountingClient.id, iban: data.iban },
+    });
+    if (!account) {
+      throw new BadRequestException('IBAN does not belong to this client');
+    }
+
+    // Optional: ensure currency match with bank account
+    if (account.currency && data.currency && account.currency !== data.currency) {
+      // Allow but warn? For now, block to avoid mismatches
+      throw new BadRequestException(`Currency mismatch for IBAN ${data.iban}: account=${account.currency}, provided=${data.currency}`);
+    }
+
+    const fullCode = `${data.syntheticCode}.${data.analyticSuffix}`;
+
+    // Ensure uniqueness on (accountingClientId, fullCode)
+    const existing = await this.prisma.bankAccountAnalytic.findFirst({
+      where: { accountingClientId: accountingClient.id, fullCode },
+    });
+    if (existing) {
+      throw new BadRequestException(`Analytic code already exists: ${fullCode}`);
+    }
+
+    const created = await this.prisma.bankAccountAnalytic.create({
+      data: {
+        accountingClientId: accountingClient.id,
+        iban: data.iban,
+        currency: data.currency || account.currency,
+        syntheticCode: data.syntheticCode,
+        analyticSuffix: data.analyticSuffix,
+        fullCode,
+        bankName: data.bankName || account.bankName,
+        accountAlias: data.accountAlias || null,
+      },
+    });
+    return created;
+  }
+
+  async updateBankAccountAnalytic(
+    id: number,
+    user: User,
+    data: {
+      currency?: string;
+      syntheticCode?: string;
+      analyticSuffix?: string;
+      bankName?: string;
+      accountAlias?: string;
+    }
+  ) {
+    const item = await this.prisma.bankAccountAnalytic.findUnique({
+      where: { id },
+      include: { accountingClient: { include: { accountingCompany: true, clientCompany: true } } },
+    });
+    if (!item) throw new NotFoundException('Analytic mapping not found');
+    if (item.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+      throw new UnauthorizedException('No access to this analytic mapping');
+    }
+
+    let fullCode: string | undefined = undefined;
+    const synthetic = data.syntheticCode ?? item.syntheticCode;
+    const suffix = data.analyticSuffix ?? item.analyticSuffix;
+    if (data.syntheticCode != null || data.analyticSuffix != null) {
+      fullCode = `${synthetic}.${suffix}`;
+      const exists = await this.prisma.bankAccountAnalytic.findFirst({
+        where: { accountingClientId: item.accountingClientId, fullCode, id: { not: id } },
+      });
+      if (exists) {
+        throw new BadRequestException(`Analytic code already exists: ${fullCode}`);
+      }
+    }
+
+    const updated = await this.prisma.bankAccountAnalytic.update({
+      where: { id },
+      data: {
+        currency: data.currency ?? item.currency,
+        syntheticCode: synthetic,
+        analyticSuffix: suffix,
+        fullCode: fullCode ?? item.fullCode,
+        bankName: data.bankName ?? item.bankName,
+        accountAlias: data.accountAlias ?? item.accountAlias,
+      },
+    });
+    return updated;
+  }
+
+  async deleteBankAccountAnalytic(id: number, user: User) {
+    const item = await this.prisma.bankAccountAnalytic.findUnique({
+      where: { id },
+      include: { accountingClient: true },
+    });
+    if (!item) throw new NotFoundException('Analytic mapping not found');
+    if (item.accountingClient.accountingCompanyId !== user.accountingCompanyId) {
+      throw new UnauthorizedException('No access to this analytic mapping');
+    }
+    await this.prisma.bankAccountAnalytic.delete({ where: { id } });
+    return { id, deleted: true };
+  }
+
     // Utility: compare monetary values with tolerance of 0.01
     private amountsEqual(a: number, b: number, epsilon = 0.01): boolean {
       return Math.abs(a - b) <= epsilon;

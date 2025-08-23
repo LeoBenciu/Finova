@@ -64,7 +64,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation', 'BankAccounts', 'BankTransactions'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation', 'BankAccounts', 'BankTransactions', 'BankAccountAnalytics'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -985,6 +985,66 @@ export const finovaApi = createApi({
           invalidatesTags: ['BankReconciliation', 'BankTransactions']
         }),
 
+        // ==================== BANK ACCOUNT ANALYTIC MAPPINGS API HOOKS ====================
+        getBankAccountAnalytics: build.query<any[], { clientEin: string }>({
+          query: ({ clientEin }) => ({
+            url: `/bank/${clientEin}/account-analytics`,
+            method: 'GET'
+          }),
+          providesTags: ['BankAccountAnalytics']
+        }),
+
+        createBankAccountAnalytic: build.mutation<
+          any,
+          {
+            clientEin: string;
+            data: {
+              iban: string;
+              currency: string;
+              syntheticCode: string;
+              analyticSuffix: string;
+              bankName?: string;
+              accountAlias?: string;
+            };
+          }
+        >({
+          query: ({ clientEin, data }) => ({
+            url: `/bank/${clientEin}/account-analytics`,
+            method: 'POST',
+            body: data
+          }),
+          invalidatesTags: ['BankAccountAnalytics', 'BankReconciliation']
+        }),
+
+        updateBankAccountAnalytic: build.mutation<
+          any,
+          {
+            id: number;
+            data: {
+              currency?: string;
+              syntheticCode?: string;
+              analyticSuffix?: string;
+              bankName?: string;
+              accountAlias?: string;
+            };
+          }
+        >({
+          query: ({ id, data }) => ({
+            url: `/bank/account-analytics/${id}`,
+            method: 'PUT',
+            body: data
+          }),
+          invalidatesTags: ['BankAccountAnalytics', 'BankReconciliation']
+        }),
+
+        deleteBankAccountAnalytic: build.mutation<{ id: number; deleted: true }, { id: number }>({
+          query: ({ id }) => ({
+            url: `/bank/account-analytics/${id}`,
+            method: 'DELETE'
+          }),
+          invalidatesTags: ['BankAccountAnalytics', 'BankReconciliation']
+        }),
+
         updateDocumentReconciliationStatus: build.mutation<
           { id: number; reconciliationStatus: string },
           { clientEin: string; documentId: number; status: 'IGNORED' | 'UNRECONCILED' }
@@ -1029,6 +1089,7 @@ useGetReconciliationHistoryAndAuditTrailQuery,
 useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
 useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
 useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
+useGetBankAccountAnalyticsQuery, useCreateBankAccountAnalyticMutation, useUpdateBankAccountAnalyticMutation, useDeleteBankAccountAnalyticMutation,
 useUpdateDocumentReconciliationStatusMutation,
 useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
 useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation
