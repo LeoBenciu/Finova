@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { User } from '@prisma/client';
 import { spawn } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
 
 interface SendMessageParams {
   clientEin: string;
@@ -23,7 +24,30 @@ export class ChatService {
     this.timeoutMs = Number(this.config.get<string>('CHAT_ASSISTANT_TIMEOUT_MS') || 60000);
     // Resolve to agents folder even when compiled to dist; allow override
     const configuredCwd = this.config.get<string>('CHAT_ASSISTANT_CWD');
-    this.pythonCwd = configuredCwd || path.resolve(__dirname, '../../../agents/first_crew_finova/src');
+    if (configuredCwd) {
+      this.pythonCwd = configuredCwd;
+      this.logger.log(`Chat assistant CWD (from env): ${this.pythonCwd}`);
+    } else {
+      // Try both possible layouts:
+      // - Current Nest build layout: dist/... (two levels up to reach repo root)
+      // - Older layout: dist/src/... (three levels up)
+      const candidateA = path.resolve(__dirname, '../../agents/first_crew_finova/src');
+      const candidateB = path.resolve(__dirname, '../../../agents/first_crew_finova/src');
+      const chosen = fs.existsSync(candidateA)
+        ? candidateA
+        : fs.existsSync(candidateB)
+        ? candidateB
+        : candidateA; // default to A if neither exists
+      this.pythonCwd = chosen;
+      this.logger.log(
+        `Chat assistant CWD (auto-detected). A: ${candidateA} B: ${candidateB} -> using: ${this.pythonCwd}`,
+      );
+      if (!fs.existsSync(this.pythonCwd)) {
+        this.logger.warn(
+          `Chat assistant CWD does not exist: ${this.pythonCwd}. Set CHAT_ASSISTANT_CWD to override.`,
+        );
+      }
+    }
   }
 
   async sendMessage({ clientEin, user, message, history }: SendMessageParams): Promise<string> {
