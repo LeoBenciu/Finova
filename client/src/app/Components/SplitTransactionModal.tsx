@@ -202,7 +202,7 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
               {transaction.description || ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-gray-100">
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-500 hover:text-white text-red-500 bg-red-200">
             <X size={18} />
           </button>
         </div>
@@ -210,13 +210,13 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
         <div className="px-5 py-4 space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">{language === 'ro' ? 'Suma Tranzacției' : 'Transaction Amount'}:</span>
-            <span className="font-semibold">{currencyFormat(txnAbsAmount)}</span>
+            <span className="font-semibold text-black">{currencyFormat(txnAbsAmount)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-gray-600">{language === 'ro' ? 'Total Împărțiri' : 'Total Splits'}:</span>
-            <span className="font-semibold">{currencyFormat(total)}</span>
+            <span className="font-semibold text-black">{currencyFormat(total)}</span>
           </div>
-          <div className={`flex items-center justify-between text-sm ${Math.abs(remaining) < 0.01 ? 'text-emerald-600' : 'text-orange-600'}`}>
+          <div className={`flex items-center justify-between text-sm ${Math.abs(remaining) < 0.01 ? 'text-emerald-500' : 'text-orange-500'}`}>
             <span>{language === 'ro' ? 'Rămas' : 'Remaining'}:</span>
             <span className="font-semibold">{currencyFormat(remaining)}</span>
           </div>
@@ -243,7 +243,7 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
                       type="number"
                       step="0.01"
                       min="0"
-                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-black focus:shadow-none"
                       value={row.amount}
                       onChange={(e) => updateRow(idx, { amount: e.target.value === '' ? '' : Number(e.target.value) })}
                       placeholder="0.00"
@@ -252,7 +252,7 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
                   <div className="col-span-4 relative">
                     <input
                       type="text"
-                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-black focus:shadow-none"
                       value={row.accountCode}
                       onChange={(e) => {
                         updateRow(idx, { accountCode: e.target.value });
@@ -286,7 +286,7 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
                   <div className="col-span-4">
                     <input
                       type="text"
-                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm"
+                      className="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-black focus:shadow-none"
                       value={row.notes || ''}
                       onChange={(e) => updateRow(idx, { notes: e.target.value })}
                       placeholder={language === 'ro' ? 'Opțional' : 'Optional'}
@@ -308,7 +308,7 @@ export default function SplitTransactionModal({ isOpen, onClose, transaction, la
           </div>
 
           <div className="flex items-center gap-2">
-            <button onClick={addRow} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm font-medium">
+            <button onClick={addRow} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 text-black hover:bg-gray-400 hover:text-white text-sm font-medium">
               <Plus size={16} /> {language === 'ro' ? 'Adaugă rând' : 'Add row'}
             </button>
             <button

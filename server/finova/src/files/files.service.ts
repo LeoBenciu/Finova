@@ -596,7 +596,20 @@ export class FilesService {
         return processedItems;
     }
     
-    async getFiles(ein: string, user: User) {
+    async getFiles(
+        ein: string,
+        user: User,
+        options?: {
+            page?: number;
+            limit?: number;
+            q?: string;
+            type?: string;
+            paymentStatus?: string;
+            dateFrom?: string;
+            dateTo?: string;
+            sort?: string; // e.g., 'createdAt_desc' | 'createdAt_asc'
+        }
+    ) {
         try {
             const currentUser = await this.prisma.user.findUnique({
                 where: { id: user.id },
@@ -628,10 +641,58 @@ export class FilesService {
                 throw new NotFoundException('No authorized relationship found between your accounting company and this client!');
             }
     
+            // Build filters
+            const page = Math.max(1, options?.page || 1);
+            const limit = Math.min(100, Math.max(1, options?.limit || 25));
+            const skip = (page - 1) * limit;
+
+            const where: Prisma.DocumentWhereInput = {
+                accountingClientId: accountingClientRelation.id,
+            };
+
+            // Filter by type
+            if (options?.type) {
+                where.type = options.type;
+            }
+
+            // Filter by payment status (document-level enum)
+            if (options?.paymentStatus) {
+                // Type cast to any to avoid importing PaymentStatus enum explicitly
+                (where as any).paymentStatus = options.paymentStatus as any;
+            }
+
+            // Filter by date range
+            if (options?.dateFrom || options?.dateTo) {
+                where.createdAt = {};
+                if (options.dateFrom) {
+                    (where.createdAt as any).gte = new Date(options.dateFrom);
+                }
+                if (options.dateTo) {
+                    (where.createdAt as any).lte = new Date(options.dateTo);
+                }
+            }
+
+            // Basic search by name
+            if (options?.q) {
+                where.name = { contains: options.q, mode: 'insensitive' } as any;
+            }
+
+            // Sorting
+            let orderBy: Prisma.DocumentOrderByWithRelationInput = { createdAt: 'desc' };
+            if (options?.sort) {
+                const [field, dir] = options.sort.split('_');
+                if (field && (dir === 'asc' || dir === 'desc')) {
+                    orderBy = { [field]: dir } as any;
+                }
+            }
+
+            const totalCount = await this.prisma.document.count({ where });
+
             const documents = await this.prisma.document.findMany({
-                where: {
-                    accountingClientId: accountingClientRelation.id 
-                },
+                where,
+                orderBy,
+                skip,
+                take: limit,
                 include: {
                     accountingClient: {
                         include: {
@@ -715,7 +776,8 @@ export class FilesService {
             );
     
             return {
-                documents: documentsWithData,
+                items: documentsWithData,
+                totalCount,
                 accountingCompany: {
                     id: currentUser.accountingCompanyId,
                     name: currentUser.accountingCompany.name,

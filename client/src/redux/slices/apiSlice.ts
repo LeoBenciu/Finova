@@ -271,10 +271,39 @@ export const finovaApi = createApi({
         }),
 
         getFiles: build.query({
-            query:({company})=>({
-                url:`/files/${company}`,
-                method:'GET'
-            }),
+            query: ({ company, page = 1, limit = 25, q, type, paymentStatus, dateFrom, dateTo, sort }: {
+                company: string;
+                page?: number;
+                limit?: number;
+                q?: string;
+                type?: string;
+                paymentStatus?: string;
+                dateFrom?: string;
+                dateTo?: string;
+                sort?: string; // e.g., 'createdAt_desc'
+            }) => {
+                const params = new URLSearchParams();
+                params.set('page', String(page));
+                params.set('limit', String(limit));
+                if (q) params.set('q', q);
+                if (type) params.set('type', type);
+                if (paymentStatus) params.set('paymentStatus', paymentStatus);
+                if (dateFrom) params.set('dateFrom', dateFrom);
+                if (dateTo) params.set('dateTo', dateTo);
+                params.set('sort', sort || 'createdAt_desc');
+
+                return {
+                    url: `/files/${company}?${params.toString()}`,
+                    method: 'GET'
+                };
+            },
+            transformResponse: (response: any) => {
+                if (!response) return { items: [], total: 0 };
+                // Backward compatibility in case older backend returns {documents: []}
+                const items = response.items ?? response.documents ?? [];
+                const total = response.totalCount ?? response.total ?? (Array.isArray(response.documents) ? response.documents.length : 0) ?? 0;
+                return { items, total, accountingCompany: response.accountingCompany, clientCompany: response.clientCompany };
+            },
             providesTags: ['Files']
         }),
 

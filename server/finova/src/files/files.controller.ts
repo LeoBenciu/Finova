@@ -35,11 +35,30 @@ export class FilesController {
     }
 
     @Get(':company')
-    getFiles(@Param('company') company:string, @Req() req:Request)
-    {
+    getFiles(
+        @Param('company') company: string,
+        @Req() req: Request,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('q') q?: string,
+        @Query('type') type?: string,
+        @Query('paymentStatus') paymentStatus?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('sort') sort?: string,
+    ) {
         const ein = company;
         const user = req.user as User;
-        return this.fileMangementService.getFiles(ein, user);
+        return this.fileMangementService.getFiles(ein, user, {
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 25,
+            q: q || undefined,
+            type: type || undefined,
+            paymentStatus: paymentStatus || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            sort: sort || 'createdAt_desc',
+        });
     }
     
     @Post('')

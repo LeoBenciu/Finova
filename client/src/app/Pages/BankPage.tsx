@@ -588,7 +588,7 @@ function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveRepo
                                   activity.action === 'ACCEPTED' ? 'bg-green-100 text-green-800' :
                                   activity.action === 'REJECTED' ? 'bg-red-100 text-red-800' :
                                   activity.action === 'MANUAL_MATCH' ? 'bg-blue-100 text-blue-800' :
-                                  activity.action === 'UNRECONCILED' ? 'bg-yellow-100 text-yellow-800' :
+                                  activity.action === 'UNRECONCILED' ? 'bg-purple-100 text-purple-800' :
                                   'bg-gray-100 text-gray-800'
                                 }`}>
                                   {activity.action}
@@ -3035,7 +3035,7 @@ const BankPage = () => {
           <button
             type="button"
             onClick={() => setShowOutstandingPanel(true)}
-            className="relative group p-2 bg-yellow-400 text-white rounded-xl hover:bg-yellow-500 transition-colors"
+            className="relative group p-2 bg-[var(--primary)]/30 text-[var(--primary)] rounded-xl hover:bg-[var(--primary)] hover:text-white cursor-pointer transition-colors"
             title={language === 'ro' ? 'Administrează elementele în așteptare' : 'Manage Outstanding Items'}
             aria-label={language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
           >

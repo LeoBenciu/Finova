@@ -67,14 +67,14 @@ import {
   Calendar, Zap, X, CreditCard, FileSignature, BarChart3, Send, Download,
   Link
 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import EditExtractedDataManagement from '../Components/EditExtractedDataManagement';
 import { MyTooltip } from '../Components/MyTooltip';
 import AreYouSureModalR from '../Components/AreYouSureModalR';
 import FilesSearchFiltersComponent from '../Components/FilesSearchFiltersComponent';
 import RelatedDocumentsModal from '../Components/RelatedDocumentsModal';
-import { format, parse, compareAsc, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import LoadingComponent from '../Components/LoadingComponent';
 
@@ -122,6 +122,22 @@ const FileManagementPage = () => {
     from: undefined,
     to:undefined,
   });
+
+  // Server-side pagination and sorting
+  const [page, setPage] = useState<number>(1);
+  const [limit, setLimit] = useState<number>(25);
+  const [sort, setSort] = useState<string>('createdAt_desc');
+  const [debouncedName, setDebouncedName] = useState<string>('');
+
+  // Map UI sort keys to backend expected format (backend expects 'createdAt_desc' or 'documentDate_asc')
+  const backendSort = useMemo(() => {
+    const [field, dir] = (sort || 'createdAt_desc').split('_');
+    const direction = dir === 'asc' ? 'asc' : 'desc';
+    // Pass through camelCase fields the backend service expects
+    const allowed = new Set(['createdAt', 'documentDate']);
+    const safeField = allowed.has(field) ? field : 'createdAt';
+    return `${safeField}_${direction}`;
+  }, [sort]);
 
   if (false){
     console.log(pollingAttempts)
@@ -208,68 +224,38 @@ const FileManagementPage = () => {
     console.log('IntervalDateFitler:', filteredFiles);
   },[filteredFiles])
 
-  useEffect(()=>{
-    if(!files?.documents) return;
-    
-    let newFilteredFiles = files.documents;
-    
-    if(nameSearch.length>0){
-       newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.name.toLowerCase().includes(nameSearch.toLowerCase())
-      ))
-    };
-    
-    if(typeFilter){
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>(
-        file.type===typeFilter
-      ))
-    };
-    
-    if(paymentStatus){
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
-        const filePaymentStatus = file.paymentSummary?.paymentStatus;
-        return filePaymentStatus === paymentStatus;
-      });
-    }
-    
-    if(intervalDateFilter.from !== undefined){
-      const filterFromDate = parse(intervalDateFilter.from, 'dd-MM-yyyy', new Date());
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
-        try {
-          const documentDateStr = getDocumentDate(file);
-          const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
-          return compareAsc(documentDate, filterFromDate) >= 0;
-        } catch (error) {
-          console.error('Error parsing document date for filtering:', error);
-          return compareAsc(file.createdAt, filterFromDate) >= 0;
-        }
-      });
-    }
-    
-    if(intervalDateFilter.to !== undefined){
-      const filterToDate = parse(intervalDateFilter.to, 'dd-MM-yyyy', new Date());
-      const filterToDateEnd = addDays(filterToDate, 1);
-      newFilteredFiles = newFilteredFiles.filter((file:any)=>{
-        try {
-          const documentDateStr = getDocumentDate(file);
-          const documentDate = parse(documentDateStr, 'dd-MM-yyyy', new Date());
-          return compareAsc(documentDate, filterToDateEnd) < 0;
-        } catch (error) {
-          console.error('Error parsing document date for filtering:', error);
-          return compareAsc(file.createdAt, filterToDateEnd) < 0;
-        }
-      });
-    }
+  // Reset to first page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [nameSearch, typeFilter, paymentStatus, intervalDateFilter]);
 
-    setFilteredFiles({
-      ...files,
-      documents: newFilteredFiles
-    })
-  },[typeFilter, setTypeFilter, nameSearch, setNameSearch, intervalDateFilter, setIntervalDateFilter, paymentStatus, files]);
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedName(nameSearch), 300);
+    return () => clearTimeout(t);
+  }, [nameSearch]);
+
+  // Convert dd-MM-yyyy -> YYYY-MM-DD for backend
+  const toISODate = (d?: string) => {
+    if (!d) return undefined;
+    const [dd, mm, yyyy] = d.split('-');
+    if (!dd || !mm || !yyyy) return undefined;
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
   const clientCompanyEin = useSelector((state:clientCompanyName)=>state.clientCompany.current.ein);
-  const { data: filesData, isLoading: isFilesLoading, refetch: refetchFiles } = useGetFilesQuery(
-    {company: clientCompanyEin},
+  const { data: filesData, isLoading: isFilesLoading, error: filesError, refetch: refetchFiles } = useGetFilesQuery(
+    {
+      company: clientCompanyEin,
+      page,
+      limit,
+      q: debouncedName || undefined,
+      type: typeFilter || undefined,
+      paymentStatus: paymentStatus || undefined,
+      dateFrom: toISODate(intervalDateFilter.from),
+      dateTo: toISODate(intervalDateFilter.to),
+      sort: backendSort
+    },
     { skip: !clientCompanyEin }
   );
   const [ deleteFile ] = useDeleteFileAndExtractedDataMutation();
@@ -516,10 +502,40 @@ const FileManagementPage = () => {
 
   useEffect(()=>{
     if(filesData) {
-      setFiles(filesData);
-      setFilteredFiles(filesData);
+      // Normalize API shape: map { items } to existing { documents }
+      const normalized = {
+        ...filesData,
+        documents: (filesData as any).documents ?? (filesData as any).items ?? []
+      } as any;
+      setFiles(normalized);
+      setFilteredFiles(normalized);
     }
   },[filesData, deleteFile])
+
+  const totalCount = useMemo(() => (files as any)?.total ?? (filesData as any)?.total ?? (filteredFiles?.documents?.length ?? 0), [files, filesData, filteredFiles]);
+  const totalPages = useMemo(() => Math.max(1, Math.ceil((totalCount || 0) / (limit || 1))), [totalCount, limit]);
+
+  // Compact windowed page numbers: First, prev neighbors, next neighbors, Last
+  const pageNumbers = useMemo(() => {
+    const pages: (number | '...')[] = [];
+    const windowSize = 1; // neighbors on each side
+    const add = (p: number | '...') => pages.push(p);
+    const addRange = (s: number, e: number) => { for (let i = s; i <= e; i++) add(i); };
+
+    if (totalPages <= 7) {
+      addRange(1, totalPages);
+      return pages;
+    }
+
+    add(1);
+    const start = Math.max(2, page - windowSize);
+    const end = Math.min(totalPages - 1, page + windowSize);
+    if (start > 2) add('...');
+    addRange(start, end);
+    if (end < totalPages - 1) add('...');
+    add(totalPages);
+    return pages;
+  }, [page, totalPages]);
   
   const handleTooLongString = useCallback((str: string): string => {
     if (str.length > 25) return str.slice(0, 25) + '..';
@@ -753,16 +769,79 @@ const FileManagementPage = () => {
       <div className="bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-[var(--text4)] bg-gradient-to-r from-[var(--background)] to-[var(--foreground)]">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3">
               <h2 className="text-2xl font-bold text-[var(--text1)]">
                 {language === 'ro' ? 'Fișierele Tale' : 'Your Files'}
               </h2>
               <span className="bg-[var(--primary)]/20 text-[var(--primary)] px-3 py-1 rounded-full text-sm font-semibold">
-                {filteredFiles?.documents?.length || 0} {language==='ro'?'fișiere':'files'}
+                {totalCount || 0} {language==='ro'?'fișiere':'files'}
               </span>
             </div>
-            
+
+            <div className="flex items-center gap-3 ml-auto">
+              {/* Sorting */}
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                className="border border-[var(--text4)] rounded-lg px-2 py-1 text-sm bg-[var(--background)] text-[var(--text1)]"
+                disabled={isFilesLoading}
+              >
+                <option value="createdAt_desc">{language==='ro'?'Cele mai noi':'Newest'}</option>
+                <option value="createdAt_asc">{language==='ro'?'Cele mai vechi':'Oldest'}</option>
+                <option value="documentDate_desc">{language==='ro'?'Data doc. desc':'Doc date desc'}</option>
+                <option value="documentDate_asc">{language==='ro'?'Data doc. asc':'Doc date asc'}</option>
+              </select>
+
+              {/* Page size */}
+              <select
+                value={limit}
+                onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+                className="border border-[var(--text4)] rounded-lg px-2 py-1 text-sm bg-[var(--background)] text-[var(--text1)]"
+                disabled={isFilesLoading}
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+
+              {/* Pagination controls */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isFilesLoading}
+                  className={`px-3 py-1 rounded-lg text-sm border ${page<=1?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
+                >
+                  {language==='ro'?'Înapoi':'Prev'}
+                </button>
+                {/* Numbered pages */}
+                <div className="flex items-center gap-1">
+                  {pageNumbers.map((p, idx) => (
+                    p === '...'
+                      ? <span key={`el-${idx}`} className="px-2 text-[var(--text3)]">…</span>
+                      : (
+                        <button
+                          key={`pg-${p}`}
+                          onClick={() => setPage(p as number)}
+                          disabled={isFilesLoading}
+                          className={`px-2.5 py-1 rounded-md text-sm border ${page===p? 'bg-[var(--primary)] text-white border-[var(--primary)]': 'text-[var(--text2)] border-[var(--text4)] hover:bg-[var(--primary)]/10'} ${isFilesLoading?' opacity-50 cursor-not-allowed':''}`}
+                        >
+                          {p}
+                        </button>
+                      )
+                  ))}
+                </div>
+                <button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isFilesLoading}
+                  className={`px-3 py-1 rounded-lg text-sm border ${page>=totalPages?'text-[var(--text3)] border-[var(--text4)]':'text-[var(--primary)] border-[var(--primary)]/50 hover:bg-[var(--primary)]/10'}`}
+                >
+                  {language==='ro'?'Înainte':'Next'}
+                </button>
+              </div>
+            </div>
+
             {/* Select All Checkbox */}
             {filteredFiles?.documents?.length > 0 && (
               <button
@@ -787,6 +866,30 @@ const FileManagementPage = () => {
 
         {/* Files List */}
         <div className="p-6">
+          {/* Loading state */}
+          {isFilesLoading && (
+            <div className="mb-4">
+              <LoadingComponent />
+            </div>
+          )}
+
+          {/* Error state */}
+          {filesError && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-700 border border-red-200">
+              <div className="text-sm font-medium">{language==='ro'?'Eroare la încărcarea fișierelor':'Failed to load files'}</div>
+            </div>
+          )}
+
+          {/* Range info */}
+          {!isFilesLoading && !filesError && (
+            <div className="mb-3 text-sm text-[var(--text2)]">
+              {(() => {
+                const start = totalCount === 0 ? 0 : (page - 1) * limit + 1;
+                const end = Math.min(totalCount || 0, page * limit);
+                return `${language==='ro'?'Afișare':''} ${start}-${end} ${language==='ro'?'din':''} ${totalCount || 0}`;
+              })()}
+            </div>
+          )}
           {filteredFiles?.documents?.length === 0 ? (
             <div className="text-center py-12">
               <FileText size={48} className="mx-auto text-[var(--text3)] mb-4" />
