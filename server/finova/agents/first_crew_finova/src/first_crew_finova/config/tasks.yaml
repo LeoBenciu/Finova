@@ -247,9 +247,12 @@ attribute_bank_transaction_account_task:
     ANALYSIS GUIDELINES:
     1. Analyze the transaction description for keywords and business context
     2. Consider the transaction type (DEBIT/CREDIT) and amount
-    3. Match against standard Romanian accounting practices
-    4. If unclear, research current Romanian accounting standards using available tools
-    5. Provide confidence score (0.0-1.0) based on certainty of categorization
+    3. FIRST check if this looks like an INTER-ACCOUNT TRANSFER between the client's own bank accounts. If likely,
+       DO NOT recommend an expense/revenue account; instead SUGGEST pairing this transaction with its counterpart
+       transaction from the other bank account for reconciliation.
+    4. Match against standard Romanian accounting practices for non-transfer transactions
+    5. If unclear, research current Romanian accounting standards using available tools
+    6. Provide confidence score (0.0-1.0) based on certainty of categorization
 
     COMMON PATTERNS:
     - Bank fees/commissions → 627 (Cheltuieli cu serviciile bancare)
@@ -257,9 +260,18 @@ attribute_bank_transaction_account_task:
     - Interest paid → 666 (Cheltuieli privind dobânzile)
     - Currency exchange → 665/765 (Diferențe de curs valutar)
     - Cash withdrawals → 5311 (Casa în lei)
-    - Transfers between accounts → 5121 (Conturi curente la bănci)
+    - Transfers between company bank accounts → Prefer SUGGESTING a transfer pairing between the two bank transactions
+      (RON↔EUR or same currency), not an expense/revenue account. Only fall back to 5121 categorization when no
+      valid counterpart transaction is found.
     - Insurance payments → 613 (Cheltuieli cu primele de asigurare)
     - Utilities → 605 (Cheltuieli privind utilitățile)
+
+    INTER-ACCOUNT TRANSFER DETECTION HEURISTICS:
+    - Keywords in description: "transfer", "trf", "între conturi", "between accounts", IBAN fragments
+    - Opposite-sign counterpart within ±3 calendar days on another company account
+    - Amount equality or equality after FX conversion (RON↔EUR). If no official FX rate is available, allow up to 1-2% variance
+    - Matching or similar reference numbers/payment IDs
+    - Known own IBANs or account names appearing in description
 
     OUTPUT FORMAT:
     Return JSON with:
@@ -271,9 +283,17 @@ attribute_bank_transaction_account_task:
       "alternative_accounts": [
         {"code": "XXX", "name": "Alternative account name", "confidence": 0.0-1.0}
       ],
+      "transfer_suggestion": {
+        "is_transfer": boolean,
+        "reasoning": "Why this appears to be an inter-account transfer (RO + EN)",
+        "expected_counter_currency": "RON|EUR|...", 
+        "expected_counter_amount": number, 
+        "allowed_variance_pct": number,
+        "counterpart_transaction_id": "string|null"  
+      },
       "requires_manual_review": boolean
     }
 
   expected_output: >
-    A JSON response with the recommended account code, confidence score, reasoning, and any alternative suggestions for manual review if confidence is low.
+    A JSON response prioritizing inter-account transfer pairing when applicable (via transfer_suggestion). Otherwise, provide the recommended account code, confidence score, reasoning, and any alternative suggestions for manual review if confidence is low.
   agent: account_attribution_agent
