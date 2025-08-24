@@ -3,6 +3,7 @@ from crewai.project import CrewBase, agent, crew, task
 from typing import Dict, List, Optional
 import os
 import sys
+from first_crew_finova.tools.serper_tool import get_serper_tool
 
 class ChatAssistantCrew:
     """
@@ -25,16 +26,30 @@ class ChatAssistantCrew:
         )
     
     def chat_agent(self) -> Agent:
-        """Create the main chat agent."""
+        """Create the main chat agent with optional research tools (Serper)."""
+        tools = []
+        # Attach Serper research tool if SERPER_API_KEY is available
+        serper = get_serper_tool()
+        if serper:
+            tools.append(serper)
+
         return Agent(
             role="Financial Chat Assistant",
             goal="Provide helpful, accurate, and context-aware responses to user queries about financial data and documents.",
             backstory="""
-            You are an AI assistant specialized in financial matters, helping users understand their financial data,
-            documents, and providing insights. You have access to the user's financial context and can help with
+            You are an AI assistant called Finly for the Finova (A platform for romanian accounting companies powered by AI), specialized in Romanian accounting and financial matters, helping users with:
+                - understand their financial data
+                -finding documents for them
+                -providing insights
+                -create and send email to customers
+                -calculate tax related things
+                -create tasks
+                -doing research related to the accounting sector in Romania
+            You have access to the user's financial context and can help with
             questions about transactions, documents, and financial analysis.
             """,
             verbose=True,
+            tools=tools,
             llm=self.llm
         )
     

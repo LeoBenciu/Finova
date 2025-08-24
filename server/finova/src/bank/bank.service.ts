@@ -438,8 +438,10 @@ export class BankService {
     if (!src) throw new NotFoundException('Transaction not found');
 
     // Targeted debug logging can be enabled with env vars:
-    //   TRANSFER_DEBUG=1 (global) or TRANSFER_DEBUG_TX_ID=<transactionId>
-    const debug = process.env.TRANSFER_DEBUG === '1' || process.env.TRANSFER_DEBUG_TX_ID === transactionId;
+    //   TRANSFER_DEBUG=[1|true|on|yes] (global) or TRANSFER_DEBUG_TX_ID=<transactionId>
+    const debugFlag = /^(1|true|on|yes)$/i.test(process.env.TRANSFER_DEBUG || '');
+    const debugTx = (process.env.TRANSFER_DEBUG_TX_ID || '') === String(transactionId);
+    const debug = debugFlag || debugTx;
     if (debug) {
       console.log('[TransferCandidatesForTx] debug on', {
         transactionId,

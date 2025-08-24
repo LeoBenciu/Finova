@@ -250,7 +250,7 @@ attribute_bank_transaction_account_task:
     3. FIRST check if this looks like an INTER-ACCOUNT TRANSFER between the client's own bank accounts. If likely,
        DO NOT recommend an expense/revenue account; instead SUGGEST pairing this transaction with its counterpart
        transaction from the other bank account for reconciliation.
-    4. Match against standard Romanian accounting practices for non-transfer transactions
+    4. Match against standard Romanian accounting practices
     5. If unclear, research current Romanian accounting standards using available tools
     6. Provide confidence score (0.0-1.0) based on certainty of categorization
 

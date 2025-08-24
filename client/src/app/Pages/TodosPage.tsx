@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Filter, Search, CalendarDays, User, Flag, Loader2, Edit2, Trash2, X, CheckCircle2, Clock3, Loader } from 'lucide-react';
+import { Plus, Search, CalendarDays, User, Flag, Loader2, Edit2, Trash2, X, CheckCircle2 } from 'lucide-react';
+import todosIllustration from '@/assets/todos.svg';
 import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery } from '@/redux/slices/apiSlice';
 
 const TodosPage = () => {
@@ -21,14 +22,12 @@ const TodosPage = () => {
 
   // Current user (used for Assign to me / Unassign actions)
   const { data: me } = useGetUserDataQuery(undefined);
-  const [tagInput, setTagInput] = useState('');
 
   const [createTodo, { isLoading: creating }] = useCreateTodoMutation();
   const [updateTodo, { isLoading: updating }] = useUpdateTodoMutation();
   const [deleteTodo, { isLoading: deleting }] = useDeleteTodoMutation();
 
   // UI helpers
-  const [activeTag, setActiveTag] = useState<string>('');
 
   const avatarFor = (nameOrEmail?: string) => {
     const base = (nameOrEmail || '').trim();
@@ -66,15 +65,23 @@ const TodosPage = () => {
     addTagPlaceholder: language === 'ro' ? 'Adaugă etichete și apasă Enter' : 'Add tags and press Enter',
   }), [language]);
 
+  const mapStatusQuery = (s: typeof status) => {
+    if (s === 'all') return 'all' as const;
+    return (s === 'in_progress' ? 'IN_PROGRESS' : s.toUpperCase()) as any;
+  };
+  const mapPriorityQuery = (p: typeof priority) => {
+    if (p === 'all') return 'all' as const;
+    return p.toUpperCase() as any;
+  };
+
   const { data, isLoading, isFetching, error } = useGetTodosQuery(
     clientEin
       ? {
           clientEin,
           page,
           size,
-          status,
-          priority,
-          q: activeTag ? `${query} tag:${activeTag}` : query,
+          status: mapStatusQuery(status),
+          priority: mapPriorityQuery(priority),
         }
       : ({} as any),
     { skip: !clientEin }
@@ -87,22 +94,10 @@ const TodosPage = () => {
     : [];
   const total: number = (data as any)?.total ?? items.length ?? 0;
 
-  // Tag suggestions from existing items
-  const existingTags = useMemo(() => {
-    const set = new Set<string>();
-    items.forEach((i: any) => (i.tags || []).forEach((t: string) => set.add(t)));
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [items]);
-
   // Company users for assignee dropdown (optional endpoint)
   const { data: companyUsers } = useGetCompanyUsersQuery();
 
-  const stats = useMemo(() => {
-    const pending = items.filter((i: any) => i.status === 'pending').length;
-    const inProgress = items.filter((i: any) => i.status === 'in_progress').length;
-    const completed = items.filter((i: any) => i.status === 'completed').length;
-    return { pending, inProgress, completed };
-  }, [items]);
+  const statusLc = (s: any) => (s || '').toString().toLowerCase();
 
 
   return (
@@ -144,15 +139,6 @@ const TodosPage = () => {
           />
         </div>
         <div className="col-span-1 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
-          <Filter size={18} className="text-[var(--text3)]" />
-          <select className="bg-white outline-none w-full text-black" value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value as any); }}>
-            <option value="all">{language==='ro'?'Toate':'All'}</option>
-            <option value="pending">{language==='ro'?'În așteptare':'Pending'}</option>
-            <option value="in_progress">{language==='ro'?'În curs':'In Progress'}</option>
-            <option value="completed">{language==='ro'?'Finalizate':'Completed'}</option>
-          </select>
-        </div>
-        <div className="col-span-1 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
           <Flag size={18} className="text-[var(--text3)]" />
           <select className="bg-white outline-none w-full text-black" value={priority} onChange={(e)=>{ setPage(1); setPriority(e.target.value as any); }}>
             <option value="all">{language==='ro'?'Toate':'All'}</option>
@@ -190,53 +176,6 @@ const TodosPage = () => {
 
       {/* Main grid: left rail + content */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Left rail */}
-        <aside className="lg:col-span-1 bg-white border rounded-2xl p-4 h-max">
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-              <div>
-                <div className="text-sm text-[var(--text2)]">{language==='ro'?'În așteptare':'Pending'}</div>
-                <div className="text-2xl font-semibold text-black">{stats.pending}</div>
-              </div>
-              <Clock3 className="text-yellow-600" size={22} />
-            </div>
-            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-              <div>
-                <div className="text-sm text-[var(--text2)]">{language==='ro'?'În curs':'In Progress'}</div>
-                <div className="text-2xl font-semibold text-black">{stats.inProgress}</div>
-              </div>
-              <Loader className="text-blue-600" size={22} />
-            </div>
-            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-              <div>
-                <div className="text-sm text-[var(--text2)]">{language==='ro'?'Finalizate':'Completed'}</div>
-                <div className="text-2xl font-semibold text-black">{stats.completed}</div>
-              </div>
-              <CheckCircle2 className="text-green-600" size={22} />
-            </div>
-          </div>
-
-          {/* Categories */}
-          <div>
-            <div className="text-sm font-medium text-[var(--text2)] mb-2">{language==='ro'?'Categorii':'Categories'}</div>
-            <div className="flex flex-col gap-1">
-              <button
-                className={`text-left px-3 py-2 rounded-lg border ${!activeTag ? 'bg-[var(--primary-foreground)] border-[var(--text4)]' : 'bg-white border-transparent hover:bg-[var(--primary-foreground)]'}`}
-                onClick={() => { setActiveTag(''); setPage(1); }}
-              >
-                {language==='ro'?'Toate':'All'}
-              </button>
-              {existingTags.map(tag => (
-                <button key={tag}
-                  className={`text-left px-3 py-2 rounded-lg border ${activeTag===tag ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-white border-[var(--text4)] hover:bg-[var(--primary-foreground)]'}`}
-                  onClick={() => { setActiveTag(tag); setPage(1); }}
-                >
-                  {tag}
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
 
         {/* Content column */}
         <div className="lg:col-span-3">
@@ -255,8 +194,8 @@ const TodosPage = () => {
           </div>
             )}
             {!isLoading && !isFetching && items.length === 0 && (
-          <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-2">
-            <CheckCircle2 size={28} className="opacity-40" />
+          <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-4">
+            <img src={todosIllustration} alt="empty todos" className="w-64 max-w-full opacity-90" />
             <div>{t.empty}</div>
           </div>
             )}
@@ -267,9 +206,9 @@ const TodosPage = () => {
                 <div className="flex items-start gap-3 p-3 rounded-2xl bg-white">
                   {/* left checkbox */}
                   <button
-                    className={`mt-1 w-5 h-5 rounded-full border ${item.status==='completed' ? 'bg-green-500 border-green-500' : 'border-[var(--text4)]'} flex items-center justify-center`}
+                    className={`mt-1 w-5 h-5 rounded-full border ${item.status==='completed' ? 'bg-green-500 border-green-500' : 'border-[var(--text4)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
                     onClick={async () => {
-                      const next = item.status === 'completed' ? 'pending' : 'completed';
+                      const next = item.status === 'completed' ? 'PENDING' : 'COMPLETED';
                       await updateTodo({ clientEin, id: item.id, data: { status: next } as any });
                     }}
                     aria-label={item.status==='completed' ? (language==='ro'?'Marchează nefinalizat':'Mark incomplete') : (language==='ro'?'Marchează finalizat':'Mark complete')}
@@ -309,9 +248,10 @@ const TodosPage = () => {
                   <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
                     <select
                       className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                      value={item.status}
+                      value={(item.status || '').toString().toLowerCase()}
                       onChange={async (e) => {
-                        await updateTodo({ clientEin, id: item.id, data: { status: e.target.value } as any });
+                        const upper = e.target.value === 'in_progress' ? 'IN_PROGRESS' : e.target.value.toUpperCase();
+                        await updateTodo({ clientEin, id: item.id, data: { status: upper } as any });
                       }}
                     >
                       <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
@@ -320,15 +260,28 @@ const TodosPage = () => {
                     </select>
                     <select
                       className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                      value={item.priority}
+                      value={(item.priority || '').toString().toLowerCase()}
                       onChange={async (e) => {
-                        await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value } as any });
+                        await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value.toUpperCase() } as any });
                       }}
                     >
                       <option value="high">{language === 'ro' ? 'Mare' : 'High'}</option>
                       <option value="medium">{language === 'ro' ? 'Medie' : 'Medium'}</option>
                       <option value="low">{language === 'ro' ? 'Mică' : 'Low'}</option>
                     </select>
+                    {/* Inline date picker */}
+                    <div className="flex items-center gap-1 text-xs">
+                      <input
+                        type="date"
+                        className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
+                        value={item.dueDate ? String(item.dueDate).slice(0,10) : ''}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          const iso = val ? new Date(val).toISOString() : null;
+                          await updateTodo({ clientEin, id: item.id, data: { dueDate: iso as any } });
+                        }}
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       {me?.id && (
                         item.assignedTo?.id === me.id ? (
@@ -361,8 +314,8 @@ const TodosPage = () => {
                             title: item.title || '',
                             description: item.description || '',
                             dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
-                            status: item.status || 'pending',
-                            priority: item.priority || 'medium',
+                            status: (statusLc(item.status) || 'pending') as any,
+                            priority: ((item.priority || 'medium').toString().toLowerCase() as any),
                             tags: item.tags || [],
                             assignedToId: item.assignedTo?.id ?? null,
                           });
@@ -437,8 +390,9 @@ const TodosPage = () => {
           <div className="absolute inset-0 bg-black/30" onClick={() => setShowModal(false)}></div>
           <div className="relative z-10 w-full max-w-lg bg-white rounded-xl shadow-lg border p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{editing ? t.edit : t.create}</h3>
-              <button onClick={() => setShowModal(false)} className="text-[var(--text2)] hover:text-[var(--text1)]">
+              <h3 className="text-lg font-semibold text-black">{editing ? t.edit : t.create}</h3>
+              <button onClick={() => setShowModal(false)} className="bg-neutral-300 text-black hover:bg-red-500
+              hover:text-white  cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -461,7 +415,7 @@ const TodosPage = () => {
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.dueLabel}</label>
                   <input
@@ -470,18 +424,6 @@ const TodosPage = () => {
                     value={form.dueDate || ''}
                     onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
                   />
-                </div>
-                <div>
-                  <label className="block text-sm text-[var(--text2)] mb-1">{t.status}</label>
-                  <select
-                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
-                    value={form.status}
-                    onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as any }))}
-                  >
-                    <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
-                    <option value="in_progress">{language === 'ro' ? 'În curs' : 'In Progress'}</option>
-                    <option value="completed">{language === 'ro' ? 'Finalizat' : 'Completed'}</option>
-                  </select>
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.priority}</label>
@@ -496,112 +438,36 @@ const TodosPage = () => {
                   </select>
                 </div>
               </div>
-
-              {/* Tags chips editor */}
-              <div>
-                <label className="block text-sm text-[var(--text2)] mb-1">{t.tags}</label>
-                <div className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 flex flex-wrap gap-2 bg-white">
-                  {(form.tags || []).map((tag) => (
-                    <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[var(--primary-foreground)] text-[var(--text2)]">
-                      {tag}
-                      <button
-                        className="ml-1 text-[var(--text2)] hover:text-[var(--text1)]"
-                        onClick={() => setForm((f) => ({ ...f, tags: (f.tags || []).filter((t) => t !== tag) }))}
-                        aria-label="remove-tag"
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                  <input
-                    className="flex-1 min-w-[120px] outline-none bg-white text-black"
-                    placeholder={t.addTagPlaceholder}
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ',') {
-                        e.preventDefault();
-                        const val = tagInput.trim().replace(/,$/, '');
-                        if (val && !(form.tags || []).includes(val)) {
-                          setForm((f) => ({ ...f, tags: [...(f.tags || []), val] }));
-                        }
-                        setTagInput('');
-                      } else if (e.key === 'Backspace' && !tagInput && (form.tags || []).length) {
-                        setForm((f) => ({ ...f, tags: f.tags.slice(0, -1) }));
-                      }
-                    }}
-                  />
-                </div>
-                {/* Tag suggestions / autocomplete */}
-                {existingTags && existingTags.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(tagInput
-                      ? existingTags.filter((tg) => tg.toLowerCase().startsWith(tagInput.toLowerCase()))
-                      : existingTags.slice(0, 10)
-                    )
-                      .filter((tg) => !(form.tags || []).includes(tg))
-                      .map((tg) => (
-                        <button
-                          key={tg}
-                          className="px-2 py-0.5 text-xs rounded-full border hover:bg-[var(--primary-foreground)]"
-                          onClick={() => setForm((f) => ({ ...f, tags: [...(f.tags || []), tg] }))}
-                        >
-                          + {tg}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-
               {/* Assignee controls */}
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.assignee}</label>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {/* Optional dropdown when company users are available */}
-                  {Array.isArray(companyUsers) && companyUsers.length > 0 && (
-                    <select
-                      className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black"
-                      value={form.assignedToId ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setForm((f) => ({ ...f, assignedToId: v ? Number(v) : null }));
-                      }}
-                    >
-                      <option value="">{t.unassigned}</option>
-                      {companyUsers.map((u: any) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name || u.email || `#${u.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <div className="px-3 py-2 border rounded-lg text-sm text-[var(--text2)] min-w-[160px]">
-                    {form.assignedToId
-                      ? (editing?.assignedTo?.name || editing?.assignedTo?.email || `${t.assignee}: #${form.assignedToId}`)
-                      : t.unassigned}
-                  </div>
-                  {me?.id && (
-                    <>
-                      <button
-                        className="px-3 py-2 rounded-lg border hover:bg-[var(--primary-foreground)]"
-                        onClick={() => setForm((f) => ({ ...f, assignedToId: me.id as number }))}
-                      >
-                        {t.assignToMe}
-                      </button>
-                      <button
-                        className="px-3 py-2 rounded-lg border hover:bg-[var(--primary-foreground)]"
-                        onClick={() => setForm((f) => ({ ...f, assignedToId: null }))}
-                      >
-                        {t.unassign}
-                      </button>
-                    </>
-                  )}
+                  <select
+                    className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black"
+                    value={form.assignedToId ?? ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setForm((f) => ({ ...f, assignedToId: v ? Number(v) : null }));
+                    }}
+                  >
+                    <option value="">{t.unassigned}</option>
+                    {/* company users */}
+                    {Array.isArray(companyUsers) && companyUsers.map((u: any) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.email || `#${u.id}`}
+                      </option>
+                    ))}
+                    {/* ensure self present */}
+                    {me?.id && (!Array.isArray(companyUsers) || !companyUsers.some((u: any) => u.id === me.id)) && (
+                      <option value={me.id}>{me.name || me.email || `#${me.id}`}</option>
+                    )}
+                  </select>
                 </div>
               </div>
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-3">
-              <button className="px-4 py-2 rounded-lg border" onClick={() => setShowModal(false)}>{t.cancel}</button>
+              <button className="px-4 py-2 rounded-lg border bg-neutral-300 text-black hover:bg-black hover:text-white" onClick={() => setShowModal(false)}>{t.cancel}</button>
               <button
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white disabled:opacity-50"
                 disabled={!clientEin || !form.title || creating || updating}
@@ -609,17 +475,15 @@ const TodosPage = () => {
                   const payload: any = {
                     title: form.title,
                     description: form.description || undefined,
-                    priority: form.priority,
-                    status: form.status,
+                    priority: (form.priority as any)?.toUpperCase?.(),
                     dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
-                    tags: (form.tags || []).length ? form.tags : undefined,
                     assignedToId: form.assignedToId ?? undefined,
                   };
                   try {
                     if (editing) {
                       await updateTodo({ clientEin, id: editing.id, data: payload }).unwrap();
                     } else {
-                      await createTodo({ clientEin, data: payload }).unwrap();
+                      await createTodo({ clientEin, data: { ...payload, status: 'PENDING' } }).unwrap();
                     }
                     setShowModal(false);
                   } catch (e) {
