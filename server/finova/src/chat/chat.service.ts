@@ -90,12 +90,16 @@ export class ChatService {
         envVars['BACKEND_JWT'] = token;
         envVars['BANK_API_TOKEN'] = token; // alt name used by some tools
       }
-      // Base API URL for backend HTTP tools
-      if (!envVars['BACKEND_API_URL'] && process.env.BACKEND_API_URL) {
-        envVars['BACKEND_API_URL'] = process.env.BACKEND_API_URL;
+      // Base API URL for backend HTTP tools (robust fallbacks for Render/local)
+      if (!envVars['BACKEND_API_URL']) {
+        envVars['BACKEND_API_URL'] =
+          process.env.BACKEND_API_URL ||
+          process.env.BANK_BACKEND_URL ||
+          process.env.RENDER_EXTERNAL_URL ||
+          'http://localhost:3001';
       }
-      if (!envVars['BANK_BACKEND_URL'] && process.env.BANK_BACKEND_URL) {
-        envVars['BANK_BACKEND_URL'] = process.env.BANK_BACKEND_URL;
+      if (!envVars['BANK_BACKEND_URL']) {
+        envVars['BANK_BACKEND_URL'] = envVars['BACKEND_API_URL'] as string;
       }
       // Provide client EIN context directly
       envVars['CLIENT_EIN'] = clientEin;

@@ -2118,49 +2118,133 @@ export class BankService {
               }
             }
           });
-      
+
           if (!suggestion) {
             throw new NotFoundException('Suggestion not found');
           }
       
           const suggestionCompanyId = suggestion.document
-              ? suggestion.document.accountingClient.accountingCompanyId
-              : suggestion.bankTransaction?.bankStatementDocument.accountingClient.accountingCompanyId;
-          
-          console.log('🏢 AUTHORIZATION CHECK:', {
-            suggestionId,
-            userId: user.id,
-            userCompanyId: user.accountingCompanyId,
-            suggestionCompanyId,
-            hasDocument: !!suggestion.document,
-            hasBankTransaction: !!suggestion.bankTransaction,
-            documentCompanyId: suggestion.document?.accountingClient?.accountingCompanyId,
-            bankTransactionCompanyId: suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.accountingCompanyId
-          });
-          
-          if (suggestionCompanyId !== user.accountingCompanyId) {
-            console.error('❌ AUTHORIZATION FAILED:', {
-              reason: 'Company ID mismatch',
-              userCompanyId: user.accountingCompanyId,
-              suggestionCompanyId,
-              suggestionId
-            });
-            throw new UnauthorizedException('No access to this suggestion');
-          }
-          
-          console.log('✅ Authorization passed for suggestion', suggestionId);
+           ? suggestion.document.accountingClient.accountingCompanyId
+           : suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.accountingCompanyId;
+         const userCompanyId = user.accountingCompanyId;
+         if (process.env.SUGGESTIONS_DEBUG === '1') {
+           console.log('🔐 Authorization check for suggestion', {
+             suggestionId,
+             userCompanyId,
+             suggestionCompanyId
+           });
+         }
+         if (!userCompanyId || suggestionCompanyId !== userCompanyId) {
+           throw new UnauthorizedException('You do not have access to this company');
+         }
+         console.log('✅ Authorization passed for suggestion', suggestionId);
       
           if (suggestion.status !== SuggestionStatus.PENDING) {
             throw new Error('Suggestion is no longer pending');
           }
-      
+
+          // Detect TRANSFER suggestion: no document/account and matchingCriteria.transfer present
+          const mc: any = (suggestion as any).matchingCriteria || {};
+          const isTransfer = !suggestion.documentId && !suggestion.chartOfAccountId && !!mc.transfer;
+
+          if (isTransfer) {
+            const dbg = process.env.SUGGESTIONS_DEBUG === '1';
+            if (dbg) {
+              console.log('[ACCEPT TRANSFER] Suggestion', {
+                suggestionId,
+                sourceBankTransactionId: suggestion.bankTransactionId,
+                transferMeta: mc.transfer,
+              });
+            }
+
+            const sourceTx = suggestion.bankTransaction;
+            if (!sourceTx) throw new NotFoundException('Source bank transaction not found');
+
+            const destinationTransactionId: string | undefined = mc.transfer?.destinationTransactionId;
+            if (!destinationTransactionId) {
+              throw new BadRequestException('Transfer suggestion missing destinationTransactionId');
+            }
+
+            // Load destination transaction to authorize and proceed
+            const destinationTx = await prisma.bankTransaction.findUnique({
+              where: { id: destinationTransactionId },
+              include: {
+                bankStatementDocument: { include: { accountingClient: true } },
+                bankAccount: true,
+              },
+            });
+            if (!destinationTx) throw new NotFoundException('Destination bank transaction not found');
+
+            const companyIdSrc = sourceTx.bankStatementDocument.accountingClient.accountingCompanyId;
+            const companyIdDst = destinationTx.bankStatementDocument.accountingClient.accountingCompanyId;
+            if (companyIdSrc !== user.accountingCompanyId || companyIdDst !== user.accountingCompanyId) {
+              throw new UnauthorizedException('No access to one of the transactions in this transfer');
+            }
+
+            // Derive client EIN to call createTransferReconciliation()
+            const accountingClientId = sourceTx.bankStatementDocument.accountingClient.id;
+            const accountingClient = await prisma.accountingClients.findUnique({ where: { id: accountingClientId } });
+            if (!accountingClient) throw new NotFoundException('Accounting client not found');
+            const clientCompany = await prisma.clientCompany.findUnique({ where: { id: accountingClient.clientCompanyId } });
+            if (!clientCompany) throw new NotFoundException('Client company not found');
+
+            // Create transfer reconciliation via existing method (validates signs/amounts and analytics)
+            const createdTransfer = await this.createTransferReconciliation(
+              clientCompany.ein,
+              user,
+              {
+                sourceTransactionId: suggestion.bankTransactionId!,
+                destinationTransactionId,
+                fxRate: mc.transfer?.impliedFxRate ?? null,
+                notes: notes || mc.transfer?.note || `Accepted transfer suggestion (${Math.round(Number(suggestion.confidenceScore) * 100)}% confidence)`,
+              }
+            );
+
+            // Mark both transactions as matched
+            await prisma.bankTransaction.updateMany({
+              where: { id: { in: [suggestion.bankTransactionId!, destinationTransactionId] } },
+              data: { reconciliationStatus: ReconciliationStatus.MATCHED },
+            });
+
+            // Mark this suggestion accepted
+            await prisma.reconciliationSuggestion.update({
+              where: { id: suggestionId },
+              data: { status: SuggestionStatus.ACCEPTED },
+            });
+
+            // Reject competing suggestions for either transaction
+            await prisma.reconciliationSuggestion.updateMany({
+              where: {
+                id: { not: suggestionId },
+                status: SuggestionStatus.PENDING,
+                OR: [
+                  { bankTransactionId: suggestion.bankTransactionId },
+                  { bankTransactionId: destinationTransactionId },
+                ],
+              },
+              data: { status: SuggestionStatus.REJECTED },
+            });
+
+            if (dbg) {
+              console.log('[ACCEPT TRANSFER] Completed', {
+                suggestionId,
+                transferId: createdTransfer.id,
+                source: suggestion.bankTransactionId,
+                destination: destinationTransactionId,
+              });
+            }
+
+            return createdTransfer;
+          }
+
+          // Non-transfer suggestions (document ↔ transaction) continue with existing flow
           const existingMatch = await prisma.reconciliationRecord.findUnique({
             where: {
               documentId_bankTransactionId: {
-                documentId: suggestion.documentId,
-                bankTransactionId: suggestion.bankTransactionId
-              }
-            }
+                documentId: suggestion.documentId!,
+                bankTransactionId: suggestion.bankTransactionId!,
+              },
+            },
           });
       
           if (existingMatch) {

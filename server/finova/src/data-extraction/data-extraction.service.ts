@@ -2265,7 +2265,8 @@ export class DataExtractionService {
               reconciliationStatus: ReconciliationStatus.UNRECONCILED
             },
             include: {
-              bankStatementDocument: true
+              bankStatementDocument: true,
+              bankAccount: true
             }
           });
       
@@ -2360,6 +2361,143 @@ export class DataExtractionService {
           });
       
           const suggestions = [];
+
+          // ------------------------------------------------------------------
+          // Transfer suggestions: propose internal transfers between accounts
+          // ------------------------------------------------------------------
+          try {
+            const dbg = process.env.SUGGESTIONS_DEBUG === '1';
+            const daysWindow = 5; // +/- days to consider as close dates
+            const amountTolerancePct = 0.01; // 1%
+            const minAmountTolerance = 1; // RON minimum tolerance
+
+            const credits = unreconciliedTransactions.filter(t => t.transactionType === 'CREDIT');
+            const debits = unreconciliedTransactions.filter(t => t.transactionType === 'DEBIT');
+
+            // Keep track of already paired destination credits to avoid duplicate suggestions
+            const usedDestinationIds = new Set<string>();
+
+            const transferSuggestions: Array<{
+              documentId: number | null;
+              bankTransactionId: string;
+              chartOfAccountId: number | null;
+              confidenceScore: number;
+              matchingCriteria: any;
+              reasons: string[];
+            }> = [];
+
+            // Precompute keyword presence for descriptions
+            const hasTransferKeyword = (desc?: string) => {
+              if (!desc) return false;
+              const d = desc.toLowerCase();
+              return (
+                d.includes('transfer') || d.includes('intrabank') || d.includes('interbank') ||
+                d.includes('interne') || d.includes('transfer intern') || d.includes('transf')
+              );
+            };
+
+            for (const src of debits) {
+              const srcAmt = Math.abs(Number(src.amount));
+              const srcDate = new Date(src.transactionDate);
+              let bestCandidate: any = null;
+              let bestScore = 0;
+
+              for (const dst of credits) {
+                if (usedDestinationIds.has(dst.id)) continue;
+                if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
+                  // Skip moves within the same account
+                  continue;
+                }
+
+                const dstAmt = Math.abs(Number(dst.amount));
+                const amountDiff = Math.abs(srcAmt - dstAmt);
+                const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
+                if (amountDiff > amountTolerance) continue;
+
+                const dstDate = new Date(dst.transactionDate);
+                const daysApart = Math.abs((+srcDate - +dstDate) / (1000 * 60 * 60 * 24));
+                if (daysApart > daysWindow) continue;
+
+                // Scoring
+                let score = 0.7; // base for amount+date proximity
+                const reasons: string[] = [];
+                const criteria: any = { transfer: {} };
+
+                if (amountDiff === 0) {
+                  score += 0.1;
+                  reasons.push('Exact amount match');
+                } else {
+                  reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
+                }
+
+                if (daysApart === 0) {
+                  score += 0.08;
+                  reasons.push('Same date');
+                } else if (daysApart <= 2) {
+                  score += 0.05;
+                  reasons.push(`Close dates (${Math.round(daysApart)} days apart)`);
+                }
+
+                const kwSrc = hasTransferKeyword(src.description);
+                const kwDst = hasTransferKeyword(dst.description);
+                if (kwSrc || kwDst) {
+                  score += 0.05;
+                  reasons.push('Transfer keyword detected in description');
+                }
+
+                if (src.bankAccount?.bankName && dst.bankAccount?.bankName) {
+                  if (src.bankAccount.bankName === dst.bankAccount.bankName) {
+                    score += 0.02;
+                    reasons.push('Same bank');
+                  }
+                }
+
+                // Keep best candidate per source
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestCandidate = { dst, score, amountDiff, daysApart, reasons };
+                }
+              }
+
+              if (bestCandidate && bestScore >= 0.5) {
+                const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
+                usedDestinationIds.add(dst.id);
+
+                const mc = {
+                  transfer: {
+                    destinationTransactionId: dst.id,
+                    amountDiff: Number(amountDiff.toFixed(2)),
+                    daysApart: Math.round(daysApart),
+                  },
+                };
+
+                transferSuggestions.push({
+                  documentId: null,
+                  bankTransactionId: src.id, // source (outflow)
+                  chartOfAccountId: null,
+                  confidenceScore: Number(score.toFixed(3)) as unknown as any,
+                  matchingCriteria: mc,
+                  reasons,
+                });
+
+                if (dbg) {
+                  this.logger.log(
+                    `🔁 Transfer candidate: ${src.id} -> ${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`
+                  );
+                }
+              }
+            }
+
+            if (transferSuggestions.length > 0) {
+              await this.prisma.reconciliationSuggestion.createMany({
+                data: transferSuggestions,
+                skipDuplicates: true,
+              });
+              this.logger.log(`🔁 Generated ${transferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+            }
+          } catch (e) {
+            this.logger.error(`Transfer suggestion generation failed: ${e.message}`);
+          }
       
           for (const document of unreconciled) {
             let documentData: any = {};

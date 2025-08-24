@@ -39,6 +39,12 @@ class ChatAssistantCrew:
         except Exception:
             pass
 
+        try:
+            serper_present = 'yes' if os.getenv('SERPER_API_KEY') else 'no'
+            print(f"[ChatAssistant] Tools enabled: {[getattr(t, 'name', type(t).__name__) for t in tools]} | SERPER_API_KEY present: {serper_present}")
+        except Exception:
+            pass
+
         return Agent(
             role="Financial Chat Assistant",
             goal="Provide helpful, accurate, and context-aware responses to user queries about financial data and documents.",
@@ -64,14 +70,23 @@ class ChatAssistantCrew:
         return Task(
             description=f"""
             Analyze the user's query and provide a helpful response. Consider the chat history for context.
-            
+
             User Query: {user_query}
-            
+
             Chat History:
             {chat_history}
-            
-            Provide a clear, concise, and accurate response. If the query requires specific data or actions,
-            explain what would be needed to fulfill the request.
+
+            Available tools:
+            - company_financial_info: Fetches live company data for the current client (EIN) from the Finova backend.
+              Topics: summary, accounts, outstanding, balance, audit. Prefer this for company-specific info.
+            - serper_accounting_research: Web research for Romanian accounting updates; use only for general info.
+
+            Guidelines:
+            - If the user asks about this company's financials (e.g., "prezintă-mi informațiile financiare ale acestei firme"),
+              call company_financial_info with an appropriate topic (start with 'summary'; include others if relevant) and synthesize the results.
+            - If backend data is unavailable, state that clearly and provide general guidance instead of hallucinating.
+            - Keep answers concise and actionable. Use Romanian when the user's input is Romanian.
+
             """,
             agent=self.chat_agent(),
             expected_output="A helpful and accurate response to the user's query.",

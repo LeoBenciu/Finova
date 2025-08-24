@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Search, CalendarDays, User, Flag, Loader2, Edit2, Trash2, X, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, CalendarDays, Flag, Loader2, Edit2, Trash2, X, CheckCircle2 } from 'lucide-react';
 import todosIllustration from '@/assets/todos.svg';
 import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery } from '@/redux/slices/apiSlice';
 
@@ -19,6 +19,7 @@ const TodosPage = () => {
   const [form, setForm] = useState<{ title: string; description?: string; dueDate?: string; status: 'pending'|'in_progress'|'completed'; priority: 'low'|'medium'|'high'; tags: string[]; assignedToId?: number | null }>(
     { title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assignedToId: null }
   );
+  const dueInputRef = useRef<HTMLInputElement | null>(null);
 
   // Current user (used for Assign to me / Unassign actions)
   const { data: me } = useGetUserDataQuery(undefined);
@@ -94,6 +95,8 @@ const TodosPage = () => {
     : [];
   const total: number = (data as any)?.total ?? items.length ?? 0;
 
+  console.log("ITEMS:",items)
+
   // Company users for assignee dropdown (optional endpoint)
   const { data: companyUsers } = useGetCompanyUsersQuery();
 
@@ -152,7 +155,6 @@ const TodosPage = () => {
       {/* Pills: ALL / ACTIVE / COMPLETED */}
       <div className="flex items-center gap-2">
         {[
-          { key: 'all', label: language==='ro'?'Toate':'All' },
           { key: 'active', label: language==='ro'?'Active':'Active' },
           { key: 'completed', label: language==='ro'?'Finalizate':'Completed' },
         ].map(p => (
@@ -203,10 +205,11 @@ const TodosPage = () => {
           <div className="divide-y">
             {items.map((item: any) => (
               <div key={item.id} className={`border-[1px] p-3 rounded-2xl ${item.priority==='high'?'bg-red-100 border-red-500':item.priority==='medium'?'bg-yellow-100 border-yellow-500':'bg-[var(--primary)]/20 border-[var(--primary)]'}`}>
-                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primary)]/20'}`}>
+                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primary)]/10'}`}>
                   {/* left checkbox */}
                   <div
-                    className={`mt-1 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px]  bg-white rounded-full border  ${item.priority==='high'?'border-red-500':item.priority==='medium'?'border-yellow-500':'border-[var(--primary)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
+                    className={`mt-1 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px]  bg-white cursor-pointer
+                        rounded-full border  ${item.priority==='high'?'border-red-500':item.priority==='medium'?'border-yellow-500':'border-[var(--primary)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
                     onClick={async () => {
                       const next = item.status === 'completed' ? 'PENDING' : 'COMPLETED';
                       await updateTodo({ clientEin, id: item.id, data: { status: next } as any });
@@ -219,9 +222,6 @@ const TodosPage = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <div className="font-medium text-[var(--text1)] truncate">{item.title || '-'}</div>
-                      <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--text4)] bg-[var(--primary-foreground)] text-[var(--text2)]">
-                        {language==='ro'? (item.priority==='high'?'Mare': item.priority==='medium'?'Medie':'Mică') : (item.priority.charAt(0).toUpperCase()+item.priority.slice(1))}
-                      </span>
                     </div>
                     {item.description && (
                       <div className="text-[var(--text2)] text-sm mt-0.5 line-clamp-1 text-left">{item.description}</div>
@@ -238,7 +238,7 @@ const TodosPage = () => {
                             {a.initials}
                           </span>
                         );})()}
-                        <span className="inline-flex items-center gap-1"><User size={14}/>{item.assignedTo?.name || item.assignedTo?.email || t.unassigned}</span>
+                        <span className="inline-flex items-center gap-1">{item.assignedTo?.name || item.assignedTo?.email || t.unassigned}</span>
                       </div>
                       <div className="inline-flex items-center gap-1"><CalendarDays size={14}/>{item.dueDate ? new Date(item.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : '-'}</div>
                       <div className="flex flex-wrap items-center gap-1">
@@ -250,7 +250,7 @@ const TodosPage = () => {
 
                     <div className="flex items-center gap-2">
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)] hover:text-white bg-neutral-300 text-black"
+                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)] hover:text-white bg-black text-white"
                         onClick={() => {
                           setEditing(item);
                           setForm({
@@ -269,7 +269,7 @@ const TodosPage = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-red-500 hover:text-white bg-neutral-300 text-black"
+                        className="px-2 py-1 rounded-md border hover:bg-red-500 hover:text-white bg-black text-white"
                         disabled={deleting}
                         onClick={async () => {
                           if (!window.confirm(t.confirmDelete)) return;
@@ -361,12 +361,50 @@ const TodosPage = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.dueLabel}</label>
-                  <input
-                    type="date"
-                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
-                    value={form.dueDate || ''}
-                    onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
-                  />
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="flex-1 inline-flex items-center justify-between gap-2 px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black hover:bg-[var(--primary-foreground)]"
+                      onClick={() => {
+                        const el = dueInputRef.current;
+                        if (!el) return;
+                        // Prefer native showPicker when available for a clear calendar UX
+                        // @ts-ignore
+                        if (typeof el.showPicker === 'function') {
+                          // @ts-ignore
+                          el.showPicker();
+                        } else {
+                          el.focus();
+                          el.click();
+                        }
+                      }}
+                      aria-label="open-date-picker"
+                    >
+                      <span className="truncate text-left">
+                        {form.dueDate ? new Date(form.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : (language==='ro'?'Alege data':'Pick a date')}
+                      </span>
+                      <CalendarDays size={18} className="text-[var(--text3)]" />
+                    </button>
+                    {form.dueDate && (
+                      <button
+                        type="button"
+                        className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black hover:bg-red-50"
+                        onClick={() => setForm((f) => ({ ...f, dueDate: '' }))}
+                      >
+                        {language==='ro'?'Șterge':'Clear'}
+                      </button>
+                    )}
+                    {/* Hidden native date input to leverage OS calendar */}
+                    <input
+                      ref={dueInputRef}
+                      type="date"
+                      className="absolute opacity-0 pointer-events-none w-0 h-0"
+                      value={form.dueDate || ''}
+                      onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
+                      tabIndex={-1}
+                      aria-hidden
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.priority}</label>
