@@ -26,6 +26,9 @@ model User {
   reconciledRecords              ReconciliationRecord[]   @relation("ReconciledByUser")
   outstandingItems               OutstandingItem[]
   transferReconciliationsCreated TransferReconciliation[] @relation("TransferCreatedBy")
+  // Todos relations
+  createdTodos                   TodoItem[]               @relation("User_createdTodos")
+  assignedTodos                  TodoItem[]               @relation("AssignedToUser")
 }
 
 model LegalAgreement {
@@ -76,6 +79,8 @@ model Document {
   userCorrections           UserCorrection[]
   paymentSummary            PaymentSummary?
   outstandingItems          OutstandingItem[]
+  // Todos referencing this document
+  todos                     TodoItem[]
 
   @@index([documentHash])
   @@index([accountingClientId])
@@ -197,6 +202,8 @@ model AccountingClients {
   outstandingItems     OutstandingItem[]
   bankAccounts         BankAccount[]
   bankAccountAnalytics BankAccountAnalytic[]
+  // Todos scoped to this accounting client
+  todos                TodoItem[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -324,6 +331,7 @@ model BankTransaction {
   splits                    BankTransactionSplit[]
   transferAsSource          TransferReconciliation[]   @relation("SourceTx")
   transferAsDestination     TransferReconciliation[]   @relation("DestTx")
+  todos                     TodoItem[]
 
   @@index([bankStatementDocumentId])
   @@index([transactionDate])
@@ -702,4 +710,51 @@ enum OutstandingItemStatus {
   CLEARED
   STALE
   VOIDED
+}
+
+/// ==================== TODOS ====================
+enum TodoStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+enum TodoPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model TodoItem {
+  id          Int          @id @default(autoincrement())
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  title       String
+  description String?
+  status      TodoStatus   @default(PENDING)
+  priority    TodoPriority @default(MEDIUM)
+  dueDate     DateTime?
+  tags        String[]
+
+  // Scope & relations
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  createdById  Int
+  createdBy    User  @relation("User_createdTodos", fields: [createdById], references: [id])
+  assignedToId Int?
+  assignedTo   User? @relation("AssignedToUser", fields: [assignedToId], references: [id])
+
+  relatedDocumentId Int?
+  relatedDocument   Document? @relation(fields: [relatedDocumentId], references: [id])
+
+  // Optional linkage to bank transaction id string
+  relatedTransactionId String?
+  relatedTransaction   BankTransaction? @relation(fields: [relatedTransactionId], references: [id])
+
+  @@index([accountingClientId])
+  @@index([status])
+  @@index([priority])
+  @@index([dueDate])
 }

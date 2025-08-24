@@ -64,7 +64,7 @@ const baseQueryWithAuthHandling = async (args:any, api:any, extraOptions:any) =>
 export const finovaApi = createApi({
     reducerPath: 'finovaApi',
     baseQuery: baseQueryWithAuthHandling,
-    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation', 'BankAccounts', 'BankTransactions', 'BankAccountAnalytics'],
+    tagTypes: ['UserAgreements', 'Files', 'DuplicateAlerts', 'ComplianceAlerts', 'BankReconciliation', 'BankAccounts', 'BankTransactions', 'BankAccountAnalytics', 'Todos'],
     endpoints: (build) =>({
         signup: build.mutation({
             query:(credentials)=>({
@@ -215,6 +215,14 @@ export const finovaApi = createApi({
             query:()=>({
                 url:'/users/me',
                 method:'GET',
+            })
+        }),
+
+        // Optional: company users listing (used for assignee dropdown). If backend lacks this route, UI will degrade gracefully.
+        getCompanyUsers: build.query<any[], void>({
+            query: () => ({
+                url: '/users/company',
+                method: 'GET'
             })
         }),
 
@@ -1082,6 +1090,43 @@ export const finovaApi = createApi({
           invalidatesTags: ['BankReconciliation', 'Files']
         }),
 
+        // ==================== TODOS API ====================
+        getTodos: build.query<
+          { items: any[]; total: number },
+          { clientEin: string; page?: number; size?: number; q?: string; status?: string; priority?: string; assigneeId?: number; dueFrom?: string; dueTo?: string; tags?: string[] }
+        >({
+          query: ({ clientEin, page = 1, size = 25, q = '', status = 'all', priority = 'all', assigneeId, dueFrom, dueTo, tags }) => {
+            const params = new URLSearchParams({ page: String(page), size: String(size), status, priority });
+            if (q) params.append('q', q);
+            if (assigneeId) params.append('assigneeId', String(assigneeId));
+            if (dueFrom) params.append('dueFrom', dueFrom);
+            if (dueTo) params.append('dueTo', dueTo);
+            if (tags && tags.length) params.append('tags', tags.join(','));
+            return `/todos/${clientEin}?${params.toString()}`;
+          },
+          providesTags: ['Todos']
+        }),
+
+        getTodo: build.query<any, { clientEin: string; id: number }>({
+          query: ({ clientEin, id }) => `/todos/${clientEin}/${id}`,
+          providesTags: ['Todos']
+        }),
+
+        createTodo: build.mutation<any, { clientEin: string; data: any }>({
+          query: ({ clientEin, data }) => ({ url: `/todos/${clientEin}`, method: 'POST', body: data }),
+          invalidatesTags: ['Todos']
+        }),
+
+        updateTodo: build.mutation<any, { clientEin: string; id: number; data: any }>({
+          query: ({ clientEin, id, data }) => ({ url: `/todos/${clientEin}/${id}`, method: 'PUT', body: data }),
+          invalidatesTags: ['Todos']
+        }),
+
+        deleteTodo: build.mutation<{ id: number; deleted: true }, { clientEin: string; id: number }>({
+          query: ({ clientEin, id }) => ({ url: `/todos/${clientEin}/${id}`, method: 'DELETE' }),
+          invalidatesTags: ['Todos']
+        }),
+
         // ==================== CHAT API ====================
         sendChatMessage: build.mutation<
           { reply: string },
@@ -1131,5 +1176,7 @@ useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
   useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
   useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
   useGetTransferReconciliationCandidatesForTransactionQuery,
+  useGetTodosQuery, useGetTodoQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation,
+  useGetCompanyUsersQuery,
   useSendChatMessageMutation
 } = finovaApi;

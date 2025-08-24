@@ -437,6 +437,21 @@ export class BankService {
     });
     if (!src) throw new NotFoundException('Transaction not found');
 
+    // Targeted debug logging can be enabled with env vars:
+    //   TRANSFER_DEBUG=1 (global) or TRANSFER_DEBUG_TX_ID=<transactionId>
+    const debug = process.env.TRANSFER_DEBUG === '1' || process.env.TRANSFER_DEBUG_TX_ID === transactionId;
+    if (debug) {
+      console.log('[TransferCandidatesForTx] debug on', {
+        transactionId,
+        srcId: src.id,
+        srcAmt: Number(src.amount),
+        srcCurr: src.bankAccount?.currency || null,
+        daysWindow,
+        allowCrossCurrency,
+        fxTolerancePct,
+      });
+    }
+
     // Pull potential counterparts in a time window around src date
     const all = await this.prisma.bankTransaction.findMany({
       where: {
@@ -495,13 +510,13 @@ export class BankService {
     };
 
     for (const c of all) {
-      if (c.id === src.id) continue;
+      if (c.id === src.id) { if (debug) console.log('[TransferCandidatesForTx] skip: same transaction', { cId: c.id }); continue; }
       const signOk = isDebit ? Number(c.amount) > 0 : Number(c.amount) < 0;
-      if (!signOk) continue;
+      if (!signOk) { if (debug) console.log('[TransferCandidatesForTx] skip: sign mismatch', { srcIsDebit: isDebit, cAmt: Number(c.amount) }); continue; }
       const dayDiff = Math.abs(
         Math.round((+new Date(src.transactionDate) - +new Date(c.transactionDate)) / (1000 * 60 * 60 * 24))
       );
-      if (dayDiff > daysWindow) continue;
+      if (dayDiff > daysWindow) { if (debug) console.log('[TransferCandidatesForTx] skip: day window', { dayDiff, daysWindow, cId: c.id }); continue; }
 
       const cAmtAbs = Math.abs(Number(c.amount));
       const cCurr = c.bankAccount?.currency || null;
@@ -530,10 +545,28 @@ export class BankService {
             dateDiffDays: dayDiff,
             score,
           });
+          if (debug) {
+            console.log('[TransferCandidatesForTx] add SAME-CURR', {
+              srcId: isDebit ? src.id : c.id,
+              dstId: isDebit ? c.id : src.id,
+              amount: Math.min(srcAmtAbs, cAmtAbs),
+              dayDiff,
+              differentAccount,
+              boosts: { kwBoost, ibanBoost, nameBoost, refBoost },
+              score,
+            });
+          }
+        }
+        else if (debug) {
+          console.log('[TransferCandidatesForTx] skip: amount mismatch same-currency', {
+            srcAmtAbs,
+            cAmtAbs,
+            diff: Math.abs(srcAmtAbs - cAmtAbs),
+          });
         }
       } else if (allowCrossCurrency && srcCurr && cCurr && srcCurr !== cCurr) {
         const impliedRate = isDebit ? (cAmtAbs / srcAmtAbs) : (srcAmtAbs / cAmtAbs);
-        if (impliedRate <= 0.05 || impliedRate >= 50) continue;
+        if (impliedRate <= 0.05 || impliedRate >= 50) { if (debug) console.log('[TransferCandidatesForTx] skip: implied rate absurd', { impliedRate }); continue; }
         const baseRange = plausibleFxRange(isDebit ? srcCurr : cCurr, isDebit ? cCurr : srcCurr);
         if (baseRange) {
           let [minR, maxR] = baseRange;
@@ -542,7 +575,7 @@ export class BankService {
             minR = minR * (1 - mult);
             maxR = maxR * (1 + mult);
           }
-          if (impliedRate < minR || impliedRate > maxR) continue;
+          if (impliedRate < minR || impliedRate > maxR) { if (debug) console.log('[TransferCandidatesForTx] skip: implied rate out of plausible range', { impliedRate, minR, maxR, pair: `${isDebit ? srcCurr : cCurr}_${isDebit ? cCurr : srcCurr}` }); continue; }
         }
         const base = 0.7;
         const score = base + (differentAccount ? 0.2 : 0.05) + kwBoost + ibanBoost + nameBoost + refBoost - dayDiff * 0.05;
@@ -558,11 +591,29 @@ export class BankService {
           dateDiffDays: dayDiff,
           score,
         });
+        if (debug) {
+          console.log('[TransferCandidatesForTx] add CROSS-CURR', {
+            srcId: isDebit ? src.id : c.id,
+            dstId: isDebit ? c.id : src.id,
+            amountSource: isDebit ? srcAmtAbs : cAmtAbs,
+            amountDestination: isDebit ? cAmtAbs : srcAmtAbs,
+            sourceCurrency: isDebit ? srcCurr : cCurr,
+            destinationCurrency: isDebit ? cCurr : srcCurr,
+            impliedFxRate: Number(impliedRate.toFixed(6)),
+            dayDiff,
+            differentAccount,
+            boosts: { kwBoost, ibanBoost, nameBoost, refBoost },
+            score,
+          });
+        }
       }
       if (results.length >= maxResults) break;
     }
 
     results.sort((a, b) => b.score - a.score);
+    if (debug) {
+      console.log('[TransferCandidatesForTx] result summary', { total: results.length, top: results.slice(0, Math.min(5, results.length)) });
+    }
     return { total: results.length, items: results };
   }
 

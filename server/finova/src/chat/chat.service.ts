@@ -4,6 +4,7 @@ import { User } from '@prisma/client';
 import { spawn } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 
 interface SendMessageParams {
   clientEin: string;
@@ -59,8 +60,26 @@ export class ChatService {
     }
 
     return new Promise<string>((resolve, reject) => {
+      // Build args for Python module execution
+      const args = ['-m', 'chat_assistant_crew.main', '--client-ein', clientEin];
+
+      // If we have chat history, write it to a temp JSON file and pass the path via --chat-history
+      let tempHistoryPath: string | null = null;
+      try {
+        if (history && history.length > 0) {
+          tempHistoryPath = path.join(
+            os.tmpdir(),
+            `finova_chat_history_${Date.now()}_${process.pid}.json`,
+          );
+          fs.writeFileSync(tempHistoryPath, JSON.stringify(history.slice(-50), null, 2), 'utf-8');
+          args.push('--chat-history', tempHistoryPath);
+        }
+      } catch (e) {
+        this.logger.warn(`Failed to prepare chat history file: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
       // Run as a module to keep package imports working: python3 -m chat_assistant_crew.main
-      const child = spawn(pythonCmd, ['-m', 'chat_assistant_crew.main', '--client-ein', clientEin], {
+      const child = spawn(pythonCmd, args, {
         cwd: this.pythonCwd,
         env: { ...process.env },
       });
@@ -91,11 +110,15 @@ export class ChatService {
         reject(err);
       });
 
-      child.on('close', (code) => {
+      child.on('close', async (code) => {
         clearTimeout(timeoutHandle);
         this.logger.debug(`Python assistant exited with code ${code}`);
         if (code !== 0 && stderr) {
           this.logger.error(stderr);
+        }
+        // Cleanup temp history file if created
+        if (tempHistoryPath) {
+          try { fs.unlinkSync(tempHistoryPath); } catch {}
         }
         // Parse the assistant reply from stdout
         // Look for the last line that starts with "Assistant: "
@@ -115,6 +138,21 @@ export class ChatService {
             reply = stdout.slice(idx + 'assistant:'.length).trim();
           }
         }
+        // Additional fallback: if reply is still empty or looks like an initialization banner, call LLM directly
+        const isOnlyInit = !reply && /initializing\s+chat\s+assistant/i.test(stdout);
+        const looksLikeInitReply = reply && /initializing\s+chat\s+assistant/i.test(reply);
+        try {
+          if (!reply || isOnlyInit || looksLikeInitReply) {
+            this.logger.warn('Assistant reply not found or only initialization text. Falling back to direct LLM call.');
+            const llmReply = await this.fallbackLLMReply({ user, message, history });
+            resolve(llmReply);
+            return;
+          }
+        } catch (e) {
+          this.logger.error(`Fallback LLM call failed: ${e instanceof Error ? e.message : String(e)}`);
+          // proceed to final raw stdout fallback
+        }
+
         if (!reply) {
           this.logger.warn('Could not parse assistant reply, returning raw output');
           reply = stdout.trim() || 'No response';
@@ -122,16 +160,60 @@ export class ChatService {
         resolve(reply);
       });
 
-      // Compose single-turn input: include minimal context header, then history snapshot and the message
-      const contextHeader = `User: ${user.email || user.name || user.id}`;
-      const historySummary = history
-        .slice(-10)
-        .map((h) => `${h.role}: ${h.content}`)
-        .join('\n');
-
-      const inputPayload = `${contextHeader}\n${historySummary ? historySummary + '\n' : ''}${message}\n\n`;
+      // Compose stdin: send only the raw user message so the Python agent treats it as a single turn
+      const inputPayload = `${message}\n`;
       child.stdin.write(inputPayload);
       child.stdin.end();
     });
+  }
+
+  private async fallbackLLMReply({
+    user,
+    message,
+    history,
+  }: {
+    user: User;
+    message: string;
+    history: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  }): Promise<string> {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      this.logger.error('OPENAI_API_KEY is not set; cannot perform fallback LLM call.');
+      return 'Assistant is not configured. Please set OPENAI_API_KEY on the server.';
+    }
+
+    // Build chat messages: include recent history and the new user message
+    const messages = [] as Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    messages.push({ role: 'system', content: 'You are a helpful assistant for the Finova application. Answer succinctly.' });
+    for (const h of history.slice(-10)) {
+      messages.push({ role: h.role === 'system' ? 'system' : h.role, content: h.content });
+    }
+    const userLabel = user.email || user.name || String(user.id);
+    messages.push({ role: 'user', content: `User (${userLabel}) says: ${message}` });
+
+    const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature: 0.2,
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      this.logger.error(`OpenAI API error: ${res.status} ${res.statusText} ${errText}`);
+      return 'Assistant is temporarily unavailable.';
+    }
+
+    const data = (await res.json()) as any;
+    const content = data?.choices?.[0]?.message?.content?.trim();
+    return content || 'No response';
   }
 }

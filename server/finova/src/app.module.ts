@@ -13,6 +13,7 @@ import { UipathModule } from './uipath/uipath.module';
 // import {ScheduleModule} from '@nestjs/schedule';
 import { BankModule } from './bank/bank.module';
 import { ChatModule } from './chat/chat.module';
+import { TodosModule } from './todos/todos.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { ChatModule } from './chat/chat.module';
     UipathModule,
     BankModule,
     ChatModule,
+    TodosModule,
    ],
 })
 export class AppModule {}
