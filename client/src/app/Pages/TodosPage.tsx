@@ -93,47 +93,54 @@ const TodosPage = () => {
 
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold">{t.title}</h1>
-          <p className="text-muted-foreground mt-1">{t.subtitle}</p>
+    <div className="p-8 flex flex-col gap-6">
+      <div className="mb-2">
+        <div className="flex items-center gap-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-[var(--primary)] to-blue-500 rounded-2xl flex items-center justify-center shadow-lg">
+            <CheckCircle2 size={28} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-4xl font-bold text-[var(--text1)] mb-1">{t.title}</h1>
+            <p className="text-[var(--text2)]">{t.subtitle}</p>
+          </div>
+          <div className="ml-auto">
+            <button
+              onClick={() => {
+                setEditing(null);
+                setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assignedToId: null });
+                setShowModal(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
+              disabled={!clientEin}
+            >
+              <Plus size={18} /> {t.create}
+            </button>
+          </div>
         </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assignedToId: null });
-            setShowModal(true);
-          }}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
-          disabled={!clientEin}
-        >
-          <Plus size={18} /> {t.create}
-        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
-        <div className="col-span-1 lg:col-span-2 flex items-center gap-2 border rounded-lg px-3 py-2 bg-[var(--primary-foreground)]">
-          <Search size={18} className="text-muted-foreground" />
+        <div className="col-span-1 lg:col-span-2 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
+          <Search size={18} className="text-[var(--text3)]" />
           <input
-            className="w-full bg-transparent outline-none"
+            className="w-full bg-white outline-none text-black"
             placeholder={t.searchPlaceholder}
             value={query}
             onChange={(e) => { setPage(1); setQuery(e.target.value); }}
           />
         </div>
-        <div className="col-span-1 flex items-center gap-2 border rounded-lg px-3 py-2 bg-[var(--primary-foreground)]">
-          <Filter size={18} className="text-muted-foreground" />
-          <select className="bg-transparent outline-none w-full" value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value as any); }}>
+        <div className="col-span-1 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
+          <Filter size={18} className="text-[var(--text3)]" />
+          <select className="bg-white outline-none w-full text-black" value={status} onChange={(e)=>{ setPage(1); setStatus(e.target.value as any); }}>
             <option value="all">{language==='ro'?'Toate':'All'}</option>
             <option value="pending">{language==='ro'?'În așteptare':'Pending'}</option>
             <option value="in_progress">{language==='ro'?'În curs':'In Progress'}</option>
             <option value="completed">{language==='ro'?'Finalizate':'Completed'}</option>
           </select>
         </div>
-        <div className="col-span-1 flex items-center gap-2 border rounded-lg px-3 py-2 bg-[var(--primary-foreground)]">
-          <Flag size={18} className="text-muted-foreground" />
-          <select className="bg-transparent outline-none w-full" value={priority} onChange={(e)=>{ setPage(1); setPriority(e.target.value as any); }}>
+        <div className="col-span-1 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
+          <Flag size={18} className="text-[var(--text3)]" />
+          <select className="bg-white outline-none w-full text-black" value={priority} onChange={(e)=>{ setPage(1); setPriority(e.target.value as any); }}>
             <option value="all">{language==='ro'?'Toate':'All'}</option>
             <option value="high">{language==='ro'?'Mare':'High'}</option>
             <option value="medium">{language==='ro'?'Medie':'Medium'}</option>
@@ -167,7 +174,7 @@ const TodosPage = () => {
         </div>
       </div>
 
-      <div className="mt-2 border rounded-xl overflow-hidden">
+      <div className="mt-2 bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
         <div className="grid grid-cols-12 bg-[var(--primary-foreground)] px-4 py-3 text-sm font-medium text-muted-foreground">
           <div className="col-span-4">{t.titleLabel}</div>
           <div className="col-span-2 flex items-center gap-2"><User size={16}/> {t.assignee}</div>
@@ -212,7 +219,7 @@ const TodosPage = () => {
                 </div>
                 <div className="col-span-1 text-center">
                   <select
-                    className="bg-transparent outline-none text-xs border rounded px-2 py-1"
+                    className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
                     value={item.status}
                     onChange={async (e) => {
                       await updateTodo({ clientEin, id: item.id, data: { status: e.target.value } as any });
@@ -225,7 +232,7 @@ const TodosPage = () => {
                 </div>
                 <div className="col-span-1 text-center">
                   <select
-                    className="bg-transparent outline-none text-xs border rounded px-2 py-1"
+                    className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
                     value={item.priority}
                     onChange={async (e) => {
                       await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value } as any });
@@ -309,7 +316,7 @@ const TodosPage = () => {
           <div className="flex items-center gap-2">
             <span>{language === 'ro' ? 'Rânduri pe pagină' : 'Rows per page'}:</span>
             <select
-              className="px-2 py-1 border rounded-lg bg-transparent"
+              className="px-2 py-1 border border-[var(--text4)] rounded-lg bg-white text-black"
               value={size}
               onChange={(e) => {
                 setPage(1);
@@ -356,7 +363,7 @@ const TodosPage = () => {
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.titleLabel}</label>
                 <input
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 />
@@ -364,7 +371,7 @@ const TodosPage = () => {
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.descLabel}</label>
                 <textarea
-                  className="w-full border rounded-lg px-3 py-2"
+                  className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
                   rows={3}
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -375,7 +382,7 @@ const TodosPage = () => {
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.dueLabel}</label>
                   <input
                     type="date"
-                    className="w-full border rounded-lg px-3 py-2"
+                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
                     value={form.dueDate || ''}
                     onChange={(e) => setForm((f) => ({ ...f, dueDate: e.target.value }))}
                   />
@@ -383,7 +390,7 @@ const TodosPage = () => {
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.status}</label>
                   <select
-                    className="w-full border rounded-lg px-3 py-2"
+                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
                     value={form.status}
                     onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as any }))}
                   >
@@ -395,7 +402,7 @@ const TodosPage = () => {
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.priority}</label>
                   <select
-                    className="w-full border rounded-lg px-3 py-2"
+                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
                   >
@@ -409,7 +416,7 @@ const TodosPage = () => {
               {/* Tags chips editor */}
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.tags}</label>
-                <div className="w-full border rounded-lg px-3 py-2 flex flex-wrap gap-2">
+                <div className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 flex flex-wrap gap-2 bg-white">
                   {(form.tags || []).map((tag) => (
                     <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full bg-[var(--primary-foreground)] text-[var(--text2)]">
                       {tag}
@@ -423,7 +430,7 @@ const TodosPage = () => {
                     </span>
                   ))}
                   <input
-                    className="flex-1 min-w-[120px] outline-none"
+                    className="flex-1 min-w-[120px] outline-none bg-white text-black"
                     placeholder={t.addTagPlaceholder}
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
@@ -469,7 +476,7 @@ const TodosPage = () => {
                   {/* Optional dropdown when company users are available */}
                   {Array.isArray(companyUsers) && companyUsers.length > 0 && (
                     <select
-                      className="px-3 py-2 border rounded-lg bg-white"
+                      className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black"
                       value={form.assignedToId ?? ''}
                       onChange={(e) => {
                         const v = e.target.value;
