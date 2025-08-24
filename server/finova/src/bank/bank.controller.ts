@@ -212,6 +212,10 @@ export class BankController {
       @Param('clientEin') clientEin: string,
       @GetUser() user: User
     ) {
+      const sdebug = /^(1|true|on|yes)$/i.test(process.env.SUGGESTIONS_DEBUG || '');
+      if (sdebug) {
+        console.log('[SuggestionsDebug][Controller] Regenerate ALL start', { clientEin, userId: user?.id });
+      }
       return this.bankService.regenerateAllSuggestions(clientEin, user);
     }
     
@@ -220,6 +224,10 @@ export class BankController {
       @Param('transactionId') transactionId: string,
       @GetUser() user: User
     ) {
+      const sdebug = /^(1|true|on|yes)$/i.test(process.env.SUGGESTIONS_DEBUG || '');
+      if (sdebug) {
+        console.log('[SuggestionsDebug][Controller] Regenerate TX start', { transactionId, userId: user?.id });
+      }
       return this.bankService.regenerateTransactionSuggestions(transactionId, user);
     }
 

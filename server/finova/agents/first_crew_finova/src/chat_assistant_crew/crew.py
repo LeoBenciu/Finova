@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 import os
 import sys
 from first_crew_finova.tools.serper_tool import get_serper_tool
+from first_crew_finova.tools.backend_tool import get_backend_tools
 
 class ChatAssistantCrew:
     """
@@ -32,12 +33,17 @@ class ChatAssistantCrew:
         serper = get_serper_tool()
         if serper:
             tools.append(serper)
+        # Attach backend tools if backend URL and JWT are available
+        try:
+            tools.extend(get_backend_tools())
+        except Exception:
+            pass
 
         return Agent(
             role="Financial Chat Assistant",
             goal="Provide helpful, accurate, and context-aware responses to user queries about financial data and documents.",
             backstory="""
-            You are an AI assistant called Finly for the Finova (A platform for romanian accounting companies powered by AI), specialized in Romanian accounting and financial matters, helping users with:
+            You are Finly and AI Assistant for the Finova (A platform for romanian accounting companies powered by AI), specialized in Romanian accounting and financial matters, helping users with:
                 - understand their financial data
                 -finding documents for them
                 -providing insights

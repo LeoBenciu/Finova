@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Headers, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/auth/decorator';
 import { User } from '@prisma/client';
@@ -13,6 +13,7 @@ export class ChatController {
   async sendMessage(
     @Param('clientEin') clientEin: string,
     @GetUser() user: User,
+    @Headers('authorization') authorization: string,
     @Body()
     body: {
       message: string;
@@ -25,6 +26,7 @@ export class ChatController {
       user,
       message,
       history: history || [],
+      authorization,
     });
     return { reply };
   }

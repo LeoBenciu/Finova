@@ -2429,6 +2429,24 @@ export class DataExtractionService {
                 isMandatory
               );
               
+              // Targeted per-pair debug logging
+              try {
+                if (this.shouldLogSuggestion(document.id as unknown as number, transaction.id as unknown as string)) {
+                  const txAmount = Math.abs(Number(transaction.amount));
+                  const txDate = new Date(transaction.transactionDate).toISOString().split('T')[0];
+                  const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+                  const prefix = this.suggestionLogPrefix(document.id as unknown as number, transaction.id as unknown as string);
+                  this.logger.warn(
+                    `${prefix} Pair score ${suggestion.confidenceScore.toFixed(3)} | ` +
+                    `doc(${document.id}:${document.name}) ${document.type} amt=${documentAmount} date=${docDateStr} num=${documentNumber || 'null'} | ` +
+                    `tx(${transaction.id}) amt=${txAmount} type=${transaction.transactionType} date=${txDate} ref=${transaction.referenceNumber || 'null'} | ` +
+                    `mandatory=${isMandatory} | criteria=${JSON.stringify(suggestion.matchingCriteria)} | reasons=${JSON.stringify(suggestion.reasons)}`
+                  );
+                }
+              } catch (e) {
+                this.logger.error('Suggestion debug logging error:', e);
+              }
+              
               // Track the best match for this document for debugging
               if (suggestion.confidenceScore > bestMatchForDocument.score) {
                 bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
@@ -2466,12 +2484,22 @@ export class DataExtractionService {
             }
             
             if (bestMatchForDocument.score < 0.25) {
-              this.logger.warn(
-                `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
-                `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bestMatchForDocument.transaction?.id} ` +
-                `(Amount: ${documentAmount} vs ${bestMatchForDocument.transaction?.amount}, ` +
-                `Date: ${documentDate?.toISOString().split('T')[0]} vs ${bestMatchForDocument.transaction?.transactionDate.toISOString().split('T')[0]})`
-              );
+              const bmTx = bestMatchForDocument.transaction;
+              const bmTxDate = bmTx ? new Date(bmTx.transactionDate).toISOString().split('T')[0] : 'null';
+              const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+              const prefix = this.suggestionLogPrefix(document.id as unknown as number, bmTx?.id as unknown as string);
+              if (this.shouldLogSuggestion(document.id as unknown as number, bmTx?.id as unknown as string)) {
+                this.logger.warn(
+                  `${prefix} 📄 No matches >= 0.25. Best=${bestMatchForDocument.score.toFixed(3)} ` +
+                  `(doc ${document.id}:${document.name} amt=${documentAmount} date=${docDateStr} vs tx ${bmTx?.id} amt=${bmTx?.amount} date=${bmTxDate})`
+                );
+              } else {
+                this.logger.warn(
+                  `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
+                  `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bmTx?.id} ` +
+                  `(Amount: ${documentAmount} vs ${bmTx?.amount}, Date: ${docDateStr} vs ${bmTxDate})`
+                );
+              }
               
               // Fallback: If we have a very close amount match (within 10 RON or 10%), create a low-confidence suggestion
               if (bestMatchForDocument.transaction) {
@@ -2977,4 +3005,36 @@ private parseAmountForReconciliation(amount: any, docData?: any, docType?: strin
           return null;
         }
       }
-}
+
+      // =====================
+      // Targeted suggestion debug helpers
+      // =====================
+      private shouldLogSuggestion(docId?: number | null, txId?: string | null): boolean {
+        try {
+          const env = (name: string) => (process.env[name] || '').toString();
+          const on = (v: string) => ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
+          const globalEnabled = on(env('SUGGESTIONS_DEBUG'));
+          const docFilter = env('SUGGESTIONS_DEBUG_DOC_ID');
+          const txFilter = env('SUGGESTIONS_DEBUG_TX_ID');
+          const pairFilter = env('SUGGESTIONS_DEBUG_PAIR'); // format: <docId>:<txId>
+          if (globalEnabled) return true;
+          if (docFilter && docId != null && docFilter === String(docId)) return true;
+          if (txFilter && txId && txFilter === String(txId)) return true;
+          if (pairFilter && docId != null && txId && pairFilter === `${docId}:${txId}`) return true;
+        } catch {}
+        return false;
+      }
+
+      private suggestionLogPrefix(docId?: number | null, txId?: string | null): string {
+        try {
+          const session = (process.env.SUGGESTIONS_DEBUG_SESSION || '').toString();
+          const parts: string[] = ['SUGDBG'];
+          if (session) parts.push(`session=${session}`);
+          if (docId != null) parts.push(`doc=${docId}`);
+          if (txId) parts.push(`tx=${txId}`);
+          return `[${parts.join(' ')}]`;
+        } catch {
+          return '[SUGDBG]';
+        }
+      }
+    }

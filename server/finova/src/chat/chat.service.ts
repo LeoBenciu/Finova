@@ -11,6 +11,7 @@ interface SendMessageParams {
   user: User;
   message: string;
   history: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  authorization?: string;
 }
 
 @Injectable()
@@ -51,7 +52,7 @@ export class ChatService {
     }
   }
 
-  async sendMessage({ clientEin, user, message, history }: SendMessageParams): Promise<string> {
+  async sendMessage({ clientEin, user, message, history, authorization }: SendMessageParams): Promise<string> {
     const pythonCmd = this.pythonBin;
 
     this.logger.log(`Spawning Python assistant for EIN ${clientEin} by user ${user.id}`);
@@ -79,9 +80,29 @@ export class ChatService {
       }
 
       // Run as a module to keep package imports working: python3 -m chat_assistant_crew.main
+      // Prepare env for Python process, including backend access for tools
+      const envVars: NodeJS.ProcessEnv = { ...process.env };
+      // Forward JWT for backend access by tools
+      if (authorization) {
+        const token = authorization.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length)
+          : authorization;
+        envVars['BACKEND_JWT'] = token;
+        envVars['BANK_API_TOKEN'] = token; // alt name used by some tools
+      }
+      // Base API URL for backend HTTP tools
+      if (!envVars['BACKEND_API_URL'] && process.env.BACKEND_API_URL) {
+        envVars['BACKEND_API_URL'] = process.env.BACKEND_API_URL;
+      }
+      if (!envVars['BANK_BACKEND_URL'] && process.env.BANK_BACKEND_URL) {
+        envVars['BANK_BACKEND_URL'] = process.env.BANK_BACKEND_URL;
+      }
+      // Provide client EIN context directly
+      envVars['CLIENT_EIN'] = clientEin;
+
       const child = spawn(pythonCmd, args, {
         cwd: this.pythonCwd,
-        env: { ...process.env },
+        env: envVars,
       });
 
       let stdout = '';

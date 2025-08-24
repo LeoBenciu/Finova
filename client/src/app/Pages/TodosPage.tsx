@@ -159,13 +159,13 @@ const TodosPage = () => {
           <button
             key={p.key}
             className={`px-3 py-1.5 rounded-full text-sm border ${
-              (p.key==='all' && status==='all') || (p.key==='completed' && status==='completed') || (p.key==='active' && (status==='pending' || status==='in_progress'))
+              (p.key==='all' && status==='all') || (p.key==='completed' && status==='completed') || (p.key==='active' && status==='pending')
               ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-white text-[var(--text1)] border-[var(--text4)]'
             }`}
             onClick={() => {
               if (p.key==='all') setStatus('all');
               else if (p.key==='completed') setStatus('completed');
-              else setStatus('in_progress'); // treat ACTIVE as non-completed
+              else setStatus('pending'); // Active should show pending todos
               setPage(1);
             }}
           >
@@ -180,7 +180,7 @@ const TodosPage = () => {
         {/* Content column */}
         <div className="lg:col-span-3">
           {/* List container */}
-          <div className="mt-2 bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
+          <div className="mt-2 bg-[var(--foreground)] rounded-2xl shadow-lg overflow-hidden">
 
             {error && (
           <div className="p-6 text-center text-red-600">
@@ -202,11 +202,11 @@ const TodosPage = () => {
             {!isLoading && !isFetching && items.length > 0 && (
           <div className="divide-y">
             {items.map((item: any) => (
-              <div key={item.id} className="px-4 py-3">
-                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white">
+              <div key={item.id} className={`border-[1px] p-3 rounded-2xl ${item.priority==='high'?'bg-red-100 border-red-500':item.priority==='medium'?'bg-yellow-100 border-yellow-500':'bg-[var(--primary)]/20 border-[var(--primary)]'}`}>
+                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primary)]/20'}`}>
                   {/* left checkbox */}
-                  <button
-                    className={`mt-1 w-5 h-5 rounded-full border ${item.status==='completed' ? 'bg-green-500 border-green-500' : 'border-[var(--text4)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
+                  <div
+                    className={`mt-1 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px]  bg-white rounded-full border  ${item.priority==='high'?'border-red-500':item.priority==='medium'?'border-yellow-500':'border-[var(--primary)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
                     onClick={async () => {
                       const next = item.status === 'completed' ? 'PENDING' : 'COMPLETED';
                       await updateTodo({ clientEin, id: item.id, data: { status: next } as any });
@@ -214,7 +214,7 @@ const TodosPage = () => {
                     aria-label={item.status==='completed' ? (language==='ro'?'Marchează nefinalizat':'Mark incomplete') : (language==='ro'?'Marchează finalizat':'Mark complete')}
                   >
                     {item.status==='completed' && <CheckCircle2 size={14} className="text-white" />}
-                  </button>
+                  </div>
                   {/* content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -224,8 +224,12 @@ const TodosPage = () => {
                       </span>
                     </div>
                     {item.description && (
-                      <div className="text-[var(--text2)] text-xs mt-0.5 line-clamp-1">{item.description}</div>
+                      <div className="text-[var(--text2)] text-sm mt-0.5 line-clamp-1 text-left">{item.description}</div>
                     )}
+
+                  </div>
+                  {/* controls */}
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
                     <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-[var(--text2)]">
                       <div className="inline-flex items-center gap-2">
                         {/* avatar chip */}
@@ -243,71 +247,10 @@ const TodosPage = () => {
                         ))}
                       </div>
                     </div>
-                  </div>
-                  {/* controls */}
-                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
-                    <select
-                      className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                      value={(item.status || '').toString().toLowerCase()}
-                      onChange={async (e) => {
-                        const upper = e.target.value === 'in_progress' ? 'IN_PROGRESS' : e.target.value.toUpperCase();
-                        await updateTodo({ clientEin, id: item.id, data: { status: upper } as any });
-                      }}
-                    >
-                      <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
-                      <option value="in_progress">{language === 'ro' ? 'În curs' : 'In Progress'}</option>
-                      <option value="completed">{language === 'ro' ? 'Finalizat' : 'Completed'}</option>
-                    </select>
-                    <select
-                      className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                      value={(item.priority || '').toString().toLowerCase()}
-                      onChange={async (e) => {
-                        await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value.toUpperCase() } as any });
-                      }}
-                    >
-                      <option value="high">{language === 'ro' ? 'Mare' : 'High'}</option>
-                      <option value="medium">{language === 'ro' ? 'Medie' : 'Medium'}</option>
-                      <option value="low">{language === 'ro' ? 'Mică' : 'Low'}</option>
-                    </select>
-                    {/* Inline date picker */}
-                    <div className="flex items-center gap-1 text-xs">
-                      <input
-                        type="date"
-                        className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                        value={item.dueDate ? String(item.dueDate).slice(0,10) : ''}
-                        onChange={async (e) => {
-                          const val = e.target.value;
-                          const iso = val ? new Date(val).toISOString() : null;
-                          await updateTodo({ clientEin, id: item.id, data: { dueDate: iso as any } });
-                        }}
-                      />
-                    </div>
+
                     <div className="flex items-center gap-2">
-                      {me?.id && (
-                        item.assignedTo?.id === me.id ? (
-                          <button
-                            className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
-                            onClick={async () => {
-                              await updateTodo({ clientEin, id: item.id, data: { assignedToId: null } as any });
-                            }}
-                            title={t.unassign}
-                          >
-                            <User size={14} />
-                          </button>
-                        ) : (
-                          <button
-                            className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
-                            onClick={async () => {
-                              await updateTodo({ clientEin, id: item.id, data: { assignedToId: me.id } as any });
-                            }}
-                            title={t.assignToMe}
-                          >
-                            <User size={14} />
-                          </button>
-                        )
-                      )}
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
+                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)] hover:text-white bg-neutral-300 text-black"
                         onClick={() => {
                           setEditing(item);
                           setForm({
@@ -326,7 +269,7 @@ const TodosPage = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-red-50 text-red-600 border-red-200"
+                        className="px-2 py-1 rounded-md border hover:bg-red-500 hover:text-white bg-neutral-300 text-black"
                         disabled={deleting}
                         onClick={async () => {
                           if (!window.confirm(t.confirmDelete)) return;
@@ -366,7 +309,7 @@ const TodosPage = () => {
             </select>
           </div>
           <button
-            className="px-3 py-1 border rounded-lg disabled:opacity-50"
+            className="px-3 py-1 border rounded-lg disabled:opacity-50 hover:bg-black hover:text-white bg-neutral-300 text-black"
             disabled={page <= 1 || isFetching}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
@@ -376,7 +319,7 @@ const TodosPage = () => {
             {language === 'ro' ? 'Pagina' : 'Page'} {page}
           </span>
           <button
-            className="px-3 py-1 border rounded-lg disabled:opacity-50"
+            className="px-3 py-1 border rounded-lg disabled:opacity-50 hover:bg-black hover:text-white bg-neutral-300 text-black"
             disabled={items.length < size || isFetching}
             onClick={() => setPage((p) => p + 1)}
           >
