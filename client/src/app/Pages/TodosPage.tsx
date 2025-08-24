@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Filter, Search, CalendarDays, Tag, User, Flag, Loader2, Edit2, Trash2, X, CheckCircle2, Clock3, Loader } from 'lucide-react';
+import { Plus, Filter, Search, CalendarDays, User, Flag, Loader2, Edit2, Trash2, X, CheckCircle2, Clock3, Loader } from 'lucide-react';
 import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery } from '@/redux/slices/apiSlice';
 
 const TodosPage = () => {
@@ -26,6 +26,19 @@ const TodosPage = () => {
   const [createTodo, { isLoading: creating }] = useCreateTodoMutation();
   const [updateTodo, { isLoading: updating }] = useUpdateTodoMutation();
   const [deleteTodo, { isLoading: deleting }] = useDeleteTodoMutation();
+
+  // UI helpers
+  const [activeTag, setActiveTag] = useState<string>('');
+
+  const avatarFor = (nameOrEmail?: string) => {
+    const base = (nameOrEmail || '').trim();
+    if (!base) return { initials: '?', color: '#6B7280' };
+    const parts = base.includes('@') ? base.split('@')[0].split(/[\.\-_\s]+/) : base.split(/[\s]+/);
+    const initials = (parts[0]?.[0] || '') + (parts[1]?.[0] || '');
+    const hash = Array.from(base).reduce((a, c) => a + c.charCodeAt(0), 0);
+    const palette = ['#2563EB', '#059669', '#D97706', '#7C3AED', '#DC2626', '#0EA5E9'];
+    return { initials: initials.toUpperCase() || base[0]?.toUpperCase() || '?', color: palette[hash % palette.length] };
+  };
 
   const t = useMemo(() => ({
     title: language === 'ro' ? 'Sarcini Contabile' : 'Accounting TODOs',
@@ -61,7 +74,7 @@ const TodosPage = () => {
           size,
           status,
           priority,
-          q: query,
+          q: activeTag ? `${query} tag:${activeTag}` : query,
         }
       : ({} as any),
     { skip: !clientEin }
@@ -100,8 +113,8 @@ const TodosPage = () => {
             <CheckCircle2 size={28} className="text-white" />
           </div>
           <div>
-            <h1 className="text-4xl font-bold text-[var(--text1)] mb-1">{t.title}</h1>
-            <p className="text-[var(--text2)]">{t.subtitle}</p>
+            <h1 className="text-4xl font-bold text-[var(--text1)] mb-1 text-left">{t.title}</h1>
+            <p className="text-[var(--text2)] text-left">{t.subtitle}</p>
           </div>
           <div className="ml-auto">
             <button
@@ -119,11 +132,12 @@ const TodosPage = () => {
         </div>
       </div>
 
+      {/* Filters row */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
         <div className="col-span-1 lg:col-span-2 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
           <Search size={18} className="text-[var(--text3)]" />
           <input
-            className="w-full bg-white outline-none text-black"
+            className="w-full bg-white outline-none text-black focus:shadow-none focus:ring-0"
             placeholder={t.searchPlaceholder}
             value={query}
             onChange={(e) => { setPage(1); setQuery(e.target.value); }}
@@ -149,165 +163,235 @@ const TodosPage = () => {
         </div>
       </div>
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[var(--text2)]">{language==='ro'?'În așteptare':'Pending'}</div>
-            <div className="text-2xl font-semibold">{stats.pending}</div>
-          </div>
-          <Clock3 className="text-yellow-600" size={22} />
-        </div>
-        <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[var(--text2)]">{language==='ro'?'În curs':'In Progress'}</div>
-            <div className="text-2xl font-semibold">{stats.inProgress}</div>
-          </div>
-          <Loader className="text-blue-600" size={22} />
-        </div>
-        <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
-          <div>
-            <div className="text-sm text-[var(--text2)]">{language==='ro'?'Finalizate':'Completed'}</div>
-            <div className="text-2xl font-semibold">{stats.completed}</div>
-          </div>
-          <CheckCircle2 className="text-green-600" size={22} />
-        </div>
+      {/* Pills: ALL / ACTIVE / COMPLETED */}
+      <div className="flex items-center gap-2">
+        {[
+          { key: 'all', label: language==='ro'?'Toate':'All' },
+          { key: 'active', label: language==='ro'?'Active':'Active' },
+          { key: 'completed', label: language==='ro'?'Finalizate':'Completed' },
+        ].map(p => (
+          <button
+            key={p.key}
+            className={`px-3 py-1.5 rounded-full text-sm border ${
+              (p.key==='all' && status==='all') || (p.key==='completed' && status==='completed') || (p.key==='active' && (status==='pending' || status==='in_progress'))
+              ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-white text-[var(--text1)] border-[var(--text4)]'
+            }`}
+            onClick={() => {
+              if (p.key==='all') setStatus('all');
+              else if (p.key==='completed') setStatus('completed');
+              else setStatus('in_progress'); // treat ACTIVE as non-completed
+              setPage(1);
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
       </div>
 
-      <div className="mt-2 bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
-        <div className="grid grid-cols-12 bg-[var(--primary-foreground)] px-4 py-3 text-sm font-medium text-muted-foreground">
-          <div className="col-span-4">{t.titleLabel}</div>
-          <div className="col-span-2 flex items-center gap-2"><User size={16}/> {t.assignee}</div>
-          <div className="col-span-2 flex items-center gap-2"><CalendarDays size={16}/> {t.due}</div>
-          <div className="col-span-1 text-center">{t.status}</div>
-          <div className="col-span-1 text-center">{t.priority}</div>
-          <div className="col-span-1 flex items-center gap-2 justify-center"><Tag size={16}/> {t.tags}</div>
-          <div className="col-span-1 text-right">Actions</div>
-        </div>
-        {error && (
+      {/* Main grid: left rail + content */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Left rail */}
+        <aside className="lg:col-span-1 bg-white border rounded-2xl p-4 h-max">
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
+              <div>
+                <div className="text-sm text-[var(--text2)]">{language==='ro'?'În așteptare':'Pending'}</div>
+                <div className="text-2xl font-semibold text-black">{stats.pending}</div>
+              </div>
+              <Clock3 className="text-yellow-600" size={22} />
+            </div>
+            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
+              <div>
+                <div className="text-sm text-[var(--text2)]">{language==='ro'?'În curs':'In Progress'}</div>
+                <div className="text-2xl font-semibold text-black">{stats.inProgress}</div>
+              </div>
+              <Loader className="text-blue-600" size={22} />
+            </div>
+            <div className="border rounded-xl p-4 bg-white flex items-center justify-between">
+              <div>
+                <div className="text-sm text-[var(--text2)]">{language==='ro'?'Finalizate':'Completed'}</div>
+                <div className="text-2xl font-semibold text-black">{stats.completed}</div>
+              </div>
+              <CheckCircle2 className="text-green-600" size={22} />
+            </div>
+          </div>
+
+          {/* Categories */}
+          <div>
+            <div className="text-sm font-medium text-[var(--text2)] mb-2">{language==='ro'?'Categorii':'Categories'}</div>
+            <div className="flex flex-col gap-1">
+              <button
+                className={`text-left px-3 py-2 rounded-lg border ${!activeTag ? 'bg-[var(--primary-foreground)] border-[var(--text4)]' : 'bg-white border-transparent hover:bg-[var(--primary-foreground)]'}`}
+                onClick={() => { setActiveTag(''); setPage(1); }}
+              >
+                {language==='ro'?'Toate':'All'}
+              </button>
+              {existingTags.map(tag => (
+                <button key={tag}
+                  className={`text-left px-3 py-2 rounded-lg border ${activeTag===tag ? 'bg-[var(--primary)] text-white border-[var(--primary)]' : 'bg-white border-[var(--text4)] hover:bg-[var(--primary-foreground)]'}`}
+                  onClick={() => { setActiveTag(tag); setPage(1); }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        {/* Content column */}
+        <div className="lg:col-span-3">
+          {/* List container */}
+          <div className="mt-2 bg-[var(--foreground)] rounded-3xl border border-[var(--text4)] shadow-lg overflow-hidden">
+
+            {error && (
           <div className="p-6 text-center text-red-600">
             {language === 'ro' ? 'Eroare la încărcare.' : 'Failed to load.'}
           </div>
-        )}
-        {(isLoading || isFetching) && (
+            )}
+            {(isLoading || isFetching) && (
           <div className="p-6 flex items-center justify-center text-muted-foreground gap-2">
             <Loader2 size={18} className="animate-spin" />
             {language === 'ro' ? 'Se încarcă...' : 'Loading...'}
           </div>
-        )}
-        {!isLoading && !isFetching && items.length === 0 && (
+            )}
+            {!isLoading && !isFetching && items.length === 0 && (
           <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-2">
             <CheckCircle2 size={28} className="opacity-40" />
             <div>{t.empty}</div>
           </div>
-        )}
-        {!isLoading && !isFetching && items.length > 0 && (
+            )}
+            {!isLoading && !isFetching && items.length > 0 && (
           <div className="divide-y">
             {items.map((item: any) => (
-              <div key={item.id} className="grid grid-cols-12 items-center px-4 py-3 text-sm">
-                <div className="col-span-4">
-                  <div className="font-medium text-[var(--text1)]">{item.title || '-'}</div>
-                  {item.description && (
-                    <div className="text-[var(--text2)] text-xs line-clamp-1">{item.description}</div>
-                  )}
-                </div>
-                <div className="col-span-2 text-[var(--text2)]">
-                  {item.assignedTo?.name || item.assignedTo?.email || '-'}
-                </div>
-                <div className="col-span-2 text-[var(--text2)]">
-                  {item.dueDate ? new Date(item.dueDate).toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US') : '-'}
-                </div>
-                <div className="col-span-1 text-center">
-                  <select
-                    className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                    value={item.status}
-                    onChange={async (e) => {
-                      await updateTodo({ clientEin, id: item.id, data: { status: e.target.value } as any });
-                    }}
-                  >
-                    <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
-                    <option value="in_progress">{language === 'ro' ? 'În curs' : 'In Progress'}</option>
-                    <option value="completed">{language === 'ro' ? 'Finalizat' : 'Completed'}</option>
-                  </select>
-                </div>
-                <div className="col-span-1 text-center">
-                  <select
-                    className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
-                    value={item.priority}
-                    onChange={async (e) => {
-                      await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value } as any });
-                    }}
-                  >
-                    <option value="high">{language === 'ro' ? 'Mare' : 'High'}</option>
-                    <option value="medium">{language === 'ro' ? 'Medie' : 'Medium'}</option>
-                    <option value="low">{language === 'ro' ? 'Mică' : 'Low'}</option>
-                  </select>
-                </div>
-                <div className="col-span-1 flex flex-wrap gap-1 justify-center">
-                  {(item.tags || []).slice(0, 3).map((tag: string) => (
-                    <span key={tag} className="px-2 py-0.5 text-xs rounded-full bg-[var(--primary-foreground)] text-[var(--text2)]">{tag}</span>
-                  ))}
-                </div>
-                <div className="col-span-1 text-right flex items-center justify-end gap-2">
-                  {/* quick assign/unassign */}
-                  {me?.id && (
-                    item.assignedTo?.id === me.id ? (
-                      <button
-                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
-                        onClick={async () => {
-                          await updateTodo({ clientEin, id: item.id, data: { assignedToId: null } as any });
-                        }}
-                        title={t.unassign}
-                      >
-                        <User size={14} />
-                      </button>
-                    ) : (
-                      <button
-                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
-                        onClick={async () => {
-                          await updateTodo({ clientEin, id: item.id, data: { assignedToId: me.id } as any });
-                        }}
-                        title={t.assignToMe}
-                      >
-                        <User size={14} />
-                      </button>
-                    )
-                  )}
+              <div key={item.id} className="px-4 py-3">
+                <div className="flex items-start gap-3 p-3 rounded-2xl bg-white">
+                  {/* left checkbox */}
                   <button
-                    className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
-                    onClick={() => {
-                      setEditing(item);
-                      setForm({
-                        title: item.title || '',
-                        description: item.description || '',
-                        dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
-                        status: item.status || 'pending',
-                        priority: item.priority || 'medium',
-                        tags: item.tags || [],
-                        assignedToId: item.assignedTo?.id ?? null,
-                      });
-                      setShowModal(true);
-                    }}
-                    aria-label={t.edit}
-                  >
-                    <Edit2 size={16} />
-                  </button>
-                  <button
-                    className="px-2 py-1 rounded-md border hover:bg-red-50 text-red-600 border-red-200"
-                    disabled={deleting}
+                    className={`mt-1 w-5 h-5 rounded-full border ${item.status==='completed' ? 'bg-green-500 border-green-500' : 'border-[var(--text4)]'} flex items-center justify-center`}
                     onClick={async () => {
-                      if (!window.confirm(t.confirmDelete)) return;
-                      await deleteTodo({ clientEin, id: item.id });
+                      const next = item.status === 'completed' ? 'pending' : 'completed';
+                      await updateTodo({ clientEin, id: item.id, data: { status: next } as any });
                     }}
-                    aria-label={t.del}
+                    aria-label={item.status==='completed' ? (language==='ro'?'Marchează nefinalizat':'Mark incomplete') : (language==='ro'?'Marchează finalizat':'Mark complete')}
                   >
-                    <Trash2 size={16} />
+                    {item.status==='completed' && <CheckCircle2 size={14} className="text-white" />}
                   </button>
+                  {/* content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <div className="font-medium text-[var(--text1)] truncate">{item.title || '-'}</div>
+                      <span className="text-xs px-2 py-0.5 rounded-full border border-[var(--text4)] bg-[var(--primary-foreground)] text-[var(--text2)]">
+                        {language==='ro'? (item.priority==='high'?'Mare': item.priority==='medium'?'Medie':'Mică') : (item.priority.charAt(0).toUpperCase()+item.priority.slice(1))}
+                      </span>
+                    </div>
+                    {item.description && (
+                      <div className="text-[var(--text2)] text-xs mt-0.5 line-clamp-1">{item.description}</div>
+                    )}
+                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-[var(--text2)]">
+                      <div className="inline-flex items-center gap-2">
+                        {/* avatar chip */}
+                        {(() => { const label = item.assignedTo?.name || item.assignedTo?.email; const a = avatarFor(label); return (
+                          <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: a.color }}>
+                            {a.initials}
+                          </span>
+                        );})()}
+                        <span className="inline-flex items-center gap-1"><User size={14}/>{item.assignedTo?.name || item.assignedTo?.email || t.unassigned}</span>
+                      </div>
+                      <div className="inline-flex items-center gap-1"><CalendarDays size={14}/>{item.dueDate ? new Date(item.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : '-'}</div>
+                      <div className="flex flex-wrap items-center gap-1">
+                        {(item.tags || []).slice(0,4).map((tag:string)=> (
+                          <span key={tag} className="px-2 py-0.5 rounded-full bg-[var(--primary-foreground)]">{tag}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  {/* controls */}
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                    <select
+                      className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
+                      value={item.status}
+                      onChange={async (e) => {
+                        await updateTodo({ clientEin, id: item.id, data: { status: e.target.value } as any });
+                      }}
+                    >
+                      <option value="pending">{language === 'ro' ? 'În așteptare' : 'Pending'}</option>
+                      <option value="in_progress">{language === 'ro' ? 'În curs' : 'In Progress'}</option>
+                      <option value="completed">{language === 'ro' ? 'Finalizat' : 'Completed'}</option>
+                    </select>
+                    <select
+                      className="bg-white text-black outline-none text-xs border border-[var(--text4)] rounded px-2 py-1"
+                      value={item.priority}
+                      onChange={async (e) => {
+                        await updateTodo({ clientEin, id: item.id, data: { priority: e.target.value } as any });
+                      }}
+                    >
+                      <option value="high">{language === 'ro' ? 'Mare' : 'High'}</option>
+                      <option value="medium">{language === 'ro' ? 'Medie' : 'Medium'}</option>
+                      <option value="low">{language === 'ro' ? 'Mică' : 'Low'}</option>
+                    </select>
+                    <div className="flex items-center gap-2">
+                      {me?.id && (
+                        item.assignedTo?.id === me.id ? (
+                          <button
+                            className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
+                            onClick={async () => {
+                              await updateTodo({ clientEin, id: item.id, data: { assignedToId: null } as any });
+                            }}
+                            title={t.unassign}
+                          >
+                            <User size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
+                            onClick={async () => {
+                              await updateTodo({ clientEin, id: item.id, data: { assignedToId: me.id } as any });
+                            }}
+                            title={t.assignToMe}
+                          >
+                            <User size={14} />
+                          </button>
+                        )
+                      )}
+                      <button
+                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)]"
+                        onClick={() => {
+                          setEditing(item);
+                          setForm({
+                            title: item.title || '',
+                            description: item.description || '',
+                            dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
+                            status: item.status || 'pending',
+                            priority: item.priority || 'medium',
+                            tags: item.tags || [],
+                            assignedToId: item.assignedTo?.id ?? null,
+                          });
+                          setShowModal(true);
+                        }}
+                        aria-label={t.edit}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        className="px-2 py-1 rounded-md border hover:bg-red-50 text-red-600 border-red-200"
+                        disabled={deleting}
+                        onClick={async () => {
+                          if (!window.confirm(t.confirmDelete)) return;
+                          await deleteTodo({ clientEin, id: item.id });
+                        }}
+                        aria-label={t.del}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             ))}
+            </div>
+          )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* Simple pagination controls if total is provided */}
