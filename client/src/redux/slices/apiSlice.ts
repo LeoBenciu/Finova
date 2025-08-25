@@ -1129,6 +1129,39 @@ export const finovaApi = createApi({
           invalidatesTags: ['Todos']
         }),
 
+        // Reorder todos (batch update of sortOrder)
+        reorderTodos: build.mutation<
+          { updated: number },
+          { clientEin: string; items: Array<{ id: number; sortOrder: number }> }
+        >({
+          query: ({ clientEin, items }) => ({
+            url: `/todos/${clientEin}/reorder`,
+            method: 'PUT',
+            body: { items }
+          }),
+          // Optimistically update Todos cache
+          async onQueryStarted({ clientEin, items }, { dispatch, queryFulfilled }) {
+            const patch = dispatch(
+              finovaApi.util.updateQueryData('getTodos', { clientEin }, (draft: any) => {
+                if (!draft || !Array.isArray(draft.items)) return;
+                const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
+                draft.items.sort((a: any, b: any) => {
+                  const sa = orderMap.get(a.id) ?? a.sortOrder ?? 0;
+                  const sb = orderMap.get(b.id) ?? b.sortOrder ?? 0;
+                  return sa - sb;
+                });
+                draft.items = draft.items.map((it: any) => ({ ...it, sortOrder: orderMap.get(it.id) ?? it.sortOrder }));
+              }) as any
+            );
+            try {
+              await queryFulfilled;
+            } catch {
+              patch.undo();
+            }
+          },
+          invalidatesTags: ['Todos']
+        }),
+
         // ==================== CHAT API ====================
         sendChatMessage: build.mutation<
           { reply: string },
@@ -1178,7 +1211,7 @@ useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
   useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
   useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
   useGetTransferReconciliationCandidatesForTransactionQuery,
-  useGetTodosQuery, useGetTodoQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation,
+  useGetTodosQuery, useGetTodoQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useReorderTodosMutation,
   useGetCompanyUsersQuery,
   useSendChatMessageMutation
 } = finovaApi;

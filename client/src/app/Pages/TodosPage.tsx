@@ -1,8 +1,8 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Plus, Search, CalendarDays, Flag, Loader2, Edit2, Trash2, X, CheckCircle2 } from 'lucide-react';
 import todosIllustration from '@/assets/todos.svg';
-import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery } from '@/redux/slices/apiSlice';
+import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery, useReorderTodosMutation } from '@/redux/slices/apiSlice';
 
 const TodosPage = () => {
   const language = useSelector((state: { user: { language: string } }) => state.user.language);
@@ -10,7 +10,7 @@ const TodosPage = () => {
 
   // Local placeholder state until API is wired
   const [query, setQuery] = useState('');
-  const [status, setStatus] = useState<'pending'|'in_progress'|'completed'|'all'>('all');
+  const [status, setStatus] = useState<'pending'|'completed'|'all'|'in_progress'>('pending');
   const [priority, setPriority] = useState<'low'|'medium'|'high'|'all'>('all');
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
@@ -20,6 +20,13 @@ const TodosPage = () => {
     { title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] }
   );
   const dueInputRef = useRef<HTMLInputElement | null>(null);
+  const [assigneeOpen, setAssigneeOpen] = useState(false);
+  const [assigneeQuery, setAssigneeQuery] = useState('');
+  const [assigneeHighlighted, setAssigneeHighlighted] = useState<number>(0);
+  const assigneeContainerRef = useRef<HTMLDivElement | null>(null);
+  const assigneeListRef = useRef<HTMLDivElement | null>(null);
+
+  const MAX_ASSIGNEE_CHIPS = 3;
 
   // Current user (used for Assign to me / Unassign actions)
   const { data: me } = useGetUserDataQuery(undefined);
@@ -93,6 +100,60 @@ const TodosPage = () => {
     : Array.isArray(data)
     ? (data as any)
     : [];
+
+  // Local ordered items for DnD (falls back to API order)
+  const [ordered, setOrdered] = useState<any[]>([]);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
+  const [reorderTodos] = useReorderTodosMutation();
+
+  // Initialize/refresh local ordered list when data changes
+  useEffect(() => {
+    if (!items || !items.length) {
+      setOrdered([]);
+      return;
+    }
+    // Sort by sortOrder if present, else stable by current index
+    const withIndex = items.map((it: any, idx: number) => ({ ...it, __idx: idx }));
+    withIndex.sort((a: any, b: any) => {
+      const sa = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      const sb = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
+      if (sa !== sb) return sa - sb;
+      return a.__idx - b.__idx;
+    });
+    setOrdered(withIndex.map(({ __idx, ...rest }) => rest));
+  }, [items]);
+
+  const onDragStart = (e: React.DragEvent, id: number) => {
+    setDraggingId(id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(id));
+  };
+
+  const onDragOver = (e: React.DragEvent, overId: number) => {
+    e.preventDefault(); // allow drop
+    if (draggingId === null || draggingId === overId) return;
+    const curr = ordered.slice();
+    const from = curr.findIndex((x) => x.id === draggingId);
+    const to = curr.findIndex((x) => x.id === overId);
+    if (from < 0 || to < 0 || from === to) return;
+    const [moved] = curr.splice(from, 1);
+    curr.splice(to, 0, moved);
+    setOrdered(curr);
+  };
+
+  const onDrop = async (_e: React.DragEvent) => {
+    if (!clientEin) return;
+    const curr = ordered.slice();
+    // Recompute contiguous sortOrder starting at 1
+    const payload = curr.map((x, idx) => ({ id: x.id as number, sortOrder: idx + 1 }));
+    try {
+      await reorderTodos({ clientEin, items: payload } as any).unwrap();
+    } catch (err) {
+      console.error('Failed to reorder todos', err);
+    } finally {
+      setDraggingId(null);
+    }
+  };
   const total: number = (data as any)?.total ?? items.length ?? 0;
 
   console.log("ITEMS:",items)
@@ -100,7 +161,50 @@ const TodosPage = () => {
   // Company users for assignee dropdown (optional endpoint)
   const { data: companyUsers } = useGetCompanyUsersQuery();
 
+  // Build user lists for assignee dropdown
+  const allAssigneeUsers: any[] = useMemo(() => {
+    const base: any[] = Array.isArray(companyUsers) ? companyUsers.slice() : [];
+    if (me?.id && !base.some((u: any) => u.id === me.id)) base.push(me as any);
+    return base;
+  }, [companyUsers, me]);
+
+  const filteredAssigneeUsers: any[] = useMemo(() => {
+    const q = (assigneeQuery || '').trim().toLowerCase();
+    if (!q) return allAssigneeUsers;
+    return allAssigneeUsers.filter((u: any) => (u?.name || u?.email || '').toLowerCase().includes(q));
+  }, [allAssigneeUsers, assigneeQuery]);
+
+  // Reset highlighted item when opening or list changes
+  useEffect(() => {
+    if (assigneeOpen) setAssigneeHighlighted(0);
+  }, [assigneeOpen, assigneeQuery]);
+
+  // Click-outside to close
+  useEffect(() => {
+    if (!assigneeOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const node = assigneeContainerRef.current;
+      if (node && !node.contains(e.target as Node)) {
+        setAssigneeOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [assigneeOpen]);
+
+  // Ensure highlighted option stays in view
+  useEffect(() => {
+    if (!assigneeOpen) return;
+    const list = assigneeListRef.current;
+    if (!list) return;
+    const el = list.querySelector(`[data-index="${assigneeHighlighted}"]`);
+    if (el && 'scrollIntoView' in el) {
+      (el as HTMLElement).scrollIntoView({ block: 'nearest' });
+    }
+  }, [assigneeHighlighted, assigneeOpen]);
+
   const statusLc = (s: any) => (s || '').toString().toLowerCase();
+  const priorityLc = (p: any) => (p || '').toString().toLowerCase();
 
 
   return (
@@ -182,7 +286,7 @@ const TodosPage = () => {
         {/* Content column */}
         <div className="lg:col-span-3">
           {/* List container */}
-          <div className="mt-2 bg-[var(--foreground)] rounded-2xl shadow-lg overflow-hidden">
+          <div className="mt-2 bg-transparent shadow-none rounded-2xl overflow-hidden">
 
             {error && (
           <div className="p-6 text-center text-red-600">
@@ -195,109 +299,122 @@ const TodosPage = () => {
             {language === 'ro' ? 'Se încarcă...' : 'Loading...'}
           </div>
             )}
-            {!isLoading && !isFetching && items.length === 0 && (
-          <div className="p-10 text-center text-muted-foreground flex flex-col items-center gap-4">
-            <img src={todosIllustration} alt="empty todos" className="w-64 max-w-full opacity-90" />
-            <div>{t.empty}</div>
-          </div>
-            )}
-            {!isLoading && !isFetching && items.length > 0 && (
-          <div className="divide-y">
-            {items.map((item: any) => (
-              <div key={item.id} className={`border-[1px] mt-2 p-3 rounded-2xl ${item.priority==='high'?'bg-red-100 border-red-500':item.priority==='medium'?'bg-yellow-100 border-yellow-500':'bg-[var(--primaryLow)] border-[var(--primary)]'}`}>
-                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primaryLow)]'}`}>
-                  {/* left checkbox */}
-                  <div
-                    className={`mt-1 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px]  bg-white cursor-pointer
-                        rounded-full border  ${item.priority==='high'?'border-red-500':item.priority==='medium'?'border-yellow-500':'border-[var(--primary)]'} flex items-center justify-center transition-all duration-150 active:scale-95 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]`}
-                    onClick={async () => {
-                      const next = item.status === 'completed' ? 'PENDING' : 'COMPLETED';
-                      await updateTodo({ clientEin, id: item.id, data: { status: next } as any });
-                    }}
-                    aria-label={item.status==='completed' ? (language==='ro'?'Marchează nefinalizat':'Mark incomplete') : (language==='ro'?'Marchează finalizat':'Mark complete')}
-                  >
-                    {item.status==='completed' && <CheckCircle2 size={14} className="text-white" />}
-                  </div>
-                  {/* content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <div className="font-medium text-[var(--text1)] truncate">{item.title || '-'}</div>
-                    </div>
-                    {item.description && (
-                      <div className="text-[var(--text2)] text-sm mt-0.5 line-clamp-1 text-left">{item.description}</div>
-                    )}
-
-                  </div>
-                  {/* controls */}
-                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
-                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-[var(--text2)]">
-                      <div className="inline-flex items-center gap-2 flex-wrap">
-                        {/* avatars chips for multiple assignees */}
-                        {Array.isArray(item.assignees) && item.assignees.length > 0 ? (
-                          item.assignees.map((a: any, idx: number) => {
-                            const label = a?.user?.name || a?.user?.email;
-                            const av = avatarFor(label);
-                            return (
-                              <span key={a?.user?.id ?? idx} className="inline-flex items-center gap-1">
-                                <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>
-                                  {av.initials}
-                                </span>
-                                <span>{label}</span>
-                              </span>
-                            );
-                          })
-                        ) : (
-                          <span>{t.unassigned}</span>
-                        )}
-                      </div>
-                      <div className="inline-flex items-center gap-1"><CalendarDays size={14}/>{item.dueDate ? new Date(item.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : '-'}</div>
-                      <div className="flex flex-wrap items-center gap-1">
-                        {(item.tags || []).slice(0,4).map((tag:string)=> (
-                          <span key={tag} className="px-2 py-0.5 rounded-full bg-[var(--primary-foreground)]">{tag}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="px-2 py-1 rounded-md border 
-                        hover:text-white bg-transparent text-white"
-                        onClick={() => {
-                          setEditing(item);
-                          setForm({
-                            title: item.title || '',
-                            description: item.description || '',
-                            dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
-                            status: (statusLc(item.status) || 'pending') as any,
-                            priority: ((item.priority || 'medium').toString().toLowerCase() as any),
-                            tags: item.tags || [],
-                            assigneeIds: Array.isArray(item.assignees) ? item.assignees.map((a: any) => a?.user?.id).filter((v: any) => !!v) : [],
-                          });
-                          setShowModal(true);
-                        }}
-                        aria-label={t.edit}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        className="px-2 py-1 rounded-md border 
-                        hover:text-white bg-transparent text-white"
-                        disabled={deleting}
-                        onClick={async () => {
-                          if (!window.confirm(t.confirmDelete)) return;
-                          await deleteTodo({ clientEin, id: item.id });
-                        }}
-                        aria-label={t.del}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+            {!isLoading && !isFetching && items.length === 0 ? (
+              <div className="p-10 text-center text-[var(--text2)] bg-white rounded-xl border border-[var(--text4)]">
+                <img src={todosIllustration} alt="Todos" className="mx-auto w-40 h-40 opacity-80 mb-4" />
+                <div className="text-lg mb-2 text-black">{t.empty}</div>
+                <button
+                  onClick={() => {
+                    setEditing(null);
+                    setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
+                    setShowModal(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
+                  disabled={!clientEin}
+                >
+                  <Plus size={18} /> {t.create}
+                </button>
               </div>
-            ))}
-            </div>
-          )}
+            ) : (
+              <div
+                className="flex flex-col gap-3"
+                onDrop={onDrop}
+                onDragOver={(e) => e.preventDefault()}
+                role="list"
+                aria-label="todos-list"
+              >
+                {ordered.map((item: any) => (
+                  <div
+                    key={item.id}
+                    role="listitem"
+                    className={`group border border-[var(--text4)] bg-white rounded-xl p-4 text-black ${draggingId===item.id ? 'opacity-60' : ''}`}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, item.id)}
+                    onDragOver={(e) => onDragOver(e, item.id)}
+                    aria-grabbed={draggingId === item.id}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <h3 className="font-semibold text-left truncate">{item.title}</h3>
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs border ${priorityLc(item.priority)==='high' ? 'bg-red-50 border-red-200 text-red-700' : priorityLc(item.priority)==='low' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>{(item.priority||'medium').toString().toUpperCase()}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs border ${statusLc(item.status)==='completed' ? 'bg-green-50 border-green-200 text-green-700' : statusLc(item.status)==='in_progress' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>{(item.status||'PENDING').toString().toUpperCase()}</span>
+                          </div>
+                        </div>
+                        {item.description && (
+                          <div className="text-[var(--text2)] text-sm mt-0.5 line-clamp-1 text-left">{item.description}</div>
+                        )}
+
+                        {/* controls */}
+                        <div className="mt-3 flex flex-col sm:flex-row items-end sm:items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text2)]">
+                            <div className="inline-flex items-center gap-2 flex-wrap">
+                              {/* avatars chips for multiple assignees */}
+                              {Array.isArray(item.assignees) && item.assignees.length > 0 ? (
+                                item.assignees.map((a: any, idx: number) => {
+                                  const label = a?.user?.name || a?.user?.email;
+                                  const av = avatarFor(label);
+                                  return (
+                                    <span key={a?.user?.id ?? idx} className="inline-flex items-center gap-1">
+                                      <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>
+                                        {av.initials}
+                                      </span>
+                                      <span>{label}</span>
+                                    </span>
+                                  );
+                                })
+                              ) : (
+                                <span>{t.unassigned}</span>
+                              )}
+                            </div>
+                            <div className="inline-flex items-center gap-1"><CalendarDays size={14}/>{item.dueDate ? new Date(item.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : '-'}</div>
+                            <div className="flex flex-wrap items-center gap-1">
+                              {(item.tags || []).slice(0,4).map((tag:string)=> (
+                                <span key={tag} className="px-2 py-0.5 rounded-full bg-[var(--primary-foreground)]">{tag}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 ml-auto">
+                            <button
+                              className="p-0 rounded-md border hover:text-purple-500 bg-transparent text-black"
+                              onClick={() => {
+                                setEditing(item);
+                                setForm({
+                                  title: item.title || '',
+                                  description: item.description || '',
+                                  dueDate: item.dueDate ? String(item.dueDate).slice(0, 10) : '',
+                                  status: (statusLc(item.status) || 'pending') as any,
+                                  priority: ((item.priority || 'medium').toString().toLowerCase() as any),
+                                  tags: item.tags || [],
+                                  assigneeIds: Array.isArray(item.assignees) ? item.assignees.map((a: any) => a?.user?.id).filter((v: any) => !!v) : [],
+                                });
+                                setShowModal(true);
+                              }}
+                              aria-label={t.edit}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              className="p-0 rounded-md border hover:text-red-500 bg-transparent text-black"
+                              disabled={deleting}
+                              onClick={async () => {
+                                if (!window.confirm(t.confirmDelete)) return;
+                                await deleteTodo({ clientEin, id: item.id });
+                              }}
+                              aria-label={t.del}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -435,31 +552,156 @@ const TodosPage = () => {
                   </select>
                 </div>
               </div>
-              {/* Assignees controls (multi-select) */}
+              {/* Assignees controls (searchable multi-select with chips) */}
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.assignee}</label>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <select
-                    multiple
-                    className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black min-w-[220px] h-28
-                    focus:ring-[var(--primary)]"
-                    value={(form.assigneeIds || []).map((id) => String(id))}
-                    onChange={(e) => {
-                      const options = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
-                      setForm((f) => ({ ...f, assigneeIds: options }));
-                    }}
-                  >
-                    {/* company users */}
-                    {Array.isArray(companyUsers) && companyUsers.map((u: any) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name || u.email || `#${u.id}`}
-                      </option>
-                    ))}
-                    {/* ensure self present if not in list */}
-                    {me?.id && (!Array.isArray(companyUsers) || !companyUsers.some((u: any) => u.id === me.id)) && (
-                      <option value={me.id}>{me.name || me.email || `#${me.id}`}</option>
+                <div className="flex flex-col gap-2">
+                  {/* Selected chips */}
+                  <div className="flex flex-wrap gap-2">
+                    {(form.assigneeIds || []).length === 0 && (
+                      <span className="text-xs text-[var(--text3)]">{t.unassigned}</span>
                     )}
-                  </select>
+                    {(() => {
+                      const selectedIds = form.assigneeIds || [];
+                      const shown = selectedIds.slice(0, MAX_ASSIGNEE_CHIPS);
+                      const hiddenCount = Math.max(0, selectedIds.length - shown.length);
+                      const getUser = (id: number) => allAssigneeUsers.find((x: any) => x?.id === id);
+                      return (
+                        <>
+                          {shown.map((id) => {
+                            const u = getUser(id);
+                            const label = u?.name || u?.email || `#${id}`;
+                            const av = avatarFor(label);
+                            return (
+                              <span key={id} className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[var(--primary-foreground)] text-black border border-[var(--text4)]">
+                                <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>{av.initials}</span>
+                                <span className="text-sm max-w-[120px] truncate" title={label}>{label}</span>
+                                <button
+                                  type="button"
+                                  className="p-0 text-[var(--text2)] hover:text-red-500"
+                                  onClick={() => setForm((f) => ({ ...f, assigneeIds: (f.assigneeIds || []).filter((x) => x !== id) }))}
+                                  aria-label="remove-assignee"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </span>
+                            );
+                          })}
+                          {hiddenCount > 0 && (
+                            <span className="px-2 py-1 rounded-full bg-neutral-100 text-black border border-[var(--text4)] text-xs">{language==='ro'?`+${hiddenCount} în plus`:`+${hiddenCount} more`}</span>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Trigger / input */}
+                  <div className="relative" ref={assigneeContainerRef}>
+                    <div className="flex items-center gap-2 px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black cursor-text"
+                      onClick={() => setAssigneeOpen((o) => !o)}
+                      role="button"
+                      aria-haspopup="listbox"
+                      aria-expanded={assigneeOpen}
+                    >
+                      <Search size={16} className="text-[var(--text3)]" />
+                      <input
+                        placeholder={language==='ro'?'Caută utilizatori...':'Search users...'}
+                        className="flex-1 bg-white outline-none text-black"
+                        value={assigneeQuery}
+                        onChange={(e) => setAssigneeQuery(e.target.value)}
+                        onFocus={() => setAssigneeOpen(true)}
+                        onKeyDown={(e) => {
+                          if (!assigneeOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+                            setAssigneeOpen(true);
+                            return;
+                          }
+                          if (!assigneeOpen) return;
+                          if (e.key === 'ArrowDown') {
+                            e.preventDefault();
+                            setAssigneeHighlighted((i) => Math.min((filteredAssigneeUsers.length - 1), i + 1));
+                          } else if (e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            setAssigneeHighlighted((i) => Math.max(0, i - 1));
+                          } else if (e.key === 'Enter') {
+                            e.preventDefault();
+                            const u = filteredAssigneeUsers[assigneeHighlighted];
+                            if (u) {
+                              setForm((f) => {
+                                const set = new Set(f.assigneeIds || []);
+                                if (set.has(u.id)) set.delete(u.id); else set.add(u.id);
+                                return { ...f, assigneeIds: Array.from(set) as number[] };
+                              });
+                            }
+                          } else if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setAssigneeOpen(false);
+                          }
+                        }}
+                      />
+                      <span className="text-xs text-[var(--text3)]">{(form.assigneeIds || []).length} selected</span>
+                    </div>
+
+                    {assigneeOpen && (
+                      <div ref={assigneeListRef} className="absolute z-10 mt-1 w-full max-h-64 overflow-auto bg-white border border-[var(--text4)] rounded-lg shadow-lg">
+                        {filteredAssigneeUsers.length === 0 ? (
+                          <div className="p-3 text-sm text-[var(--text3)]">{language==='ro'?'Niciun rezultat':'No results'}</div>
+                        ) : (
+                          filteredAssigneeUsers.map((u: any, idx: number) => {
+                            const label = u?.name || u?.email || `#${u?.id}`;
+                            const selected = (form.assigneeIds || []).includes(u.id);
+                            const av = avatarFor(label);
+                            const highlighted = idx === assigneeHighlighted;
+                            return (
+                              <button
+                                key={u.id}
+                                type="button"
+                                data-index={idx}
+                                role="option"
+                                aria-selected={highlighted}
+                                className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] ${selected ? 'bg-[var(--primaryLow)]' : ''} ${highlighted ? 'ring-1 ring-[var(--primary)]' : ''}`}
+                                onMouseEnter={() => setAssigneeHighlighted(idx)}
+                                onClick={() => {
+                                  setForm((f) => {
+                                    const set = new Set(f.assigneeIds || []);
+                                    if (set.has(u.id)) set.delete(u.id); else set.add(u.id);
+                                    return { ...f, assigneeIds: Array.from(set) as number[] };
+                                  });
+                                }}
+                              >
+                                <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>{av.initials}</span>
+                                <span className="flex-1 text-sm text-black">{label}</span>
+                                <input type="checkbox" checked={selected} readOnly />
+                              </button>
+                            );
+                          })
+                        )}
+                        <div className="p-2 border-t border-[var(--text4)] flex items-center justify-between gap-2 bg-white">
+                          {/* Assign to me quick action */}
+                          {me?.id && (
+                            <button
+                              type="button"
+                              className="px-3 py-1 text-sm rounded-md border bg-[var(--primaryLow)] text-black hover:bg-[var(--primary-foreground)]"
+                              onClick={() => {
+                                setForm((f) => {
+                                  const set = new Set(f.assigneeIds || []);
+                                  set.add(me.id as number);
+                                  return { ...f, assigneeIds: Array.from(set) as number[] };
+                                });
+                              }}
+                            >
+                              {t.assignToMe}
+                            </button>
+                          )}
+                          <button type="button" className="px-3 py-1 text-sm rounded-md border bg-neutral-100 text-black hover:bg-neutral-200" onClick={() => setAssigneeOpen(false)}>
+                            {language==='ro'?'Închide':'Close'}
+                          </button>
+                          <button type="button" className="px-3 py-1 text-sm rounded-md border bg-neutral-100 text-black hover:bg-neutral-200" onClick={() => { setAssigneeQuery(''); setForm((f)=>({...f, assigneeIds: []})); }}>
+                            {language==='ro'?'Golește':'Clear'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
