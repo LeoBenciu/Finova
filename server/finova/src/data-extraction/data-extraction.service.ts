@@ -2396,6 +2396,29 @@ export class DataExtractionService {
               );
             };
 
+            // Helpers for currency detection
+            const inferCurrency = (desc?: string) => {
+              if (!desc) return undefined as string | undefined;
+              const d = desc.toUpperCase();
+              if (d.includes(' EUR')) return 'EUR';
+              if (d.includes(' RON')) return 'RON';
+              if (d.includes('USD') || d.includes(' USD')) return 'USD';
+              if (d.includes('LEI')) return 'RON';
+              return undefined;
+            };
+            const getTxnCurrency = (t: any): string | undefined => {
+              // Prefer bankAccount.currency if present
+              const accCur = t?.bankAccount?.currency as string | undefined;
+              if (accCur) return accCur.toUpperCase();
+              // Try statement document name
+              const stmtName = t?.bankStatementDocument?.name as string | undefined;
+              const byName = stmtName ? inferCurrency(stmtName.replace(/[_.-]/g, ' ')) : undefined;
+              if (byName) return byName;
+              // Try description text
+              const byDesc = inferCurrency(t?.description);
+              return byDesc;
+            };
+
             for (const src of debits) {
               const srcAmt = Math.abs(Number(src.amount));
               const srcDate = new Date(src.transactionDate);
@@ -2429,9 +2452,32 @@ export class DataExtractionService {
                 const dstAmt = Math.abs(Number(dst.amount));
                 const amountDiff = Math.abs(srcAmt - dstAmt);
                 const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
+                // Cross-currency handling: allow plausible FX rate differences (e.g., RON↔EUR around 4–6)
+                const srcCur = getTxnCurrency(src);
+                const dstCur = getTxnCurrency(dst);
+                let crossCurrencyOk = false;
+                let impliedRate: number | undefined;
+                if (srcCur && dstCur && srcCur !== dstCur) {
+                  const bigger = Math.max(srcAmt, dstAmt);
+                  const smaller = Math.max(1e-6, Math.min(srcAmt, dstAmt));
+                  impliedRate = Number((bigger / smaller).toFixed(3));
+                  // Heuristic bands
+                  if ((srcCur === 'RON' && dstCur === 'EUR') || (srcCur === 'EUR' && dstCur === 'RON')) {
+                    // Typical RON/EUR range; broaden slightly to avoid false negatives
+                    crossCurrencyOk = impliedRate >= 4.0 && impliedRate <= 6.0;
+                  } else if ((srcCur === 'RON' && dstCur === 'USD') || (srcCur === 'USD' && dstCur === 'RON')) {
+                    crossCurrencyOk = impliedRate >= 3.0 && impliedRate <= 6.0;
+                  } else {
+                    // Generic band for other pairs
+                    crossCurrencyOk = impliedRate >= 0.1 && impliedRate <= 20.0;
+                  }
+                  if (dbgSrc) this.logger.warn(`  [~] cross-currency ${srcCur}->${dstCur} impliedRate=${impliedRate} ok=${crossCurrencyOk}`);
+                }
                 if (amountDiff > amountTolerance) {
-                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: amountDiff=${amountDiff.toFixed(2)} > tol=${amountTolerance.toFixed(2)} (src=${srcAmt}, dst=${dstAmt})`);
-                  continue;
+                  if (!crossCurrencyOk) {
+                    if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: amountDiff=${amountDiff.toFixed(2)} > tol=${amountTolerance.toFixed(2)} (src=${srcAmt}, dst=${dstAmt})`);
+                    continue;
+                  }
                 }
 
                 const dstDate = new Date(dst.transactionDate);
@@ -2446,9 +2492,13 @@ export class DataExtractionService {
                 const reasons: string[] = [];
                 const criteria: any = { transfer: {} };
 
-                if (amountDiff === 0) {
+                if (amountDiff === 0 || crossCurrencyOk) {
                   score += 0.1;
-                  reasons.push('Exact amount match');
+                  if (crossCurrencyOk) {
+                    reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
+                  } else {
+                    reasons.push('Exact amount match');
+                  }
                 } else {
                   reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
                 }

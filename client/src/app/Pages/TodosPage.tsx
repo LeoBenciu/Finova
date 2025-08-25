@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Search, CalendarDays, Flag, Loader2, Edit2, Trash2, X, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, CalendarDays, Flag, Loader2, Edit2, Trash2, X, CheckCircle2, Circle, CheckCircle, User } from 'lucide-react';
 import todosIllustration from '@/assets/todos.svg';
 import { useGetTodosQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useGetUserDataQuery, useGetCompanyUsersQuery, useReorderTodosMutation } from '@/redux/slices/apiSlice';
+import LoadingComponent from '../Components/LoadingComponent';
 
 const TodosPage = () => {
   const language = useSelector((state: { user: { language: string } }) => state.user.language);
@@ -14,6 +15,7 @@ const TodosPage = () => {
   const [priority, setPriority] = useState<'low'|'medium'|'high'|'all'>('all');
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(20);
+  const [assigneeFilter, setAssigneeFilter] = useState<number | 'all'>('all');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState<{ title: string; description?: string; dueDate?: string; status: 'pending'|'in_progress'|'completed'; priority: 'low'|'medium'|'high'; tags: string[]; assigneeIds: number[] }>(
@@ -90,6 +92,7 @@ const TodosPage = () => {
           size,
           status: mapStatusQuery(status),
           priority: mapPriorityQuery(priority),
+          ...(assigneeFilter !== 'all' ? { assigneeId: assigneeFilter as number } : {}),
         }
       : ({} as any),
     { skip: !clientEin }
@@ -218,24 +221,26 @@ const TodosPage = () => {
             <h1 className="text-4xl font-bold text-[var(--text1)] mb-1 text-left">{t.title}</h1>
             <p className="text-[var(--text2)] text-left">{t.subtitle}</p>
           </div>
-          <div className="ml-auto">
-            <button
-              onClick={() => {
-                setEditing(null);
-                setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
-                setShowModal(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
-              disabled={!clientEin}
-            >
-              <Plus size={18} /> {t.create}
-            </button>
-          </div>
+          {status !== 'completed' && (
+            <div className="ml-auto">
+              <button
+                onClick={() => {
+                  setEditing(null);
+                  setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
+                  setShowModal(true);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
+                disabled={!clientEin}
+              >
+                <Plus size={18} /> {t.create}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       {/* Filters row */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3">
         <div className="col-span-1 lg:col-span-2 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
           <Search size={18} className="text-[var(--text3)]" />
           <input
@@ -252,6 +257,25 @@ const TodosPage = () => {
             <option value="high">{language==='ro'?'Mare':'High'}</option>
             <option value="medium">{language==='ro'?'Medie':'Medium'}</option>
             <option value="low">{language==='ro'?'Mică':'Low'}</option>
+          </select>
+        </div>
+        <div className="col-span-1 flex items-center gap-2 border border-[var(--text4)] rounded-lg px-3 py-2 bg-white">
+          <User size={18} className="text-[var(--text3)]" />
+          <select
+            className="bg-white outline-none w-full text-black"
+            value={assigneeFilter}
+            onChange={(e) => {
+              const val = e.target.value;
+              setPage(1);
+              setAssigneeFilter(val === 'all' ? 'all' : Number(val));
+            }}
+          >
+            <option value="all">{language==='ro'?'Toți asignații':'All assignees'}</option>
+            {allAssigneeUsers.map((u: any) => (
+              <option key={u.id} value={u.id}>
+                {u?.name || u?.email || `#${u?.id}`}
+              </option>
+            ))}
           </select>
         </div>
       </div>
@@ -294,26 +318,25 @@ const TodosPage = () => {
           </div>
             )}
             {(isLoading || isFetching) && (
-          <div className="p-6 flex items-center justify-center text-muted-foreground gap-2">
-            <Loader2 size={18} className="animate-spin" />
-            {language === 'ro' ? 'Se încarcă...' : 'Loading...'}
-          </div>
+            <LoadingComponent/>
             )}
             {!isLoading && !isFetching && items.length === 0 ? (
               <div className="p-10 text-center text-[var(--text2)] bg-white rounded-xl border border-[var(--text4)]">
                 <img src={todosIllustration} alt="Todos" className="mx-auto w-40 h-40 opacity-80 mb-4" />
                 <div className="text-lg mb-2 text-black">{t.empty}</div>
-                <button
-                  onClick={() => {
-                    setEditing(null);
-                    setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
-                    setShowModal(true);
-                  }}
-                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
-                  disabled={!clientEin}
-                >
-                  <Plus size={18} /> {t.create}
-                </button>
+                {status !== 'completed' && (
+                  <button
+                    onClick={() => {
+                      setEditing(null);
+                      setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
+                      setShowModal(true);
+                    }}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
+                    disabled={!clientEin}
+                  >
+                    <Plus size={18} /> {t.create}
+                  </button>
+                )}
               </div>
             ) : (
               <div
@@ -327,7 +350,8 @@ const TodosPage = () => {
                   <div
                     key={item.id}
                     role="listitem"
-                    className={`group border border-[var(--text4)] bg-white rounded-xl p-4 text-black ${draggingId===item.id ? 'opacity-60' : ''}`}
+                    className={`group border-2 ${priorityLc(item.priority)==='high' ? 'border-red-300' : priorityLc(item.priority)==='low' ? 'border-blue-300' : 'border-amber-300'}
+                       bg-white rounded-2xl p-4 text-black ${draggingId===item.id ? 'opacity-60' : ''}`}
                     draggable
                     onDragStart={(e) => onDragStart(e, item.id)}
                     onDragOver={(e) => onDragOver(e, item.id)}
@@ -336,9 +360,40 @@ const TodosPage = () => {
                     <div className="flex items-start gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold text-left truncate">{item.title}</h3>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <button
+                              type="button"
+                              className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border ${statusLc(item.status)==='completed' ? 'border-green-500 text-green-600' : 'border-gray-300 text-gray-400'} hover:bg-green-50`}
+                              onClick={async () => {
+                                try {
+                                  const isCompleted = statusLc(item.status) === 'completed';
+                                  await updateTodo({ clientEin, id: item.id, data: { status: isCompleted ? 'PENDING' : 'COMPLETED' } } as any).unwrap();
+                                } catch (e) {
+                                  console.error('Failed to toggle todo status', e);
+                                }
+                              }}
+                              onKeyDown={async (e) => {
+                                if (e.key === ' ' || e.key === 'Enter') {
+                                  e.preventDefault();
+                                  try {
+                                    const isCompleted = statusLc(item.status) === 'completed';
+                                    await updateTodo({ clientEin, id: item.id, data: { status: isCompleted ? 'PENDING' : 'COMPLETED' } } as any).unwrap();
+                                  } catch (err) {
+                                    console.error('Failed to toggle todo status (kbd)', err);
+                                  }
+                                }
+                              }}
+                              role="checkbox"
+                              aria-checked={statusLc(item.status)==='completed'}
+                              aria-label={statusLc(item.status)==='completed' ? (language==='ro'?'Marchează ca nefinalizat':'Mark as pending') : (language==='ro'?'Marchează ca finalizat':'Mark as completed')}
+                              disabled={updating}
+                            >
+                              {statusLc(item.status)==='completed' ? <CheckCircle size={16} /> : <Circle size={16} />}
+                            </button>
+                            <h3 className="font-semibold text-left truncate" title={item.title}>{item.title}</h3>
+                          </div>
                           <div className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs border ${priorityLc(item.priority)==='high' ? 'bg-red-50 border-red-200 text-red-700' : priorityLc(item.priority)==='low' ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>{(item.priority||'medium').toString().toUpperCase()}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-xs border ${priorityLc(item.priority)==='high' ? 'bg-red-50 border-red-200 text-red-700' : priorityLc(item.priority)==='low' ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{(item.priority||'medium').toString().toUpperCase()}</span>
                             <span className={`px-2 py-0.5 rounded-full text-xs border ${statusLc(item.status)==='completed' ? 'bg-green-50 border-green-200 text-green-700' : statusLc(item.status)==='in_progress' ? 'bg-purple-50 border-purple-200 text-purple-700' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>{(item.status||'PENDING').toString().toUpperCase()}</span>
                           </div>
                         </div>
@@ -606,7 +661,7 @@ const TodosPage = () => {
                       <Search size={16} className="text-[var(--text3)]" />
                       <input
                         placeholder={language==='ro'?'Caută utilizatori...':'Search users...'}
-                        className="flex-1 bg-white outline-none text-black"
+                        className="flex-1 bg-white outline-none text-black focus:shadow-none"
                         value={assigneeQuery}
                         onChange={(e) => setAssigneeQuery(e.target.value)}
                         onFocus={() => setAssigneeOpen(true)}
@@ -658,7 +713,8 @@ const TodosPage = () => {
                                 data-index={idx}
                                 role="option"
                                 aria-selected={highlighted}
-                                className={`w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] ${selected ? 'bg-[var(--primaryLow)]' : ''} ${highlighted ? 'ring-1 ring-[var(--primary)]' : ''}`}
+                                className={`w-full bg-white hover:text-white text-black
+                                   text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] my-1 ${selected ? 'bg-[var(--primaryLow)]' : ''} ${highlighted ? 'ring-1 ring-[var(--primary)]' : ''}`}
                                 onMouseEnter={() => setAssigneeHighlighted(idx)}
                                 onClick={() => {
                                   setForm((f) => {
@@ -670,7 +726,6 @@ const TodosPage = () => {
                               >
                                 <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>{av.initials}</span>
                                 <span className="flex-1 text-sm text-black">{label}</span>
-                                <input type="checkbox" checked={selected} readOnly />
                               </button>
                             );
                           })
@@ -680,7 +735,8 @@ const TodosPage = () => {
                           {me?.id && (
                             <button
                               type="button"
-                              className="px-3 py-1 text-sm rounded-md border bg-[var(--primaryLow)] text-black hover:bg-[var(--primary-foreground)]"
+                              className="px-3 py-1 text-sm rounded-md border bg-[var(--primaryLow)] text-[var(--primary)] hover:text-white
+                              hover:bg-[var(--primary-foreground)]"
                               onClick={() => {
                                 setForm((f) => {
                                   const set = new Set(f.assigneeIds || []);
