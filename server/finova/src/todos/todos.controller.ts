@@ -18,12 +18,19 @@ export class TodosController {
     @Query('q') q?: string,
     @Query('status') status?: TodoStatus | 'all',
     @Query('priority') priority?: TodoPriority | 'all',
-    @Query('assigneeId') assigneeId?: string,
+    @Query('assigneeId') assigneeId?: string, 
+    @Query('assigneeIds') assigneeIds?: string, 
     @Query('dueFrom') dueFrom?: string,
     @Query('dueTo') dueTo?: string,
     @Query('tags') tags?: string,
   ) {
     const tagsArray = tags ? tags.split(',').map((t) => t.trim()).filter(Boolean) : undefined;
+    const parsedAssigneeIds = assigneeIds
+      ? assigneeIds
+          .split(',')
+          .map((t) => Number(t.trim()))
+          .filter((n) => !Number.isNaN(n))
+      : undefined;
     return this.todosService.listTodos(clientEin, user, {
       page: Number(page) || 1,
       size: Number(size) || 25,
@@ -31,6 +38,8 @@ export class TodosController {
       status,
       priority,
       assigneeId: assigneeId ? Number(assigneeId) : undefined,
+      assigneeIds: parsedAssigneeIds,
+      // Future: extend service to accept assigneeIds[] if needed
       dueFrom,
       dueTo,
       tags: tagsArray,
@@ -58,7 +67,8 @@ export class TodosController {
       priority?: TodoPriority;
       dueDate?: string;
       tags?: string[];
-      assignedToId?: number;
+      assigneeIds?: number[]; 
+      assignedToId?: number; 
       relatedDocumentId?: number;
       relatedTransactionId?: string;
     },
@@ -78,7 +88,8 @@ export class TodosController {
       priority?: TodoPriority;
       dueDate?: string;
       tags?: string[];
-      assignedToId?: number;
+      assigneeIds?: number[]; 
+      assignedToId?: number; 
       relatedDocumentId?: number;
       relatedTransactionId?: string;
     }>,

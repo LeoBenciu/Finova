@@ -3548,6 +3548,7 @@ const BankPage = () => {
                 <div className="space-y-3">
                   {filteredTransactions.map((txn: BankTransaction, index: number) => {
                     const isSelected = selectedItems.transactions.includes(txn.id);
+                    console.log("TRANSACTION", txn);
                     
                     return (
                       <motion.div

@@ -28,6 +28,7 @@ export class TodosService {
       status?: TodoStatus | 'all';
       priority?: TodoPriority | 'all';
       assigneeId?: number;
+      assigneeIds?: number[];
       dueFrom?: string;
       dueTo?: string;
       tags?: string[];
@@ -42,6 +43,7 @@ export class TodosService {
       status,
       priority,
       assigneeId,
+      assigneeIds,
       dueFrom,
       dueTo,
       tags,
@@ -59,7 +61,8 @@ export class TodosService {
         : {}),
       ...(status && status !== 'all' ? { status: status as TodoStatus } : {}),
       ...(priority && priority !== 'all' ? { priority: priority as TodoPriority } : {}),
-      ...(assigneeId ? { assignedToId: assigneeId } : {}),
+      ...(assigneeId ? { assignees: { some: { userId: assigneeId } } } : {}),
+      ...(assigneeIds && assigneeIds.length ? { assignees: { some: { userId: { in: assigneeIds } } } } : {}),
       ...(dueFrom || dueTo
         ? {
             dueDate: {
@@ -79,7 +82,7 @@ export class TodosService {
         take: size,
         include: {
           createdBy: { select: { id: true, name: true, email: true } },
-          assignedTo: { select: { id: true, name: true, email: true } },
+          assignees: { select: { user: { select: { id: true, name: true, email: true } } } },
           relatedDocument: { select: { id: true, name: true, type: true } },
         },
       }),
@@ -96,11 +99,14 @@ export class TodosService {
     priority?: TodoPriority;
     dueDate?: string;
     tags?: string[];
-    assignedToId?: number;
+    assigneeIds?: number[];
+    assignedToId?: number; // backward-compat
     relatedDocumentId?: number;
     relatedTransactionId?: string;
   }) {
     const accountingClientId = await this.resolveAccountingClientIdOrThrow(clientEin, user);
+
+    const assigneeIds = (data.assigneeIds && data.assigneeIds.length ? data.assigneeIds : (data.assignedToId ? [data.assignedToId] : [])) as number[];
 
     const todo = await this.prisma.todoItem.create({
       data: {
@@ -112,9 +118,11 @@ export class TodosService {
         tags: data.tags ?? [],
         accountingClientId,
         createdById: user.id,
-        assignedToId: data.assignedToId,
         relatedDocumentId: data.relatedDocumentId,
         relatedTransactionId: data.relatedTransactionId,
+        ...(assigneeIds && assigneeIds.length
+          ? { assignees: { create: assigneeIds.map((id) => ({ userId: id })) } }
+          : {}),
       },
     });
 
@@ -128,7 +136,8 @@ export class TodosService {
     priority?: TodoPriority;
     dueDate?: string;
     tags?: string[];
-    assignedToId?: number;
+    assigneeIds?: number[];
+    assignedToId?: number; // backward-compat
     relatedDocumentId?: number;
     relatedTransactionId?: string;
   }>) {
@@ -146,9 +155,22 @@ export class TodosService {
         ...(data.priority !== undefined ? { priority: data.priority } : {}),
         ...(data.dueDate !== undefined ? { dueDate: data.dueDate ? new Date(data.dueDate) : null } : {}),
         ...(data.tags !== undefined ? { tags: data.tags } : {}),
-        ...(data.assignedToId !== undefined ? { assignedToId: data.assignedToId } : {}),
         ...(data.relatedDocumentId !== undefined ? { relatedDocumentId: data.relatedDocumentId } : {}),
         ...(data.relatedTransactionId !== undefined ? { relatedTransactionId: data.relatedTransactionId } : {}),
+        ...((data.assigneeIds !== undefined || data.assignedToId !== undefined)
+          ? {
+              assignees: {
+                deleteMany: {},
+                ...(data.assigneeIds && data.assigneeIds.length
+                  ? { create: data.assigneeIds.map((id) => ({ userId: id })) }
+                  : data.assignedToId !== undefined
+                  ? (data.assignedToId
+                      ? { create: [{ userId: data.assignedToId }] }
+                      : {})
+                  : {}),
+              },
+            }
+          : {}),
       },
     });
 
@@ -170,7 +192,7 @@ export class TodosService {
       where: { id, accountingClientId },
       include: {
         createdBy: { select: { id: true, name: true, email: true } },
-        assignedTo: { select: { id: true, name: true, email: true } },
+        assignees: { select: { user: { select: { id: true, name: true, email: true } } } },
         relatedDocument: { select: { id: true, name: true, type: true } },
       },
     });

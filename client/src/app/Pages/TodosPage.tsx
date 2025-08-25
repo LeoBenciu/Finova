@@ -16,8 +16,8 @@ const TodosPage = () => {
   const [size, setSize] = useState(20);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
-  const [form, setForm] = useState<{ title: string; description?: string; dueDate?: string; status: 'pending'|'in_progress'|'completed'; priority: 'low'|'medium'|'high'; tags: string[]; assignedToId?: number | null }>(
-    { title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assignedToId: null }
+  const [form, setForm] = useState<{ title: string; description?: string; dueDate?: string; status: 'pending'|'in_progress'|'completed'; priority: 'low'|'medium'|'high'; tags: string[]; assigneeIds: number[] }>(
+    { title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] }
   );
   const dueInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -118,7 +118,7 @@ const TodosPage = () => {
             <button
               onClick={() => {
                 setEditing(null);
-                setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assignedToId: null });
+                setForm({ title: '', description: '', dueDate: '', status: 'pending', priority: 'medium', tags: [], assigneeIds: [] });
                 setShowModal(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--primary)] text-white hover:opacity-90 transition disabled:opacity-50"
@@ -204,8 +204,8 @@ const TodosPage = () => {
             {!isLoading && !isFetching && items.length > 0 && (
           <div className="divide-y">
             {items.map((item: any) => (
-              <div key={item.id} className={`border-[1px] p-3 rounded-2xl ${item.priority==='high'?'bg-red-100 border-red-500':item.priority==='medium'?'bg-yellow-100 border-yellow-500':'bg-[var(--primary)]/20 border-[var(--primary)]'}`}>
-                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primary)]/10'}`}>
+              <div key={item.id} className={`border-[1px] mt-2 p-3 rounded-2xl ${item.priority==='high'?'bg-red-100 border-red-500':item.priority==='medium'?'bg-yellow-100 border-yellow-500':'bg-[var(--primaryLow)] border-[var(--primary)]'}`}>
+                <div className={`flex items-start gap-3 ${item.priority==='high'?'bg-red-100':item.priority==='medium'?'bg-yellow-100':'bg-[var(--primaryLow)]'}`}>
                   {/* left checkbox */}
                   <div
                     className={`mt-1 min-w-[20px] min-h-[20px] max-w-[20px] max-h-[20px]  bg-white cursor-pointer
@@ -231,14 +231,24 @@ const TodosPage = () => {
                   {/* controls */}
                   <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2">
                     <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-[var(--text2)]">
-                      <div className="inline-flex items-center gap-2">
-                        {/* avatar chip */}
-                        {(() => { const label = item.assignedTo?.name || item.assignedTo?.email; const a = avatarFor(label); return (
-                          <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: a.color }}>
-                            {a.initials}
-                          </span>
-                        );})()}
-                        <span className="inline-flex items-center gap-1">{item.assignedTo?.name || item.assignedTo?.email || t.unassigned}</span>
+                      <div className="inline-flex items-center gap-2 flex-wrap">
+                        {/* avatars chips for multiple assignees */}
+                        {Array.isArray(item.assignees) && item.assignees.length > 0 ? (
+                          item.assignees.map((a: any, idx: number) => {
+                            const label = a?.user?.name || a?.user?.email;
+                            const av = avatarFor(label);
+                            return (
+                              <span key={a?.user?.id ?? idx} className="inline-flex items-center gap-1">
+                                <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>
+                                  {av.initials}
+                                </span>
+                                <span>{label}</span>
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span>{t.unassigned}</span>
+                        )}
                       </div>
                       <div className="inline-flex items-center gap-1"><CalendarDays size={14}/>{item.dueDate ? new Date(item.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : '-'}</div>
                       <div className="flex flex-wrap items-center gap-1">
@@ -250,7 +260,8 @@ const TodosPage = () => {
 
                     <div className="flex items-center gap-2">
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-[var(--primary-foreground)] hover:text-white bg-black text-white"
+                        className="px-2 py-1 rounded-md border 
+                        hover:text-white bg-transparent text-white"
                         onClick={() => {
                           setEditing(item);
                           setForm({
@@ -260,7 +271,7 @@ const TodosPage = () => {
                             status: (statusLc(item.status) || 'pending') as any,
                             priority: ((item.priority || 'medium').toString().toLowerCase() as any),
                             tags: item.tags || [],
-                            assignedToId: item.assignedTo?.id ?? null,
+                            assigneeIds: Array.isArray(item.assignees) ? item.assignees.map((a: any) => a?.user?.id).filter((v: any) => !!v) : [],
                           });
                           setShowModal(true);
                         }}
@@ -269,7 +280,8 @@ const TodosPage = () => {
                         <Edit2 size={16} />
                       </button>
                       <button
-                        className="px-2 py-1 rounded-md border hover:bg-red-500 hover:text-white bg-black text-white"
+                        className="px-2 py-1 rounded-md border 
+                        hover:text-white bg-transparent text-white"
                         disabled={deleting}
                         onClick={async () => {
                           if (!window.confirm(t.confirmDelete)) return;
@@ -344,7 +356,8 @@ const TodosPage = () => {
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.titleLabel}</label>
                 <input
-                  className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
+                  className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black
+                  focus:shadow-none"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
                 />
@@ -352,7 +365,8 @@ const TodosPage = () => {
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.descLabel}</label>
                 <textarea
-                  className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
+                  className="w-full border border-[var(--text4)] rounded-lg 
+                  focus:ring-[var(--primary)] px-3 py-2 bg-white text-black"
                   rows={3}
                   value={form.description}
                   onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
@@ -364,7 +378,8 @@ const TodosPage = () => {
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      className="flex-1 inline-flex items-center justify-between gap-2 px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black hover:bg-[var(--primary-foreground)]"
+                      className="flex-1 inline-flex items-center justify-between gap-2 px-3 hover:text-white
+                      py-[6px] border border-[var(--text4)] hover:border-[var(--primaryLow)] rounded-lg bg-white text-black hover:bg-[var(--primary-foreground)]"
                       onClick={() => {
                         const el = dueInputRef.current;
                         if (!el) return;
@@ -383,7 +398,7 @@ const TodosPage = () => {
                       <span className="truncate text-left">
                         {form.dueDate ? new Date(form.dueDate).toLocaleDateString(language==='ro'?'ro-RO':'en-US') : (language==='ro'?'Alege data':'Pick a date')}
                       </span>
-                      <CalendarDays size={18} className="text-[var(--text3)]" />
+                      <CalendarDays size={18} />
                     </button>
                     {form.dueDate && (
                       <button
@@ -409,7 +424,8 @@ const TodosPage = () => {
                 <div>
                   <label className="block text-sm text-[var(--text2)] mb-1">{t.priority}</label>
                   <select
-                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black"
+                    className="w-full border border-[var(--text4)] rounded-lg px-3 py-2 bg-white text-black
+                    focus:ring-[var(--primary)]"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
                   >
@@ -419,26 +435,27 @@ const TodosPage = () => {
                   </select>
                 </div>
               </div>
-              {/* Assignee controls */}
+              {/* Assignees controls (multi-select) */}
               <div>
                 <label className="block text-sm text-[var(--text2)] mb-1">{t.assignee}</label>
                 <div className="flex items-center gap-2 flex-wrap">
                   <select
-                    className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black"
-                    value={form.assignedToId ?? ''}
+                    multiple
+                    className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-white text-black min-w-[220px] h-28
+                    focus:ring-[var(--primary)]"
+                    value={(form.assigneeIds || []).map((id) => String(id))}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      setForm((f) => ({ ...f, assignedToId: v ? Number(v) : null }));
+                      const options = Array.from(e.target.selectedOptions).map((o) => Number(o.value));
+                      setForm((f) => ({ ...f, assigneeIds: options }));
                     }}
                   >
-                    <option value="">{t.unassigned}</option>
                     {/* company users */}
                     {Array.isArray(companyUsers) && companyUsers.map((u: any) => (
                       <option key={u.id} value={u.id}>
                         {u.name || u.email || `#${u.id}`}
                       </option>
                     ))}
-                    {/* ensure self present */}
+                    {/* ensure self present if not in list */}
                     {me?.id && (!Array.isArray(companyUsers) || !companyUsers.some((u: any) => u.id === me.id)) && (
                       <option value={me.id}>{me.name || me.email || `#${me.id}`}</option>
                     )}
@@ -458,7 +475,7 @@ const TodosPage = () => {
                     description: form.description || undefined,
                     priority: (form.priority as any)?.toUpperCase?.(),
                     dueDate: form.dueDate ? new Date(form.dueDate).toISOString() : undefined,
-                    assignedToId: form.assignedToId ?? undefined,
+                    assigneeIds: Array.isArray(form.assigneeIds) && form.assigneeIds.length ? form.assigneeIds : [],
                   };
                   try {
                     if (editing) {

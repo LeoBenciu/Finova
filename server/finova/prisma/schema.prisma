@@ -28,7 +28,7 @@ model User {
   transferReconciliationsCreated TransferReconciliation[] @relation("TransferCreatedBy")
   // Todos relations
   createdTodos                   TodoItem[]               @relation("User_createdTodos")
-  assignedTodos                  TodoItem[]               @relation("AssignedToUser")
+  todoAssignees                  TodoAssignee[]
 }
 
 model LegalAgreement {
@@ -743,8 +743,7 @@ model TodoItem {
 
   createdById  Int
   createdBy    User  @relation("User_createdTodos", fields: [createdById], references: [id])
-  assignedToId Int?
-  assignedTo   User? @relation("AssignedToUser", fields: [assignedToId], references: [id])
+  assignees    TodoAssignee[]
 
   relatedDocumentId Int?
   relatedDocument   Document? @relation(fields: [relatedDocumentId], references: [id])
@@ -757,4 +756,19 @@ model TodoItem {
   @@index([status])
   @@index([priority])
   @@index([dueDate])
+}
+
+model TodoAssignee {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  todoId Int
+  userId Int
+
+  todo TodoItem @relation(fields: [todoId], references: [id], onDelete: Cascade)
+  user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([todoId, userId])
+  @@index([userId])
+  @@index([todoId])
 }

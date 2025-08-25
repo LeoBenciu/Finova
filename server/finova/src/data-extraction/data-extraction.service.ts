@@ -2401,10 +2401,18 @@ export class DataExtractionService {
               const srcDate = new Date(src.transactionDate);
               let bestCandidate: any = null;
               let bestScore = 0;
+              const dbgSrc = dbg && src.id === '108-0-1755946111414';
+              if (dbgSrc) {
+                this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
+              }
 
               for (const dst of credits) {
-                if (usedDestinationIds.has(dst.id)) continue;
+                if (usedDestinationIds.has(dst.id)) {
+                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: already used`);
+                  continue;
+                }
                 if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
+                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: same account ${src.bankAccount.id}`);
                   // Skip moves within the same account
                   continue;
                 }
@@ -2412,11 +2420,17 @@ export class DataExtractionService {
                 const dstAmt = Math.abs(Number(dst.amount));
                 const amountDiff = Math.abs(srcAmt - dstAmt);
                 const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
-                if (amountDiff > amountTolerance) continue;
+                if (amountDiff > amountTolerance) {
+                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: amountDiff=${amountDiff.toFixed(2)} > tol=${amountTolerance.toFixed(2)} (src=${srcAmt}, dst=${dstAmt})`);
+                  continue;
+                }
 
                 const dstDate = new Date(dst.transactionDate);
                 const daysApart = Math.abs((+srcDate - +dstDate) / (1000 * 60 * 60 * 24));
-                if (daysApart > daysWindow) continue;
+                if (daysApart > daysWindow) {
+                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: daysApart=${Math.round(daysApart)} > ${daysWindow}`);
+                  continue;
+                }
 
                 // Scoring
                 let score = 0.7; // base for amount+date proximity
@@ -2456,6 +2470,7 @@ export class DataExtractionService {
                 if (score > bestScore) {
                   bestScore = score;
                   bestCandidate = { dst, score, amountDiff, daysApart, reasons };
+                  if (dbgSrc) this.logger.warn(`  [✓] candidate dst=${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`);
                 }
               }
 

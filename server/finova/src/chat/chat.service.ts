@@ -122,11 +122,19 @@ export class ChatService {
       child.stdout.on('data', (data: Buffer) => {
         const text = data.toString();
         stdout += text;
+        // Mirror Python stdout to Nest logger at debug level for observability
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim()) this.logger.debug(`[PY][out] ${line}`);
+        }
       });
 
       child.stderr.on('data', (data: Buffer) => {
         const text = data.toString();
         stderr += text;
+        // Mirror Python stderr to Nest logger at warn level
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim()) this.logger.warn(`[PY][err] ${line}`);
+        }
       });
 
       child.on('error', (err) => {

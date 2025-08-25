@@ -1093,12 +1093,14 @@ export const finovaApi = createApi({
         // ==================== TODOS API ====================
         getTodos: build.query<
           { items: any[]; total: number },
-          { clientEin: string; page?: number; size?: number; q?: string; status?: string; priority?: string; assigneeId?: number; dueFrom?: string; dueTo?: string; tags?: string[] }
+          { clientEin: string; page?: number; size?: number; q?: string; status?: string; priority?: string; assigneeId?: number; assigneeIds?: number[]; dueFrom?: string; dueTo?: string; tags?: string[] }
         >({
-          query: ({ clientEin, page = 1, size = 25, q = '', status = 'all', priority = 'all', assigneeId, dueFrom, dueTo, tags }) => {
+          query: ({ clientEin, page = 1, size = 25, q = '', status = 'all', priority = 'all', assigneeId, assigneeIds, dueFrom, dueTo, tags }) => {
             const params = new URLSearchParams({ page: String(page), size: String(size), status, priority });
             if (q) params.append('q', q);
-            if (assigneeId) params.append('assigneeId', String(assigneeId));
+            // Prefer multi-assignee query param when provided; keep backward compatibility with assigneeId
+            if (assigneeIds && assigneeIds.length) params.append('assigneeIds', assigneeIds.join(','));
+            else if (assigneeId) params.append('assigneeId', String(assigneeId));
             if (dueFrom) params.append('dueFrom', dueFrom);
             if (dueTo) params.append('dueTo', dueTo);
             if (tags && tags.length) params.append('tags', tags.join(','));
