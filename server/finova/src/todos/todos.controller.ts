@@ -105,4 +105,17 @@ export class TodosController {
   ) {
     return this.todosService.deleteTodo(clientEin, user, id);
   }
+
+  // Batch reorder endpoint: updates sortOrder for a list of todos
+  @Put(':clientEin/reorder')
+  async reorder(
+    @Param('clientEin') clientEin: string,
+    @GetUser() user: User,
+    @Body()
+    data: {
+      items: Array<{ id: number; sortOrder: number }>;
+    },
+  ) {
+    return this.todosService.reorderTodos(clientEin, user, data.items || []);
+  }
 }

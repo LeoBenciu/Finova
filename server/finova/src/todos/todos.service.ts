@@ -77,7 +77,15 @@ export class TodosService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.todoItem.findMany({
         where,
-        orderBy: [{ status: 'asc' }, { priority: 'desc' }, { dueDate: 'asc' }, { createdAt: 'desc' }],
+        // Primary: sortOrder ASC (custom manual ordering)
+        // Secondary: status/priority/dueDate/createdAt for reasonable defaults
+        orderBy: [
+          { sortOrder: 'asc' as const },
+          { status: 'asc' as const },
+          { priority: 'desc' as const },
+          { dueDate: 'asc' as const },
+          { createdAt: 'desc' as const },
+        ],
         skip: (page - 1) * size,
         take: size,
         include: {
@@ -108,6 +116,13 @@ export class TodosService {
 
     const assigneeIds = (data.assigneeIds && data.assigneeIds.length ? data.assigneeIds : (data.assignedToId ? [data.assignedToId] : [])) as number[];
 
+    // Determine next sortOrder for this client's todos (simple incremental ordering)
+    const maxSort = await this.prisma.todoItem.aggregate({
+      where: { accountingClientId },
+      _max: { sortOrder: true },
+    });
+    const nextSortOrder = (maxSort._max.sortOrder ?? 0) + 1;
+
     const todo = await this.prisma.todoItem.create({
       data: {
         title: data.title,
@@ -120,6 +135,7 @@ export class TodosService {
         createdById: user.id,
         relatedDocumentId: data.relatedDocumentId,
         relatedTransactionId: data.relatedTransactionId,
+        sortOrder: nextSortOrder,
         ...(assigneeIds && assigneeIds.length
           ? { assignees: { create: assigneeIds.map((id) => ({ userId: id })) } }
           : {}),
@@ -198,5 +214,30 @@ export class TodosService {
     });
     if (!todo) throw new NotFoundException('Todo not found');
     return todo;
+  }
+
+  // Batch reorder todos by setting their sortOrder values.
+  async reorderTodos(
+    clientEin: string,
+    user: User,
+    items: Array<{ id: number; sortOrder: number }>,
+  ) {
+    const accountingClientId = await this.resolveAccountingClientIdOrThrow(clientEin, user);
+
+    // Validate that all ids belong to this accounting client
+    const ids = items.map((i) => i.id);
+    const existing = await this.prisma.todoItem.findMany({ where: { id: { in: ids }, accountingClientId }, select: { id: true } });
+    const existingIds = new Set(existing.map((e) => e.id));
+    for (const { id } of items) {
+      if (!existingIds.has(id)) throw new NotFoundException(`Todo ${id} not found`);
+    }
+
+    await this.prisma.$transaction(
+      items.map(({ id, sortOrder }) =>
+        this.prisma.todoItem.update({ where: { id }, data: { sortOrder } }),
+      ),
+    );
+
+    return { updated: items.length };
   }
 }

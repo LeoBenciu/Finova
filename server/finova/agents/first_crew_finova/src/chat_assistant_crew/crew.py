@@ -70,9 +70,9 @@ class ChatAssistantCrew:
     
     @agent
     def chat_agent(self) -> Agent:
-        """Create the main chat agent with optional research tools."""
+        """Create the main chat agent with proper tool configuration."""
         tools = []
-        
+
         # Add Serper research tool if available
         serper_tool = get_serper_tool()
         if serper_tool:
@@ -80,10 +80,11 @@ class ChatAssistantCrew:
             print("Chat agent: Serper research enabled", file=sys.stderr)
         else:
             print("Chat agent: Serper research not available", file=sys.stderr)
-        
+
         # Add backend tools if available
         try:
-            backend_tools = get_backend_tools()
+            from first_crew_finova.tools.backend_tool import get_backend_tools as _get_backend
+            backend_tools = _get_backend()
             if backend_tools:
                 tools.extend(backend_tools)
                 print(f"Chat agent: Backend tools enabled ({len(backend_tools)} tools)", file=sys.stderr)
@@ -93,7 +94,7 @@ class ChatAssistantCrew:
             print(f"Chat agent: Backend tools failed to load: {str(e)}", file=sys.stderr)
 
         # Log available tools for debugging
-        tool_names = [getattr(t, 'name', type(t).__name__) for t in tools]
+        tool_names = [getattr(t, 'name', str(t)) for t in tools]
         print(f"Chat agent initialized with tools: {tool_names}", file=sys.stderr)
 
         agent_config = {
@@ -102,66 +103,84 @@ class ChatAssistantCrew:
                       financial data and documents. Use available tools to fetch live data when appropriate.""",
             'backstory': """You are Finly, an AI Assistant for Finova (a platform for Romanian accounting 
                            companies powered by AI), specialized in Romanian accounting and financial matters. 
-                           You help users with:
-                           - Understanding their financial data
-                           - Finding documents and transactions
-                           - Providing insights and analysis
-                           - Creating and sending emails to customers
-                           - Calculating tax-related items
-                           - Creating tasks and reminders
-                           - Researching accounting sector updates in Romania
-                           
-                           You have access to the user's financial context and can help with
-                           questions about transactions, documents, and financial analysis.""",
+                           You help users with financial data analysis, document retrieval, and accounting insights.""",
             'verbose': True,
+            'allow_delegation': False,
             'tools': tools,
         }
-        
+
         if self.llm:
             agent_config['llm'] = self.llm
         else:
             print("WARNING: No LLM configured for chat agent", file=sys.stderr)
-            
+
         return Agent(**agent_config)
     
     @task
     def process_query_task(self) -> Task:
-        """Create the task for processing user queries."""
+        """Create the task for processing user queries with explicit tool usage."""
         return Task(
             description="""
-            Analyze the user's query and provide a helpful response. Consider the chat history for context.
+            Analyze the user's query and provide a helpful response using available tools when appropriate.
 
-            Guidelines:
-            - If the user asks about this company's financials, use company_financial_info tool with 
-              appropriate topic (summary, accounts, outstanding, balance, audit)
-            - For general Romanian accounting questions, use serper_accounting_research tool
-            - If backend data is unavailable, state that clearly and provide general guidance
-            - Keep answers concise and actionable
-            - Use Romanian when the user's input is in Romanian
-            - Always be helpful and professional as Finly, the Finova AI assistant
+            TOOL USAGE GUIDELINES:
 
-            Available context:
+            1. FINANCIAL DATA REQUESTS:
+               - If user asks about company financials, USE company_financial_info tool
+               - Available topics: 'summary', 'accounts', 'outstanding', 'balance', 'audit'
+               - Example: "Show me financial summary" → use tool with topic='summary'
+
+            2. REAL-TIME INFORMATION:
+               - For current date/time questions, ALWAYS use current_date tool
+               - For accounting research, use serper_accounting_research tool
+
+            3. DOCUMENT REQUESTS:
+               - If user asks for specific documents, USE search_documents tool
+
+            4. EMAIL REQUESTS:
+               - If user wants to send emails, USE send_email tool
+
+            IMPORTANT: Always use tools when relevant data is needed. Don't assume you know current dates or financial data.
+
+            Context:
             - Client Company EIN: {client_company_ein}
             - User Query: {user_query}
             - Chat History: {chat_history}
             """,
             agent=self.chat_agent(),
-            expected_output="A helpful and accurate response to the user's query in appropriate language.",
+            expected_output="A helpful response using appropriate tools when needed. Include actual data from tools.",
+            tools=self.chat_agent().tools
         )
     
     @crew
     def crew(self) -> Crew:
-        """Create the crew for chat processing."""
+        """Create the crew for chat processing with proper tool configuration."""
+        chat_agent_instance = self.chat_agent()
+
         crew_config = {
-            'agents': [self.chat_agent()],
+            'agents': [chat_agent_instance],
             'tasks': [self.process_query_task()],
             'verbose': True,
+            'process': 'sequential',
         }
-        
+
         if self.llm:
             crew_config['manager_llm'] = self.llm
 
         return Crew(**crew_config)
+
+    def check_tools_availability(self):
+        """Debug method to check what tools are available"""
+        try:
+            from first_crew_finova.tools.backend_tool import get_backend_tools
+            backend_tools = get_backend_tools()
+            print(f"Backend tools available: {[t.name for t in backend_tools] if backend_tools else 'None'}")
+        
+            serper_tool = get_serper_tool()
+            print(f"Serper tool available: {serper_tool.name if serper_tool else 'None'}")
+        
+        except Exception as e:
+            print(f"Tool check error: {e}")
     
     def process_message(self, user_query: str) -> str:
         """Process a user message and return a response."""

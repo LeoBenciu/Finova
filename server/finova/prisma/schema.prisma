@@ -736,6 +736,8 @@ model TodoItem {
   priority    TodoPriority @default(MEDIUM)
   dueDate     DateTime?
   tags        String[]
+  // Manual ordering for drag-and-drop sorting (lower comes first)
+  sortOrder   Int          @default(0)
 
   // Scope & relations
   accountingClientId Int
@@ -756,6 +758,7 @@ model TodoItem {
   @@index([status])
   @@index([priority])
   @@index([dueDate])
+  @@index([sortOrder])
 }
 
 model TodoAssignee {

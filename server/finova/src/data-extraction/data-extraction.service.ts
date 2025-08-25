@@ -2366,7 +2366,7 @@ export class DataExtractionService {
           // Transfer suggestions: propose internal transfers between accounts
           // ------------------------------------------------------------------
           try {
-            const dbg = process.env.SUGGESTIONS_DEBUG === '1';
+            const dbg = true;
             const daysWindow = 5; // +/- days to consider as close dates
             const amountTolerancePct = 0.01; // 1%
             const minAmountTolerance = 1; // RON minimum tolerance
@@ -2405,6 +2405,15 @@ export class DataExtractionService {
               if (dbgSrc) {
                 this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
               }
+
+              console.log('🔍 Transfer detection - evaluating transactions:', {
+                sourceId: src.id,
+                sourceAmount: srcAmt,
+                sourceType: src.transactionType,
+                sourceDate: srcDate,
+                sourceAccount: src.bankAccount?.id,
+                destinationCandidates: credits.length
+              });
 
               for (const dst of credits) {
                 if (usedDestinationIds.has(dst.id)) {
