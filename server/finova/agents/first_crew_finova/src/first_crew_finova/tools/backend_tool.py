@@ -102,10 +102,85 @@ class CompanyFinancialInfoTool(BaseTool):
             return f"Error fetching financial info: {str(e)}"
 
 
+class CreateTodoInput(BaseModel):
+    """Inputs for creating a new Todo task for the current client."""
+    title: str = Field(..., description="Short title for the task")
+    description: Optional[str] = Field(default=None, description="Detailed description")
+    status: Optional[str] = Field(default=None, description="pending|in_progress|completed (optional)")
+    priority: Optional[str] = Field(default=None, description="low|medium|high (optional)")
+    dueDate: Optional[str] = Field(default=None, description="ISO date string YYYY-MM-DD (optional)")
+    tags: Optional[List[str]] = Field(default=None, description="List of tags (optional)")
+    assigneeIds: Optional[List[int]] = Field(default=None, description="List of user IDs to assign (optional)")
+    relatedDocumentId: Optional[int] = Field(default=None, description="Related document ID (optional)")
+    relatedTransactionId: Optional[str] = Field(default=None, description="Related bank transaction ID (optional)")
+    client_ein: Optional[str] = Field(default=None, description="Client EIN; if not provided, reads CLIENT_EIN from env")
+
+
+class CreateTodoTool(BaseTool):
+    name: str = "create_todo"
+    description: str = (
+        "Create a new Todo task for the current client (EIN). Provide at minimum a title. "
+        "Optional: description, dueDate (YYYY-MM-DD), priority (low|medium|high), status, tags, assigneeIds."
+    )
+    args_schema: type[CreateTodoInput] = CreateTodoInput
+
+    def _run(
+        self,
+        title: str,
+        description: Optional[str] = None,
+        status: Optional[str] = None,
+        priority: Optional[str] = None,
+        dueDate: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        assigneeIds: Optional[List[int]] = None,
+        relatedDocumentId: Optional[int] = None,
+        relatedTransactionId: Optional[str] = None,
+        client_ein: Optional[str] = None,
+    ) -> str:
+        base = _pick_backend_base()
+        headers = _auth_headers()
+        ein = client_ein or os.getenv("CLIENT_EIN")
+
+        if not ein:
+            return "No client EIN available. Provide client_ein or set CLIENT_EIN in environment."
+        if not base:
+            return "Backend base URL not configured. Set BACKEND_API_URL or BANK_BACKEND_URL."
+        if "Authorization" not in headers:
+            return "No backend JWT available. Set BACKEND_JWT in environment."
+
+        payload: Dict[str, Any] = {"title": title}
+        if description is not None:
+            payload["description"] = description
+        if status is not None:
+            payload["status"] = status
+        if priority is not None:
+            payload["priority"] = priority
+        if dueDate is not None:
+            payload["dueDate"] = dueDate
+        if tags is not None:
+            payload["tags"] = tags
+        if assigneeIds is not None:
+            payload["assigneeIds"] = assigneeIds
+        if relatedDocumentId is not None:
+            payload["relatedDocumentId"] = relatedDocumentId
+        if relatedTransactionId is not None:
+            payload["relatedTransactionId"] = relatedTransactionId
+
+        try:
+            url = f"{base}/todos/{ein}"
+            r = requests.post(url, headers=headers, json=payload, timeout=20)
+            r.raise_for_status()
+            return json.dumps(r.json(), ensure_ascii=False)
+        except requests.exceptions.RequestException as e:
+            return f"Failed to create todo: {str(e)}"
+        except Exception as e:
+            return f"Error creating todo: {str(e)}"
+
+
 def get_backend_tools() -> List[BaseTool]:
     """Return available backend tools based on env. Empty if missing config."""
     base = _pick_backend_base()
     headers = _auth_headers()
     if not base or "Authorization" not in headers:
         return []
-    return [CompanyFinancialInfoTool()]
+    return [CompanyFinancialInfoTool(), CreateTodoTool()]

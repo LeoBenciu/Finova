@@ -154,13 +154,15 @@ export class ChatService {
           try { fs.unlinkSync(tempHistoryPath); } catch {}
         }
         // Parse the assistant reply from stdout
-        // Look for the last line that starts with "Assistant: "
-        const lines = stdout.split(/\r?\n/).map((l) => l.trim());
+        // Capture the entire block after the last line that starts with "Assistant:"
+        const rawLines = stdout.split(/\r?\n/);
         let reply = '';
-        for (let i = lines.length - 1; i >= 0; i--) {
-          const line = lines[i];
+        for (let i = rawLines.length - 1; i >= 0; i--) {
+          const line = rawLines[i].trim();
           if (line.toLowerCase().startsWith('assistant:')) {
-            reply = line.replace(/^assistant:\s*/i, '');
+            // Join from this line to the end, while stripping the label only on the first line
+            const block = rawLines.slice(i).join('\n');
+            reply = block.replace(/^[ \t]*assistant:\s*/i, '');
             break;
           }
         }

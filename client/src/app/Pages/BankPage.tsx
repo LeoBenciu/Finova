@@ -2132,21 +2132,64 @@ const BankPage = () => {
   // Suggestions displayed in UI, filtered by selected bank account (if any) and local removals
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
-    if (!selectedBankAccountId) {
-      const result = base.filter(s => !removedSuggestions.has(String(s.id)));
-      const transfers = result.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
-      console.log('[UI] displayedSuggestions (no account filter)', { base: base.length, removed: removedSuggestions.size, result: result.length, transfers: transfers.length });
-      return result;
-    }
-    const result = base.filter(s => {
+
+    // Step 1: apply local removal and (if any) account filter
+    const prelim = base.filter((s: any) => {
       if (removedSuggestions.has(String(s.id))) return false;
-      // If suggestion has a bankTransaction, ensure it belongs to selected account
-      const txnId = (s as any).bankTransaction?.id;
-      return !txnId || accountTransactionIdSet.has(txnId);
+      if (selectedBankAccountId) {
+        // For TRANSFER suggestions, keep if either side of the pair belongs to the selected account
+        if (s?.matchingCriteria?.type === 'TRANSFER') {
+          const srcId = s?.transfer?.sourceTransactionId;
+          const dstId = s?.transfer?.destinationTransactionId;
+          const srcMatch = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
+          const dstMatch = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
+          if (!srcMatch && !dstMatch) return false;
+        } else {
+          const txnId = s.bankTransaction?.id;
+          if (txnId && !accountTransactionIdSet.has(txnId)) return false;
+        }
+      }
+      return true;
     });
-    const transfers = result.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
-    console.log('[UI] displayedSuggestions (with account filter)', { base: base.length, removed: removedSuggestions.size, selectedBankAccountId, result: result.length, transfers: transfers.length });
-    return result;
+
+    // Step 2: prefer unified TRANSFER suggestions and hide any other suggestions
+    // that involve the same source/destination transactions.
+    const transferItems = prelim.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
+    const involvedTxnIds = new Set<string>();
+    for (const t of transferItems) {
+      if (t?.transfer?.sourceTransactionId) involvedTxnIds.add(String(t.transfer.sourceTransactionId));
+      if (t?.transfer?.destinationTransactionId) involvedTxnIds.add(String(t.transfer.destinationTransactionId));
+    }
+
+    const nonTransferKept = prelim.filter((s: any) => {
+      if (s?.matchingCriteria?.type === 'TRANSFER') return true; // keep transfers
+      const txnId = s?.bankTransaction?.id;
+      // If this suggestion is tied to any transaction that is part of a transfer pair, hide it
+      if (txnId && involvedTxnIds.has(String(txnId))) return false;
+      return true;
+    });
+
+    const transfersCount = nonTransferKept.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER').length;
+    if (!selectedBankAccountId) {
+      console.log('[UI] displayedSuggestions (no account filter)', {
+        base: base.length,
+        removed: removedSuggestions.size,
+        prelim: prelim.length,
+        transfers: transfersCount,
+        hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+      });
+    } else {
+      console.log('[UI] displayedSuggestions (with account filter)', {
+        base: base.length,
+        removed: removedSuggestions.size,
+        selectedBankAccountId,
+        prelim: prelim.length,
+        transfers: transfersCount,
+        hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+      });
+    }
+
+    return nonTransferKept;
   }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
   useEffect(() => {
@@ -3940,6 +3983,20 @@ const BankPage = () => {
                             {suggestion.matchingCriteria?.type === 'TRANSFER'
                               ? (language === 'ro' ? 'Tranzacție contraparte' : 'Counterparty Transaction')
                               : suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
+                            {(() => {
+                              const isTransfer = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
+                              if (!isTransfer) return null;
+                              const isSourceSide = String(suggestion.bankTransaction?.id) === String(suggestion.transfer!.sourceTransactionId);
+                              const role = isSourceSide ? (language === 'ro' ? 'Destinație' : 'Destination') : (language === 'ro' ? 'Sursă' : 'Source');
+                              return (
+                                <span
+                                  title={language === 'ro' ? 'Rolul tranzacției în transfer' : 'Transaction role in transfer'}
+                                  className={`ml-2 align-middle inline-block px-2 py-0.5 text-[10px] rounded-full ${isSourceSide ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}
+                                >
+                                  {role}
+                                </span>
+                              );
+                            })()}
                           </p>
                           {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
                             <button
@@ -4131,7 +4188,23 @@ const BankPage = () => {
                       
                       <div className="p-3 bg-white rounded-lg border border-gray-200">
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-semibold text-[var(--text1)]">Tranzacție</p>
+                          <p className="text-sm font-semibold text-[var(--text1)]">
+                            Tranzacție
+                            {(() => {
+                              const isTransfer = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
+                              if (!isTransfer) return null;
+                              const isSourceSide = String(suggestion.bankTransaction?.id) === String(suggestion.transfer!.sourceTransactionId);
+                              const role = isSourceSide ? (language === 'ro' ? 'Sursă' : 'Source') : (language === 'ro' ? 'Destinație' : 'Destination');
+                              return (
+                                <span
+                                  title={language === 'ro' ? 'Rolul tranzacției în transfer' : 'Transaction role in transfer'}
+                                  className={`ml-2 align-middle inline-block px-2 py-0.5 text-[10px] rounded-full ${isSourceSide ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}
+                                >
+                                  {role}
+                                </span>
+                              );
+                            })()}
+                          </p>
                           {suggestion.bankTransaction && (
                             <button
                               onClick={() => {

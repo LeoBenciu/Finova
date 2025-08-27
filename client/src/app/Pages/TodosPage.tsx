@@ -108,6 +108,7 @@ const TodosPage = () => {
   const [ordered, setOrdered] = useState<any[]>([]);
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [reorderTodos] = useReorderTodosMutation();
+  const [reordering, setReordering] = useState<boolean>(false);
 
   // Initialize/refresh local ordered list when data changes
   useEffect(() => {
@@ -147,14 +148,23 @@ const TodosPage = () => {
   const onDrop = async (_e: React.DragEvent) => {
     if (!clientEin) return;
     const curr = ordered.slice();
-    // Recompute contiguous sortOrder starting at 1
-    const payload = curr.map((x, idx) => ({ id: x.id as number, sortOrder: idx + 1 }));
+    // Compute a base offset to preserve global ordering across pages
+    // Prefer the smallest existing sortOrder within the current list; fallback to page window
+    const existingOrders = curr
+      .map((x: any) => (typeof x.sortOrder === 'number' ? x.sortOrder : undefined))
+      .filter((v: any) => typeof v === 'number') as number[];
+    const pageBaseFallback = (page - 1) * size + 1;
+    const base = existingOrders.length ? Math.min(...existingOrders) : pageBaseFallback;
+    // Build payload keeping a contiguous sequence starting from base
+    const payload = curr.map((x, idx) => ({ id: x.id as number, sortOrder: base + idx }));
     try {
+      setReordering(true);
       await reorderTodos({ clientEin, items: payload } as any).unwrap();
     } catch (err) {
       console.error('Failed to reorder todos', err);
     } finally {
       setDraggingId(null);
+      setReordering(false);
     }
   };
   const total: number = (data as any)?.total ?? items.length ?? 0;
@@ -317,8 +327,8 @@ const TodosPage = () => {
             {language === 'ro' ? 'Eroare la încărcare.' : 'Failed to load.'}
           </div>
             )}
-            {(isLoading || isFetching) && (
-            <LoadingComponent/>
+            {(isLoading || isFetching) && !reordering && (
+              <LoadingComponent/>
             )}
             {!isLoading && !isFetching && items.length === 0 ? (
               <div className="p-10 text-center text-[var(--text2)] bg-white rounded-xl border border-[var(--text4)]">
@@ -363,7 +373,7 @@ const TodosPage = () => {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <div
-                              className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border ${statusLc(item.status)==='completed' ? 'border-green-500 text-green-600' : 'border-gray-300 text-gray-400'} hover:bg-green-50`}
+                              className={`shrink-0 inline-flex items-center cursor-pointer justify-center w-5 h-5 rounded-full border ${statusLc(item.status)==='completed' ? 'border-green-500 text-green-600' : 'border-gray-300 text-gray-400'} hover:bg-green-50`}
                               onClick={async () => {
                                 try {
                                   const isCompleted = statusLc(item.status) === 'completed';
@@ -632,7 +642,7 @@ const TodosPage = () => {
                                 <span className="text-sm max-w-[120px] truncate text-white" title={label}>{label}</span>
                                 <button
                                   type="button"
-                                  className="p-0 hover:text-red-500 bg-red-500 text-white hover:bg-red-200"
+                                  className="p-0 hover:text-red-500 bg-white text-red-500 hover:bg-red-200"
                                   onClick={() => setForm((f) => ({ ...f, assigneeIds: (f.assigneeIds || []).filter((x) => x !== id) }))}
                                   aria-label="remove-assignee"
                                 >
@@ -696,7 +706,7 @@ const TodosPage = () => {
                     </div>
 
                     {assigneeOpen && (
-                      <div ref={assigneeListRef} className="absolute z-10 mt-1 w-full max-h-64 overflow-auto bg-white border border-[var(--text4)] rounded-lg shadow-lg">
+                      <div ref={assigneeListRef} className="absolute z-10 px-[2px] overflow-x-hidden mt-1 w-full max-h-64 overflow-auto bg-white border border-[var(--text4)] rounded-lg shadow-lg">
                         {filteredAssigneeUsers.length === 0 ? (
                           <div className="p-3 text-sm text-[var(--text3)]">{language==='ro'?'Niciun rezultat':'No results'}</div>
                         ) : (
@@ -713,7 +723,8 @@ const TodosPage = () => {
                                 role="option"
                                 aria-selected={highlighted}
                                 className={`w-full bg-white hover:text-white text-black
-                                   text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] my-1 
+                                   text-left px-3 py-2 flex items-center gap-2 
+                                   hover:bg-[var(--primaryLow)] my-1 
                                    ${selected ? 'bg-[var(--primaryLow)]' : ''} mx-1`}
                                 onMouseEnter={() => setAssigneeHighlighted(idx)}
                                 onClick={() => {
