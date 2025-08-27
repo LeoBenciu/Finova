@@ -2424,7 +2424,7 @@ export class DataExtractionService {
               const srcDate = new Date(src.transactionDate);
               let bestCandidate: any = null;
               let bestScore = 0;
-              const dbgSrc = dbg && src.id === '108-0-1755946111414';
+              const dbgSrc = dbg && src.id === '111-0-1756209938791';
               if (dbgSrc) {
                 this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
               }
@@ -2538,12 +2538,13 @@ export class DataExtractionService {
                 usedDestinationIds.add(dst.id);
 
                 const mc = {
+                  type: 'TRANSFER',
                   transfer: {
                     destinationTransactionId: dst.id,
                     amountDiff: Number(amountDiff.toFixed(2)),
                     daysApart: Math.round(daysApart),
                   },
-                };
+                } as any;
 
                 transferSuggestions.push({
                   documentId: null,

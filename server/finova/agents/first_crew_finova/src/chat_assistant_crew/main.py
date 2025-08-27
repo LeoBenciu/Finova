@@ -72,17 +72,24 @@ def main():
             except Exception as e:
                 print(f"\nError: {e}\n")
     else:
-        # Single message mode
+        # Single message mode (non-interactive): read one message from stdin safely
         if not args.chat_history:
             print("No chat history provided. Starting a new conversation.")
-        
-        while True:
-            user_input = input("\nEnter your message (or press Enter to exit): ").strip()
-            if not user_input:
-                break
-                
+
+        try:
+            # Read one line from stdin written by the Node process
+            import sys
+            raw = sys.stdin.readline()
+            user_input = (raw or "").strip()
+        except Exception:
+            user_input = ""
+
+        if user_input:
             response = chat_crew.process_message(user_input)
             print(f"\nAssistant: {response}")
+        else:
+            # Graceful no-input behavior to avoid non-zero exit & Node fallback
+            print("Assistant: No input provided.")
     
     # Save chat history if needed
     if args.chat_history:

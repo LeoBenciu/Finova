@@ -16,6 +16,12 @@ export class UserController {
         return this.userService.getMyDetails(user);
     }
 
+    @Get('/company')
+    getCompanyUsers(@Req() req: Request){
+        const user = req.user as User;
+        return this.userService.getCompanyUsers(user);
+    }
+
     @Put('/me')
     updateMyAccount(@Req() req: Request, @Body() dto:UpdateUserDto)
     { 

@@ -346,7 +346,8 @@ const TodosPage = () => {
                 role="list"
                 aria-label="todos-list"
               >
-                {ordered.map((item: any) => (
+                {(!isLoading || !isFetching) &&
+                ordered.map((item: any) => (
                   <div
                     key={item.id}
                     role="listitem"
@@ -361,8 +362,7 @@ const TodosPage = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            <button
-                              type="button"
+                            <div
                               className={`shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full border ${statusLc(item.status)==='completed' ? 'border-green-500 text-green-600' : 'border-gray-300 text-gray-400'} hover:bg-green-50`}
                               onClick={async () => {
                                 try {
@@ -386,10 +386,9 @@ const TodosPage = () => {
                               role="checkbox"
                               aria-checked={statusLc(item.status)==='completed'}
                               aria-label={statusLc(item.status)==='completed' ? (language==='ro'?'Marchează ca nefinalizat':'Mark as pending') : (language==='ro'?'Marchează ca finalizat':'Mark as completed')}
-                              disabled={updating}
                             >
                               {statusLc(item.status)==='completed' ? <CheckCircle size={16} /> : <Circle size={16} />}
-                            </button>
+                            </div>
                             <h3 className="font-semibold text-left truncate" title={item.title}>{item.title}</h3>
                           </div>
                           <div className="flex items-center gap-2">
@@ -630,10 +629,10 @@ const TodosPage = () => {
                             return (
                               <span key={id} className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-[var(--primary-foreground)] text-black border border-[var(--text4)]">
                                 <span className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] text-white" style={{ backgroundColor: av.color }}>{av.initials}</span>
-                                <span className="text-sm max-w-[120px] truncate" title={label}>{label}</span>
+                                <span className="text-sm max-w-[120px] truncate text-white" title={label}>{label}</span>
                                 <button
                                   type="button"
-                                  className="p-0 text-[var(--text2)] hover:text-red-500"
+                                  className="p-0 hover:text-red-500 bg-red-500 text-white hover:bg-red-200"
                                   onClick={() => setForm((f) => ({ ...f, assigneeIds: (f.assigneeIds || []).filter((x) => x !== id) }))}
                                   aria-label="remove-assignee"
                                 >
@@ -714,7 +713,8 @@ const TodosPage = () => {
                                 role="option"
                                 aria-selected={highlighted}
                                 className={`w-full bg-white hover:text-white text-black
-                                   text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] my-1 ${selected ? 'bg-[var(--primaryLow)]' : ''} ${highlighted ? 'ring-1 ring-[var(--primary)]' : ''}`}
+                                   text-left px-3 py-2 flex items-center gap-2 hover:bg-[var(--primary-foreground)] my-1 
+                                   ${selected ? 'bg-[var(--primaryLow)]' : ''} mx-1`}
                                 onMouseEnter={() => setAssigneeHighlighted(idx)}
                                 onClick={() => {
                                   setForm((f) => {

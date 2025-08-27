@@ -45,7 +45,8 @@ class CompanyFinancialInfoTool(BaseTool):
         "Fetch company financial info for the current client (EIN) from the Finova backend. "
         "Supports topics: summary, accounts, outstanding, balance, audit."
     )
-    args_schema = FinancialInfoInput
+    # Pydantic v2 requires annotated override for class attributes inherited from BaseModel-based parents
+    args_schema: type[FinancialInfoInput] = FinancialInfoInput
 
     def _run(self, topic: str, client_ein: Optional[str] = None) -> str:
         base = _pick_backend_base()

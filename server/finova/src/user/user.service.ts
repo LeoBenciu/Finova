@@ -567,4 +567,29 @@ export class UserService {
             throw new InternalServerErrorException('Failed to update subfolder');
         }        
     }
+
+    // List all users belonging to the same accounting company as the authenticated user
+    async getCompanyUsers(user: User) {
+        try {
+            if (!user || !user.accountingCompanyId) {
+                throw new BadRequestException('Authenticated user has no accounting company associated');
+            }
+
+            const users = await this.prisma.user.findMany({
+                where: { accountingCompanyId: user.accountingCompanyId },
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true
+                }
+            });
+
+            return users;
+        } catch (e) {
+            if (e instanceof BadRequestException) throw e;
+            console.error('Failed to fetch company users:', e);
+            throw new InternalServerErrorException('Failed to fetch company users');
+        }
+    }
 }
