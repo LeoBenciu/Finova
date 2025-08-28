@@ -7,6 +7,7 @@ import { PostingModule } from 'src/accounting/posting.module';
 @Module({
   imports: [DataExtractionModule, PostingModule],
   providers: [BankService],
-  controllers: [BankController]
+  controllers: [BankController],
+  exports: [BankService]
 })
 export class BankModule {}
