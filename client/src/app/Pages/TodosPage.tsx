@@ -112,11 +112,13 @@ const TodosPage = () => {
 
   // Initialize/refresh local ordered list when data changes
   useEffect(() => {
+    // While a reorder mutation is in-flight, avoid resetting local order from network/cache
+    if (reordering) return;
     if (!items || !items.length) {
       setOrdered([]);
       return;
     }
-    // Sort by sortOrder if present, else stable by current index
+    // Sort by sortOrder if present, else stable by current index (undefined orders go last)
     const withIndex = items.map((it: any, idx: number) => ({ ...it, __idx: idx }));
     withIndex.sort((a: any, b: any) => {
       const sa = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
@@ -125,7 +127,7 @@ const TodosPage = () => {
       return a.__idx - b.__idx;
     });
     setOrdered(withIndex.map(({ __idx, ...rest }) => rest));
-  }, [items]);
+  }, [items, reordering]);
 
   const onDragStart = (e: React.DragEvent, id: number) => {
     setDraggingId(id);
@@ -169,7 +171,7 @@ const TodosPage = () => {
   };
   const total: number = (data as any)?.total ?? items.length ?? 0;
 
-  console.log("ITEMS:",items)
+  // removed debug log
 
   // Company users for assignee dropdown (optional endpoint)
   const { data: companyUsers } = useGetCompanyUsersQuery();
@@ -702,7 +704,7 @@ const TodosPage = () => {
                           }
                         }}
                       />
-                      <span className="text-xs text-[var(--text3)]">{(form.assigneeIds || []).length} selected</span>
+                      <span className="text-xs text-[var(--text3)]">{(form.assigneeIds || []).length} {language==='ro'?'selectați':'selected'}</span>
                     </div>
 
                     {assigneeOpen && (

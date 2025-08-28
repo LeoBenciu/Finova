@@ -58,7 +58,9 @@ import {
   // Transfer Reconciliation API hooks
   useCreateTransferReconciliationMutation,
   useGetPendingTransferReconciliationsQuery,
-  useDeleteTransferReconciliationMutation
+  useDeleteTransferReconciliationMutation,
+  // Accounting / Ledger
+  useGetLedgerEntriesQuery
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
@@ -1815,6 +1817,21 @@ const getDocumentDate = (doc: Document): string => {
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const clientCompanyEin = useSelector((state: {clientCompany: {current: {ein: string}}}) => state.clientCompany.current.ein);
+  // Fetch ledger entries for current client for validation
+  const { data: ledgerData, error: ledgerError, isLoading: ledgerLoading } = useGetLedgerEntriesQuery(
+    clientCompanyEin ? { clientEin: clientCompanyEin, page: 1, size: 20 } : ({} as any),
+    { skip: !clientCompanyEin }
+  );
+
+  // Log results for testing & validation
+  useEffect(() => {
+    if (ledgerLoading) return;
+    if (ledgerError) {
+      console.error('[Ledger] Error fetching ledger entries:', ledgerError);
+    } else if (ledgerData) {
+      console.log('[Ledger] Fetched ledger entries:', ledgerData);
+    }
+  }, [ledgerData, ledgerError, ledgerLoading]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
   const [excludeOutstanding, setExcludeOutstanding] = useState<boolean>(true);
@@ -2134,14 +2151,13 @@ const BankPage = () => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const hasAccountFilterReady = !!selectedBankAccountId && accountTransactionIdSet.size > 0;
 
-    // Step 1: apply local removal and (if any) account filter
     const prelim = base.filter((s: any) => {
       if (removedSuggestions.has(String(s.id))) return false;
       if (hasAccountFilterReady) {
-        // For TRANSFER suggestions, keep if either side of the pair belongs to the selected account
-        if (s?.matchingCriteria?.type === 'TRANSFER') {
-          const srcId = s?.transfer?.sourceTransactionId;
-          const dstId = s?.transfer?.destinationTransactionId;
+        const isTransfer = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer && s.transfer.sourceTransactionId && s.transfer.destinationTransactionId;
+        if (isTransfer) {
+          const srcId = s.transfer.sourceTransactionId;
+          const dstId = s.transfer.destinationTransactionId;
           const srcMatch = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
           const dstMatch = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
           if (!srcMatch && !dstMatch) return false;
@@ -2153,9 +2169,12 @@ const BankPage = () => {
       return true;
     });
 
-    // Step 2: prefer unified TRANSFER suggestions and hide any other suggestions
-    // that involve the same source/destination transactions.
-    const transferItems = prelim.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER');
+    const transferItems = prelim.filter((s: any) => {
+      if (s?.matchingCriteria?.type !== 'TRANSFER' || !s?.transfer) return false;
+      const src = s.transfer?.sourceTransactionId;
+      const dst = s.transfer?.destinationTransactionId;
+      return Boolean(src && dst);
+    });
     const involvedTxnIds = new Set<string>();
     for (const t of transferItems) {
       if (t?.transfer?.sourceTransactionId) involvedTxnIds.add(String(t.transfer.sourceTransactionId));
@@ -2163,14 +2182,14 @@ const BankPage = () => {
     }
 
     const nonTransferKept = prelim.filter((s: any) => {
-      if (s?.matchingCriteria?.type === 'TRANSFER') return true; // keep transfers
+      const isValidTransfer = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer && s.transfer.sourceTransactionId && s.transfer.destinationTransactionId;
+      if (isValidTransfer) return true; // keep valid transfers
       const txnId = s?.bankTransaction?.id;
-      // If this suggestion is tied to any transaction that is part of a transfer pair, hide it
       if (txnId && involvedTxnIds.has(String(txnId))) return false;
       return true;
     });
 
-    const transfersCount = nonTransferKept.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER').length;
+    const transfersCount = nonTransferKept.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer).length;
     if (!selectedBankAccountId) {
       console.log('[UI] displayedSuggestions (no account filter)', {
         base: base.length,
@@ -2200,14 +2219,12 @@ const BankPage = () => {
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
-      // Documents data loaded successfully
       setDocumentsData(prev => documentsPage === 1 ? documentsItems : [...prev, ...documentsItems]);
     }
   }, [documentsItems]);
   useEffect(() => {
     if (transactionsPage === 1) setTransactionsData([]);
     if (transactionsItems.length) {
-      // Transactions data loaded successfully
       setTransactionsData(prev => transactionsPage === 1 ? transactionsItems : [...prev, ...transactionsItems]);
     }
   }, [transactionsItems]);
@@ -2221,7 +2238,6 @@ const BankPage = () => {
   }, [suggestionsItems]);
 
   useEffect(() => {
-    // Log aggregated view when local data changes
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const transfers = (base as any[]).filter(s => s?.matchingCriteria?.type === 'TRANSFER');
     console.log('[UI] suggestionsData aggregate', { total: base.length, transfers: transfers.length, removedLocal: removedSuggestions.size });
@@ -4011,7 +4027,7 @@ const BankPage = () => {
                                   window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
                                 }
                               }}
-                              disabled={!(suggestion.transfer.counterpartyTransaction as any)?.bankStatementDocument?.signedUrl}
+                              disabled={!((suggestion.transfer.counterpartyTransaction as any)?.bankStatementDocument?.signedUrl)}
                               className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                               title={language === 'ro' ? 'Vezi extrasul băncii (contraparte)' : 'View bank statement (counterparty)'}
                             >
@@ -4034,18 +4050,32 @@ const BankPage = () => {
                           )}
                         </div>
                         {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
-                          <>
-                            <p className="text-sm text-[var(--text2)] truncate">{suggestion.transfer.counterpartyTransaction.description}</p>
-                            <p className="text-xs text-[var(--text3)]">{formatDate(suggestion.transfer.counterpartyTransaction.transactionDate)}</p>
-                            <p className={`text-sm font-medium ${suggestion.transfer.counterpartyTransaction.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
-                              {(suggestion.transfer.counterpartyTransaction.transactionType === 'credit' ? '+' : '') + formatCurrency(Math.abs(suggestion.transfer.counterpartyTransaction.amount))}
-                            </p>
-                            {suggestion.transfer.crossCurrency && (
-                              <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full mt-1">
-                                FX {suggestion.transfer.impliedFxRate}
-                              </span>
-                            )}
-                          </>
+                          (() => {
+                            const cp: any = suggestion.transfer.counterpartyTransaction;
+                            if (cp && typeof cp === 'object') {
+                              return (
+                                <>
+                                  <p className="text-sm text-[var(--text2)] truncate">{cp.description}</p>
+                                  <p className="text-xs text-[var(--text3)]">{formatDate(cp.transactionDate)}</p>
+                                  <p className={`text-sm font-medium ${cp.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
+                                    {(cp.transactionType === 'credit' ? '+' : '') + formatCurrency(Math.abs(cp.amount))}
+                                  </p>
+                                  {suggestion.transfer.crossCurrency && (
+                                    <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full mt-1">
+                                      FX {suggestion.transfer.impliedFxRate}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            }
+                            // Fallback placeholder when details are not available
+                            return (
+                              <div className="text-sm text-[var(--text3)]">
+                                <p className="italic">{language === 'ro' ? 'Detalii indisponibile' : 'Details unavailable'}</p>
+                                <p className="mt-1">ID: {suggestion.transfer.sourceTransactionId ? String(suggestion.transfer.sourceTransactionId) : '-'} → {suggestion.transfer.destinationTransactionId ? String(suggestion.transfer.destinationTransactionId) : '-'}</p>
+                              </div>
+                            );
+                          })()
                         ) : suggestion.document ? (
                           <>
                             <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>

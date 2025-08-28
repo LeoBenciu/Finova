@@ -14,6 +14,7 @@ import { UipathModule } from './uipath/uipath.module';
 import { BankModule } from './bank/bank.module';
 import { ChatModule } from './chat/chat.module';
 import { TodosModule } from './todos/todos.module';
+import { AccountingModule } from './accounting/accounting.module';
 
 @Module({
   imports: [
@@ -34,7 +35,9 @@ import { TodosModule } from './todos/todos.module';
     BankModule,
     ChatModule,
     TodosModule,
+    AccountingModule,
    ],
 })
 export class AppModule {}
+
 

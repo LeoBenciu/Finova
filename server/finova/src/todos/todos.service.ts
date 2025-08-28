@@ -62,6 +62,44 @@ export class TodosService {
     return Array.from(ids);
   }
 
+  // Attempt to conservatively parse assignees from a free-text description.
+  // Supported patterns (case-insensitive):
+  //  - "assignee: john doe, jane@example.com"
+  //  - "assigned to: john doe"
+  // If found and no assignees were explicitly provided, return extracted names/emails and a cleaned description.
+  private parseAssigneesFromDescription(desc?: string): {
+    names: string[];
+    emails: string[];
+    cleaned: string | undefined;
+  } {
+    if (!desc) return { names: [], emails: [], cleaned: desc };
+    const lines = desc.split(/\r?\n/);
+    const names: string[] = [];
+    const emails: string[] = [];
+    const outLines: string[] = [];
+    const re = /^(assignee|assigned\s*to)\s*:\s*(.+)$/i;
+    for (const line of lines) {
+      const m = line.match(re);
+      if (!m) {
+        outLines.push(line);
+        continue;
+      }
+      const payload = m[2];
+      // split by comma and trim
+      const parts = payload
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        // crude email vs name split
+        if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(p)) emails.push(p);
+        else names.push(p);
+      }
+    }
+    const cleaned = outLines.join('\n').trim() || undefined;
+    return { names, emails, cleaned };
+  }
+
   private async resolveAccountingClientIdOrThrow(clientEin: string, user: User) {
     const ac = await this.prisma.accountingClients.findFirst({
       where: {
@@ -172,6 +210,20 @@ export class TodosService {
   }) {
     const accountingClientId = await this.resolveAccountingClientIdOrThrow(clientEin, user);
 
+    // If no explicit assignees provided, try to parse from description directive
+    let parsed = { names: [] as string[], emails: [] as string[], cleaned: data.description };
+    const hasExplicitAssignees =
+      (data.assigneeIds && data.assigneeIds.length) ||
+      data.assignedToId !== undefined ||
+      (data.assigneeNames && data.assigneeNames.length) ||
+      (data.assigneeEmails && data.assigneeEmails.length);
+    if (!hasExplicitAssignees) {
+      parsed = this.parseAssigneesFromDescription(data.description);
+      if ((parsed.names.length || parsed.emails.length) && parsed.cleaned !== undefined) {
+        data = { ...data, description: parsed.cleaned, assigneeNames: parsed.names, assigneeEmails: parsed.emails } as any;
+      }
+    }
+
     const assigneeIds = await this.resolveAssigneeIds(user, {
       assigneeIds: data.assigneeIds,
       assignedToId: data.assignedToId,
@@ -187,6 +239,27 @@ export class TodosService {
     const nextSortOrder = (maxSort._max.sortOrder ?? 0) + 1;
 
     const normalizedPriority = this.normalizePriority((data as any).priority);
+
+    // Idempotency/deduplication: if an identical todo was created recently, return it instead.
+    const now = new Date();
+    const windowStart = new Date(now.getTime() - 15_000); // 15 seconds window
+    const existing = await this.prisma.todoItem.findFirst({
+      where: {
+        accountingClientId,
+        createdById: user.id,
+        title: data.title,
+        description: data.description ?? null,
+        status: (data.status ?? 'PENDING') as TodoStatus,
+        priority: (normalizedPriority ?? 'MEDIUM') as TodoPriority,
+        dueDate: data.dueDate ? new Date(data.dueDate) : null,
+        relatedDocumentId: data.relatedDocumentId ?? null,
+        relatedTransactionId: data.relatedTransactionId ?? null,
+        createdAt: { gte: windowStart },
+      },
+    });
+    if (existing) {
+      return existing;
+    }
 
     const todo = await this.prisma.todoItem.create({
       data: {

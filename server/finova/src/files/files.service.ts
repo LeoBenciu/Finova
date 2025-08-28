@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException, Unauthoriz
 import { ArticleType, User, CorrectionType, DuplicateStatus, DuplicateType, VatRate, UnitOfMeasure, Document, ComplianceStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataExtractionService } from '../data-extraction/data-extraction.service';
+import { PostingService } from '../accounting/posting.service';
 import * as AWS from 'aws-sdk';
 import * as crypto from 'crypto';
 
@@ -75,8 +76,59 @@ interface SmartArticleResult {
 export class FilesService {
     constructor(
         private prisma: PrismaService,
-        private dataExtractionService: DataExtractionService
+        private dataExtractionService: DataExtractionService,
+        private postingService: PostingService
     ) {}
+
+        // Extract monetary amount from processed data for posting
+        private extractAmountFromProcessed(processedData: any): number {
+            try {
+                const r = (processedData?.result ?? processedData) || {};
+                const candidates = [
+                    r.total_amount,
+                    r.total_sales,
+                    r.amount,
+                    r.grand_total,
+                    r.total,
+                    r.paid_amount,
+                    r.net_total,
+                ];
+                for (const val of candidates) {
+                    if (val === undefined || val === null) continue;
+                    if (typeof val === 'number' && isFinite(val)) return Number(val);
+                    if (typeof val === 'string') {
+                        const cleaned = val.replace(/[^0-9,.-]/g, '').replace(',', '.');
+                        const n = Number.parseFloat(cleaned);
+                        if (!Number.isNaN(n) && isFinite(n)) return n;
+                    }
+                }
+                return 0;
+            } catch {
+                return 0;
+            }
+        }
+
+        // Extract posting date from processed data
+        private extractDateFromProcessed(processedData: any): Date | null {
+            try {
+                const r = (processedData?.result ?? processedData) || {};
+                const candidates = [
+                    r.document_date,
+                    r.issue_date,
+                    r.date,
+                    r.receipt_date,
+                    r.posting_date,
+                ];
+                for (const v of candidates) {
+                    if (!v) continue;
+                    const d = new Date(v);
+                    if (!isNaN(d.getTime())) return d;
+                }
+                return null;
+            } catch {
+                return null;
+            }
+        }
 
         private async syncReferences(prisma: any, cluster: number[]): Promise<void> {
             console.log(`🔁 syncReferences cluster=${JSON.stringify(cluster)}`);
@@ -1222,7 +1274,157 @@ export class FilesService {
                 }
     
                 console.log(`[AUDIT] Document ${document.id} created by user ${currentUser.id} for company ${currentUser.accountingCompanyId} and client ${clientCompany.ein}`);
-    
+
+                // Trigger cash receipt ledger posting (idempotent) if applicable
+                try {
+                    const docType = (document.type || '').toLowerCase();
+                    const docHasRefs = Array.isArray(document.references) && document.references.length > 0;
+                    if (docType === 'receipt' && docHasRefs) {
+                        const amount = this.extractAmountFromProcessed(processedData);
+                        if (amount && amount > 0) {
+                            const postingDate = this.extractDateFromProcessed(processedData) || new Date();
+                            const postingKey = `DOC:${document.id}:RECEIPT:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            // 5311 Cash in hand (Debit), 411 Clients (Credit)
+                            const entries = [
+                                { accountCode: '5311', debit: amount },
+                                { accountCode: '411', credit: amount }
+                            ];
+                            // Fire-and-forget to avoid blocking upload flow
+                            setTimeout(async () => {
+                                try {
+                                    await this.postingService.postEntries({
+                                        accountingClientId: accountingClientRelation.id,
+                                        postingDate,
+                                        entries,
+                                        sourceType: 'RECEIPT',
+                                        sourceId: String(document.id),
+                                        postingKey,
+                                        links: { documentId: document.id }
+                                    });
+                                    console.log(`[LEDGER] Posted cash receipt for document ${document.id} amount ${amount}`);
+                                } catch (postErr) {
+                                    console.warn(`[LEDGER_WARN] Failed to post cash receipt for document ${document.id}:`, postErr?.message || postErr);
+                                }
+                            }, 0);
+                        } else {
+                            console.log(`[LEDGER] Skipped posting for receipt ${document.id}: no parsable positive amount`);
+                        }
+                    }
+
+                    // Payment Order (vendor payment): Debit 401 / Credit 5121
+                    if (docType === 'payment order' && docHasRefs) {
+                        const amount = this.extractAmountFromProcessed(processedData);
+                        if (amount && amount > 0) {
+                            const postingDate = this.extractDateFromProcessed(processedData) || new Date();
+                            const postingKey = `DOC:${document.id}:PAYMENT_ORDER:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            const entries = [
+                                { accountCode: '401', debit: amount },
+                                { accountCode: '5121', credit: amount }
+                            ];
+                            setTimeout(async () => {
+                                try {
+                                    await this.postingService.postEntries({
+                                        accountingClientId: accountingClientRelation.id,
+                                        postingDate,
+                                        entries,
+                                        sourceType: 'PAYMENT_ORDER',
+                                        sourceId: String(document.id),
+                                        postingKey,
+                                        links: { documentId: document.id }
+                                    });
+                                    console.log(`[LEDGER] Posted payment order for document ${document.id} amount ${amount}`);
+                                } catch (postErr) {
+                                    console.warn(`[LEDGER_WARN] Failed to post payment order for document ${document.id}:`, postErr?.message || postErr);
+                                }
+                            }, 0);
+                        } else {
+                            console.log(`[LEDGER] Skipped posting for payment order ${document.id}: no parsable positive amount`);
+                        }
+                    }
+
+                    // Collection Order (customer collection): Debit 5121 / Credit 411
+                    if (docType === 'collection order' && docHasRefs) {
+                        const amount = this.extractAmountFromProcessed(processedData);
+                        if (amount && amount > 0) {
+                            const postingDate = this.extractDateFromProcessed(processedData) || new Date();
+                            const postingKey = `DOC:${document.id}:COLLECTION_ORDER:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            const entries = [
+                                { accountCode: '5121', debit: amount },
+                                { accountCode: '411', credit: amount }
+                            ];
+                            setTimeout(async () => {
+                                try {
+                                    await this.postingService.postEntries({
+                                        accountingClientId: accountingClientRelation.id,
+                                        postingDate,
+                                        entries,
+                                        sourceType: 'COLLECTION_ORDER',
+                                        sourceId: String(document.id),
+                                        postingKey,
+                                        links: { documentId: document.id }
+                                    });
+                                    console.log(`[LEDGER] Posted collection order for document ${document.id} amount ${amount}`);
+                                } catch (postErr) {
+                                    console.warn(`[LEDGER_WARN] Failed to post collection order for document ${document.id}:`, postErr?.message || postErr);
+                                }
+                            }, 0);
+                        } else {
+                            console.log(`[LEDGER] Skipped posting for collection order ${document.id}: no parsable positive amount`);
+                        }
+                    }
+
+                    // Invoices: post on save based on direction
+                    if (docType === 'invoice') {
+                        const amount = this.extractAmountFromProcessed(processedData);
+                        if (amount && amount > 0) {
+                            const direction = this.determineInvoiceDirection(processedData.result, clientEin);
+                            const postingDate = this.extractDateFromProcessed(processedData) || new Date();
+                            const sourceBase = direction === 'outgoing' ? 'INVOICE_OUT' : direction === 'incoming' ? 'INVOICE_IN' : 'INVOICE';
+                            const postingKey = `DOC:${document.id}:${sourceBase}:${amount}:${postingDate.toISOString().slice(0,10)}`;
+
+                            let entries: { accountCode: string; debit?: number; credit?: number }[] | null = null;
+                            if (direction === 'outgoing') {
+                                // Outgoing (we issued): Dr 411 / Cr 707 (generic sales revenue)
+                                entries = [
+                                    { accountCode: '411', debit: amount },
+                                    { accountCode: '707', credit: amount }
+                                ];
+                            } else if (direction === 'incoming') {
+                                // Incoming (vendor invoice): Dr 628 (other expenses) / Cr 401
+                                entries = [
+                                    { accountCode: '628', debit: amount },
+                                    { accountCode: '401', credit: amount }
+                                ];
+                            }
+
+                            if (entries) {
+                                setTimeout(async () => {
+                                    try {
+                                        await this.postingService.postEntries({
+                                            accountingClientId: accountingClientRelation.id,
+                                            postingDate,
+                                            entries,
+                                            sourceType: (sourceBase as any),
+                                            sourceId: String(document.id),
+                                            postingKey,
+                                            links: { documentId: document.id }
+                                        });
+                                        console.log(`[LEDGER] Posted ${sourceBase.toLowerCase()} for document ${document.id} amount ${amount} direction=${direction}`);
+                                    } catch (postErr) {
+                                        console.warn(`[LEDGER_WARN] Failed to post invoice for document ${document.id}:`, postErr?.message || postErr);
+                                    }
+                                }, 0);
+                            } else {
+                                console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: unknown direction`);
+                            }
+                        } else {
+                            console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: no parsable positive amount`);
+                        }
+                    }
+                } catch (cashPostErr) {
+                    console.warn(`[LEDGER_WARN] Error preparing cash posting for document ${document.id}:`, cashPostErr?.message || cashPostErr);
+                }
+
                 return { savedDocument: document, savedProcessedData: processedDataDb };
                 } catch (transactionError) {
                     console.error(`🚨 POSTFILE TRANSACTION ERROR:`, transactionError);
@@ -1316,6 +1518,29 @@ export class FilesService {
                 const cluster: number[] = [...new Set([docId, ...uniqueNewReferences])];
                 await this.syncReferences(prisma, cluster);
                 
+                // If a Receipt/Payment/Collection Order lost all references, unpost its ledger entries
+                try {
+                    const prevType = (document.type || '').toLowerCase();
+                    const hadRefs = Array.isArray(document.references) && document.references.length > 0;
+                    const nowHasNoRefs = uniqueNewReferences.length === 0;
+                    const isPaymentDoc = ['receipt','payment order','collection order'].includes(prevType);
+                    if (isPaymentDoc && hadRefs && nowHasNoRefs) {
+                        // Fire-and-forget unposting to keep update responsive
+                        setTimeout(async () => {
+                            try {
+                                await this.postingService.unpostByLinks({
+                                    accountingClientId: document.accountingClientId,
+                                    documentId: docId
+                                });
+                                console.log(`[LEDGER] Unposted payment entries for document ${docId} after references removed`);
+                            } catch (unpostErr) {
+                                console.warn(`[LEDGER_WARN] Failed to unpost for document ${docId}:`, unpostErr?.message || unpostErr);
+                            }
+                        }, 0);
+                    }
+                } catch (unpostPrepErr) {
+                    console.warn(`[LEDGER_WARN] Error preparing unpost check for document ${docId}:`, unpostPrepErr?.message || unpostPrepErr);
+                }
 
                 // --- Continue with processedData update and user corrections ---
                 if (document.processedData) {

@@ -1155,13 +1155,16 @@ export const finovaApi = createApi({
                     const patch = dispatch(
                       finovaApi.util.updateQueryData('getTodos', args, (draft: any) => {
                         if (!draft || !Array.isArray(draft.items)) return;
-                        // Update sortOrder fields for items included in the batch
+                        // Update sortOrder only for items included in the batch; leave others untouched
                         draft.items = draft.items.map((it: any) => ({
                           ...it,
-                          sortOrder: orderMap.get(it.id) ?? it.sortOrder ?? 0,
+                          sortOrder: orderMap.has(it.id) ? (orderMap.get(it.id) as number) : it.sortOrder,
                         }));
-                        // Re-sort by sortOrder to reflect new order
-                        draft.items.sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                        // Re-sort by sortOrder, pushing undefined to the end (consistent with UI)
+                        draft.items.sort(
+                          (a: any, b: any) => (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER)
+                        );
+
                       }) as any
                     );
                     patches.push(patch);
@@ -1177,6 +1180,20 @@ export const finovaApi = createApi({
           },
         }),
 
+        // ==================== ACCOUNTING / LEDGER ====================
+        getLedgerEntries: build.query<
+          { items: any[]; total: number; page: number; size: number },
+          { clientEin: string; startDate?: string; endDate?: string; accountCode?: string; page?: number; size?: number }
+        >({
+          query: ({ clientEin, startDate, endDate, accountCode, page = 1, size = 50 }) => {
+            const params = new URLSearchParams({ page: String(page), size: String(size) });
+            if (startDate) params.append('startDate', startDate);
+            if (endDate) params.append('endDate', endDate);
+            if (accountCode) params.append('accountCode', accountCode);
+            return `/accounting/${clientEin}/ledger?${params.toString()}`;
+          },
+        }),
+
         // ==================== CHAT API ====================
         sendChatMessage: build.mutation<
           { reply: string },
@@ -1185,48 +1202,106 @@ export const finovaApi = createApi({
           query: ({ clientEin, message, history }) => ({
             url: `/chat/${clientEin}/message`,
             method: 'POST',
-            body: { message, history: history || [] }
-          })
-        })
+            body: { message, history: history || [] },
+          }),
+        }),
 
-    })
-})
+      }),
+  });
 
-export const {useLoginMutation, useSignupMutation, useExtractDataMutation, useGetInvoicePaymentsQuery, 
-    useSaveFileAndExtractedDataMutation, useGetClientCompaniesMutation,
-useCreateClientCompanyMutation,useGetUserDataQuery,
-useGetRelatedDocumentsQuery,
-useUpdateDocumentReferencesMutation,
-useDeleteClientCompanyMutation, useDeleteUserAccountMutation,
-useModifyUserAccountMutation,useModifyUserPasswordMutation,
-useGetFilesQuery, useUpdateFileAndExtractedDataMutation,
-useDeleteFileAndExtractedDataMutation, useForgotPasswordMutation,
-useResetPasswordMutation, useInsertClientInvoiceMutation,
-useGetManagementQuery, useSaveNewManagementMutation , useGetArticlesQuery,
-useGetCompanyDataQuery, useDeleteManagementMutation, useDeleteArticleMutation,
-useGetJobStatusQuery , useGetUserAgreementsQuery, useUpdateUserConsentMutation,
-useModifyRpaCredentialsMutation, useGetRpaDataQuery, useGetDuplicateAlertsQuery,
-useGetComplianceAlertsQuery, useUpdateDuplicateStatusMutation, useGetServiceHealthQuery, useProcessBatchMutation,
-useGetSomeFilesMutation, useGetBankReconciliationStatsQuery, useGetFinancialDocumentsQuery,
-useGetBankTransactionsQuery, useGetReconciliationSuggestionsQuery, useCreateManualMatchMutation,
-useCreateBulkMatchesMutation, useCreateManualAccountReconciliationMutation, useAcceptReconciliationSuggestionMutation, useRejectReconciliationSuggestionMutation, useGetBalanceReconciliationStatementQuery,
-useUnreconcileTransactionMutation, useUnreconcileDocumentMutation, useRegenerateAllSuggestionsMutation, useRegenerateTransactionSuggestionsMutation,
-useGetReconciliationSummaryReportQuery, useGetAccountAttributionReportQuery, useGetExceptionReportQuery,
-useGetBankReconciliationSummaryReportQuery,
-useGetOutstandingItemsQuery, useGetOutstandingItemsAgingQuery,
-useCreateOutstandingItemMutation, useUpdateOutstandingItemMutation,
-useMarkOutstandingItemAsClearedMutation, useMarkOutstandingItemAsStaleMutation,
-useVoidOutstandingItemMutation, useDeleteOutstandingItemMutation,
-useGetReconciliationHistoryAndAuditTrailQuery,
-useGetBankAccountsQuery, useCreateBankAccountMutation, useUpdateBankAccountMutation,
-useGetBankTransactionsByAccountQuery, useGetConsolidatedAccountViewQuery,
-useAssociateTransactionsWithAccountsMutation, useDeactivateBankAccountMutation,
-  useGetBankAccountAnalyticsQuery, useCreateBankAccountAnalyticMutation, useUpdateBankAccountAnalyticMutation, useDeleteBankAccountAnalyticMutation,
+export const {
+  useLoginMutation,
+  useSignupMutation,
+  useExtractDataMutation,
+  useGetInvoicePaymentsQuery,
+  useSaveFileAndExtractedDataMutation,
+  useGetClientCompaniesMutation,
+  useCreateClientCompanyMutation,
+  useGetUserDataQuery,
+  useGetRelatedDocumentsQuery,
+  useUpdateDocumentReferencesMutation,
+  useDeleteClientCompanyMutation,
+  useDeleteUserAccountMutation,
+  useModifyUserAccountMutation,
+  useModifyUserPasswordMutation,
+  useGetFilesQuery,
+  useUpdateFileAndExtractedDataMutation,
+  useDeleteFileAndExtractedDataMutation,
+  useForgotPasswordMutation,
+  useResetPasswordMutation,
+  useInsertClientInvoiceMutation,
+  useGetManagementQuery,
+  useSaveNewManagementMutation,
+  useGetArticlesQuery,
+  useGetCompanyDataQuery,
+  useDeleteManagementMutation,
+  useDeleteArticleMutation,
+  useGetJobStatusQuery,
+  useGetUserAgreementsQuery,
+  useUpdateUserConsentMutation,
+  useModifyRpaCredentialsMutation,
+  useGetRpaDataQuery,
+  useGetDuplicateAlertsQuery,
+  useGetComplianceAlertsQuery,
+  useUpdateDuplicateStatusMutation,
+  useGetServiceHealthQuery,
+  useProcessBatchMutation,
+  useGetSomeFilesMutation,
+  useGetBankReconciliationStatsQuery,
+  useGetFinancialDocumentsQuery,
+  useGetBankTransactionsQuery,
+  useGetReconciliationSuggestionsQuery,
+  useCreateManualMatchMutation,
+  useCreateBulkMatchesMutation,
+  useCreateManualAccountReconciliationMutation,
+  useAcceptReconciliationSuggestionMutation,
+  useRejectReconciliationSuggestionMutation,
+  useGetBalanceReconciliationStatementQuery,
+  useUnreconcileTransactionMutation,
+  useUnreconcileDocumentMutation,
+  useRegenerateAllSuggestionsMutation,
+  useRegenerateTransactionSuggestionsMutation,
+  useGetReconciliationSummaryReportQuery,
+  useGetAccountAttributionReportQuery,
+  useGetExceptionReportQuery,
+  useGetBankReconciliationSummaryReportQuery,
+  useGetOutstandingItemsQuery,
+  useGetOutstandingItemsAgingQuery,
+  useCreateOutstandingItemMutation,
+  useUpdateOutstandingItemMutation,
+  useMarkOutstandingItemAsClearedMutation,
+  useMarkOutstandingItemAsStaleMutation,
+  useVoidOutstandingItemMutation,
+  useDeleteOutstandingItemMutation,
+  useGetReconciliationHistoryAndAuditTrailQuery,
+  useGetBankAccountsQuery,
+  useCreateBankAccountMutation,
+  useUpdateBankAccountMutation,
+  useGetBankTransactionsByAccountQuery,
+  useGetConsolidatedAccountViewQuery,
+  useAssociateTransactionsWithAccountsMutation,
+  useDeactivateBankAccountMutation,
+  useGetBankAccountAnalyticsQuery,
+  useCreateBankAccountAnalyticMutation,
+  useUpdateBankAccountAnalyticMutation,
+  useDeleteBankAccountAnalyticMutation,
   useUpdateDocumentReconciliationStatusMutation,
-  useGetTransactionSplitsQuery, useSetTransactionSplitsMutation, useSuggestTransactionSplitsMutation, useDeleteTransactionSplitMutation,
-  useGetTransferReconciliationCandidatesQuery, useCreateTransferReconciliationMutation, useGetPendingTransferReconciliationsQuery, useDeleteTransferReconciliationMutation,
+  useGetTransactionSplitsQuery,
+  useSetTransactionSplitsMutation,
+  useSuggestTransactionSplitsMutation,
+  useDeleteTransactionSplitMutation,
+  useGetTransferReconciliationCandidatesQuery,
+  useCreateTransferReconciliationMutation,
+  useGetPendingTransferReconciliationsQuery,
+  useDeleteTransferReconciliationMutation,
   useGetTransferReconciliationCandidatesForTransactionQuery,
-  useGetTodosQuery, useGetTodoQuery, useCreateTodoMutation, useUpdateTodoMutation, useDeleteTodoMutation, useReorderTodosMutation,
+  useGetTodosQuery,
+  useGetTodoQuery,
+  useCreateTodoMutation,
+  useUpdateTodoMutation,
+  useDeleteTodoMutation,
+  useReorderTodosMutation,
   useGetCompanyUsersQuery,
-  useSendChatMessageMutation
+  useSendChatMessageMutation,
+  useGetLedgerEntriesQuery,
 } = finovaApi;

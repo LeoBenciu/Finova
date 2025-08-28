@@ -69,6 +69,8 @@ export class TodosController {
       tags?: string[];
       assigneeIds?: number[]; 
       assignedToId?: number; 
+      assigneeNames?: string[];
+      assigneeEmails?: string[];
       relatedDocumentId?: number;
       relatedTransactionId?: string;
     },
@@ -90,6 +92,8 @@ export class TodosController {
       tags?: string[];
       assigneeIds?: number[]; 
       assignedToId?: number; 
+      assigneeNames?: string[];
+      assigneeEmails?: string[];
       relatedDocumentId?: number;
       relatedTransactionId?: string;
     }>,

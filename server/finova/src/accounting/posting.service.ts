@@ -9,10 +9,17 @@ export type PostingEntry = {
 };
 
 // Temporary local type until Prisma migration generates the enum
+// Align with Prisma enum LedgerSourceType in schema.prisma
 export type LedgerSourceType =
-  | 'DOCUMENT'
-  | 'BANK_TRANSACTION'
-  | 'RECONCILIATION';
+  | 'INVOICE_IN'
+  | 'INVOICE_OUT'
+  | 'RECEIPT'
+  | 'PAYMENT_ORDER'
+  | 'COLLECTION_ORDER'
+  | 'Z_REPORT'
+  | 'RECONCILIATION'
+  | 'TRANSFER'
+  | 'ADJUSTMENT';
 
 export interface PostEntriesInput {
   accountingClientId: number;
