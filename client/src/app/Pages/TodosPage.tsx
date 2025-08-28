@@ -356,7 +356,7 @@ const TodosPage = () => {
                 role="list"
                 aria-label="todos-list"
               >
-                {(!isLoading || !isFetching) &&
+                {(!isLoading && !isFetching) &&
                 ordered.map((item: any) => (
                   <div
                     key={item.id}

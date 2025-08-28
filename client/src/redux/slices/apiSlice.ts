@@ -1140,26 +1140,41 @@ export const finovaApi = createApi({
             body: { items }
           }),
           // Optimistically update Todos cache
-          async onQueryStarted({ clientEin, items }, { dispatch, queryFulfilled }) {
-            const patch = dispatch(
-              finovaApi.util.updateQueryData('getTodos', { clientEin }, (draft: any) => {
-                if (!draft || !Array.isArray(draft.items)) return;
-                const orderMap = new Map(items.map((i) => [i.id, i.sortOrder]));
-                draft.items.sort((a: any, b: any) => {
-                  const sa = orderMap.get(a.id) ?? a.sortOrder ?? 0;
-                  const sb = orderMap.get(b.id) ?? b.sortOrder ?? 0;
-                  return sa - sb;
-                });
-                draft.items = draft.items.map((it: any) => ({ ...it, sortOrder: orderMap.get(it.id) ?? it.sortOrder }));
-              }) as any
-            );
+          async onQueryStarted({ clientEin, items }, { dispatch, queryFulfilled, getState }) {
+            // Build a list of patches for ALL cached getTodos queries that share this clientEin (any page/filters)
+            const state: any = getState();
+            const patches: Array<{ undo: () => void }> = [];
             try {
+              const queries = state.finovaApi?.queries || {};
+              const orderMap = new Map(items.map((i: any) => [i.id, i.sortOrder]));
+              for (const key of Object.keys(queries)) {
+                const entry = queries[key];
+                if (entry?.endpointName === 'getTodos') {
+                  const args = entry.originalArgs;
+                  if (args && args.clientEin === clientEin) {
+                    const patch = dispatch(
+                      finovaApi.util.updateQueryData('getTodos', args, (draft: any) => {
+                        if (!draft || !Array.isArray(draft.items)) return;
+                        // Update sortOrder fields for items included in the batch
+                        draft.items = draft.items.map((it: any) => ({
+                          ...it,
+                          sortOrder: orderMap.get(it.id) ?? it.sortOrder ?? 0,
+                        }));
+                        // Re-sort by sortOrder to reflect new order
+                        draft.items.sort((a: any, b: any) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+                      }) as any
+                    );
+                    patches.push(patch);
+                  }
+                }
+              }
+
               await queryFulfilled;
-            } catch {
-              patch.undo();
+            } catch (e) {
+              // Rollback all patches on error
+              patches.forEach((p) => p.undo());
             }
           },
-          invalidatesTags: ['Todos']
         }),
 
         // ==================== CHAT API ====================

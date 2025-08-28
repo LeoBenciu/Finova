@@ -1,0 +1,225 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { Prisma } from '@prisma/client';
+
+export type PostingEntry = {
+  accountCode: string;
+  debit?: number; // RON
+  credit?: number; // RON
+};
+
+// Temporary local type until Prisma migration generates the enum
+export type LedgerSourceType =
+  | 'DOCUMENT'
+  | 'BANK_TRANSACTION'
+  | 'RECONCILIATION';
+
+export interface PostEntriesInput {
+  accountingClientId: number;
+  postingDate: Date;
+  entries: PostingEntry[]; // must be balanced by caller
+  sourceType: LedgerSourceType;
+  sourceId: string; // e.g. reconciliationId, documentId, transactionId
+  postingKey: string; // idempotency key to ensure we don't double post
+  links?: {
+    documentId?: number | null;
+    bankTransactionId?: string | null;
+    reconciliationId?: number | null;
+  };
+}
+
+@Injectable()
+export class PostingService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  // Synchronous, idempotent post. If postingKey exists, returns existing entries.
+  async postEntries(input: PostEntriesInput) {
+    const { accountingClientId, postingDate, entries, sourceType, sourceId, postingKey, links } = input;
+
+    if (!entries?.length) return { created: [], reused: true };
+
+    // Basic balance validation
+    const sumDebit = entries.reduce((s, e) => s + (e.debit ? Number(e.debit) : 0), 0);
+    const sumCredit = entries.reduce((s, e) => s + (e.credit ? Number(e.credit) : 0), 0);
+    const diff = Math.abs(sumDebit - sumCredit);
+    if (diff > 0.005) {
+      throw new Error(`Posting not balanced: debit=${sumDebit.toFixed(2)} credit=${sumCredit.toFixed(2)}`);
+    }
+
+    // Try to find existing by unique postingKey
+    const prismaAny = this.prisma as any; // avoid TS errors before migration generates models
+    const existing = await prismaAny.generalLedgerEntry?.findFirst?.({ where: { postingKey } });
+    if (existing) {
+      const siblings = await prismaAny.generalLedgerEntry.findMany({ where: { accountingClientId, postingKey } });
+      return { created: siblings, reused: true };
+    }
+
+    const created = await this.prisma.$transaction(async (tx) => {
+      const txAny = tx as any; // avoid TS errors before migration generates models
+      const createdRows = [] as any[];
+
+      for (const e of entries) {
+        const row = await txAny.generalLedgerEntry.create({
+          data: {
+            accountingClientId,
+            postingDate,
+            accountCode: e.accountCode,
+            debit: new Prisma.Decimal(e.debit ?? 0),
+            credit: new Prisma.Decimal(e.credit ?? 0),
+            currency: 'RON',
+            sourceType,
+            sourceId: String(sourceId),
+            postingKey,
+            documentId: links?.documentId ?? null,
+            bankTransactionId: links?.bankTransactionId ?? null,
+            reconciliationId: links?.reconciliationId ?? null,
+          },
+        });
+        createdRows.push(row);
+
+        // Update Daily balance (increment by debit-credit)
+        const delta = new Prisma.Decimal((e.debit ?? 0) - (e.credit ?? 0));
+        await txAny.accountBalanceDaily.upsert({
+          where: {
+            accountingClientId_accountCode_date: {
+              accountingClientId,
+              accountCode: e.accountCode,
+              date: new Date(new Date(postingDate).toDateString()), // normalize to day
+            },
+          },
+          update: {
+            endingBalance: { increment: delta },
+            lastUpdatedAt: new Date(),
+          },
+          create: {
+            accountingClientId,
+            date: new Date(new Date(postingDate).toDateString()),
+            accountCode: e.accountCode,
+            endingBalance: delta,
+          },
+        });
+
+        // Update Monthly balance
+        const y = postingDate.getFullYear();
+        const m = postingDate.getMonth() + 1;
+        await txAny.accountBalanceMonthly.upsert({
+          where: {
+            accountingClientId_accountCode_year_month: {
+              accountingClientId,
+              accountCode: e.accountCode,
+              year: y,
+              month: m,
+            },
+          },
+          update: {
+            endingBalance: { increment: delta },
+            lastUpdatedAt: new Date(),
+          },
+          create: {
+            accountingClientId,
+            year: y,
+            month: m,
+            accountCode: e.accountCode,
+            endingBalance: delta,
+          },
+        });
+      }
+
+      return createdRows;
+    });
+
+    return { created, reused: false };
+  }
+
+  // Reverse postings identified by link fields. Idempotent: if none found, it's a no-op.
+  async unpostByLinks(params: {
+    accountingClientId: number;
+    documentId?: number | null;
+    bankTransactionId?: string | null;
+    reconciliationId?: number | null;
+  }) {
+    const { accountingClientId, documentId = null, bankTransactionId = null, reconciliationId = null } = params;
+
+    const prismaAny = this.prisma as any;
+
+    // Find entries by links
+    const entries: any[] = await prismaAny.generalLedgerEntry?.findMany?.({
+      where: {
+        accountingClientId,
+        documentId: documentId,
+        bankTransactionId: bankTransactionId,
+        reconciliationId: reconciliationId,
+      },
+    });
+
+    if (!entries || entries.length === 0) {
+      return { reversed: 0 };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const txAny = tx as any;
+      for (const row of entries) {
+        const delta = new Prisma.Decimal(Number(row.debit || 0) - Number(row.credit || 0));
+
+        // Reverse Daily balance
+        await txAny.accountBalanceDaily.update({
+          where: {
+            accountingClientId_accountCode_date: {
+              accountingClientId,
+              accountCode: row.accountCode,
+              date: new Date(new Date(row.postingDate).toDateString()),
+            },
+          },
+          data: {
+            endingBalance: { decrement: delta },
+            lastUpdatedAt: new Date(),
+          },
+        }).catch(async () => {
+          // If daily balance row doesn't exist (edge case), create with negative delta
+          await txAny.accountBalanceDaily.create({
+            data: {
+              accountingClientId,
+              date: new Date(new Date(row.postingDate).toDateString()),
+              accountCode: row.accountCode,
+              endingBalance: new Prisma.Decimal(0).minus(delta),
+            },
+          });
+        });
+
+        // Reverse Monthly balance
+        const y = new Date(row.postingDate).getFullYear();
+        const m = new Date(row.postingDate).getMonth() + 1;
+        await txAny.accountBalanceMonthly.update({
+          where: {
+            accountingClientId_accountCode_year_month: {
+              accountingClientId,
+              accountCode: row.accountCode,
+              year: y,
+              month: m,
+            },
+          },
+          data: {
+            endingBalance: { decrement: delta },
+            lastUpdatedAt: new Date(),
+          },
+        }).catch(async () => {
+          // If monthly balance row doesn't exist, create with negative delta
+          await txAny.accountBalanceMonthly.create({
+            data: {
+              accountingClientId,
+              accountCode: row.accountCode,
+              year: y,
+              month: m,
+              endingBalance: new Prisma.Decimal(0).minus(delta),
+            },
+          });
+        });
+
+        // Delete ledger entry row
+        await txAny.generalLedgerEntry.delete({ where: { id: row.id } });
+      }
+    });
+
+    return { reversed: entries.length };
+  }
+}

@@ -2132,11 +2132,12 @@ const BankPage = () => {
   // Suggestions displayed in UI, filtered by selected bank account (if any) and local removals
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
+    const hasAccountFilterReady = !!selectedBankAccountId && accountTransactionIdSet.size > 0;
 
     // Step 1: apply local removal and (if any) account filter
     const prelim = base.filter((s: any) => {
       if (removedSuggestions.has(String(s.id))) return false;
-      if (selectedBankAccountId) {
+      if (hasAccountFilterReady) {
         // For TRANSFER suggestions, keep if either side of the pair belongs to the selected account
         if (s?.matchingCriteria?.type === 'TRANSFER') {
           const srcId = s?.transfer?.sourceTransactionId;
@@ -2177,6 +2178,7 @@ const BankPage = () => {
         prelim: prelim.length,
         transfers: transfersCount,
         hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+        involvedTxnIds: Array.from(involvedTxnIds),
       });
     } else {
       console.log('[UI] displayedSuggestions (with account filter)', {
@@ -2186,6 +2188,9 @@ const BankPage = () => {
         prelim: prelim.length,
         transfers: transfersCount,
         hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+        accountTransactionIdSetSize: accountTransactionIdSet.size,
+        hasAccountFilterReady,
+        involvedTxnIds: Array.from(involvedTxnIds),
       });
     }
 

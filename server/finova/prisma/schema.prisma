@@ -79,8 +79,8 @@ model Document {
   userCorrections           UserCorrection[]
   paymentSummary            PaymentSummary?
   outstandingItems          OutstandingItem[]
-  // Todos referencing this document
   todos                     TodoItem[]
+  ledgerEntries             GeneralLedgerEntry[]
 
   @@index([documentHash])
   @@index([accountingClientId])
@@ -204,6 +204,10 @@ model AccountingClients {
   bankAccountAnalytics BankAccountAnalytic[]
   // Todos scoped to this accounting client
   todos                TodoItem[]
+  // Ledger relations
+  ledgerEntries        GeneralLedgerEntry[]
+  dailyBalances        AccountBalanceDaily[]
+  monthlyBalances      AccountBalanceMonthly[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -332,6 +336,7 @@ model BankTransaction {
   transferAsSource          TransferReconciliation[]   @relation("SourceTx")
   transferAsDestination     TransferReconciliation[]   @relation("DestTx")
   todos                     TodoItem[]
+  ledgerEntries             GeneralLedgerEntry[]
 
   @@index([bankStatementDocumentId])
   @@index([transactionDate])
@@ -370,6 +375,7 @@ model ReconciliationRecord {
   notes             String?
   status            ReconciliationRecordStatus @default(ACTIVE)
   createdAt         DateTime                   @default(now())
+  ledgerEntries     GeneralLedgerEntry[]
 
   @@unique([documentId, bankTransactionId])
   @@index([documentId])
@@ -743,9 +749,9 @@ model TodoItem {
   accountingClientId Int
   accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
 
-  createdById  Int
-  createdBy    User  @relation("User_createdTodos", fields: [createdById], references: [id])
-  assignees    TodoAssignee[]
+  createdById Int
+  createdBy   User           @relation("User_createdTodos", fields: [createdById], references: [id])
+  assignees   TodoAssignee[]
 
   relatedDocumentId Int?
   relatedDocument   Document? @relation(fields: [relatedDocumentId], references: [id])
@@ -774,4 +780,87 @@ model TodoAssignee {
   @@unique([todoId, userId])
   @@index([userId])
   @@index([todoId])
+}
+
+/// ==================== LEDGER & BALANCES ====================
+
+/// Immutable, double-entry ledger. Each domain event creates balanced rows.
+model GeneralLedgerEntry {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  /// Scope to accounting client
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  /// Accounting date for the posting
+  postingDate DateTime
+
+  /// Romanian chart of account code (e.g., 411, 401, 5121.03). Kept as string for speed/flexibility.
+  accountCode String
+
+  /// Monetary amounts (RON by default)
+  debit    Decimal @db.Decimal(14, 2)
+  credit   Decimal @db.Decimal(14, 2)
+  currency String  @default("RON")
+
+  /// Source linkage for auditability/idempotency
+  sourceType LedgerSourceType
+  sourceId   String // e.g., documentId, bankTransactionId, reconciliationRecordId
+  postingKey String           @unique // idempotency key per domain event (e.g., recon:123:accept)
+
+  /// Optional foreign keys for convenience
+  documentId        Int?
+  document          Document?             @relation(fields: [documentId], references: [id])
+  bankTransactionId String?
+  bankTransaction   BankTransaction?      @relation(fields: [bankTransactionId], references: [id])
+  reconciliationId  Int?
+  reconciliation    ReconciliationRecord? @relation(fields: [reconciliationId], references: [id])
+
+  @@index([accountingClientId, postingDate])
+  @@index([accountingClientId, accountCode])
+  @@index([sourceType])
+}
+
+/// Fast-read balances table for instant P&L/BS/CF. Choose Daily; can add Monthly later.
+model AccountBalanceDaily {
+  id                 Int               @id @default(autoincrement())
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  date          DateTime // the day this balance represents (end-of-day)
+  accountCode   String
+  endingBalance Decimal  @db.Decimal(16, 2)
+  lastUpdatedAt DateTime @default(now())
+
+  @@unique([accountingClientId, accountCode, date])
+  @@index([accountingClientId, date])
+  @@index([accountCode])
+}
+
+/// Fast-read monthly balances (as of month-end). Reduces aggregation for reports.
+model AccountBalanceMonthly {
+  id                 Int               @id @default(autoincrement())
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  year         Int
+  month        Int              // 1-12
+  accountCode  String
+  endingBalance Decimal         @db.Decimal(16, 2)
+  lastUpdatedAt DateTime        @default(now())
+
+  @@unique([accountingClientId, accountCode, year, month])
+  @@index([accountingClientId, year, month])
+  @@index([accountCode])
+}
+
+enum LedgerSourceType {
+  INVOICE_IN
+  INVOICE_OUT
+  RECEIPT
+  PAYMENT_ORDER
+  RECONCILIATION
+  TRANSFER
+  ADJUSTMENT
 }

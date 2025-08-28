@@ -1,10 +1,66 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { Prisma, TodoPriority, TodoStatus, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class TodosService {
   constructor(private prisma: PrismaService) {}
+
+  // Normalize incoming priority strings (e.g., "medium") to Prisma enum values
+  private normalizePriority(p: any): TodoPriority | undefined {
+    if (p === undefined || p === null) return undefined;
+    const s = String(p).toUpperCase();
+    if (s === 'LOW' || s === 'MEDIUM' || s === 'HIGH') return s as TodoPriority;
+    return undefined;
+  }
+
+  // Resolve assignee IDs from provided IDs, names, or emails. Names/emails are looked up within the same accounting company.
+  private async resolveAssigneeIds(
+    user: User,
+    input: { assigneeIds?: number[]; assignedToId?: number; assigneeNames?: string[]; assigneeEmails?: string[] },
+  ): Promise<number[]> {
+    const ids = new Set<number>();
+    if (input.assignedToId) ids.add(input.assignedToId);
+    if (input.assigneeIds && input.assigneeIds.length) {
+      for (const id of input.assigneeIds) ids.add(id);
+    }
+
+    const names = (input.assigneeNames || []).map((s) => s.trim()).filter(Boolean);
+    const emails = (input.assigneeEmails || []).map((s) => s.trim()).filter(Boolean);
+
+    if (names.length || emails.length) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          accountingCompanyId: user.accountingCompanyId,
+          OR: [
+            ...(names.length ? names.map((n) => ({ name: { equals: n, mode: 'insensitive' as const } })) : []),
+            ...(emails.length ? emails.map((e) => ({ email: { equals: e, mode: 'insensitive' as const } })) : []),
+          ],
+        },
+        select: { id: true, name: true, email: true },
+      });
+
+      // Build quick lookup to check coverage
+      const foundByName = new Set(users.map((u) => u.name?.toLowerCase()).filter(Boolean) as string[]);
+      const foundByEmail = new Set(users.map((u) => u.email?.toLowerCase()).filter(Boolean) as string[]);
+
+      // Validate: if a provided identifier didn't match anyone, throw a helpful error
+      const missingNames = names.filter((n) => !foundByName.has(n.toLowerCase()));
+      const missingEmails = emails.filter((e) => !foundByEmail.has(e.toLowerCase()));
+      if (missingNames.length || missingEmails.length) {
+        throw new BadRequestException(
+          `Unknown assignees: ${[
+            ...(missingNames.length ? [`names: ${missingNames.join(', ')}`] : []),
+            ...(missingEmails.length ? [`emails: ${missingEmails.join(', ')}`] : []),
+          ].join(' | ')}`,
+        );
+      }
+
+      for (const u of users) ids.add(u.id);
+    }
+
+    return Array.from(ids);
+  }
 
   private async resolveAccountingClientIdOrThrow(clientEin: string, user: User) {
     const ac = await this.prisma.accountingClients.findFirst({
@@ -109,12 +165,19 @@ export class TodosService {
     tags?: string[];
     assigneeIds?: number[];
     assignedToId?: number; // backward-compat
+    assigneeNames?: string[];
+    assigneeEmails?: string[];
     relatedDocumentId?: number;
     relatedTransactionId?: string;
   }) {
     const accountingClientId = await this.resolveAccountingClientIdOrThrow(clientEin, user);
 
-    const assigneeIds = (data.assigneeIds && data.assigneeIds.length ? data.assigneeIds : (data.assignedToId ? [data.assignedToId] : [])) as number[];
+    const assigneeIds = await this.resolveAssigneeIds(user, {
+      assigneeIds: data.assigneeIds,
+      assignedToId: data.assignedToId,
+      assigneeNames: data.assigneeNames,
+      assigneeEmails: data.assigneeEmails,
+    });
 
     // Determine next sortOrder for this client's todos (simple incremental ordering)
     const maxSort = await this.prisma.todoItem.aggregate({
@@ -123,12 +186,14 @@ export class TodosService {
     });
     const nextSortOrder = (maxSort._max.sortOrder ?? 0) + 1;
 
+    const normalizedPriority = this.normalizePriority((data as any).priority);
+
     const todo = await this.prisma.todoItem.create({
       data: {
         title: data.title,
         description: data.description,
         status: data.status ?? 'PENDING',
-        priority: data.priority ?? 'MEDIUM',
+        priority: normalizedPriority ?? 'MEDIUM',
         dueDate: data.dueDate ? new Date(data.dueDate) : undefined,
         tags: data.tags ?? [],
         accountingClientId,
@@ -154,6 +219,8 @@ export class TodosService {
     tags?: string[];
     assigneeIds?: number[];
     assignedToId?: number; // backward-compat
+    assigneeNames?: string[];
+    assigneeEmails?: string[];
     relatedDocumentId?: number;
     relatedTransactionId?: string;
   }>) {
@@ -162,27 +229,43 @@ export class TodosService {
     const existing = await this.prisma.todoItem.findFirst({ where: { id, accountingClientId } });
     if (!existing) throw new NotFoundException('Todo not found');
 
+    // If any assignee fields are present, resolve them now
+    const shouldUpdateAssignees = (
+      data.assigneeIds !== undefined ||
+      data.assignedToId !== undefined ||
+      data.assigneeNames !== undefined ||
+      data.assigneeEmails !== undefined
+    );
+
+    const resolvedAssigneeIds = shouldUpdateAssignees
+      ? await this.resolveAssigneeIds(user, {
+          assigneeIds: data.assigneeIds,
+          assignedToId: data.assignedToId,
+          assigneeNames: data.assigneeNames,
+          assigneeEmails: data.assigneeEmails,
+        })
+      : undefined;
+
     const updated = await this.prisma.todoItem.update({
       where: { id },
       data: {
         ...(data.title !== undefined ? { title: data.title } : {}),
         ...(data.description !== undefined ? { description: data.description } : {}),
         ...(data.status !== undefined ? { status: data.status } : {}),
-        ...(data.priority !== undefined ? { priority: data.priority } : {}),
+        ...(data.priority !== undefined
+          ? { priority: this.normalizePriority((data as any).priority) ?? existing.priority }
+          : {}),
         ...(data.dueDate !== undefined ? { dueDate: data.dueDate ? new Date(data.dueDate) : null } : {}),
         ...(data.tags !== undefined ? { tags: data.tags } : {}),
         ...(data.relatedDocumentId !== undefined ? { relatedDocumentId: data.relatedDocumentId } : {}),
         ...(data.relatedTransactionId !== undefined ? { relatedTransactionId: data.relatedTransactionId } : {}),
-        ...((data.assigneeIds !== undefined || data.assignedToId !== undefined)
+        ...(
+          shouldUpdateAssignees
           ? {
               assignees: {
                 deleteMany: {},
-                ...(data.assigneeIds && data.assigneeIds.length
-                  ? { create: data.assigneeIds.map((id) => ({ userId: id })) }
-                  : data.assignedToId !== undefined
-                  ? (data.assignedToId
-                      ? { create: [{ userId: data.assignedToId }] }
-                      : {})
+                ...(resolvedAssigneeIds && resolvedAssigneeIds.length
+                  ? { create: resolvedAssigneeIds.map((id) => ({ userId: id })) }
                   : {}),
               },
             }

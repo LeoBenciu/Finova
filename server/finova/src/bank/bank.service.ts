@@ -3,6 +3,7 @@ import { Injectable, NotFoundException, UnauthorizedException, BadRequestExcepti
 import { Prisma, User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType } from '@prisma/client';
 import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
+import { PostingService } from 'src/accounting/posting.service';
 
 const s3 = new AWS.S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -15,8 +16,44 @@ export class BankService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly dataExtractionService: DataExtractionService
+        private readonly dataExtractionService: DataExtractionService,
+        private readonly postingService: PostingService,
     ){}
+
+    // Resolve the analytic account code for a bank transaction's IBAN
+    private async resolveBankAnalyticCode(
+      prisma: any,
+      accountingClientId: number,
+      bankTransactionId: string,
+    ): Promise<string> {
+      const tx = await prisma.bankTransaction.findUnique({
+        where: { id: bankTransactionId },
+        include: { bankAccount: true },
+      });
+      if (!tx || !tx.bankAccount) {
+        throw new BadRequestException(
+          'Bank account not associated with the transaction; cannot derive analytic code. Please set bank account analytics.',
+        );
+      }
+      const mapping = await prisma.bankAccountAnalytic.findFirst({
+        where: { accountingClientId, iban: tx.bankAccount.iban },
+      });
+      if (!mapping) {
+        throw new BadRequestException(
+          `No analytic mapping found for IBAN ${tx.bankAccount.iban}. Please set an analytic code in Bank Settings.`,
+        );
+      }
+      return mapping.fullCode;
+    }
+
+    // Very simple counter-account inference for document payments; falls back to clearing
+    private inferCounterAccountCode(docType?: string | null): string {
+      const t = (docType || '').toLowerCase();
+      if (t.includes('invoice_out') || (t.includes('invoice') && !t.includes('invoice_in'))) return '4111'; // Accounts Receivable
+      if (t.includes('invoice_in')) return '401'; // Accounts Payable
+      if (t.includes('z report') || t.includes('z-report') || t.includes('z_report')) return '707'; // Sales (fallback)
+      return '473'; // Clearing/Suspense
+    }
 
     // Safely parse incoming date strings (ISO expected). Returns null if invalid.
     private parseDateSafe(input?: string | null): Date | null {
@@ -138,6 +175,36 @@ export class BankService {
         createdByUserId: user.id,
       },
     });
+
+    // Post ledger entries for the transfer (same-currency or fxRate=1 only)
+    try {
+      const canPost = fxRateToUse === 1;
+      if (!canPost) {
+        console.warn('⚠️ Skipping ledger posting for transfer with unsupported FX handling.');
+      } else {
+        const amt = Math.abs(Number(dst.amount));
+        const postingDate = dst.transactionDate || src.transactionDate || new Date();
+        const entries = [
+          { accountCode: dstAccountCode!, debit: amt }, // money in to destination bank
+          { accountCode: srcAccountCode!, credit: amt }, // money out from source bank
+        ];
+        await this.postingService.postEntries({
+          accountingClientId: accountingClient.id,
+          postingDate,
+          entries,
+          sourceType: 'RECONCILIATION',
+          sourceId: String(created.id),
+          postingKey: `transfer:${created.id}`,
+          links: {
+            documentId: null,
+            bankTransactionId: null,
+            reconciliationId: null,
+          },
+        });
+      }
+    } catch (e) {
+      console.warn('⚠️ Ledger posting failed on createTransferReconciliation:', e);
+    }
 
     return created;
   }
@@ -1866,7 +1933,7 @@ export class BankService {
       }
 
       async createManualMatch(matchData: { documentId: number; bankTransactionId: string; notes?: string }, user: User) {
-        return await this.prisma.$transaction(async (prisma) => {
+        const updated = await this.prisma.$transaction(async (prisma) => {
           const document = await prisma.document.findUnique({
             where: { id: matchData.documentId },
             include: {
@@ -2288,6 +2355,49 @@ export class BankService {
             },
             data: { status: SuggestionStatus.REJECTED }
           });
+
+          // Post ledger entries synchronously (non-transfer)
+          try {
+            const bankTx = await prisma.bankTransaction.findUnique({
+              where: { id: suggestion.bankTransactionId! },
+            });
+            if (bankTx) {
+              const accountingClientId = suggestion.document
+                ? suggestion.document.accountingClient.id
+                : suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.id;
+              if (accountingClientId) {
+                const bankAccountCode = await this.resolveBankAnalyticCode(prisma as any, accountingClientId, suggestion.bankTransactionId!);
+                const amt = Math.abs(Number(bankTx.amount));
+                const postingDate = bankTx.transactionDate || new Date();
+                const counter = this.inferCounterAccountCode(suggestion.document?.type);
+                const isCreditToBank = Number(bankTx.amount) > 0; // money in
+                const entries = isCreditToBank
+                  ? [
+                      { accountCode: bankAccountCode, debit: amt },
+                      { accountCode: counter, credit: amt },
+                    ]
+                  : [
+                      { accountCode: counter, debit: amt },
+                      { accountCode: bankAccountCode, credit: amt },
+                    ];
+                await this.postingService.postEntries({
+                  accountingClientId,
+                  postingDate,
+                  entries,
+                  sourceType: 'RECONCILIATION',
+                  sourceId: String(reconciliationRecord.id),
+                  postingKey: `recon:${reconciliationRecord.id}`,
+                  links: {
+                    documentId: suggestion.documentId || null,
+                    bankTransactionId: suggestion.bankTransactionId || null,
+                    reconciliationId: reconciliationRecord.id,
+                  },
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('⚠️ Ledger posting failed on acceptSuggestion:', e);
+          }
 
           // Auto-clear any related outstanding item when a suggestion is accepted
           try {
@@ -2725,6 +2835,29 @@ export class BankService {
           return updatedTransaction;
         });
 
+        // Reverse any postings linked to this transaction/reconciliation
+        try {
+          const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
+          // Unpost by reconciliation records (document + transaction matches)
+          if (Array.isArray(transaction.reconciliationRecords)) {
+            for (const rec of transaction.reconciliationRecords) {
+              if (rec?.id) {
+                await this.postingService.unpostByLinks({
+                  accountingClientId,
+                  reconciliationId: rec.id,
+                });
+              }
+            }
+          }
+          // Also unpost any manual postings tied only to the bankTransactionId
+          await this.postingService.unpostByLinks({
+            accountingClientId,
+            bankTransactionId: transactionId,
+          });
+        } catch (unpostErr) {
+          console.warn(`⚠️ Failed to unpost ledger entries for transaction ${transactionId}:`, unpostErr);
+        }
+
         try {
           console.log(`🔄 REGENERATING SUGGESTIONS after unreconciling transaction ${transactionId}`);
           const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
@@ -2767,7 +2900,7 @@ export class BankService {
         console.log(`🔄 UNRECONCILING document ${documentId} - Type: ${document.type}`);
       
         // Start a database transaction to ensure consistency
-        return await this.prisma.$transaction(async (prisma) => {
+        const updated = await this.prisma.$transaction(async (prisma) => {
           // Update document status to unreconciled
           const updatedDocument = await prisma.document.update({
             where: { id: documentId },
@@ -2807,6 +2940,29 @@ export class BankService {
       
           return updatedDocument;
         });
+        // Reverse any postings linked to this document/reconciliation
+        try {
+          const accountingClientId = document.accountingClient.id;
+          // Unpost by reconciliation records tying this doc to transactions
+          if (Array.isArray(document.reconciliationRecords)) {
+            for (const rec of document.reconciliationRecords) {
+              if (rec?.id) {
+                await this.postingService.unpostByLinks({
+                  accountingClientId,
+                  reconciliationId: rec.id,
+                });
+              }
+            }
+          }
+          // Also unpost any postings tied directly to the documentId
+          await this.postingService.unpostByLinks({
+            accountingClientId,
+            documentId,
+          });
+        } catch (unpostErr) {
+          console.warn(`⚠️ Failed to unpost ledger entries for document ${documentId}:`, unpostErr);
+        }
+        return updated;
       }
       
       async regenerateAllSuggestions(clientEin: string, user: User) {
@@ -3452,6 +3608,40 @@ export class BankService {
       });
 
       console.log(`✅ Manual account reconciliation created: Transaction ${transactionId} → Account ${accountCode}`);
+
+      // Post ledger entries for manual reconciliation
+      try {
+        const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
+        const bankAccountCode = await this.resolveBankAnalyticCode(this.prisma, accountingClientId, transactionId);
+        const amt = Math.abs(Number(transaction.amount));
+        const postingDate = transaction.transactionDate || new Date();
+        const isCreditToBank = Number(transaction.amount) > 0;
+        const counter = accountCode.trim();
+        const entries = isCreditToBank
+          ? [
+              { accountCode: bankAccountCode, debit: amt },
+              { accountCode: counter, credit: amt },
+            ]
+          : [
+              { accountCode: counter, debit: amt },
+              { accountCode: bankAccountCode, credit: amt },
+            ];
+        await this.postingService.postEntries({
+          accountingClientId,
+          postingDate,
+          entries,
+          sourceType: 'RECONCILIATION',
+          sourceId: String(updatedTransaction.id),
+          postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}`,
+          links: {
+            documentId: null,
+            bankTransactionId: transactionId,
+            reconciliationId: null,
+          },
+        });
+      } catch (e) {
+        console.warn('⚠️ Ledger posting failed on manual reconciliation:', e);
+      }
 
       return {
         success: true,
