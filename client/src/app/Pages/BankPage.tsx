@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Landmark, 
@@ -59,8 +59,7 @@ import {
   useCreateTransferReconciliationMutation,
   useGetPendingTransferReconciliationsQuery,
   useDeleteTransferReconciliationMutation,
-  // Accounting / Ledger
-  useGetLedgerEntriesQuery
+  
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
@@ -1817,24 +1816,19 @@ const getDocumentDate = (doc: Document): string => {
 const BankPage = () => {
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const clientCompanyEin = useSelector((state: {clientCompany: {current: {ein: string}}}) => state.clientCompany.current.ein);
-  // Fetch ledger entries for current client for validation
-  const { data: ledgerData, error: ledgerError, isLoading: ledgerLoading } = useGetLedgerEntriesQuery(
-    clientCompanyEin ? { clientEin: clientCompanyEin, page: 1, size: 20 } : ({} as any),
-    { skip: !clientCompanyEin }
-  );
-
-  // Log results for testing & validation
-  useEffect(() => {
-    if (ledgerLoading) return;
-    if (ledgerError) {
-      console.error('[Ledger] Error fetching ledger entries:', ledgerError);
-    } else if (ledgerData) {
-      console.log('[Ledger] Fetched ledger entries:', ledgerData);
-    }
-  }, [ledgerData, ledgerError, ledgerLoading]);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [filterStatus, setFilterStatus] = useState<string>('unreconciled');
   const [excludeOutstanding, setExcludeOutstanding] = useState<boolean>(true);
+
+  // Debug helper to print minimal transfer fields
+  const dbgTransfer = useCallback((s: any) => ({
+    id: s?.id,
+    matchingType: s?.matchingCriteria?.type,
+    bankTransactionId: s?.bankTransaction?.id,
+    srcId: s?.transfer?.sourceTransactionId,
+    dstId: s?.transfer?.destinationTransactionId,
+    hasCounterparty: Boolean(s?.transfer?.counterpartyTransaction),
+  }), []);
   const [showOutstandingPanel, setShowOutstandingPanel] = useState<boolean>(false);
   const [updatingDocStatus, setUpdatingDocStatus] = useState<Set<number>>(new Set());
   const [updateDocumentReconciliationStatus] = useUpdateDocumentReconciliationStatusMutation();
@@ -2163,17 +2157,18 @@ const BankPage = () => {
           if (!srcMatch && !dstMatch) return false;
         } else {
           const txnId = s.bankTransaction?.id;
-          if (txnId && !accountTransactionIdSet.has(txnId)) return false;
+          if (txnId && !accountTransactionIdSet.has(String(txnId))) return false;
         }
       }
       return true;
     });
 
+    // Collect transfer suggestions that have at least one known side (src or dst)
     const transferItems = prelim.filter((s: any) => {
       if (s?.matchingCriteria?.type !== 'TRANSFER' || !s?.transfer) return false;
       const src = s.transfer?.sourceTransactionId;
       const dst = s.transfer?.destinationTransactionId;
-      return Boolean(src && dst);
+      return Boolean(src || dst);
     });
     const involvedTxnIds = new Set<string>();
     for (const t of transferItems) {
@@ -2182,9 +2177,11 @@ const BankPage = () => {
     }
 
     const nonTransferKept = prelim.filter((s: any) => {
-      const isValidTransfer = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer && s.transfer.sourceTransactionId && s.transfer.destinationTransactionId;
-      if (isValidTransfer) return true; // keep valid transfers
+      // Treat any suggestion flagged as TRANSFER (with payload) as transfer for display
+      const isTransferAnySide = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer;
+      if (isTransferAnySide) return true; // keep transfers
       const txnId = s?.bankTransaction?.id;
+      // If this suggestion is tied to any transaction that is part of a transfer pair, hide it
       if (txnId && involvedTxnIds.has(String(txnId))) return false;
       return true;
     });
@@ -2233,14 +2230,24 @@ const BankPage = () => {
     if (suggestionsItems.length) {
       setSuggestionsData(prev => suggestionsPage === 1 ? suggestionsItems : [...prev, ...suggestionsItems]);
       const transfers = (suggestionsItems as any[]).filter(it => it?.matchingCriteria?.type === 'TRANSFER');
-      console.log('[UI] suggestionsItems fetched', { page: suggestionsPage, pageSize: suggestionsItems.length, transferCount: transfers.length, sampleTransfers: transfers.slice(0, 3).map(t => t.id) });
+      console.log('[UI] suggestionsItems fetched', {
+        page: suggestionsPage,
+        pageSize: suggestionsItems.length,
+        transferCount: transfers.length,
+        samples: transfers.slice(0, 5).map(dbgTransfer)
+      });
     }
   }, [suggestionsItems]);
 
   useEffect(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const transfers = (base as any[]).filter(s => s?.matchingCriteria?.type === 'TRANSFER');
-    console.log('[UI] suggestionsData aggregate', { total: base.length, transfers: transfers.length, removedLocal: removedSuggestions.size });
+    console.log('[UI] suggestionsData aggregate', {
+      total: base.length,
+      transfers: transfers.length,
+      removedLocal: removedSuggestions.size,
+      samples: transfers.slice(0, 5).map(dbgTransfer)
+    });
   }, [suggestionsData, removedSuggestions]);
   
   const [createManualMatch, { isLoading: isCreatingMatch }] = useCreateManualMatchMutation();
@@ -4051,7 +4058,17 @@ const BankPage = () => {
                         </div>
                         {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
                           (() => {
-                            const cp: any = suggestion.transfer.counterpartyTransaction;
+                            // Prefer server-provided counterparty; otherwise, attempt to resolve from local transactionsData by ID
+                            let cp: any = (suggestion.transfer as any).counterpartyTransaction;
+                            if (!cp) {
+                              const srcId = suggestion.transfer.sourceTransactionId ? String(suggestion.transfer.sourceTransactionId) : undefined;
+                              const dstId = suggestion.transfer.destinationTransactionId ? String(suggestion.transfer.destinationTransactionId) : undefined;
+                              const currentTxnId = suggestion.bankTransaction?.id ? String(suggestion.bankTransaction.id) : undefined;
+                              const cpId = currentTxnId && srcId && currentTxnId === srcId ? dstId : srcId || dstId;
+                              if (cpId && Array.isArray(transactionsData)) {
+                                cp = (transactionsData as any[]).find(t => String(t.id) === String(cpId));
+                              }
+                            }
                             if (cp && typeof cp === 'object') {
                               return (
                                 <>
@@ -4076,11 +4093,12 @@ const BankPage = () => {
                               </div>
                             );
                           })()
-                        ) : suggestion.document ? (
-                          <>
-                            <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
-                            <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
-                            {(() => {
+                        ) : (
+                          suggestion.document ? (
+                            <>
+                              <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
+                              <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
+                              {(() => {
                               // Get the correct amount for different document types
                               let displayAmount = suggestion.document.total_amount;
                               
@@ -4088,7 +4106,6 @@ const BankPage = () => {
                               if (suggestion.document.type === 'Z Report') {
                                 let zReportAmount = 0;
                                 const processedData = suggestion.document.processedData as any;
-                                
                                 console.log('🔍 Z Report Debug for', suggestion.document.name, ':', {
                                   hasProcessedData: !!processedData,
                                   processedDataType: typeof processedData,
@@ -4200,24 +4217,25 @@ const BankPage = () => {
                                 }
                               }
                               
-                              return displayAmount !== undefined && displayAmount !== null && displayAmount !== 0 ? (
-                                <p className="text-sm font-medium text-blue-600 mt-1">
-                                  {formatCurrency(displayAmount)}
-                                </p>
-                              ) : null;
-                            })()}
-                          </>
-                        ) : suggestion.chartOfAccount ? (
-                          <>
-                            <p className="text-sm text-[var(--text2)]">
-                              {suggestion.chartOfAccount.accountCode || suggestion.chartOfAccount.code}
-                            </p>
-                            <p className="text-xs text-[var(--text3)]">
-                              {suggestion.chartOfAccount.accountName || suggestion.chartOfAccount.name}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="text-sm text-[var(--text3)] italic">{language === 'ro' ? 'Fără document' : 'No document'}</p>
+                                return displayAmount !== undefined && displayAmount !== null && displayAmount !== 0 ? (
+                                  <p className="text-sm font-medium text-blue-600 mt-1">
+                                    {formatCurrency(displayAmount)}
+                                  </p>
+                                ) : null;
+                              })()}
+                            </>
+                          ) : suggestion.chartOfAccount ? (
+                            <>
+                              <p className="text-sm text-[var(--text2)]">
+                                {suggestion.chartOfAccount.accountCode || suggestion.chartOfAccount.code}
+                              </p>
+                              <p className="text-xs text-[var(--text3)]">
+                                {suggestion.chartOfAccount.accountName || suggestion.chartOfAccount.name}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-sm text-[var(--text3)] italic">{language === 'ro' ? 'Fără document' : 'No document'}</p>
+                          )
                         )}
                       </div>
                       

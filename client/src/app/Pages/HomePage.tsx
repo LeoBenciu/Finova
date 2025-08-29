@@ -1,6 +1,6 @@
 import { useSelector } from "react-redux"
 import { ChartDashboard } from "../Components/ChartDashboard";
-import { useGetCompanyDataQuery } from "@/redux/slices/apiSlice";
+import { useGetCompanyDataQuery, useGetLedgerEntriesQuery } from "@/redux/slices/apiSlice";
 import LoadingComponent from "../Components/LoadingComponent";
 import { useEffect, useState } from "react";
 import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
@@ -38,6 +38,12 @@ const HomePage = () => {
   }, {
     skip: !clientCompanyEin || clientCompanyEin === '' // Skip query when no company
   });
+
+  // Fetch general ledger on Dashboard for quick diagnostics / future widgets
+  const { data: ledgerData, error: ledgerError, isLoading: ledgerLoading } = useGetLedgerEntriesQuery(
+    clientCompanyEin ? { clientEin: clientCompanyEin, page: 1, size: 20 } : ({} as any),
+    { skip: !clientCompanyEin }
+  );
 
   const incomePercentChange = companyData && companyData.incomeLastMonth !== 0 ? 
   ((companyData.incomeCurrentMonth - companyData.incomeLastMonth) / Math.abs(companyData.incomeLastMonth) * 100).toFixed(0) : 0;
@@ -126,8 +132,19 @@ const HomePage = () => {
   // Financial statements moved to ReportsPage
 
   useEffect(()=>{
-    console.log('LOG',companyData);
+    console.log('[Dashboard] Company data', companyData);
   },[companyData]);
+
+  // Log ledger results on the Dashboard (moved from Bank page)
+  useEffect(() => {
+    if (!clientCompanyEin) return;
+    if (ledgerLoading) return;
+    if (ledgerError) {
+      console.error('[Dashboard][Ledger] Error fetching ledger entries:', ledgerError);
+    } else if (ledgerData) {
+      console.log('[Dashboard][Ledger] Fetched ledger entries:', ledgerData);
+    }
+  }, [clientCompanyEin, ledgerData, ledgerError, ledgerLoading]);
 
   if(IsCompanyDataError) return <p>Error</p>
 
@@ -294,8 +311,8 @@ const HomePage = () => {
               return (
                 <div key={item.key} className="py-3 flex items-center justify-between">
                   <div className="flex flex-col">
-                    <span className="text-[var(--text1)] font-medium">{item.title}</span>
-                    <span className="text-xs text-[var(--text3)]">{item.description}</span>
+                    <span className="text-[var(--text1)] font-medium text-left">{item.title}</span>
+                    <span className="text-xs text-[var(--text3)] text-left">{item.description}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-[var(--text2)]">{language==='ro'?'Scadent la':'Due'}: {format(item.due, 'dd MMM yyyy')}</span>

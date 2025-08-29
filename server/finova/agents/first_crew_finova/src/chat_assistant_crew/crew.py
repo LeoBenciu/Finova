@@ -247,15 +247,18 @@ class ChatAssistantCrew:
             # Add success to debug info
             self.debug_info.append("✅ Query processed successfully")
             
-            # Format debug info nicely
+            # Format debug info nicely (only when debug is enabled)
             debug_str = "\n\n" + "="*50 + "\nDEBUG INFO:\n" + "="*50 + "\n" + "\n".join(self.debug_info)
-            
-            return response + debug_str
+            debug_enabled = str(os.getenv('FINOVA_AGENT_DEBUG', '')).strip().lower() in ("1", "true", "yes", "on")
+            return response + (debug_str if debug_enabled else "")
             
         except Exception as e:
-            error_msg = f"❌ I encountered an error: {str(e)}"
-            self.debug_info.append(f"✗ Error: {str(e)}")
-            self.debug_info.append(f"📋 Traceback: {traceback.format_exc()}")
-            
+            err = f"An error occurred while processing the query: {str(e)}"
+            try:
+                self.debug_info.append("✗ Error while processing query")
+                self.debug_info.append(traceback.format_exc())
+            except Exception:
+                pass
             debug_str = "\n\n" + "="*50 + "\nDEBUG INFO:\n" + "="*50 + "\n" + "\n".join(self.debug_info)
-            return error_msg + debug_str
+            debug_enabled = str(os.getenv('FINOVA_AGENT_DEBUG', '')).strip().lower() in ("1", "true", "yes", "on")
+            return err + (debug_str if debug_enabled else "")

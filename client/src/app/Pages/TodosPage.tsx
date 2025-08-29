@@ -147,7 +147,10 @@ const TodosPage = () => {
     setOrdered(curr);
   };
 
-  const onDrop = async (_e: React.DragEvent) => {
+  const onDrop = async (e: React.DragEvent) => {
+    // Prevent default browser behavior (e.g., opening dragged content)
+    e.preventDefault();
+    e.stopPropagation();
     if (!clientEin) return;
     const curr = ordered.slice();
     // Compute a base offset to preserve global ordering across pages
@@ -164,10 +167,17 @@ const TodosPage = () => {
       await reorderTodos({ clientEin, items: payload } as any).unwrap();
     } catch (err) {
       console.error('Failed to reorder todos', err);
+      // Surface a simple UI error so the user knows why the list snapped back
+      alert('Failed to save new order. Please check your login and try again.');
     } finally {
       setDraggingId(null);
       setReordering(false);
     }
+  };
+  
+  const onDragEnd = () => {
+    // Ensure visual state resets even if mutation is slow
+    setDraggingId(null);
   };
   const total: number = (data as any)?.total ?? items.length ?? 0;
 
@@ -365,9 +375,11 @@ const TodosPage = () => {
                     role="listitem"
                     className={`group border-2 ${priorityLc(item.priority)==='high' ? 'border-red-300' : priorityLc(item.priority)==='low' ? 'border-blue-300' : 'border-amber-300'}
                        bg-white rounded-2xl p-4 text-black ${draggingId===item.id ? 'opacity-60' : ''}`}
-                    draggable
+                    draggable={!!clientEin}
+                    title={clientEin ? undefined : 'Select a client to enable reordering'}
                     onDragStart={(e) => onDragStart(e, item.id)}
                     onDragOver={(e) => onDragOver(e, item.id)}
+                    onDragEnd={onDragEnd}
                     aria-grabbed={draggingId === item.id}
                   >
                     <div className="flex items-start gap-3">
