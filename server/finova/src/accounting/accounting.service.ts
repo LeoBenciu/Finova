@@ -29,6 +29,15 @@ export class AccountingService {
       select: { id: true },
     });
     if (!relation) throw new UnauthorizedException('You are not authorized to access this client');
+    // Debug mapping
+    try {
+      console.log('[Ledger] resolveAccountingClientId', {
+        clientEin,
+        clientCompanyId: clientCompany.id,
+        userCompanyId: user.accountingCompanyId,
+        accountingClientId: relation.id,
+      });
+    } catch {}
     return relation.id;
   }
 
@@ -44,6 +53,21 @@ export class AccountingService {
     if (q.accountCode) {
       where.accountCode = q.accountCode;
     }
+
+    // Debug input filters
+    try {
+      console.log('[Ledger] getLedgerEntries query', {
+        clientEin,
+        accountingClientId,
+        filters: {
+          startDate: q.startDate,
+          endDate: q.endDate,
+          accountCode: q.accountCode,
+        },
+        pagination: { page: q.page, size: q.size },
+        where,
+      });
+    } catch {}
 
     const [items, total] = await this.prisma.$transaction([
       this.prisma.generalLedgerEntry.findMany({
@@ -70,6 +94,16 @@ export class AccountingService {
       }),
       this.prisma.generalLedgerEntry.count({ where }),
     ]);
+
+    // Debug results
+    try {
+      console.log('[Ledger] getLedgerEntries result', {
+        accountingClientId,
+        returned: items.length,
+        total,
+        firstIds: items.slice(0, 5).map((it: any) => it.id),
+      });
+    } catch {}
 
     return { items, total, page: q.page, size: q.size };
   }

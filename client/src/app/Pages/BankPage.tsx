@@ -2148,13 +2148,49 @@ const BankPage = () => {
     const prelim = base.filter((s: any) => {
       if (removedSuggestions.has(String(s.id))) return false;
       if (hasAccountFilterReady) {
-        const isTransfer = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer && s.transfer.sourceTransactionId && s.transfer.destinationTransactionId;
-        if (isTransfer) {
-          const srcId = s.transfer.sourceTransactionId;
-          const dstId = s.transfer.destinationTransactionId;
-          const srcMatch = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
-          const dstMatch = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
-          if (!srcMatch && !dstMatch) return false;
+        const isTransferAny = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer;
+        if (isTransferAny) {
+          const srcId = s.transfer?.sourceTransactionId;
+          const dstId = s.transfer?.destinationTransactionId;
+          const hasSides = Boolean(srcId || dstId);
+          if (hasSides) {
+            const srcMatch = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
+            const dstMatch = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
+            // Debug transfer with sides
+            try {
+              console.log('[UI][filter][TRANSFER][sides]', {
+                sid: s.id,
+                bankTransactionId: s?.bankTransaction?.id,
+                srcId, dstId,
+                srcMatch, dstMatch,
+                selectedBankAccountId,
+              });
+            } catch {}
+            if (!srcMatch && !dstMatch) {
+              // Fall back to the suggestion's own bankTransaction when sides are not associated
+              const selfTxnId = s.bankTransaction?.id;
+              try {
+                console.log('[UI][filter][TRANSFER][fallback-self]', {
+                  sid: s.id,
+                  selfTxnId,
+                  inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
+                  selectedBankAccountId,
+                });
+              } catch {}
+              if (!selfTxnId || !accountTransactionIdSet.has(String(selfTxnId))) return false;
+            }
+          } else {
+            const selfTxnId = s.bankTransaction?.id;
+            try {
+              console.log('[UI][filter][TRANSFER][no-sides]', {
+                sid: s.id,
+                selfTxnId,
+                inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
+                selectedBankAccountId,
+              });
+            } catch {}
+            if (!selfTxnId || !accountTransactionIdSet.has(String(selfTxnId))) return false;
+          }
         } else {
           const txnId = s.bankTransaction?.id;
           if (txnId && !accountTransactionIdSet.has(String(txnId))) return false;
@@ -2163,18 +2199,20 @@ const BankPage = () => {
       return true;
     });
 
-    // Collect transfer suggestions that have at least one known side (src or dst)
-    const transferItems = prelim.filter((s: any) => {
-      if (s?.matchingCriteria?.type !== 'TRANSFER' || !s?.transfer) return false;
-      const src = s.transfer?.sourceTransactionId;
-      const dst = s.transfer?.destinationTransactionId;
-      return Boolean(src || dst);
-    });
+    // Collect transfer suggestions (any with payload)
+    const transferItems = prelim.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer);
     const involvedTxnIds = new Set<string>();
     for (const t of transferItems) {
       if (t?.transfer?.sourceTransactionId) involvedTxnIds.add(String(t.transfer.sourceTransactionId));
       if (t?.transfer?.destinationTransactionId) involvedTxnIds.add(String(t.transfer.destinationTransactionId));
+      if (t?.bankTransaction?.id) involvedTxnIds.add(String(t.bankTransaction.id));
     }
+    try {
+      console.log('[UI][dedupe] transferItems/involvedTxnIds', {
+        transferCount: transferItems.length,
+        involved: Array.from(involvedTxnIds).slice(0, 10),
+      });
+    } catch {}
 
     const nonTransferKept = prelim.filter((s: any) => {
       // Treat any suggestion flagged as TRANSFER (with payload) as transfer for display

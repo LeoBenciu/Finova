@@ -46,7 +46,22 @@ export class TodosController {
     });
   }
 
-  @Get(':clientEin/:id')
+  // Batch reorder endpoint: updates sortOrder for a list of todos
+  // Place BEFORE any ":clientEin/:id" routes to avoid route collisions
+  @Put(':clientEin/reorder')
+  async reorder(
+    @Param('clientEin') clientEin: string,
+    @GetUser() user: User,
+    @Body()
+    data: {
+      items: Array<{ id: number; sortOrder: number }>;
+    },
+  ) {
+    return this.todosService.reorderTodos(clientEin, user, data.items || []);
+  }
+
+  // Constrain :id to digits only so literal paths like "reorder" won't match
+  @Get(':clientEin/:id(\\d+)')
   async getOne(
     @Param('clientEin') clientEin: string,
     @Param('id', ParseIntPipe) id: number,
@@ -78,7 +93,7 @@ export class TodosController {
     return this.todosService.createTodo(clientEin, user, data);
   }
 
-  @Put(':clientEin/:id')
+  @Put(':clientEin/:id(\\d+)')
   async update(
     @Param('clientEin') clientEin: string,
     @Param('id', ParseIntPipe) id: number,
@@ -101,25 +116,12 @@ export class TodosController {
     return this.todosService.updateTodo(clientEin, user, id, data);
   }
 
-  @Delete(':clientEin/:id')
+  @Delete(':clientEin/:id(\\d+)')
   async remove(
     @Param('clientEin') clientEin: string,
     @Param('id', ParseIntPipe) id: number,
     @GetUser() user: User,
   ) {
     return this.todosService.deleteTodo(clientEin, user, id);
-  }
-
-  // Batch reorder endpoint: updates sortOrder for a list of todos
-  @Put(':clientEin/reorder')
-  async reorder(
-    @Param('clientEin') clientEin: string,
-    @GetUser() user: User,
-    @Body()
-    data: {
-      items: Array<{ id: number; sortOrder: number }>;
-    },
-  ) {
-    return this.todosService.reorderTodos(clientEin, user, data.items || []);
   }
 }

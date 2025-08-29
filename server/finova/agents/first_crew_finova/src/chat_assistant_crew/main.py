@@ -6,6 +6,8 @@ This module provides a command-line interface for interacting with the Chat Assi
 
 import argparse
 import json
+import os
+import sys
 from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
@@ -16,6 +18,7 @@ def main():
     """Run the Chat Assistant Crew with command-line arguments."""
     # Load environment variables from .env file
     load_dotenv()
+    debug_enabled = str(os.getenv('FINOVA_AGENT_DEBUG', '')).strip().lower() in ("1", "true", "yes", "on")
     
     # Set up argument parser
     parser = argparse.ArgumentParser(description='Chat Assistant Crew')
@@ -34,12 +37,15 @@ def main():
         try:
             with open(args.chat_history, 'r', encoding='utf-8') as f:
                 chat_history = json.load(f)
-            print(f"Loaded chat history from {args.chat_history}")
+            if debug_enabled:
+                print(f"Loaded chat history from {args.chat_history}", file=sys.stderr)
         except Exception as e:
-            print(f"Error loading chat history: {e}")
+            if debug_enabled:
+                print(f"Error loading chat history: {e}", file=sys.stderr)
     
     # Initialize the chat assistant
-    print(f"Initializing Chat Assistant for client EIN: {args.client_ein}")
+    if debug_enabled:
+        print(f"Initializing Chat Assistant for client EIN: {args.client_ein}", file=sys.stderr)
     chat_crew = ChatAssistantCrew(
         client_company_ein=args.client_ein,
         chat_history=chat_history
@@ -73,12 +79,11 @@ def main():
                 print(f"\nError: {e}\n")
     else:
         # Single message mode (non-interactive): read one message from stdin safely
-        if not args.chat_history:
-            print("No chat history provided. Starting a new conversation.")
+        if not args.chat_history and debug_enabled:
+            print("No chat history provided. Starting a new conversation.", file=sys.stderr)
 
         try:
             # Read one line from stdin written by the Node process
-            import sys
             raw = sys.stdin.readline()
             user_input = (raw or "").strip()
         except Exception:
@@ -86,6 +91,7 @@ def main():
 
         if user_input:
             response = chat_crew.process_message(user_input)
+            # IMPORTANT: Only print the assistant response to stdout
             print(f"\nAssistant: {response}")
         else:
             # Graceful no-input behavior to avoid non-zero exit & Node fallback
@@ -96,9 +102,12 @@ def main():
         try:
             with open(args.chat_history, 'w', encoding='utf-8') as f:
                 json.dump(chat_crew.chat_history, f, indent=2)
-            print(f"\nChat history saved to {args.chat_history}")
+            # Avoid noisy stdout; write save notice to stderr only in debug mode
+            if debug_enabled:
+                print(f"\nChat history saved to {args.chat_history}", file=sys.stderr)
         except Exception as e:
-            print(f"Error saving chat history: {e}")
+            if debug_enabled:
+                print(f"Error saving chat history: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

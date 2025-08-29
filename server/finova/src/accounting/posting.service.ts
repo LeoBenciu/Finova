@@ -53,11 +53,36 @@ export class PostingService {
       throw new Error(`Posting not balanced: debit=${sumDebit.toFixed(2)} credit=${sumCredit.toFixed(2)}`);
     }
 
+    // Debug: input summary
+    try {
+      const totalDebit = entries.reduce((s, e) => s + (e.debit ? Number(e.debit) : 0), 0);
+      const totalCredit = entries.reduce((s, e) => s + (e.credit ? Number(e.credit) : 0), 0);
+      console.log('[Ledger] postEntries attempt', {
+        accountingClientId,
+        postingDate,
+        sourceType,
+        sourceId,
+        postingKey,
+        entriesCount: entries.length,
+        totalDebit: Number(totalDebit.toFixed(2)),
+        totalCredit: Number(totalCredit.toFixed(2)),
+        links,
+      });
+    } catch {}
+
     // Try to find existing by unique postingKey
     const prismaAny = this.prisma as any; // avoid TS errors before migration generates models
     const existing = await prismaAny.generalLedgerEntry?.findFirst?.({ where: { postingKey } });
     if (existing) {
       const siblings = await prismaAny.generalLedgerEntry.findMany({ where: { accountingClientId, postingKey } });
+      try {
+        console.log('[Ledger] postEntries idempotent reuse', {
+          postingKey,
+          accountingClientId,
+          count: siblings?.length ?? 0,
+          firstIds: (siblings || []).slice(0, 5).map((r: any) => r.id),
+        });
+      } catch {}
       return { created: siblings, reused: true };
     }
 
@@ -83,6 +108,25 @@ export class PostingService {
           },
         });
         createdRows.push(row);
+        // Per-row debug
+        try {
+          console.log('[Ledger] postEntries created row', {
+            id: row.id,
+            accountingClientId: row.accountingClientId,
+            postingDate: row.postingDate,
+            accountCode: row.accountCode,
+            debit: String(row.debit),
+            credit: String(row.credit),
+            sourceType: row.sourceType,
+            sourceId: row.sourceId,
+            postingKey: row.postingKey,
+            links: {
+              documentId: row.documentId,
+              bankTransactionId: row.bankTransactionId,
+              reconciliationId: row.reconciliationId,
+            },
+          });
+        } catch {}
 
         // Update Daily balance (increment by debit-credit)
         const delta = new Prisma.Decimal((e.debit ?? 0) - (e.credit ?? 0));
@@ -135,6 +179,14 @@ export class PostingService {
       return createdRows;
     });
 
+    try {
+      console.log('[Ledger] postEntries completed', {
+        postingKey,
+        createdCount: created.length,
+        firstIds: created.slice(0, 5).map((r: any) => r.id),
+      });
+    } catch {}
+
     return { created, reused: false };
   }
 
@@ -158,6 +210,16 @@ export class PostingService {
         reconciliationId: reconciliationId,
       },
     });
+
+    try {
+      console.log('[Ledger] unpostByLinks lookup', {
+        accountingClientId,
+        documentId,
+        bankTransactionId,
+        reconciliationId,
+        found: entries?.length ?? 0,
+      });
+    } catch {}
 
     if (!entries || entries.length === 0) {
       return { reversed: 0 };
@@ -226,6 +288,16 @@ export class PostingService {
         await txAny.generalLedgerEntry.delete({ where: { id: row.id } });
       }
     });
+
+    try {
+      console.log('[Ledger] unpostByLinks completed', {
+        accountingClientId,
+        documentId,
+        bankTransactionId,
+        reconciliationId,
+        reversed: entries.length,
+      });
+    } catch {}
 
     return { reversed: entries.length };
   }
