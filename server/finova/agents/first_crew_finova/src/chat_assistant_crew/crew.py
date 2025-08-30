@@ -145,6 +145,13 @@ class ChatAssistantCrew:
             - If asked about documents, use search_documents tool  
             - If asked about accounting research, use serper_accounting_research tool
             - Don't guess or assume data - use tools to get accurate information
+
+            IMPORTANT: 
+            - Always answer back in the same language as the user asked in
+            
+            CRITICAL OUTPUT FORMAT:
+            - When you use the search_documents tool successfully, respond with ONLY the raw JSON string returned by the tool. Do NOT add any extra text before or after it. The frontend relies on the response starting with '{{' or '[' to render document previews.
+            - For all other cases, provide a normal textual response.
             
             Be helpful, accurate, and always prefer tool data over assumptions."""
         else:
@@ -182,6 +189,8 @@ class ChatAssistantCrew:
             - Recent Chat History: {chat_history}
             
             Provide a comprehensive and helpful response based on the user's query.
+            
+            IMPORTANT: If the query is about documents and you use the search_documents tool, return ONLY the raw JSON string from the tool (no additional commentary). The client UI parses JSON replies to render document previews.
             """,
             agent=self.chat_agent(),
             expected_output="A helpful, accurate response that utilizes available tools when appropriate to provide the most relevant and up-to-date information."

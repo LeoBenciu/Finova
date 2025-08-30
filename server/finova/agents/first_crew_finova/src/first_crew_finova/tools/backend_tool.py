@@ -316,10 +316,87 @@ class CreateTodoTool(BaseTool):
             return f"Error creating todo: {str(e)}"
 
 
+class SearchDocumentsInput(BaseModel):
+    """Inputs for searching documents via the Finova backend /files/search endpoint."""
+    company: str = Field(..., description="Company EIN or name to search in")
+    q: Optional[str] = Field(default=None, description="Free text query (e.g., invoice number)")
+    type: Optional[str] = Field(default=None, description="Document type filter (e.g., Invoice, Receipt)")
+    paymentStatus: Optional[str] = Field(default=None, description="Payment status filter")
+    dateFrom: Optional[str] = Field(default=None, description="Start date YYYY-MM-DD")
+    dateTo: Optional[str] = Field(default=None, description="End date YYYY-MM-DD")
+    page: Optional[int] = Field(default=1, description="Page number (1-based)")
+    limit: Optional[int] = Field(default=25, description="Page size")
+    sort: Optional[str] = Field(default="createdAt_desc", description="Sort key, e.g., createdAt_desc")
+
+
+class SearchDocumentsTool(BaseTool):
+    name: str = "search_documents"
+    description: str = (
+        "Search company documents by company name/EIN, text, type, dates, and payment status. "
+        "Returns items with signedUrl for direct PDF rendering."
+    )
+    args_schema: type[SearchDocumentsInput] = SearchDocumentsInput
+
+    def _run(
+        self,
+        company: str,
+        q: Optional[str] = None,
+        type: Optional[str] = None,
+        paymentStatus: Optional[str] = None,
+        dateFrom: Optional[str] = None,
+        dateTo: Optional[str] = None,
+        page: Optional[int] = 1,
+        limit: Optional[int] = 25,
+        sort: Optional[str] = "createdAt_desc",
+    ) -> str:
+        base = _pick_backend_base()
+        headers = _auth_headers()
+        if not base:
+            return "Backend base URL not configured. Set BACKEND_API_URL or BANK_BACKEND_URL."
+        if "Authorization" not in headers:
+            return "No backend JWT available. Set BACKEND_JWT in environment."
+
+        try:
+            params = {
+                "company": company,
+                "page": str(page or 1),
+                "limit": str(limit or 25),
+                "sort": sort or "createdAt_desc",
+            }
+            if q:
+                params["q"] = q
+            if type:
+                params["type"] = type
+            if paymentStatus:
+                params["paymentStatus"] = paymentStatus
+            if dateFrom:
+                params["dateFrom"] = dateFrom
+            if dateTo:
+                params["dateTo"] = dateTo
+
+            url = f"{base}/files/search?" + urllib.parse.urlencode(params)
+            r = requests.get(url, headers=headers, timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            # Normalize minimal structure for the agent
+            items = (data or {}).get("items") or (data or {}).get("documents") or []
+            total = (data or {}).get("totalCount") or (data or {}).get("total") or len(items)
+            return json.dumps({
+                "items": items,
+                "total": total,
+                "accountingCompany": (data or {}).get("accountingCompany"),
+                "clientCompany": (data or {}).get("clientCompany"),
+            }, ensure_ascii=False)
+        except requests.exceptions.RequestException:
+            return "Backend temporarily unavailable or network error."
+        except Exception as e:
+            return f"Error searching documents: {str(e)}"
+
+
 def get_backend_tools() -> List[BaseTool]:
     """Return available backend tools based on env. Empty if missing config."""
     base = _pick_backend_base()
     headers = _auth_headers()
     if not base or "Authorization" not in headers:
         return []
-    return [CompanyFinancialInfoTool(), UsersSearchTool(), CreateTodoTool()]
+    return [CompanyFinancialInfoTool(), UsersSearchTool(), CreateTodoTool(), SearchDocumentsTool()]

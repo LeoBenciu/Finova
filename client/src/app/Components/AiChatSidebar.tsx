@@ -8,11 +8,20 @@ interface AIChatSidebarProps {
   onClose: () => void;
 }
 
+interface DocPreviewItem {
+  id?: number | string;
+  title?: string;
+  fileName?: string;
+  documentNumber?: string;
+  signedUrl?: string;
+}
+
 interface Message {
   id: string;
   content: string;
   sender: 'user' | 'ai';
   timestamp: Date;
+  docs?: DocPreviewItem[];
 }
 
 const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
@@ -91,11 +100,41 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         }));
 
       const res = await sendChatMessage({ clientEin, message: newMessage.content, history }).unwrap();
+
+      // Try to parse document results from AI reply (JSON payload with items[].signedUrl)
+      const parseDocResults = (text: string): DocPreviewItem[] | undefined => {
+        try {
+          const trimmed = text.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            const data = JSON.parse(trimmed);
+            const items = (data?.items ?? data?.documents ?? []) as any[];
+            if (Array.isArray(items) && items.length) {
+              const docs: DocPreviewItem[] = items
+                .map((it) => ({
+                  id: it.id ?? it.docId ?? it.documentId,
+                  title: it.processedData?.document_number || it.processedData?.title || it.fileName,
+                  fileName: it.fileName,
+                  documentNumber: it.processedData?.document_number,
+                  signedUrl: it.signedUrl,
+                }))
+                .filter((d) => !!d.signedUrl);
+              return docs.length ? docs : undefined;
+            }
+          }
+        } catch (_) {
+          // ignore parse errors
+        }
+        return undefined;
+      };
+
+      const docs = parseDocResults(res.reply);
+
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         content: res.reply || (language === 'ro' ? 'Niciun răspuns.' : 'No response.'),
         sender: 'ai',
-        timestamp: new Date()
+        timestamp: new Date(),
+        docs,
       };
       setMessages(prev => [...prev, aiResponse]);
     } catch (err: any) {
@@ -172,7 +211,33 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                   }`}></div>
                   
                   <div className="relative">
-                    <p className="text-sm leading-relaxed font-medium">{message.content}</p>
+                    <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{message.content}</p>
+
+                    {message.sender === 'ai' && message.docs && message.docs.length > 0 && (
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        {message.docs.slice(0, 3).map((doc, idx) => (
+                          <div key={`${message.id}-doc-${idx}`} className="border rounded-xl overflow-hidden shadow-sm">
+                            <div className="px-3 py-2 bg-gray-50 text-xs text-gray-700 flex flex-row justify-between items-center">
+                              <div className="font-semibold truncate max-w-[80%]">
+                                {doc.documentNumber || doc.title || doc.fileName || 'Document'}
+                              </div>
+                              {doc.signedUrl && (
+                                <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                                  Open
+                                </a>
+                              )}
+                            </div>
+                            {doc.signedUrl && (
+                              <iframe
+                                src={doc.signedUrl}
+                                className="w-full h-64"
+                                title={`doc-preview-${idx}`}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <p className={`text-xs mt-3 flex items-center gap-1 ${
                       message.sender === 'user' ? 'text-white/70' : 'text-[var(--text3)]'
                     }`}>

@@ -2137,18 +2137,29 @@ const BankPage = () => {
   // Build a transaction ID set for the selected account to filter suggestions
   const accountTransactionIdSet = useMemo(() => {
     const list = (accountTransactionsResp?.items ?? []) as any[];
-    return new Set(list.map(t => t.id));
+    return new Set(list.map(t => String(t.id)));
   }, [accountTransactionsResp]);
 
   // Suggestions displayed in UI, filtered by selected bank account (if any) and local removals
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const hasAccountFilterReady = !!selectedBankAccountId && accountTransactionIdSet.size > 0;
+    const isTransferLike = (s: any): boolean => {
+      const t = (s?.matchingCriteria?.type || s?.matchingCriteria || '').toString();
+      const byType = typeof t === 'string' && t.toUpperCase() === 'TRANSFER';
+      const byPayload = Boolean(s?.transfer);
+      return byType || byPayload;
+    };
 
     const prelim = base.filter((s: any) => {
-      if (removedSuggestions.has(String(s.id))) return false;
+      if (removedSuggestions.has(String(s.id))) {
+        try {
+          console.log('[UI][filter][REMOVED][local]', { sid: s.id });
+        } catch {}
+        return false;
+      }
       if (hasAccountFilterReady) {
-        const isTransferAny = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer;
+        const isTransferAny = isTransferLike(s);
         if (isTransferAny) {
           const srcId = s.transfer?.sourceTransactionId;
           const dstId = s.transfer?.destinationTransactionId;
@@ -2181,6 +2192,16 @@ const BankPage = () => {
             }
           } else {
             const selfTxnId = s.bankTransaction?.id;
+            if (!s?.transfer) {
+              try {
+                console.log('[UI][filter][TRANSFER][no-payload]', {
+                  sid: s.id,
+                  bankTransactionId: selfTxnId,
+                  inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
+                  selectedBankAccountId,
+                });
+              } catch {}
+            }
             try {
               console.log('[UI][filter][TRANSFER][no-sides]', {
                 sid: s.id,
@@ -2193,14 +2214,41 @@ const BankPage = () => {
           }
         } else {
           const txnId = s.bankTransaction?.id;
-          if (txnId && !accountTransactionIdSet.has(String(txnId))) return false;
+          if (s?.matchingCriteria?.type === 'TRANSFER') {
+            try {
+              console.log('[UI][filter][TRANSFER][unexpected-nontransfer-branch]', {
+                sid: s.id,
+                hasPayload: Boolean(s?.transfer),
+                txnId,
+              });
+            } catch {}
+          }
+          if (txnId && !accountTransactionIdSet.has(String(txnId))) {
+            try {
+              console.log('[UI][filter][NONTRANSFER][account-mismatch]', {
+                sid: s.id,
+                txnId,
+                inSet: false,
+                selectedBankAccountId,
+              });
+            } catch {}
+            return false;
+          }
         }
       }
       return true;
     });
 
-    // Collect transfer suggestions (any with payload)
-    const transferItems = prelim.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer);
+    // Debug: list unique types seen in prelim
+    try {
+      const uniqueTypes = Array.from(new Set((prelim as any[]).map(p => (p?.matchingCriteria?.type || p?.matchingCriteria || '(none)'))));
+      console.log('[UI][types] prelim unique matchingCriteria.type', uniqueTypes);
+      // Expose for ad-hoc inspection
+      (window as any).__finovaPrelim = prelim;
+    } catch {}
+
+    // Collect transfer suggestions (robust detection)
+    const transferItems = prelim.filter((s: any) => isTransferLike(s));
     const involvedTxnIds = new Set<string>();
     for (const t of transferItems) {
       if (t?.transfer?.sourceTransactionId) involvedTxnIds.add(String(t.transfer.sourceTransactionId));

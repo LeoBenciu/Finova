@@ -874,6 +874,79 @@ export class FilesService {
         return hasAccess;
     }
 
+    // Search entrypoint for chat and flexible queries: accepts either EIN or company name,
+    // resolves to a client EIN within the user's accounting company, then reuses getFiles()
+    async searchFiles(
+        company: string,
+        user: User,
+        options?: {
+            page?: number;
+            limit?: number;
+            q?: string;
+            type?: string;
+            paymentStatus?: string;
+            dateFrom?: string;
+            dateTo?: string;
+            sort?: string;
+        }
+    ) {
+        try {
+            if (!company || !company.trim()) {
+                throw new NotFoundException('Company identifier is required');
+            }
+
+            const currentUser = await this.prisma.user.findUnique({
+                where: { id: user.id },
+                include: { accountingCompany: true }
+            });
+
+            if (!currentUser) {
+                throw new NotFoundException('User not found in the database');
+            }
+
+            // 1) Try resolve by EIN directly
+            let clientCompany = await this.prisma.clientCompany.findUnique({
+                where: { ein: company }
+            });
+
+            // Ensure relation and authorization if EIN matched
+            if (clientCompany) {
+                const relation = await this.prisma.accountingClients.findFirst({
+                    where: {
+                        accountingCompanyId: currentUser.accountingCompanyId,
+                        clientCompanyId: clientCompany.id
+                    }
+                });
+                if (!relation) {
+                    // Treat as not found for this user scope
+                    clientCompany = null as any;
+                }
+            }
+
+            // 2) Fallback: resolve by name (case-insensitive) scoped to user's accounting company
+            if (!clientCompany) {
+                clientCompany = await this.prisma.clientCompany.findFirst({
+                    where: {
+                        name: { contains: company, mode: 'insensitive' },
+                        accountingClients: {
+                            some: { accountingCompanyId: currentUser.accountingCompanyId }
+                        }
+                    }
+                });
+            }
+
+            if (!clientCompany) {
+                throw new NotFoundException('Client company not found or not accessible');
+            }
+
+            // Delegate to existing pipeline which applies full auth, filters, and signed URLs
+            return this.getFiles(clientCompany.ein, user, options);
+        } catch (e) {
+            if (e instanceof NotFoundException || e instanceof UnauthorizedException) throw e;
+            throw new InternalServerErrorException('Failed to search documents');
+        }
+    }
+
     private generateDocumentHash(fileBuffer: Buffer): string {
         return crypto.createHash('md5').update(fileBuffer).digest('hex');
     }

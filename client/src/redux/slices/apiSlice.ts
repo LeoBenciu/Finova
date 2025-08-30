@@ -315,6 +315,35 @@ export const finovaApi = createApi({
             providesTags: ['Files']
         }),
 
+        // Search documents by company (EIN or name) for chat/UX quick lookup
+        searchDocuments: build.query<
+          { items: any[]; total: number; accountingCompany?: any; clientCompany?: any },
+          { company: string; page?: number; limit?: number; q?: string; type?: string; paymentStatus?: string; dateFrom?: string; dateTo?: string; sort?: string }
+        >({
+          query: ({ company, page = 1, limit = 25, q, type, paymentStatus, dateFrom, dateTo, sort = 'createdAt_desc' }) => {
+            const params = new URLSearchParams();
+            params.set('company', company);
+            params.set('page', String(page));
+            params.set('limit', String(limit));
+            params.set('sort', sort);
+            if (q) params.set('q', q);
+            if (type) params.set('type', type);
+            if (paymentStatus) params.set('paymentStatus', paymentStatus);
+            if (dateFrom) params.set('dateFrom', dateFrom);
+            if (dateTo) params.set('dateTo', dateTo);
+            return {
+              url: `/files/search?${params.toString()}`,
+              method: 'GET'
+            };
+          },
+          transformResponse: (response: any) => {
+            const items = response?.items ?? response?.documents ?? [];
+            const total = response?.totalCount ?? response?.total ?? (Array.isArray(items) ? items.length : 0);
+            return { items, total, accountingCompany: response?.accountingCompany, clientCompany: response?.clientCompany };
+          },
+          providesTags: ['Files']
+        }),
+
         getInvoicePayments: build.query({
             query: (docId) => ({
                 url: `/files/payments/${docId}`,
@@ -1246,6 +1275,7 @@ export const {
   useUpdateDuplicateStatusMutation,
   useGetServiceHealthQuery,
   useProcessBatchMutation,
+  useSearchDocumentsQuery,
   useGetSomeFilesMutation,
   useGetBankReconciliationStatsQuery,
   useGetFinancialDocumentsQuery,

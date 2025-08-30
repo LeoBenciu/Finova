@@ -14,6 +14,32 @@ export class FilesController {
 
     constructor(private fileMangementService: FilesService, private bankService: BankService){}
 
+    @Get('search')
+    searchFiles(
+        @Query('company') company: string,
+        @Req() req: Request,
+        @Query('page') page?: string,
+        @Query('limit') limit?: string,
+        @Query('q') q?: string,
+        @Query('type') type?: string,
+        @Query('paymentStatus') paymentStatus?: string,
+        @Query('dateFrom') dateFrom?: string,
+        @Query('dateTo') dateTo?: string,
+        @Query('sort') sort?: string,
+    ) {
+        const user = req.user as User;
+        return this.fileMangementService.searchFiles(company, user, {
+            page: page ? parseInt(page, 10) : 1,
+            limit: limit ? parseInt(limit, 10) : 25,
+            q: q || undefined,
+            type: type || undefined,
+            paymentStatus: paymentStatus || undefined,
+            dateFrom: dateFrom || undefined,
+            dateTo: dateTo || undefined,
+            sort: sort || 'createdAt_desc',
+        });
+    }
+
     @Post('some-files')
     async getSomeFiles(
         @Body('docIds') docIds: number[],
@@ -153,7 +179,12 @@ export class FilesController {
         @Param('clientEin') clientEin: string,
         @GetUser() user: User
     ) {
-        return this.bankService.getReconciliationSuggestions(clientEin, user); 
+        const t0 = Date.now();
+        console.log('[API][suggestions][in]', { clientEin, userId: user.id });
+        const result = await this.bankService.getReconciliationSuggestions(clientEin, user);
+        const count = Array.isArray((result as any)?.items) ? (result as any).items.length : Array.isArray(result) ? (result as any).length : 0;
+        console.log('[API][suggestions][out]', { clientEin, userId: user.id, count, ms: Date.now() - t0 });
+        return result; 
     }
 
 }
