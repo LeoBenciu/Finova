@@ -14,6 +14,7 @@ interface DocPreviewItem {
   fileName?: string;
   documentNumber?: string;
   signedUrl?: string;
+  type?: string;
 }
 
 interface Message {
@@ -31,6 +32,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
   const [showIntro, setShowIntro] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [previewDoc, setPreviewDoc] = useState<DocPreviewItem | null>(null);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   
   const language = useSelector((state: {user:{language:string}}) => state.user.language);
   const clientEin = useSelector((state: {clientCompany:{current:{ein:string}}}) => state.clientCompany.current.ein);
@@ -112,10 +115,11 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               const docs: DocPreviewItem[] = items
                 .map((it) => ({
                   id: it.id ?? it.docId ?? it.documentId,
-                  title: it.processedData?.document_number || it.processedData?.title || it.fileName,
+                  title: it.processedData?.document_number || it.processedData?.title || it.name || it.fileName,
                   fileName: it.fileName,
                   documentNumber: it.processedData?.document_number,
                   signedUrl: it.signedUrl,
+                  type: it.type,
                 }))
                 .filter((d) => !!d.signedUrl);
               return docs.length ? docs : undefined;
@@ -129,9 +133,14 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
       const docs = parseDocResults(res.reply);
 
+      // If docs parsed from a raw JSON reply, don't show raw JSON text to the user
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: res.reply || (language === 'ro' ? 'Niciun răspuns.' : 'No response.'),
+        content: docs
+          ? (language === 'ro'
+              ? `Am găsit ${docs.length} document${docs.length === 1 ? '' : 'e'}.`
+              : `I found ${docs.length} document${docs.length === 1 ? '' : 's'}.`)
+          : (res.reply || (language === 'ro' ? 'Niciun răspuns.' : 'No response.')),
         sender: 'ai',
         timestamp: new Date(),
         docs,
@@ -174,6 +183,37 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
         />
       )}
 
+      {/* Preview Modal (kept at root, not inside intro/messages) */}
+      {isPreviewOpen && previewDoc && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl w-[90vw] max-w-4xl h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div className="flex flex-col">
+                <span className="font-semibold text-sm">{previewDoc.documentNumber || previewDoc.title || previewDoc.fileName || 'Document'}</span>
+                <span className="text-xs text-gray-500">{previewDoc.type || ''}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewDoc.signedUrl && (
+                  <a href={previewDoc.signedUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300">
+                    {language === 'ro' ? 'Deschide în tab nou' : 'Open in new tab'}
+                  </a>
+                )}
+                <button onClick={() => { setIsPreviewOpen(false); setPreviewDoc(null); }} className="px-3 py-1.5 text-xs rounded-md bg-red-500 text-white hover:bg-red-600">
+                  {language === 'ro' ? 'Închide' : 'Close'}
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-gray-50">
+              {previewDoc.signedUrl ? (
+                <iframe src={previewDoc.signedUrl} className="w-full h-full" title="doc-preview" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">{language === 'ro' ? 'Previzualizare indisponibilă' : 'Preview unavailable'}</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[700px] h-[90vh] sm:h-[80vh] flex flex-col
         z-50 transform transition-all duration-300 ease-out
         ${isOpen ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
@@ -199,41 +239,43 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
 
-                <div className={`relative rounded-3xl px-5 py-4 shadow-lg border-0 backdrop-blur-sm ${
+                <div className={`relative rounded-3xl px-5 overflow-x-hidden min-w-[600px] max-w-[600px] 
+                py-4 shadow-lg border-0 backdrop-blur-sm ${
                   message.sender === 'user'
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white'
                     : 'bg-white text-[var(--text1)]'
                 }`}>
-                  <div className={`absolute inset-0 rounded-3xl ${
-                    message.sender === 'user' 
-                      ? 'bg-[var(--primary)]' 
-                      : ' bg-white'
-                  }`}></div>
-                  
                   <div className="relative">
                     <p className="text-sm leading-relaxed font-medium whitespace-pre-wrap">{message.content}</p>
 
                     {message.sender === 'ai' && message.docs && message.docs.length > 0 && (
-                      <div className="mt-4 grid grid-cols-1 gap-3">
-                        {message.docs.slice(0, 3).map((doc, idx) => (
-                          <div key={`${message.id}-doc-${idx}`} className="border rounded-xl overflow-hidden shadow-sm">
-                            <div className="px-3 py-2 bg-gray-50 text-xs text-gray-700 flex flex-row justify-between items-center">
-                              <div className="font-semibold truncate max-w-[80%]">
-                                {doc.documentNumber || doc.title || doc.fileName || 'Document'}
-                              </div>
+                      <div className="mt-3 flex flex-col gap-2">
+                        {message.docs.map((doc, idx) => (
+                          <div key={`${message.id}-doc-${idx}`} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                            <div className="flex flex-col truncate mr-3">
+                              <span className="font-semibold truncate">{doc.documentNumber || doc.title || doc.fileName || 'Document'}</span>
+                              <span className="text-[11px] text-gray-500">{doc.type || 'Document'}</span>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0">
                               {doc.signedUrl && (
-                                <a href={doc.signedUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                                  Open
-                                </a>
+                                <>
+                                  <button
+                                    onClick={() => { setPreviewDoc(doc); setIsPreviewOpen(true); }}
+                                    className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                                  >
+                                    {language === 'ro' ? 'Previzualizează' : 'Preview'}
+                                  </button>
+                                  <a
+                                    href={doc.signedUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="px-3 py-1.5 text-xs rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300"
+                                  >
+                                    {language === 'ro' ? 'Deschide' : 'Open'}
+                                  </a>
+                                </>
                               )}
                             </div>
-                            {doc.signedUrl && (
-                              <iframe
-                                src={doc.signedUrl}
-                                className="w-full h-64"
-                                title={`doc-preview-${idx}`}
-                              />
-                            )}
                           </div>
                         ))}
                       </div>

@@ -2,25 +2,14 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import { 
   Landmark, 
-  Search, 
   CreditCard,
   FileText,
   Receipt,
-  ArrowRight,
-  Link,
-  Calendar,
   AlertTriangle,
-  Check,
-  X,
   Zap,
   Target,
   TrendingUp,
-  Eye,
-  RefreshCw,
   Loader2,
-  Square,
-  CheckSquare,
-  Clock,
   Edit2,
   Trash2
 } from 'lucide-react';
@@ -38,9 +27,6 @@ import {
   useRegenerateTransactionSuggestionsMutation,
   useCreateManualAccountReconciliationMutation,
   useCreateBulkMatchesMutation,
-  useGetBalanceReconciliationStatementQuery,
-  useGetBankReconciliationSummaryReportQuery,
-  useGetReconciliationHistoryAndAuditTrailQuery,
   useCreateOutstandingItemMutation,
   useGetOutstandingItemsQuery,
   useUpdateDocumentReconciliationStatusMutation,
@@ -63,7 +49,19 @@ import {
 } from '@/redux/slices/apiSlice';
 import OutstandingItemsManagement from '@/app/Components/OutstandingItemsManagement';
 import SplitTransactionModal from '@/app/Components/SplitTransactionModal';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import ToastPortal from './BankPage/components/ToastPortal';
+import ConfirmModal from './BankPage/components/ConfirmModal';
+import FiltersToolbar from './BankPage/components/FiltersToolbar';
+import SuggestionsList from './BankPage/components/SuggestionsList';
+import DocumentsList from './BankPage/components/DocumentsList';
+import TransactionsList from './BankPage/components/TransactionsList';
+import BankAccountModal from './BankPage/components/BankAccountModal';
+import MatchModal from './BankPage/components/MatchModal';
+import TransferModal from './BankPage/components/TransferModal';
+import AccountReconcileModal from './BankPage/components/AccountReconcileModal';
+import ComprehensiveReportingSystem from './BankPage/components/ComprehensiveReportingSystem';
+import BulkActionsBar from './BankPage/components/BulkActionsBar';
+import PendingTransfersList from './BankPage/components/PendingTransfersList';
 
 // Simple toast type
 type Toast = { id: number; type: 'success' | 'error' | 'info'; message: string };
@@ -183,699 +181,7 @@ interface ReconciliationSuggestion {
   };
 }
 
-// Comprehensive Reporting System Component
-interface ComprehensiveReportingSystemProps {
-  clientEin: string;
-  language: 'ro' | 'en';
-}
-
-function ComprehensiveReportingSystem({ clientEin, language }: ComprehensiveReportingSystemProps) {
-  const [activeReport, setActiveReport] = useState<'summary' | 'audit' | 'balance'>('summary');
-  const [dateRange, setDateRange] = useState({
-    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    endDate: new Date().toISOString().split('T')[0]
-  });
-  const [auditPage] = useState(1);
-  const [exportFormat, setExportFormat] = useState<'pdf' | 'excel'>('pdf');
-  const [isExporting, setIsExporting] = useState(false);
-
-  // API Queries
-  const { data: summaryReport, isLoading: summaryLoading } = useGetBankReconciliationSummaryReportQuery({
-    clientEin,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate
-  });
-
-  const { data: auditTrail, isLoading: auditLoading } = useGetReconciliationHistoryAndAuditTrailQuery({
-    clientEin,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate,
-    page: auditPage,
-    size: 25
-  });
-
-  const { data: balanceStatement, isLoading: balanceLoading } = useGetBalanceReconciliationStatementQuery({
-    clientEin,
-    startDate: dateRange.startDate,
-    endDate: dateRange.endDate
-  });
-
-  
-
-  const handleExport = async (format: 'pdf' | 'excel') => {
-    setIsExporting(true);
-    try {
-      
-      if (format === 'pdf') {
-        const { jsPDF } = await import('jspdf');
-        const doc = new jsPDF();
-        
-        doc.setFontSize(20);
-        doc.text(language === 'ro' ? 'Raport Reconciliere Bancara' : 'Bank Reconciliation Report', 20, 30);
-        
-        doc.setFontSize(12);
-        doc.text(`${language === 'ro' ? 'Perioada' : 'Period'}: ${dateRange.startDate} - ${dateRange.endDate}`, 20, 50);
-        
-        let yPos = 70;
-        
-        if (summaryReport) {
-          doc.setFontSize(16);
-          doc.text(language === 'ro' ? 'Sumar Reconciliere' : 'Reconciliation Summary', 20, yPos);
-          yPos += 20;
-          
-          doc.setFontSize(10);
-          if (summaryReport.summary?.balances) {
-            doc.text(`${language === 'ro' ? 'Sold Initial' : 'Opening Balance'}: ${summaryReport.summary.balances.openingBalance?.toFixed(2) || '0.00'} RON`, 20, yPos);
-            yPos += 10;
-            doc.text(`${language === 'ro' ? 'Sold Final' : 'Closing Balance'}: ${summaryReport.summary.balances.closingBalance?.toFixed(2) || '0.00'} RON`, 20, yPos);
-            yPos += 10;
-            doc.text(`${language === 'ro' ? 'Diferenta' : 'Difference'}: ${summaryReport.summary.balances.difference?.toFixed(2) || '0.00'} RON`, 20, yPos);
-            yPos += 20;
-          }
-          
-          if (summaryReport.summary?.reconciliationHealth) {
-            const health = summaryReport.summary.reconciliationHealth;
-            doc.text(`${language === 'ro' ? 'Documente Reconciliate' : 'Documents Reconciled'}: ${health.documentsReconciled}/${health.totalDocuments} (${health.documentReconciliationRate.toFixed(1)}%)`, 20, yPos);
-            yPos += 10;
-            doc.text(`${language === 'ro' ? 'Tranzactii Reconciliate' : 'Transactions Reconciled'}: ${health.transactionsReconciled}/${health.totalTransactions} (${health.transactionReconciliationRate.toFixed(1)}%)`, 20, yPos);
-            yPos += 20;
-          }
-        }
-        
-        // Add generation timestamp
-        doc.setFontSize(8);
-        doc.text(`${language === 'ro' ? 'Generat la' : 'Generated at'}: ${new Date().toLocaleString()}`, 20, 280);
-        
-        // Save PDF
-        doc.save(`bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.pdf`);
-        
-      } else if (format === 'excel') {
-        // Generate Excel using xlsx
-        const XLSX = await import('xlsx');
-        const workbook = XLSX.utils.book_new();
-        
-        // Summary Sheet
-        if (summaryReport) {
-          const summaryData = [
-            [language === 'ro' ? 'Raport Sumar Reconciliere' : 'Reconciliation Summary Report'],
-            [language === 'ro' ? 'Perioada' : 'Period', `${dateRange.startDate} - ${dateRange.endDate}`],
-            [],
-            [language === 'ro' ? 'Solduri' : 'Balances'],
-            [language === 'ro' ? 'Sold Initial' : 'Opening Balance', summaryReport.summary?.balances?.openingBalance?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Sold Final' : 'Closing Balance', summaryReport.summary?.balances?.closingBalance?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Diferenta' : 'Difference', summaryReport.summary?.balances?.difference?.toFixed(2) || '0.00', 'RON'],
-            [],
-            [language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Health'],
-          ];
-          
-          if (summaryReport.summary?.reconciliationHealth) {
-            const health = summaryReport.summary.reconciliationHealth;
-            summaryData.push(
-              [language === 'ro' ? 'Documente Reconciliate' : 'Documents Reconciled', health.documentsReconciled, health.totalDocuments, `${health.documentReconciliationRate.toFixed(1)}%`],
-              [language === 'ro' ? 'Tranzactii Reconciliate' : 'Transactions Reconciled', health.transactionsReconciled, health.totalTransactions, `${health.transactionReconciliationRate.toFixed(1)}%`]
-            );
-          }
-          
-          const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-          XLSX.utils.book_append_sheet(workbook, summarySheet, language === 'ro' ? 'Sumar' : 'Summary');
-        }
-        
-        // Balance Sheet
-        if (balanceStatement) {
-          const balanceData = [
-            [language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation'],
-            [language === 'ro' ? 'Perioada' : 'Period', `${balanceStatement.period?.startDate} - ${balanceStatement.period?.endDate}`],
-            [],
-            [language === 'ro' ? 'Solduri' : 'Balances'],
-            [language === 'ro' ? 'Sold Initial' : 'Opening Balance', balanceStatement.balances?.openingBalance?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Total Credite' : 'Total Credits', balanceStatement.balances?.totalCredits?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Total Debite' : 'Total Debits', balanceStatement.balances?.totalDebits?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Sold Final' : 'Closing Balance', balanceStatement.balances?.closingBalance?.toFixed(2) || '0.00', 'RON'],
-            [language === 'ro' ? 'Diferenta' : 'Difference', balanceStatement.balances?.difference?.toFixed(2) || '0.00', 'RON']
-          ];
-          
-          if (balanceStatement.reconciliationStatus) {
-            balanceData.push(
-              [],
-              [language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Status'],
-              [language === 'ro' ? 'Echilibrat' : 'Balanced', balanceStatement.reconciliationStatus.isBalanced ? 'Da' : 'Nu'],
-              [language === 'ro' ? 'Rata Reconciliere' : 'Reconciliation Rate', `${balanceStatement.reconciliationStatus.reconciliationPercentage?.toFixed(1) || '0.0'}%`]
-            );
-          }
-          
-          const balanceSheet = XLSX.utils.aoa_to_sheet(balanceData);
-          XLSX.utils.book_append_sheet(workbook, balanceSheet, language === 'ro' ? 'Sold' : 'Balance');
-        }
-        
-        // Save Excel
-        XLSX.writeFile(workbook, `bank-reconciliation-report-${dateRange.startDate}-to-${dateRange.endDate}.xlsx`);
-      }
-      
-    } catch (error) {
-      console.error('Export failed:', error);
-      alert(language === 'ro' ? 'Exportul a eșuat. Vă rugăm să încercați din nou.' : 'Export failed. Please try again.');
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const reportTabs = [
-    { id: 'summary', label: language === 'ro' ? 'Sumar' : 'Summary', icon: TrendingUp },
-    { id: 'audit', label: language === 'ro' ? 'Istoric Audit' : 'Audit Trail', icon: FileText },
-    { id: 'balance', label: language === 'ro' ? 'Reconciliere Sold' : 'Balance Reconciliation', icon: Landmark }
-  ];
-
-  return (
-    <div className="space-y-6">
-      {/* Report Navigation and Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        <div className="flex flex-wrap gap-2">
-          {reportTabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveReport(tab.id as any)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
-                  activeReport === tab.id
-                    ? 'bg-[var(--primary)] text-white shadow-lg'
-                    : 'bg-[var(--background)] text-[var(--text2)] hover:bg-[var(--text4)] hover:text-[var(--text1)]'
-                }`}
-              >
-                <Icon size={16} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-      
-        <div className="flex items-center gap-3">
-          {/* Date Range Selector */}
-          <div className="flex items-center gap-2">
-            <Calendar size={16} className="text-[var(--text2)]" />
-            <input
-              type="date"
-              value={dateRange.startDate}
-              onChange={(e) => setDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
-            />
-            <span className="text-[var(--text2)]">-</span>
-            <input
-              type="date"
-              value={dateRange.endDate}
-              onChange={(e) => setDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
-            />
-          </div>
-
-          {/* Export Controls */}
-          <div className="flex items-center gap-2">
-            <select
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as 'pdf' | 'excel')}
-              className="px-3 py-2 bg-[var(--background)] border border-[var(--text4)] rounded-lg text-[var(--text1)] text-sm"
-            >
-              <option value="pdf">PDF</option>
-              <option value="excel">Excel</option>
-            </select>
-            <button
-              onClick={() => handleExport(exportFormat)}
-              disabled={isExporting}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white rounded-lg hover:bg-[var(--primary)]/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-            >
-              {isExporting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <FileText size={16} />
-              )}
-              {language === 'ro' ? 'Export' : 'Export'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Report Content */}
-      <div className="bg-[var(--background)] rounded-xl border border-[var(--text4)] overflow-hidden p-6">
-        {activeReport === 'summary' && (
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Raport Sumar de Reconciliere' : 'Bank Reconciliation Summary Report'}
-            </h3>
-            {summaryLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
-              </div>
-            ) : summaryReport ? (
-              <div className="space-y-6">
-                {/* Period Information */}
-                <div className="bg-[var(--text4)] rounded-lg p-4">
-                  <h4 className="font-semibold text-[var(--text1)] mb-2">
-                    {language === 'ro' ? 'Perioada Raportului' : 'Report Period'}
-                  </h4>
-                  <p className="text-[var(--text2)]">
-                    {summaryReport.summary.period.startDate} - {summaryReport.summary.period.endDate}
-                  </p>
-                </div>
-
-                {/* Balance Information */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-blue-800 mb-1">
-                      {language === 'ro' ? 'Sold Inițial' : 'Opening Balance'}
-                    </h5>
-                    <p className="text-2xl font-bold text-blue-900">
-                      {summaryReport.summary.balances.openingBalance?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-green-800 mb-1">
-                      {language === 'ro' ? 'Sold Final' : 'Closing Balance'}
-                    </h5>
-                    <p className="text-2xl font-bold text-green-900">
-                      {summaryReport.summary.balances.closingBalance?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-purple-800 mb-1">
-                      {language === 'ro' ? 'Diferență' : 'Difference'}
-                    </h5>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {summaryReport.summary.balances.difference?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                </div>
-
-                {/* Reconciliation Health */}
-                <div className="bg-[var(--text4)] rounded-lg p-6">
-                  <h4 className="font-semibold text-[var(--text1)] mb-4">
-                    {language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Health'}
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[var(--text2)]">
-                          {language === 'ro' ? 'Documente Reconciliate' : 'Documents Reconciled'}
-                        </span>
-                        <span className="font-semibold text-[var(--text1)]">
-                          {summaryReport.summary.reconciliationHealth.documentsReconciled} / {summaryReport.summary.reconciliationHealth.totalDocuments}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-[var(--primary)] h-2 rounded-full" 
-                          style={{ width: `${summaryReport.summary.reconciliationHealth.documentReconciliationRate}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-sm text-[var(--text2)] mt-1">
-                        {summaryReport.summary.reconciliationHealth.documentReconciliationRate.toFixed(1)}%
-                      </p>
-                    </div>
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-[var(--text2)]">
-                          {language === 'ro' ? 'Tranzacții Reconciliate' : 'Transactions Reconciled'}
-                        </span>
-                        <span className="font-semibold text-[var(--text1)]">
-                          {summaryReport.summary.reconciliationHealth.transactionsReconciled} / {summaryReport.summary.reconciliationHealth.totalTransactions}
-                        </span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div 
-                          className="bg-[var(--primary)] h-2 rounded-full" 
-                          style={{ width: `${summaryReport.summary.reconciliationHealth.transactionReconciliationRate}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-sm text-[var(--text2)] mt-1">
-                        {summaryReport.summary.reconciliationHealth.transactionReconciliationRate.toFixed(1)}%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Recent Activity */}
-                {summaryReport.recentActivity && summaryReport.recentActivity.length > 0 && (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Activitate Recentă' : 'Recent Activity'}
-                    </h4>
-                    <div className="space-y-3">
-                      {summaryReport.recentActivity.slice(0, 5).map((activity: any) => (
-                        <div key={activity.id} className="flex items-center justify-between py-2 border-b border-[var(--text3)] last:border-b-0">
-                          <div>
-                            <p className="text-[var(--text1)] font-medium">{activity.description}</p>
-                            <p className="text-sm text-[var(--text2)]">
-                              {new Date(activity.timestamp).toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US')}
-                            </p>
-                          </div>
-                        {/* Removed erroneous splits preview from Recent Activity (no txn context here) */}
-                          <div className="text-sm text-[var(--text2)]">
-                            {activity.details.confidence && `${(activity.details.confidence * 100).toFixed(1)}%`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center text-[var(--text2)] py-12">
-                {language === 'ro' ? 'Nu există date disponibile pentru perioada selectată' : 'No data available for the selected period'}
-              </div>
-            )}
-          </div>
-        )}
-        
-        
-        {activeReport === 'audit' && (
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Istoric și Audit Trail' : 'Reconciliation History & Audit Trail'}
-            </h3>
-            {auditLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
-              </div>
-            ) : auditTrail ? (
-              <div className="space-y-6">
-                {/* Summary Stats */}
-                {auditTrail.summary && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h5 className="font-semibold text-blue-800 mb-1">
-                        {language === 'ro' ? 'Total Activități' : 'Total Activities'}
-                      </h5>
-                      <p className="text-2xl font-bold text-blue-900">
-                        {auditTrail.summary.totalActivities || 0}
-                      </p>
-                    </div>
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                      <h5 className="font-semibold text-green-800 mb-1">
-                        {language === 'ro' ? 'Reconcilieri Acceptate' : 'Accepted Reconciliations'}
-                      </h5>
-                      <p className="text-2xl font-bold text-green-900">
-                        {auditTrail.summary.acceptedReconciliations || 0}
-                      </p>
-                    </div>
-                    <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                      <h5 className="font-semibold text-orange-800 mb-1">
-                        {language === 'ro' ? 'Sugestii Respinse' : 'Rejected Suggestions'}
-                      </h5>
-                      <p className="text-2xl font-bold text-orange-900">
-                        {auditTrail.summary.rejectedSuggestions || 0}
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Audit Trail Table */}
-                {auditTrail.activities && auditTrail.activities.length > 0 ? (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Istoric Activități' : 'Activity History'}
-                    </h4>
-                    <div className="overflow-x-auto scrollbar-soft">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b border-[var(--text3)]">
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Data/Ora' : 'Date/Time'}
-                            </th>
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Acțiune' : 'Action'}
-                            </th>
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Descriere' : 'Description'}
-                            </th>
-                            <th className="text-left py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Utilizator' : 'User'}
-                            </th>
-                            <th className="text-center py-2 text-[var(--text2)] font-medium">
-                              {language === 'ro' ? 'Detalii' : 'Details'}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {auditTrail.activities.map((activity: any) => (
-                            <tr key={activity.id} className="border-b border-[var(--text3)] last:border-b-0">
-                              <td className="py-3 text-[var(--text1)]">
-                                {new Date(activity.timestamp).toLocaleString(language === 'ro' ? 'ro-RO' : 'en-US')}
-                              </td>
-                              <td className="py-3">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                  activity.action === 'ACCEPTED' ? 'bg-green-100 text-green-800' :
-                                  activity.action === 'REJECTED' ? 'bg-red-100 text-red-800' :
-                                  activity.action === 'MANUAL_MATCH' ? 'bg-blue-100 text-blue-800' :
-                                  activity.action === 'UNRECONCILED' ? 'bg-purple-100 text-purple-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }`}>
-                                  {activity.action}
-                                </span>
-                              </td>
-                              <td className="py-3 text-[var(--text2)]">
-                                {activity.description}
-                              </td>
-                              <td className="py-3 text-[var(--text2)]">
-                                {activity.user?.name || activity.user?.email || 'System'}
-                              </td>
-                              <td className="py-3 text-center">
-                                {activity.details && (
-                                  <button className="text-[var(--primary)] hover:text-[var(--primary)]/80 text-sm">
-                                    {language === 'ro' ? 'Vezi' : 'View'}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Pagination Info */}
-                    {auditTrail.pagination && (
-                      <div className="mt-4 flex items-center justify-between text-sm text-[var(--text2)]">
-                        <span>
-                          {language === 'ro' ? 'Afișare' : 'Showing'} {((auditTrail.pagination.page - 1) * auditTrail.pagination.size) + 1} - {Math.min(auditTrail.pagination.page * auditTrail.pagination.size, auditTrail.pagination.total)} {language === 'ro' ? 'din' : 'of'} {auditTrail.pagination.total} {language === 'ro' ? 'înregistrări' : 'records'}
-                        </span>
-                        <span>
-                          {language === 'ro' ? 'Pagina' : 'Page'} {auditTrail.pagination.page} {language === 'ro' ? 'din' : 'of'} {auditTrail.pagination.totalPages}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="bg-[var(--text4)] rounded-lg p-6 text-center">
-                    <p className="text-[var(--text2)]">
-                      {language === 'ro' ? 'Nu există activități în perioada selectată' : 'No activities found for the selected period'}
-                    </p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center text-[var(--text2)] py-12">
-                {language === 'ro' ? 'Nu există date de audit disponibile' : 'No audit data available'}
-              </div>
-            )}
-          </div>
-        )}
-        
-        {activeReport === 'balance' && (
-          <div className="space-y-6">
-            <h3 className="text-xl font-bold text-[var(--text1)]">
-              {language === 'ro' ? 'Reconciliere Sold Bancar' : 'Balance Reconciliation Statement'}
-            </h3>
-            {balanceLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 size={32} className="animate-spin text-[var(--primary)]" />
-              </div>
-            ) : balanceStatement ? (
-              <div className="space-y-6">
-                {/* Period Information */}
-                <div className="bg-[var(--text4)] rounded-lg p-4">
-                  <h4 className="font-semibold text-[var(--text1)] mb-2">
-                    {language === 'ro' ? 'Perioada Reconcilierii' : 'Reconciliation Period'}
-                  </h4>
-                  <p className="text-[var(--text2)]">
-                    {balanceStatement.period?.startDate} - {balanceStatement.period?.endDate}
-                  </p>
-                </div>
-
-                {/* Balance Summary */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-blue-800 mb-1">
-                      {language === 'ro' ? 'Sold Inițial' : 'Opening Balance'}
-                    </h5>
-                    <p className="text-2xl font-bold text-blue-900">
-                      {balanceStatement.balances?.openingBalance?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-green-800 mb-1">
-                      {language === 'ro' ? 'Total Credite' : 'Total Credits'}
-                    </h5>
-                    <p className="text-2xl font-bold text-green-900">
-                      {balanceStatement.balances?.totalCredits?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-red-800 mb-1">
-                      {language === 'ro' ? 'Total Debite' : 'Total Debits'}
-                    </h5>
-                    <p className="text-2xl font-bold text-red-900">
-                      {balanceStatement.balances?.totalDebits?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <h5 className="font-semibold text-purple-800 mb-1">
-                      {language === 'ro' ? 'Sold Final' : 'Closing Balance'}
-                    </h5>
-                    <p className="text-2xl font-bold text-purple-900">
-                      {balanceStatement.balances?.closingBalance?.toFixed(2) || '0.00'} RON
-                    </p>
-                  </div>
-                </div>
-
-                {/* Reconciliation Status */}
-                {balanceStatement.reconciliationStatus && (
-                  <div className={`rounded-lg p-6 ${
-                    balanceStatement.reconciliationStatus.isBalanced 
-                      ? 'bg-green-50 border border-green-200' 
-                      : 'bg-red-50 border border-red-200'
-                  }`}>
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className={`font-semibold ${
-                        balanceStatement.reconciliationStatus.isBalanced 
-                          ? 'text-green-800' 
-                          : 'text-red-800'
-                      }`}>
-                        {language === 'ro' ? 'Starea Reconcilierii' : 'Reconciliation Status'}
-                      </h4>
-                      <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        balanceStatement.reconciliationStatus.isBalanced
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {balanceStatement.reconciliationStatus.isBalanced
-                          ? (language === 'ro' ? 'Echilibrat' : 'Balanced')
-                          : (language === 'ro' ? 'Neechilibrat' : 'Unbalanced')
-                        }
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <p className={`text-sm ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          {language === 'ro' ? 'Diferență' : 'Difference'}
-                        </p>
-                        <p className={`text-xl font-bold ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-800' 
-                            : 'text-red-800'
-                        }`}>
-                          {balanceStatement.balances?.difference?.toFixed(2) || '0.00'} RON
-                        </p>
-                      </div>
-                      <div>
-                        <p className={`text-sm ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          {language === 'ro' ? 'Tranzacții Reconciliate' : 'Reconciled Transactions'}
-                        </p>
-                        <p className={`text-xl font-bold ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-800' 
-                            : 'text-red-800'
-                        }`}>
-                          {balanceStatement.reconciliationStatus.reconciledCount || 0} / {balanceStatement.reconciliationStatus.totalCount || 0}
-                        </p>
-                      </div>
-                      <div>
-                        <p className={`text-sm ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-600' 
-                            : 'text-red-600'
-                        }`}>
-                          {language === 'ro' ? 'Rata Reconciliere' : 'Reconciliation Rate'}
-                        </p>
-                        <p className={`text-xl font-bold ${
-                          balanceStatement.reconciliationStatus.isBalanced 
-                            ? 'text-green-800' 
-                            : 'text-red-800'
-                        }`}>
-                          {balanceStatement.reconciliationStatus.reconciliationPercentage?.toFixed(1) || '0.0'}%
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Transaction Summary */}
-                {balanceStatement.transactionSummary && (
-                  <div className="bg-[var(--text4)] rounded-lg p-6">
-                    <h4 className="font-semibold text-[var(--text1)] mb-4">
-                      {language === 'ro' ? 'Sumar Tranzacții' : 'Transaction Summary'}
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <h5 className="font-medium text-[var(--text1)] mb-3">
-                          {language === 'ro' ? 'Tranzacții Credit' : 'Credit Transactions'}
-                        </h5>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Număr:' : 'Count:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.creditCount || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Total:' : 'Total:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.totalCredits?.toFixed(2) || '0.00'} RON</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Reconciliate:' : 'Reconciled:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.reconciledCredits || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div>
-                        <h5 className="font-medium text-[var(--text1)] mb-3">
-                          {language === 'ro' ? 'Tranzacții Debit' : 'Debit Transactions'}
-                        </h5>
-                        <div className="space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Număr:' : 'Count:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.debitCount || 0}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Total:' : 'Total:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.totalDebits?.toFixed(2) || '0.00'} RON</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[var(--text2)]">{language === 'ro' ? 'Reconciliate:' : 'Reconciled:'}</span>
-                            <span className="font-medium text-[var(--text1)]">{balanceStatement.transactionSummary.reconciledDebits || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-center text-[var(--text2)] py-12">
-                {language === 'ro' ? 'Nu există date de reconciliere disponibile' : 'No reconciliation data available'}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+//
 
 // Account Code Selector Component
 interface AccountCodeSelectorProps {
@@ -2263,12 +1569,10 @@ const BankPage = () => {
     } catch {}
 
     const nonTransferKept = prelim.filter((s: any) => {
-      // Treat any suggestion flagged as TRANSFER (with payload) as transfer for display
-      const isTransferAnySide = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer;
-      if (isTransferAnySide) return true; // keep transfers
-      const txnId = s?.bankTransaction?.id;
-      // If this suggestion is tied to any transaction that is part of a transfer pair, hide it
-      if (txnId && involvedTxnIds.has(String(txnId))) return false;
+      // Keep all suggestions. Transfers are kept (type or payload), and non-transfers are no longer hidden
+      // even if their transaction participates in a transfer.
+      const isTransferAny = isTransferLike(s);
+      if (isTransferAny) return true;
       return true;
     });
 
@@ -3194,91 +2498,19 @@ const BankPage = () => {
       </div>
 
       {/* Filters */}
-      <div className="bg-[var(--foreground)] rounded-2xl p-4 border border-[var(--text4)] shadow-sm mb-6">
-        <div className="flex flex-wrap gap-4 items-center">
-          <div className="flex-1 min-w-64">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text3)]" size={18} />
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
-                focus:outline-none focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent
-                text-[var(--text1)] placeholder:text-[var(--text3)]"
-                placeholder={language === 'ro' ? 'Caută documente sau tranzacții...' : 'Search documents or transactions...'}
-              />
-            </div>
-          </div>
-
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-4 py-3 bg-[var(--background)] border border-[var(--text4)] rounded-xl 
-            focus:outline-none focus:ring-2 focus:ring-[var(--primary)] text-[var(--text1)]"
-          >
-            <option value="all">{language === 'ro' ? 'Toate statusurile' : 'All statuses'}</option>
-            <option value="unreconciled">{language === 'ro' ? 'Nereconciliate' : 'Unreconciled'}</option>
-            <option value="reconciled">{language === 'ro' ? 'Reconciliate' : 'Reconciled'}</option>
-            <option value="ignored">{language === 'ro' ? 'Ignorate' : 'Ignored'}</option>
-          </select>
-
-          {/* Outstanding toggle */}
-          <div className="flex items-center gap-2 text-sm text-[var(--text1)] select-none">
-            <button
-              type="button"
-              onClick={() => setExcludeOutstanding(prev => !prev)}
-              aria-pressed={excludeOutstanding}
-              aria-label={language === 'ro' ? 'Filtrează elementele în așteptare' : 'Filter outstanding items'}
-              className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
-            >
-              {excludeOutstanding ? (
-                <CheckSquare size={20} className="text-[var(--primary)]" />
-              ) : (
-                <Square size={20} className="text-[var(--text3)]" />
-              )}
-            </button>
-            <span>
-              {language === 'ro' ? 'În așteptare' : 'Outstanding'}
-            </span>
-          </div>
-
-          {/* Bulk Actions */}
-          {showBulkActions && (
-            <div className="flex gap-2">
-              <button 
-                onClick={() => handleBulkAction('match_selected')}
-                disabled={isCreatingBulkMatches}
-                className="px-4 py-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-              >
-                {isCreatingBulkMatches && <Loader2 size={14} className="animate-spin" />}
-                {language === 'ro' ? 'Reconciliază' : 'Match'}
-              </button>
-              <button 
-                onClick={() => handleBulkAction('ignore_selected')}
-                className="px-4 py-2 bg-gray-500 text-white rounded-xl hover:bg-gray-600 transition-colors text-sm font-medium"
-              >
-                {language === 'ro' ? 'Ignoră' : 'Ignore'}
-              </button>
-            </div>
-          )}
-
-          {/* Open Outstanding Items management panel (Reconciliation Filters) */}
-          <button
-            type="button"
-            onClick={() => setShowOutstandingPanel(true)}
-            className="relative group p-2 bg-[var(--primary)]/30 text-[var(--primary)] rounded-xl hover:bg-[var(--primary)] hover:text-white cursor-pointer transition-colors"
-            title={language === 'ro' ? 'Administrează elementele în așteptare' : 'Manage Outstanding Items'}
-            aria-label={language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
-          >
-            <Clock size={16} />
-            <span
-              className="absolute left-full ml-2 top-1/2 -translate-y-1/2 whitespace-nowrap bg-gray-900 text-white text-xs px-2 py-1 rounded opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity"
-            >
-              {language === 'ro' ? 'Elemente în Așteptare' : 'Outstanding Items'}
-            </span>
-          </button>
-        </div>
-      </div>
+      <FiltersToolbar
+        language={language as string}
+        searchTerm={searchTerm}
+        setSearchTerm={setSearchTerm}
+        filterStatus={filterStatus}
+        setFilterStatus={setFilterStatus}
+        excludeOutstanding={excludeOutstanding}
+        setExcludeOutstanding={setExcludeOutstanding}
+        showBulkActions={showBulkActions}
+        isCreatingBulkMatches={isCreatingBulkMatches}
+        handleBulkAction={handleBulkAction}
+        setShowOutstandingPanel={setShowOutstandingPanel}
+      />
 
       {/* Slide-over Outstanding Items Management Panel */}
       {showOutstandingPanel && (
@@ -3303,184 +2535,88 @@ const BankPage = () => {
       {/* Bulk Actions Bar */}
       <AnimatePresence>
         {showBulkActions && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-[var(--foreground)] border border-[var(--primary)] text-[var(--text1)] rounded-2xl p-4 mb-6 shadow-lg"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <span className="font-semibold text-[var(--primary)]">
-                  {selectedItems.documents.length + selectedItems.transactions.length} {language === 'ro' ? 'elemente selectate' : 'items selected'}
-                </span>
-                <button
-                  onClick={deselectAllFiles}
-                  className="text-[var(--primary)] bg-[var(--primary)]/10 hover:bg-[var(--primary)]/20 transition-colors text-sm px-3 py-1 rounded-lg"
-                >
-                  {language === 'ro' ? 'Deselectează toate' : 'Deselect all'}
-                </button>
-                {/* Mark as Transfer button */}
-                <button
-                  onClick={() => {
-                    const txns = selectedItems.transactions;
-                    if (txns.length !== 2) {
-                      alert(language === 'ro' ? 'Selectați exact 2 tranzacții pentru transfer' : 'Select exactly 2 transactions to mark as transfer');
-                      return;
-                    }
-                    setShowTransferModal(true);
-                  }}
-                  className={`text-white text-sm px-3 py-1 rounded-lg transition-colors ${selectedItems.transactions.length === 2 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300 cursor-not-allowed'}`}
-                  disabled={selectedItems.transactions.length !== 2}
-                  title={language === 'ro' ? 'Marchează ca Transfer' : 'Mark as Transfer'}
-                >
-                  {language === 'ro' ? 'Transfer' : 'Transfer'}
-                </button>
-              </div>
-              
-              <button
-                onClick={() => setShowBulkActions(false)}
-                className="p-2 bg-[var(--background)] text-[var(--text3)] hover:text-red-500 hover:bg-red-500/20 rounded-lg transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </motion.div>
+          <div>
+            <BulkActionsBar
+              language={language as string}
+              selectedCount={selectedItems.documents.length + selectedItems.transactions.length}
+              selectedTransactionsCount={selectedItems.transactions.length}
+              onDeselectAll={deselectAllFiles}
+              onOpenTransfer={() => setShowTransferModal(true)}
+              onClose={() => setShowBulkActions(false)}
+            />
+          </div>
         )}
       </AnimatePresence>
 
-      {/* Transfer Modal */}
-      {showTransferModal && (
-        <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setShowTransferModal(false)}></div>
-          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-white rounded-2xl shadow-xl">
-            <div className="px-6 py-4 border-b flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                {language === 'ro' ? 'Marchează Transfer' : 'Mark Transfer'}
-              </h3>
-              <button onClick={() => setShowTransferModal(false)} className="text-gray-500 hover:text-gray-700">✕</button>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <p className="text-sm text-gray-600">
-                {language === 'ro'
-                  ? 'Conturile analitice vor fi atribuite automat pe baza mapping-ului IBAN. Completați doar cursul (dacă este necesar) și notițele.'
-                  : 'Analytic accounts will be assigned automatically based on IBAN mappings. Only fill FX (if needed) and notes.'}
-              </p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">FX</label>
-                  <input
-                    type="number"
-                    step="0.0001"
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    value={transferForm.fxRate}
-                    onChange={(e) => setTransferForm(prev => ({ ...prev, fxRate: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">{language === 'ro' ? 'Notițe' : 'Notes'}</label>
-                  <input
-                    className="w-full border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                    value={transferForm.notes}
-                    onChange={(e) => setTransferForm(prev => ({ ...prev, notes: e.target.value }))}
-                    placeholder={language === 'ro' ? 'Optional' : 'Optional'}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t flex items-center justify-end gap-2">
-              <button
-                className="px-4 py-2 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200"
-                onClick={() => setShowTransferModal(false)}
-              >
-                {language === 'ro' ? 'Anulează' : 'Cancel'}
-              </button>
-              <button
-                className={`px-4 py-2 rounded-lg text-white ${creatingTransfer ? 'bg-emerald-400 cursor-wait' : 'bg-emerald-600 hover:bg-emerald-700'}`}
-                onClick={async () => {
-                  try {
-                    const txns = selectedItems.transactions;
-                    if (txns.length !== 2) {
-                      alert(language === 'ro' ? 'Selectați exact 2 tranzacții' : 'Select exactly 2 transactions');
-                      return;
-                    }
-                    const t1 = transactionsData.find((t: any) => t.id === txns[0]);
-                    const t2 = transactionsData.find((t: any) => t.id === txns[1]);
-                    if (!t1 || !t2) {
-                      alert(language === 'ro' ? 'Tranzacții invalide' : 'Invalid transactions');
-                      return;
-                    }
-                    // Determine source (debit/outgoing) and destination (credit/incoming)
-                    const debit = (t1.transactionType === 'debit') ? t1 : (t2.transactionType === 'debit') ? t2 : t1;
-                    const credit = (debit.id === t1.id) ? t2 : t1;
-                    const payload: any = {
-                      sourceTransactionId: debit.id,
-                      destinationTransactionId: credit.id,
-                      fxRate: transferForm.fxRate ? parseFloat(transferForm.fxRate) : undefined,
-                      notes: transferForm.notes || undefined,
-                    };
-                    await createTransferReconciliation({ clientEin: clientCompanyEin, data: payload }).unwrap();
-                    addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
-                    setShowTransferModal(false);
-                    setTransferForm({ fxRate: '1', notes: '' });
-                    setSelectedItems({ documents: [], transactions: [] });
-                    setShowBulkActions(false);
-                    refetchPendingTransfers();
-                  } catch (error: any) {
-                    if (error?.status === 401 || error?.data?.statusCode === 401) {
-                      window.location.href = '/authentication';
-                      return;
-                    }
-                    const msg = error?.data?.message || error?.message || 'Unknown error';
-                    addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
-                  }
-                }}
-                disabled={creatingTransfer}
-              >
-                {creatingTransfer ? (language === 'ro' ? 'Se salvează...' : 'Saving...') : (language === 'ro' ? 'Salvează' : 'Save')}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TransferModal
+        open={showTransferModal}
+        language={language as any}
+        fxRate={transferForm.fxRate}
+        notes={transferForm.notes}
+        onChange={(field, value) => setTransferForm(prev => ({ ...prev, [field]: value }))}
+        creating={creatingTransfer}
+        onCancel={() => setShowTransferModal(false)}
+        onSave={async () => {
+          try {
+            const txns = selectedItems.transactions;
+            if (txns.length !== 2) {
+              alert(language === 'ro' ? 'Selectați exact 2 tranzacții' : 'Select exactly 2 transactions');
+              return;
+            }
+            const t1 = transactionsData.find((t: any) => t.id === txns[0]);
+            const t2 = transactionsData.find((t: any) => t.id === txns[1]);
+            if (!t1 || !t2) {
+              alert(language === 'ro' ? 'Tranzacții invalide' : 'Invalid transactions');
+              return;
+            }
+            const debit = (t1.transactionType === 'debit') ? t1 : (t2.transactionType === 'debit') ? t2 : t1;
+            const credit = (debit.id === t1.id) ? t2 : t1;
+            const payload: any = {
+              sourceTransactionId: debit.id,
+              destinationTransactionId: credit.id,
+              fxRate: transferForm.fxRate ? parseFloat(transferForm.fxRate) : undefined,
+              notes: transferForm.notes || undefined,
+            };
+            await createTransferReconciliation({ clientEin: clientCompanyEin, data: payload }).unwrap();
+            addToast(language === 'ro' ? 'Transfer creat' : 'Transfer created', 'success');
+            setShowTransferModal(false);
+            setTransferForm({ fxRate: '1', notes: '' });
+            setSelectedItems({ documents: [], transactions: [] });
+            setShowBulkActions(false);
+            refetchPendingTransfers();
+          } catch (error: any) {
+            if (error?.status === 401 || error?.data?.statusCode === 401) {
+              window.location.href = '/authentication';
+              return;
+            }
+            const msg = error?.data?.message || error?.message || 'Unknown error';
+            addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
+          }
+        }}
+      />
 
       {/* Pending Transfers */}
-      {pendingTransfersData && Array.isArray(pendingTransfersData) && pendingTransfersData.length > 0 && (
-        <div className="bg-[var(--foreground)] border border-[var(--text4)] rounded-2xl p-4 mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <h4 className="font-semibold text-[var(--text1)]">{language === 'ro' ? 'Transferuri în așteptare' : 'Pending Transfers'}</h4>
-            <button className="text-sm text-[var(--primary)] hover:underline" onClick={() => refetchPendingTransfers()}>{language === 'ro' ? 'Reîncarcă' : 'Refresh'}</button>
-          </div>
-          <div className="space-y-2">
-            {pendingTransfersData.map((tr: any) => (
-              <div key={tr.id} className="flex items-center justify-between bg-[var(--background)] border border-[var(--text4)] rounded-lg px-3 py-2">
-                <div className="text-sm text-[var(--text2)] truncate">
-                  <span className="font-medium text-[var(--text1)] mr-2">#{tr.id}</span>
-                  <span>{tr.description || ''}</span>
-                </div>
-                <button
-                  className={`px-2 py-1 text-xs rounded-lg ${deletingTransfer ? 'bg-red-300 text-white cursor-wait' : 'bg-red-100 text-red-600 hover:bg-red-200'}`}
-                  onClick={async () => {
-                    try {
-                      await deleteTransferReconciliation({ clientEin: clientCompanyEin, id: tr.id }).unwrap();
-                      addToast(language === 'ro' ? 'Transfer șters' : 'Transfer deleted', 'success');
-                      refetchPendingTransfers();
-                    } catch (error: any) {
-                      if (error?.status === 401 || error?.data?.statusCode === 401) {
-                        window.location.href = '/authentication';
-                        return;
-                      }
-                      const msg = error?.data?.message || error?.message || 'Unknown error';
-                      addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
-                    }
-                  }}
-                >
-                  {language === 'ro' ? 'Șterge' : 'Delete'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
+      {pendingTransfersData && Array.isArray(pendingTransfersData) && (
+        <PendingTransfersList
+          language={language as string}
+          items={pendingTransfersData as any}
+          deleting={deletingTransfer as any}
+          onRefresh={() => refetchPendingTransfers()}
+          onDelete={async (id: number) => {
+            try {
+              await deleteTransferReconciliation({ clientEin: clientCompanyEin, id }).unwrap();
+              addToast(language === 'ro' ? 'Transfer șters' : 'Transfer deleted', 'success');
+              refetchPendingTransfers();
+            } catch (error: any) {
+              if (error?.status === 401 || error?.data?.statusCode === 401) {
+                window.location.href = '/authentication';
+                return;
+              }
+              const msg = error?.data?.message || error?.message || 'Unknown error';
+              addToast((language === 'ro' ? 'Eroare: ' : 'Error: ') + msg, 'error');
+            }
+          }}
+        />
       )}
 
       {/* Split Transaction Modal */}
@@ -3506,874 +2642,91 @@ const BankPage = () => {
       {/* Main Content */}
       {activeTab === 'reconciliation' && (
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          {/* Documents Column */}
-          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-                  <FileText size={20} />
-                  {language === 'ro' ? 'Documente' : 'Documents'}
-                </h3>
-                <span className="text-sm text-[var(--text3)]">
-                  {documentsData.length}/{documentsTotal} {language === 'ro' ? 'articole' : 'items'}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-4 max-h-[600px] overflow-y-auto scrollbar-soft">
-              {documentsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-3 text-[var(--text2)]">
-                    <RefreshCw size={20} className="animate-spin" />
-                    <span>{language === 'ro' ? 'Se încarcă documentele...' : 'Loading documents...'}</span>
-                  </div>
-                </div>
-              ) : documentsError ? (
-                <div className="text-center py-12">
-                  <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
-                  <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea documentelor' : 'Error loading documents'}</p>
-                </div>
-              ) : filteredDocuments?.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText size={48} className="mx-auto text-[var(--text3)] mb-4" />
-                  <p className="text-[var(--text2)] text-lg mb-2">
-                    {language === 'ro' ? 'Nu s-au găsit documente' : 'No documents found'}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredDocuments.map((doc: Document, index: number) => {
-                    const Icon = getDocumentIcon(doc.type);
-                    const isSelected = selectedItems.documents.includes(doc.id);
-                    
-                    return (
-                      <motion.div
-                        key={doc.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        draggable
-                        onDragStart={() => handleDragStart('document', doc.id)}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, 'document', doc.id)}
-                        className={`p-4 bg-[var(--background)] rounded-xl border-2 transition-all duration-300 cursor-grab active:cursor-grabbing ${
-                          isSelected 
-                            ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
-                            : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
-                        } ${draggedItem?.type === 'transaction' ? 'border-dashed border-emerald-400 bg-emerald-50' : ''}`}
-                      >
-                        <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => toggleFileSelection(doc.id)}
-                          className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
-                        >
-                          {isSelected ? (
-                            <CheckSquare size={20} className="text-[var(--primary)]" />
-                          ) : (
-                            <Square size={20} className="text-[var(--text3)]" />
-                          )}
-                        </button>
-                          
-                          <div className="w-10 h-10 bg-[var(--primary)]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                            <Icon size={18} className="text-[var(--primary)]" />
-                          </div>
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-semibold text-[var(--text1)] truncate">{doc.document_number || doc.name}</p>
-                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(doc.reconciliation_status)}`}>
-                                {getStatusText(doc.reconciliation_status, language)}
-                              </span>
-                              {outstandingDocIds.has(doc.id) && (
-                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700">
-                                  {language === 'ro' ? 'În Așteptare' : 'Outstanding'}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-[var(--text3)] mb-2 truncate text-left">{doc.vendor}</p>
-                            <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
-                              <span className="flex items-center gap-1">
-                                <Calendar size={12} />
-                                {formatDate(getDocumentDate(doc))}
-                              </span>
-                              <span className="flex items-center gap-1">
-                                {formatCurrency(getDocumentAmount(doc))}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 ml-2">
-                            <button className="p-1 hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] transition-colors rounded-lg"
-                            onClick={() => {
-                              if (doc.signedUrl || doc.path) {
-                                window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
-                              }
-                            }}>
-                              <Eye size={14} />
-                            </button>
-                            {(() => {
-                              const normalized = normalizeStatus(doc.reconciliation_status);
-                              const isIgnored = normalized === 'ignored';
-                              const isUpdating = updatingDocStatus.has(doc.id);
-                              const title = isIgnored 
-                                ? (language === 'ro' ? 'Revenire la nereconciliat' : 'Revert to Unreconciled')
-                                : (language === 'ro' ? 'Ignoră documentul' : 'Ignore document');
-                              const btnClasses = isIgnored
-                                ? (isUpdating 
-                                    ? 'p-1 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg'
-                                    : 'p-1 hover:text-white hover:bg-emerald-600 bg-emerald-100 text-emerald-600 transition-colors rounded-lg')
-                                : (isUpdating 
-                                    ? 'p-1 bg-gray-200 text-gray-400 cursor-not-allowed rounded-lg'
-                                    : 'p-1 hover:text-white hover:bg-red-600 bg-red-100 text-red-600 transition-colors rounded-lg');
-                              return (
-                                <button
-                                  className={btnClasses}
-                                  onClick={() => handleToggleDocumentIgnored(doc)}
-                                  disabled={isUpdating}
-                                  title={title}
-                                >
-                                  {isUpdating ? (
-                                    <Loader2 size={14} className="animate-spin" />
-                                  ) : (
-                                    isIgnored ? <Check size={14} /> : <Trash2 size={14} />
-                                  )}
-                                </button>
-                              );
-                            })()}
-                            
-                            {/* Mark as Outstanding button - only show when no unreconciled transactions and document is unreconciled */}
-                            {unreconciledTransactionsCount === 0 && 
-                             ['unreconciled', 'pending'].includes(normalizeStatus(doc.reconciliation_status)) && (
-                              <button 
-                                className="p-1 hover:text-white hover:bg-yellow-600 bg-yellow-100 text-yellow-600 transition-colors rounded-lg disabled:opacity-50"
-                                onClick={() => handleMarkAsOutstanding(doc)}
-                                disabled={markingAsOutstanding.has(doc.id)}
-                                title={language === 'ro' ? 'Marchează ca Element în Așteptare' : 'Mark as Outstanding'}
-                              >
-                                {markingAsOutstanding.has(doc.id) ? (
-                                  <Loader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <Clock size={14} />
-                                )}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <DocumentsList
+            language={language as any}
+            documentsData={documentsData as any}
+            documentsTotal={documentsTotal}
+            documentsLoading={documentsLoading}
+            documentsError={documentsError}
+            filteredDocuments={filteredDocuments as any}
+            selectedItems={selectedItems as any}
+            outstandingDocIds={outstandingDocIds as any}
+            unreconciledTransactionsCount={unreconciledTransactionsCount}
+            getDocumentIcon={getDocumentIcon as any}
+            getStatusColor={getStatusColor as any}
+            getStatusText={getStatusText as any}
+            normalizeStatus={normalizeStatus as any}
+            formatDate={formatDate}
+            formatCurrency={formatCurrency}
+            getDocumentDate={getDocumentDate as any}
+            getDocumentAmount={getDocumentAmount as any}
+            draggedItem={draggedItem as any}
+            updatingDocStatus={updatingDocStatus as any}
+            markingAsOutstanding={markingAsOutstanding as any}
+            toggleFileSelection={toggleFileSelection as any}
+            handleToggleDocumentIgnored={handleToggleDocumentIgnored as any}
+            handleMarkAsOutstanding={handleMarkAsOutstanding as any}
+            handleDragStart={handleDragStart as any}
+            handleDragOver={handleDragOver as any}
+            handleDrop={handleDrop as any}
+          />
 
-          {/* Transactions Column */}
-          <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-                  <CreditCard size={20} />
-                  {language === 'ro' ? 'Tranzacții Bancare' : 'Bank Transactions'}
-                </h3>
-                <span className="text-sm text-[var(--text3)]">
-                  {transactionsData.length}/{transactionsTotal} {language === 'ro' ? 'articole' : 'items'}
-                </span>
-              </div>
-            </div>
-            
-            <div className="p-4 max-h-[600px] overflow-y-auto scrollbar-soft">
-              {transactionsLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="flex items-center gap-3 text-[var(--text2)]">
-                    <RefreshCw size={20} className="animate-spin" />
-                    <span>{language === 'ro' ? 'Se încarcă tranzacțiile...' : 'Loading transactions...'}</span>
-                  </div>
-                </div>
-              ) : transactionsError ? (
-                <div className="text-center py-12">
-                  <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
-                  <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea tranzacțiilor' : 'Error loading transactions'}</p>
-                </div>
-              ) : filteredTransactions?.length === 0 ? (
-                <div className="text-center py-12">
-                  <CreditCard size={48} className="mx-auto text-[var(--text3)] mb-4" />
-                  <p className="text-[var(--text2)] text-lg mb-2">
-                    {language === 'ro' ? 'Nu s-au găsit tranzacții' : 'No transactions found'}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {filteredTransactions.map((txn: BankTransaction, index: number) => {
-                    const isSelected = selectedItems.transactions.includes(txn.id);
-                    console.log("TRANSACTION", txn);
-                    
-                    return (
-                      <motion.div
-                        key={txn.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.05 }}
-                        draggable
-                        onDragStart={() => handleDragStart('transaction', txn.id)}
-                        onDragOver={handleDragOver}
-                        onDrop={(e) => handleDrop(e, 'transaction', txn.id)}
-                        className={`p-4 bg-[var(--background)] rounded-xl border-2 transition-all duration-300 cursor-grab active:cursor-grabbing ${
-                          isSelected 
-                            ? 'border-[var(--primary)] shadow-md bg-[var(--primary)]/5' 
-                            : 'border-[var(--text4)] hover:border-[var(--primary)]/50'
-                        } ${draggedItem?.type === 'document' ? 'border-dashed border-emerald-400 bg-emerald-50' : ''}`}
-                      >
-                        <div className="flex items-center gap-4">
-                        <button
-                          onClick={() => toggleTransactionSelection(txn.id)}
-                          className="p-1 hover:bg-[var(--text4)]/20 bg-transparent rounded-lg transition-colors"
-                        >
-                          {isSelected ? (
-                            <CheckSquare size={20} className="text-[var(--primary)]" />
-                          ) : (
-                            <Square size={20} className="text-[var(--text3)]" />
-                          )}
-                        </button>
-                          
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                            txn.transactionType === 'credit' ? 'bg-emerald-100' : 'bg-red-100'
-                          }`}>
-                            <ArrowRight size={18} className={`${
-                              txn.transactionType === 'credit' ? 'text-emerald-600 rotate-180' : 'text-red-600'
-                            }`} />
-                          </div>
-                          
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p className="font-semibold text-[var(--text1)] truncate">{txn.description}</p>
-                              <span className={`px-2 py-1 rounded-lg text-xs font-medium ${getStatusColor(txn.reconciliation_status)}`}>
-                                {getStatusText(txn.reconciliation_status, language)}
-                              </span>
-                              {outstandingTxnIds.has(String(txn.id)) && (
-                                <span className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-100 text-yellow-700">
-                                  {language === 'ro' ? 'În Așteptare' : 'Outstanding'}
-                                </span>
-                              )}
-                              {txn.confidence_score && (
-                                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-lg text-xs font-medium">
-                                  {Math.round(txn.confidence_score * 100)}%
-                                </span>
-                              )}
-                            </div>
-                            {txn.referenceNumber && (
-                              <p className="text-sm text-[var(--text3)] mb-2 text-left">Ref: {txn.referenceNumber}</p>
-                            )}
-                            <div className="flex items-center gap-4 text-xs text-[var(--text3)]">
-                              <span className="flex items-center gap-1">
-                                <Calendar size={12} />
-                                {formatDate(txn.transactionDate)}
-                              </span>
-                              <span className={`flex items-center gap-1 font-semibold ${
-                                txn.transactionType === 'credit' ? 'text-emerald-600' : 'text-red-600'
-                              }`}>
-                                {txn.transactionType === 'credit' ? '+' : ''}{formatCurrency(txn.amount)}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 ml-2">
-                          <button 
-                            className={`p-1 transition-colors rounded-lg ${
-                              txn.bankStatementDocument?.signedUrl 
-                                ? 'hover:text-white hover:bg-[var(--primary)] bg-[var(--primary)]/20 text-[var(--primary)] cursor-pointer' 
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }`}
-                            onClick={() => {
-                              if (txn.bankStatementDocument?.signedUrl) {
-                                window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
-                              } else {
-                                alert(language === 'ro' 
-                                  ? 'Extractul bancar nu este disponibil pentru această tranzacție' 
-                                  : 'Bank statement not available for this transaction'
-                                );
-                              }
-                            }}
-                            disabled={!txn.bankStatementDocument?.signedUrl}
-                            title={language === 'ro' ? 'Vezi extrasul de cont bancar' : 'View bank statement'}
-                          >
-                            <Eye size={14} />
-                          </button>
-
-                          {(() => {
-                            const normalized = normalizeStatus(txn.reconciliation_status);
-                            const shouldShowAccountButton = normalized === 'unreconciled';
-                            return shouldShowAccountButton;
-                          })() && (
-                            <button 
-                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-purple-500 bg-purple-200 text-purple-600 cursor-pointer"
-                              onClick={() => {
-                                setSelectedTransactionForAccount(txn);
-                                setShowAccountReconcileModal(true);
-                              }}
-                              title={language === 'ro' ? 'Reconciliază cu cont contabil' : 'Reconcile with account code'}
-                            >
-                              <Target size={14} />
-                            </button>
-                          )}
-
-                          {(() => {
-                            const normalized = normalizeStatus(txn.reconciliation_status);
-                            const shouldShowSplitButton = normalized === 'unreconciled';
-                            return shouldShowSplitButton;
-                          })() && (
-                            <button
-                              className="p-1 transition-colors rounded-lg hover:text-white hover:bg-blue-500 bg-blue-200 text-blue-600 cursor-pointer"
-                              onClick={() => {
-                                setSelectedTransactionForSplit(txn);
-                                setShowSplitModal(true);
-                              }}
-                              title={language === 'ro' ? 'Împarte tranzacția' : 'Split transaction'}
-                            >
-                              <Edit2 size={14} />
-                            </button>
-                          )}
-
-                          {/* Expand/collapse splits preview */}
-                          <button
-                            className="p-1 transition-colors rounded-lg hover:text-white hover:bg-gray-500/40 bg-gray-200 text-gray-700 cursor-pointer"
-                            onClick={() => setExpandedSplits((prev: Record<string, boolean>) => ({ ...prev, [txn.id]: !prev[txn.id] }))}
-                            title={expandedSplits[txn.id] ? (language === 'ro' ? 'Ascunde împărțirile' : 'Hide splits') : (language === 'ro' ? 'Arată împărțirile' : 'Show splits')}
-                          >
-                            {expandedSplits[txn.id] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                          </button>
-
-                          {(() => {
-                            const normalized = normalizeStatus(txn.reconciliation_status);
-                            const shouldShow = ['matched', 'auto_matched', 'manually_matched'].includes(normalized);
-                            return shouldShow;
-                          })() && (
-                            <button 
-                              className={`p-1 transition-colors rounded-lg ${
-                                unreconciling.has(txn.id)
-                                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                  : 'hover:text-white hover:bg-red-500 bg-red-100 text-red-600 cursor-pointer'
-                              }`}
-                              onClick={() => handleUnreconcileTransaction(txn.id)}
-                              disabled={unreconciling.has(txn.id)}
-                              title={language === 'ro' ? 'Dereconciliază tranzacția' : 'Unreconcile transaction'}
-                            >
-                              {unreconciling.has(txn.id) ? (
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
-                              ) : (
-                                <X size={14} />
-                              )}
-                            </button>
-                          )}
-
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <TransactionsList
+            language={language as any}
+            transactionsData={transactionsData as any}
+            transactionsTotal={transactionsTotal}
+            transactionsLoading={transactionsLoading}
+            transactionsError={transactionsError}
+            filteredTransactions={filteredTransactions as any}
+            selectedItems={selectedItems as any}
+            draggedItem={draggedItem as any}
+            getStatusColor={getStatusColor as any}
+            getStatusText={getStatusText as any}
+            normalizeStatus={normalizeStatus as any}
+            formatDate={formatDate}
+            formatCurrency={formatCurrency}
+            outstandingTxnIds={outstandingTxnIds as any}
+            expandedSplits={expandedSplits as any}
+            unreconciling={unreconciling as any}
+            toggleTransactionSelection={toggleTransactionSelection as any}
+            setSelectedTransactionForAccount={setSelectedTransactionForAccount as any}
+            setShowAccountReconcileModal={setShowAccountReconcileModal}
+            setSelectedTransactionForSplit={setSelectedTransactionForSplit as any}
+            setShowSplitModal={setShowSplitModal}
+            handleUnreconcileTransaction={handleUnreconcileTransaction as any}
+            setExpandedSplits={setExpandedSplits as any}
+            handleDragStart={handleDragStart as any}
+            handleDragOver={handleDragOver as any}
+            handleDrop={handleDrop as any}
+          />
         </div>
       )}
 
       {activeTab === 'suggestions' && (
-        <div className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-[var(--text4)] bg-[var(--background)]">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-[var(--text1)] flex items-center gap-2">
-                <Zap size={20} />
-                {language === 'ro' ? 'Sugestii de Reconciliere' : 'Reconciliation Suggestions'}
-              </h3>
-              <button
-                onClick={handleRegenerateAllSuggestions}
-                disabled={isRegeneratingAll}
-                className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg text-sm font-medium transition-colors"
-              >
-                {isRegeneratingAll ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                {language === 'ro' ? 'Regenerează Toate' : 'Regenerate All'}
-              </button>
-            </div>
-          </div>
-          <div className="p-6">
-            {suggestionsLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="flex items-center gap-3 text-[var(--text2)]">
-                  <RefreshCw size={20} className="animate-spin" />
-                  <span>{language === 'ro' ? 'Se încarcă sugestiile...' : 'Loading suggestions...'}</span>
-                </div>
-              </div>
-            ) : suggestionsError ? (
-              <div className="text-center py-12">
-                <AlertTriangle size={48} className="mx-auto text-red-500 mb-4" />
-                <p className="text-red-600">{language === 'ro' ? 'Eroare la încărcarea sugestiilor' : 'Error loading suggestions'}</p>
-              </div>
-            ) : displayedSuggestions.length === 0 ? (
-              <div className="text-center py-12">
-                <Zap size={48} className="mx-auto text-[var(--text3)] mb-4" />
-                <p className="text-[var(--text2)] text-lg mb-2">
-                  {language === 'ro' ? 'Nu există sugestii disponibile' : 'No suggestions available'}
-                </p>
-                <p className="text-[var(--text3)] text-sm">
-                  {language === 'ro' ? 'Sugestiile vor apărea când sistemul găsește potriviri posibile' : 'Suggestions will appear when the system finds possible matches'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {displayedSuggestions.map((suggestion) => (
-                  <motion.div
-                    key={suggestion.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.05 }}
-                    className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4"
-                  >
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                          <Target size={20} className="text-blue-600" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-left text-[var(--text1)]">
-                            {language === 'ro' ? 'Potrivire sugerată' : 'Suggested Match'}
-                          </p>
-                          <p className="text-sm text-left text-blue-600 font-medium">
-                            {language === 'ro' ? 'Încredere' : 'Confidence'}: {Math.round(suggestion.confidenceScore * 100)}%
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={async () => {
-                            const suggestionId = String(suggestion.id);
-                            setLoadingSuggestions(prev => new Set(prev).add(suggestionId));
-                            try {
-                              const isTransferSuggestion = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
-                              const isDocumentSuggestion = suggestion.document && (suggestion as any).document.id;
-                              const isAccountCodeSuggestion = suggestion.chartOfAccount && (suggestion.chartOfAccount.accountCode || (suggestion.chartOfAccount as any).code);
-                              
-                              if (isTransferSuggestion) {
-                                const srcId = suggestion.transfer!.sourceTransactionId;
-                                const dstId = suggestion.transfer!.destinationTransactionId;
-                                if (!srcId || !dstId) throw new Error('Missing transaction ids for transfer');
-                                await createTransferReconciliation({
-                                  clientEin: clientCompanyEin,
-                                  data: {
-                                    sourceTransactionId: srcId,
-                                    destinationTransactionId: dstId,
-                                    fxRate: suggestion.transfer?.impliedFxRate,
-                                    notes: `Accepted transfer suggestion (Δdays ${suggestion.transfer?.dateDiffDays ?? '-'})`
-                                  }
-                                }).unwrap();
-                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                              } else if (isDocumentSuggestion) {
-                                await acceptSuggestion({
-                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for document suggestion'); })(),
-                                  notes: `Accepted suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
-                                }).unwrap();
-                                console.log('Document suggestion accepted successfully');
-                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                              } else if (isAccountCodeSuggestion && suggestion.bankTransaction && suggestion.chartOfAccount) {
-                                const transactionId = suggestion.bankTransaction.id;
-                                const accountCode = suggestion.chartOfAccount.accountCode || (suggestion.chartOfAccount as any).code;
-                                
-                                if (!transactionId) {
-                                  throw new Error('Transaction ID is missing');
-                                }
-                                if (!accountCode) {
-                                  throw new Error('Account code is missing');
-                                }
-                                
-                                await createManualAccountReconciliation({
-                                  transactionId,
-                                  accountCode,
-                                  notes: `Accepted account code suggestion with ${Math.round(suggestion.confidenceScore * 100)}% confidence`
-                                }).unwrap();
-                                console.log('Account code suggestion accepted successfully');
-                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                                
-                                await rejectSuggestion({
-                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for account code reject'); })(),
-                                  reason: 'Accepted as account code reconciliation'
-                                }).unwrap();
-                              } else {
-                                throw new Error('Unknown suggestion type - neither document nor account code, or missing required data');
-                              }
-                            } catch (error: any) {
-                              console.error('Failed to accept suggestion:', error);
-                              if (error?.status === 401 || error?.data?.statusCode === 401) {
-                                console.warn('Authentication failed - redirecting to login');
-                                window.location.href = '/authentication';
-                              } else {
-                                const errorMsg = error?.data?.message || error?.message || 'Unknown error';
-                                console.error('Accept suggestion error details:', errorMsg);
-                                alert(language === 'ro' ? `Eroare la acceptarea sugestiei: ${errorMsg}` : `Failed to accept suggestion: ${errorMsg}`);
-                              }
-                            } finally {
-                              setLoadingSuggestions(prev => {
-                                const newSet = new Set(prev);
-                                newSet.delete(suggestionId);
-                                return newSet;
-                              });
-                            }
-                          }}
-                          disabled={loadingSuggestions.has(String(suggestion.id))}
-                          className="px-4 py-2 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-                        >
-                          {loadingSuggestions.has(String(suggestion.id)) && <Loader2 size={16} className="animate-spin" />}
-                          <Check size={16} />
-                          {language === 'ro' ? 'Acceptă' : 'Accept'}
-                        </button>
-                         <button 
-                          onClick={async () => {
-                            const suggestionId = String(suggestion.id);
-                            setRejectingSuggestions(prev => new Set(prev).add(suggestionId));
-                            try {
-                              const isTransferSuggestion = suggestion.matchingCriteria?.type === 'TRANSFER';
-                              if (isTransferSuggestion) {
-                                // Synthetic ID: no backend reject. Optimistically remove.
-                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                                console.log('Transfer suggestion removed locally');
-                              } else {
-                                await rejectSuggestion({
-                                  suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for reject'); })(),
-                                  reason: 'Manual rejection by user'
-                                }).unwrap();
-                                console.log('Suggestion rejected successfully');
-                                setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                                refetchSuggestions && refetchSuggestions();
-                              }
-                            } catch (error: any) {
-                              console.error('Failed to reject suggestion:', error);
-                              if (error?.status === 401 || error?.data?.statusCode === 401) {
-                                console.warn('Authentication failed - redirecting to login');
-                                window.location.href = '/authentication';
-                              } else {
-                                const errorMsg = error?.data?.message || error?.message || 'Unknown error';
-                                console.error('Reject suggestion error details:', errorMsg);
-                                alert(language === 'ro' ? `Eroare la respingerea sugestiei: ${errorMsg}` : `Failed to reject suggestion: ${errorMsg}`);
-                              }
-                            } finally {
-                              setRejectingSuggestions(prev => {
-                                const newSet = new Set(prev);
-                                newSet.delete(suggestionId);
-                                return newSet;
-                              });
-                            }
-                          }}
-                          disabled={rejectingSuggestions.has(String(suggestion.id))}
-                          className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-                        >
-                          {rejectingSuggestions.has(String(suggestion.id)) && <Loader2 size={16} className="animate-spin" />}
-                          <X size={16} />
-                          {language === 'ro' ? 'Respinge' : 'Reject'}
-                        </button>
-                        {suggestion.bankTransaction && (
-                          <button
-                            onClick={() => suggestion.bankTransaction && handleRegenerateTransactionSuggestions(suggestion.bankTransaction.id)}
-                            disabled={regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id))}
-                            className="px-3 py-2 bg-[var(--primary)] text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-                            title={language === 'ro' ? 'Regenerează sugestii pentru această tranzacție' : 'Regenerate suggestions for this transaction'}
-                          >
-                            {regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id)) ? (
-                              <Loader2 size={16} className="animate-spin" />
-                            ) : (
-                              <RefreshCw size={16} />
-                            )}
-                            {language === 'ro' ? 'Regenerează' : 'Regenerate'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-semibold text-[var(--text1)]">
-                            {suggestion.matchingCriteria?.type === 'TRANSFER'
-                              ? (language === 'ro' ? 'Tranzacție contraparte' : 'Counterparty Transaction')
-                              : suggestion.document ? 'Document' : (language === 'ro' ? 'Cont Contabil' : 'Account Code')}
-                            {(() => {
-                              const isTransfer = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
-                              if (!isTransfer) return null;
-                              const isSourceSide = String(suggestion.bankTransaction?.id) === String(suggestion.transfer!.sourceTransactionId);
-                              const role = isSourceSide ? (language === 'ro' ? 'Destinație' : 'Destination') : (language === 'ro' ? 'Sursă' : 'Source');
-                              return (
-                                <span
-                                  title={language === 'ro' ? 'Rolul tranzacției în transfer' : 'Transaction role in transfer'}
-                                  className={`ml-2 align-middle inline-block px-2 py-0.5 text-[10px] rounded-full ${isSourceSide ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}
-                                >
-                                  {role}
-                                </span>
-                              );
-                            })()}
-                          </p>
-                          {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
-                            <button
-                              onClick={() => {
-                                const cp = suggestion.transfer!.counterpartyTransaction as any;
-                                if (cp?.bankStatementDocument?.signedUrl) {
-                                  window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
-                                }
-                              }}
-                              disabled={!((suggestion.transfer.counterpartyTransaction as any)?.bankStatementDocument?.signedUrl)}
-                              className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={language === 'ro' ? 'Vezi extrasul băncii (contraparte)' : 'View bank statement (counterparty)'}
-                            >
-                              <Eye size={14} className="text-emerald-500" />
-                            </button>
-                          ) : suggestion.document && (
-                            <button
-                              onClick={() => {
-                                const doc = suggestion.document as any;
-                                if (doc?.signedUrl || doc?.path) {
-                                  window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
-                                }
-                              }}
-                              disabled={!(suggestion.document as any)?.signedUrl && !(suggestion.document as any)?.path}
-                              className="p-1 hover:bg-gray-100 bg-[var(--primary)]/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={language === 'ro' ? 'Vezi documentul' : 'View document'}
-                            >
-                              <Eye size={14} className="text-[var(--primary)]" />
-                            </button>
-                          )}
-                        </div>
-                        {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
-                          (() => {
-                            // Prefer server-provided counterparty; otherwise, attempt to resolve from local transactionsData by ID
-                            let cp: any = (suggestion.transfer as any).counterpartyTransaction;
-                            if (!cp) {
-                              const srcId = suggestion.transfer.sourceTransactionId ? String(suggestion.transfer.sourceTransactionId) : undefined;
-                              const dstId = suggestion.transfer.destinationTransactionId ? String(suggestion.transfer.destinationTransactionId) : undefined;
-                              const currentTxnId = suggestion.bankTransaction?.id ? String(suggestion.bankTransaction.id) : undefined;
-                              const cpId = currentTxnId && srcId && currentTxnId === srcId ? dstId : srcId || dstId;
-                              if (cpId && Array.isArray(transactionsData)) {
-                                cp = (transactionsData as any[]).find(t => String(t.id) === String(cpId));
-                              }
-                            }
-                            if (cp && typeof cp === 'object') {
-                              return (
-                                <>
-                                  <p className="text-sm text-[var(--text2)] truncate">{cp.description}</p>
-                                  <p className="text-xs text-[var(--text3)]">{formatDate(cp.transactionDate)}</p>
-                                  <p className={`text-sm font-medium ${cp.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
-                                    {(cp.transactionType === 'credit' ? '+' : '') + formatCurrency(Math.abs(cp.amount))}
-                                  </p>
-                                  {suggestion.transfer.crossCurrency && (
-                                    <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-800 rounded-full mt-1">
-                                      FX {suggestion.transfer.impliedFxRate}
-                                    </span>
-                                  )}
-                                </>
-                              );
-                            }
-                            // Fallback placeholder when details are not available
-                            return (
-                              <div className="text-sm text-[var(--text3)]">
-                                <p className="italic">{language === 'ro' ? 'Detalii indisponibile' : 'Details unavailable'}</p>
-                                <p className="mt-1">ID: {suggestion.transfer.sourceTransactionId ? String(suggestion.transfer.sourceTransactionId) : '-'} → {suggestion.transfer.destinationTransactionId ? String(suggestion.transfer.destinationTransactionId) : '-'}</p>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          suggestion.document ? (
-                            <>
-                              <p className="text-sm text-[var(--text2)]">{suggestion.document.name}</p>
-                              <p className="text-xs text-[var(--text3)]">{suggestion.document.type.replace(/^\w/, c => c.toUpperCase())}</p>
-                              {(() => {
-                              // Get the correct amount for different document types
-                              let displayAmount = suggestion.document.total_amount;
-                              
-                              // For Z Reports, use comprehensive amount extraction
-                              if (suggestion.document.type === 'Z Report') {
-                                let zReportAmount = 0;
-                                const processedData = suggestion.document.processedData as any;
-                                console.log('🔍 Z Report Debug for', suggestion.document.name, ':', {
-                                  hasProcessedData: !!processedData,
-                                  processedDataType: typeof processedData,
-                                  isArray: Array.isArray(processedData),
-                                  processedData: processedData
-                                });
-                                
-                                // Comprehensive Z Report amount extraction
-                                function extractZReportAmount(data: any): number {
-                                  if (!data) return 0;
-                                  
-                                  // Try all possible paths to find total_sales or similar amount fields
-                                  const possiblePaths = [
-                                    // Array-based access
-                                    () => Array.isArray(data) ? data[0]?.extractedFields?.result?.total_sales : null,
-                                    () => Array.isArray(data) ? data[0]?.extractedFields?.total_sales : null,
-                                    () => Array.isArray(data) ? data[0]?.result?.total_sales : null,
-                                    () => Array.isArray(data) ? data[0]?.total_sales : null,
-                                    
-                                    // Direct object access
-                                    () => data.extractedFields?.result?.total_sales,
-                                    () => data.extractedFields?.total_sales,
-                                    () => data.result?.total_sales,
-                                    () => data.total_sales,
-                                    
-                                    // Parse string extractedFields
-                                    () => {
-                                      if (typeof data.extractedFields === 'string') {
-                                        try {
-                                          const parsed = JSON.parse(data.extractedFields);
-                                          return parsed.result?.total_sales || parsed.total_sales;
-                                        } catch (e) { return null; }
-                                      }
-                                      return null;
-                                    },
-                                    
-                                    // Fallback to other amount fields
-                                    () => data.extractedFields?.result?.total_amount,
-                                    () => data.extractedFields?.total_amount,
-                                    () => data.result?.total_amount,
-                                    () => data.total_amount
-                                  ];
-                                  
-                                  for (const pathFn of possiblePaths) {
-                                    try {
-                                      const value = pathFn();
-                                      if (value && typeof value === 'number' && value > 0) {
-                                        console.log('✅ Z Report amount found:', value, 'via path:', pathFn.toString());
-                                        return value;
-                                      }
-                                    } catch (e) {
-                                      // Continue to next path
-                                    }
-                                  }
-                                  
-                                  return 0;
-                                }
-                                
-                                zReportAmount = extractZReportAmount(processedData);
-                                
-                                if (zReportAmount > 0) {
-                                  displayAmount = zReportAmount;
-                                  console.log('✅ Final Z Report displayAmount:', displayAmount);
-                                } else {
-                                  console.log('❌ No Z Report amount found in any path');
-                                  // Show a placeholder amount for debugging
-                                  displayAmount = 4165; // Known amount from RapZ1.pdf for testing
-                                }
-                              }
-                              
-                              // For component matches, show both component and total
-                              if (suggestion.matchingCriteria?.component_match && suggestion.matchingCriteria?.component_type) {
-                                const componentAmount = suggestion.bankTransaction?.amount;
-                                return (
-                                  <div className="mt-1">
-                                    <p className="text-sm font-medium text-blue-600">
-                                      {formatCurrency(displayAmount || 0)}
-                                    </p>
-                                    <p className="text-xs text-orange-600 font-medium">
-                                      {suggestion.matchingCriteria.component_type}: {formatCurrency(Math.abs(componentAmount || 0))}
-                                    </p>
-                                    <span className="inline-block px-2 py-1 text-xs bg-orange-100 text-orange-800 rounded-full mt-1">
-                                      {language === 'ro' ? 'Potrivire Parțială' : 'Partial Match'}
-                                    </span>
-                                  </div>
-                                );
-                              }
-                              
-                              // For Z Reports, always show component breakdown if transaction amount differs from total
-                              if (suggestion.document.type === 'Z Report' && suggestion.bankTransaction?.amount) {
-                                const transactionAmount = Math.abs(suggestion.bankTransaction.amount);
-                                const documentTotal = displayAmount || 0;
-                                
-                                // If amounts differ significantly, show component breakdown
-                                if (Math.abs(transactionAmount - documentTotal) > 1) {
-                                  return (
-                                    <div className="mt-1">
-                                      <p className="text-sm font-medium text-blue-600">
-                                        Total: {formatCurrency(documentTotal)}
-                                      </p>
-                                      <p className="text-xs text-green-600 font-medium">
-                                        Matched: {formatCurrency(transactionAmount)} (POS)
-                                      </p>
-                                      <span className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full mt-1">
-                                        {language === 'ro' ? 'Potrivire Componentă' : 'Component Match'}
-                                      </span>
-                                    </div>
-                                  );
-                                }
-                              }
-                              
-                                return displayAmount !== undefined && displayAmount !== null && displayAmount !== 0 ? (
-                                  <p className="text-sm font-medium text-blue-600 mt-1">
-                                    {formatCurrency(displayAmount)}
-                                  </p>
-                                ) : null;
-                              })()}
-                            </>
-                          ) : suggestion.chartOfAccount ? (
-                            <>
-                              <p className="text-sm text-[var(--text2)]">
-                                {suggestion.chartOfAccount.accountCode || suggestion.chartOfAccount.code}
-                              </p>
-                              <p className="text-xs text-[var(--text3)]">
-                                {suggestion.chartOfAccount.accountName || suggestion.chartOfAccount.name}
-                              </p>
-                            </>
-                          ) : (
-                            <p className="text-sm text-[var(--text3)] italic">{language === 'ro' ? 'Fără document' : 'No document'}</p>
-                          )
-                        )}
-                      </div>
-                      
-                      <div className="p-3 bg-white rounded-lg border border-gray-200">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-sm font-semibold text-[var(--text1)]">
-                            Tranzacție
-                            {(() => {
-                              const isTransfer = suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer;
-                              if (!isTransfer) return null;
-                              const isSourceSide = String(suggestion.bankTransaction?.id) === String(suggestion.transfer!.sourceTransactionId);
-                              const role = isSourceSide ? (language === 'ro' ? 'Sursă' : 'Source') : (language === 'ro' ? 'Destinație' : 'Destination');
-                              return (
-                                <span
-                                  title={language === 'ro' ? 'Rolul tranzacției în transfer' : 'Transaction role in transfer'}
-                                  className={`ml-2 align-middle inline-block px-2 py-0.5 text-[10px] rounded-full ${isSourceSide ? 'bg-indigo-100 text-indigo-700' : 'bg-blue-100 text-blue-700'}`}
-                                >
-                                  {role}
-                                </span>
-                              );
-                            })()}
-                          </p>
-                          {suggestion.bankTransaction && (
-                            <button
-                              onClick={() => {
-                                const txn = suggestion.bankTransaction as any;
-                                if (txn?.bankStatementDocument?.signedUrl) {
-                                  window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
-                                }
-                              }}
-                              disabled={!(suggestion.bankTransaction as any)?.bankStatementDocument?.signedUrl}
-                              className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                              title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
-                            >
-                              <Eye size={14} className="text-emerald-500" />
-                            </button>
-                          )}
-                        </div>
-                        <p className="text-sm text-[var(--text2)] truncate">{suggestion.bankTransaction ? suggestion.bankTransaction.description : ''}</p>
-                        <p className="text-xs text-[var(--text3)]">{suggestion.bankTransaction?.transactionDate ? formatDate(suggestion.bankTransaction.transactionDate) : ''}</p>
-                        <p className={`text-sm font-medium ${suggestion.bankTransaction?.transactionType === 'credit' ? 'text-emerald-500' : 'text-red-600'}`}>
-                          {suggestion.bankTransaction ? `${suggestion.bankTransaction.transactionType === 'credit' ? '+' : ''}${formatCurrency(suggestion.bankTransaction.amount)}` : ''}
-                        </p>
-                        {/* Transfer candidates quick action removed as requested */}
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        <SuggestionsList
+          language={language as string}
+          suggestionsLoading={suggestionsLoading}
+          suggestionsError={suggestionsError}
+          displayedSuggestions={displayedSuggestions}
+          isRegeneratingAll={isRegeneratingAll}
+          handleRegenerateAllSuggestions={handleRegenerateAllSuggestions}
+          loadingSuggestions={loadingSuggestions}
+          setLoadingSuggestions={setLoadingSuggestions}
+          rejectingSuggestions={rejectingSuggestions}
+          setRejectingSuggestions={setRejectingSuggestions}
+          setRemovedSuggestions={setRemovedSuggestions}
+          regeneratingTransactions={regeneratingTransactions}
+          handleRegenerateTransactionSuggestions={handleRegenerateTransactionSuggestions}
+          clientCompanyEin={clientCompanyEin}
+          transactionsData={transactionsData}
+          acceptSuggestion={acceptSuggestion}
+          rejectSuggestion={rejectSuggestion}
+          createManualAccountReconciliation={createManualAccountReconciliation}
+          createTransferReconciliation={createTransferReconciliation}
+          refetchSuggestions={refetchSuggestions as any}
+          formatDate={formatDate}
+          formatCurrency={formatCurrency}
+        />
       )}
 
       {activeTab === 'reports' && (
@@ -4393,511 +2746,66 @@ const BankPage = () => {
         </div>
       )}
 
-      {/* Match Confirmation Modal */}
-      <AnimatePresence>
-        {showMatchModal && matchingPair && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
-                  <Link size={24} className="text-[var(--primary)]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-[var(--text1)]">
-                    {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Reconciliation'}
-                  </h3>
-                  <p className="text-[var(--text2)]">
-                    {language === 'ro' ? 'Verifică detaliile înainte de a confirma' : 'Review details before confirming'}
-                  </p>
-                </div>
-              </div>
+      <MatchModal
+        open={showMatchModal}
+        language={language as any}
+        matchingPair={matchingPair as any}
+        onCancel={() => handleManualMatch(false)}
+        onConfirm={() => handleManualMatch(true)}
+        isCreating={isCreatingMatch}
+        formatDate={formatDate}
+        formatCurrency={formatCurrency}
+        getDocumentDate={getDocumentDate as any}
+        getDocumentAmount={getDocumentAmount as any}
+      />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)]">
-                  <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
-                    <FileText size={18} />
-                    Document
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Număr:</span>
-                      <span className="text-[var(--text1)]">{matchingPair.document.document_number}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Furnizor:</span>
-                      <span className="text-[var(--text1)]">{matchingPair.document.vendor}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Sumă:</span>
-                      <span className="text-[var(--primary)] font-semibold">
-                        {formatCurrency(getDocumentAmount(matchingPair.document))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Data:</span>
-                      <span className="text-[var(--text1)]">{formatDate(getDocumentDate(matchingPair.document))}</span>
-                    </div>
-                  </div>
-                </div>
+      <AccountReconcileModal
+        open={showAccountReconcileModal}
+        language={language as any}
+        selectedTransaction={selectedTransactionForAccount as any}
+        isLoading={isCreatingAccountReconciliation}
+        onCancel={() => {
+          setShowAccountReconcileModal(false);
+          setSelectedTransactionForAccount(null);
+        }}
+        onSelect={handleAccountReconciliation as any}
+        formatDate={formatDate}
+        formatCurrency={formatCurrency}
+        AccountCodeSelector={AccountCodeSelector as any}
+      />
 
-                <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)]">
-                  <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
-                    <CreditCard size={18} />
-                    Tranzacție
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Descriere:</span>
-                      <span className="text-[var(--text1)] truncate ml-2">{matchingPair.transaction.description}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Referință:</span>
-                      <span className="text-[var(--text1)]">{matchingPair.transaction.referenceNumber || '-'}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Sumă:</span>
-                      <span className={`font-semibold ${matchingPair.transaction.transactionType === 'credit' ? 'text-emerald-600' : 'text-red-600'}`}>
-                        {matchingPair.transaction.transactionType === 'credit' ? '+' : ''}{formatCurrency(matchingPair.transaction.amount)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-[var(--text3)]">Data:</span>
-                      <span className="text-[var(--text1)]">{formatDate(matchingPair.transaction.transactionDate)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Amount verification */}
-              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl mb-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <AlertTriangle size={18} className="text-yellow-600" />
-                  <span className="font-semibold text-yellow-800">
-                    {language === 'ro' ? 'Verificare Sumă' : 'Amount Verification'}
-                  </span>
-                </div>
-                <p className="text-sm text-yellow-700">
-                  {Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)) < 0.01 
-                    ? (language === 'ro' ? '✓ Sumele se potrivesc perfect' : '✓ Amounts match perfectly')
-                    : (language === 'ro' 
-                        ? `⚠ Diferență de sumă: ${Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`
-                        : `⚠ Amount difference: ${Math.abs(getDocumentAmount(matchingPair.document) - Math.abs(matchingPair.transaction.amount)).toFixed(2)} RON`)
-                  }
-                </p>
-              </div>
-
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={() => handleManualMatch(false)}
-                  className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                >
-                  {language === 'ro' ? 'Anulează' : 'Cancel'}
-                </button>
-                <button
-                  onClick={() => handleManualMatch(true)}
-                  disabled={isCreatingMatch}
-                  className="px-6 py-3 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors font-medium disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isCreatingMatch && <Loader2 size={16} className="animate-spin" />}
-                  {language === 'ro' ? 'Confirmă Reconcilierea' : 'Confirm Match'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Account Reconciliation Modal */}
-      <AnimatePresence>
-        {showAccountReconcileModal && selectedTransactionForAccount && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
-                  <Target size={24} className="text-[var(--primary)]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-[var(--text1)]">
-                    {language === 'ro' ? 'Reconciliază cu Cont Contabil' : 'Reconcile with Account Code'}
-                  </h3>
-                  <p className="text-[var(--text2)]">
-                    {language === 'ro' ? 'Selectează contul contabil pentru această tranzacție' : 'Select the chart of account for this transaction'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Transaction Details */}
-              <div className="p-4 bg-[var(--background)] rounded-xl border border-[var(--text4)] mb-6">
-                <h4 className="font-semibold text-[var(--text1)] mb-3 flex items-center gap-2">
-                  <CreditCard size={18} />
-                  {language === 'ro' ? 'Detalii Tranzacție' : 'Transaction Details'}
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Descriere:' : 'Description:'}</span>
-                    <span className="text-[var(--text1)] truncate ml-2">{selectedTransactionForAccount.description}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Sumă:' : 'Amount:'}</span>
-                    <span className={`font-semibold ${
-                      selectedTransactionForAccount.transactionType === 'credit' ? 'text-emerald-600' : 'text-red-600'
-                    }`}>
-                      {selectedTransactionForAccount.transactionType === 'credit' ? '+' : ''}
-                      {formatCurrency(selectedTransactionForAccount.amount)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[var(--text3)]">{language === 'ro' ? 'Data:' : 'Date:'}</span>
-                    <span className="text-[var(--text1)]">{formatDate(selectedTransactionForAccount.transactionDate)}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Account Code Selection */}
-              <AccountCodeSelector
-                onSelect={handleAccountReconciliation}
-                onCancel={() => {
-                  setShowAccountReconcileModal(false);
-                  setSelectedTransactionForAccount(null);
-                }}
-                isLoading={isCreatingAccountReconciliation}
-                language={language}
-              />
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Bank Account Management Modal */}
-      <AnimatePresence>
-        {showBankAccountModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-2xl w-full p-6"
-            >
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 bg-[var(--primary)]/10 rounded-xl flex items-center justify-center">
-                  <CreditCard size={24} className="text-[var(--primary)]" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-[var(--text1)]">
-                    {editingBankAccount 
-                      ? (language === 'ro' ? 'Editează Cont Bancar' : 'Edit Bank Account')
-                      : (language === 'ro' ? 'Adaugă Cont Bancar Nou' : 'Add New Bank Account')
-                    }
-                  </h3>
-                  <p className="text-[var(--text2)]">
-                    {language === 'ro' 
-                      ? 'Completează informațiile contului bancar' 
-                      : 'Fill in the bank account information'
-                    }
-                  </p>
-                </div>
-              </div>
-
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                const formData = new FormData(e.target as HTMLFormElement);
-                const accountData = {
-                  iban: formData.get('iban') as string,
-                  accountName: formData.get('accountName') as string,
-                  bankName: formData.get('bankName') as string,
-                  currency: formData.get('currency') as string || 'RON',
-                  accountType: formData.get('accountType') as 'CURRENT' | 'SAVINGS' | 'BUSINESS' | 'CREDIT'
-                };
-                const analyticSuffix = ((formData.get('analyticSuffix') as string) || '').trim();
-
-                try {
-                  if (editingBankAccount) {
-                    await updateBankAccount({
-                      accountId: editingBankAccount.id,
-                      updateData: accountData
-                    }).unwrap();
-                    addToast(
-                      language === 'ro' ? 'Contul bancar a fost actualizat.' : 'Bank account updated.',
-                      'success'
-                    );
-                  } else {
-                    await createBankAccount({
-                      clientEin: clientCompanyEin,
-                      accountData
-                    }).unwrap();
-                    addToast(
-                      language === 'ro' ? 'Cont bancar salvat.' : 'Bank account saved.',
-                      'success'
-                    );
-                  }
-
-                  // Create/Update Analytic mapping if suffix provided
-                  if (analyticSuffix) {
-                    const syntheticCode = (accountData.currency === 'RON') ? '5121' : '5124';
-                    try {
-                      const existing = (accountAnalytics as any[]).find(
-                        (m) => m.iban === accountData.iban && m.currency === accountData.currency
-                      );
-                      if (existing) {
-                        await updateAccountAnalytic({
-                          id: existing.id,
-                          data: {
-                            syntheticCode,
-                            analyticSuffix,
-                            currency: accountData.currency,
-                            bankName: accountData.bankName
-                          }
-                        }).unwrap();
-                      } else {
-                        await createAccountAnalytic({
-                          clientEin: clientCompanyEin,
-                          data: {
-                            iban: accountData.iban,
-                            currency: accountData.currency,
-                            syntheticCode,
-                            analyticSuffix,
-                            bankName: accountData.bankName
-                          }
-                        }).unwrap();
-                      }
-                      await refetchAccountAnalytics();
-                    } catch (err) {
-                      console.error('Failed to save analytic mapping', err);
-                    }
-                  }
-                  setShowBankAccountModal(false);
-                  setEditingBankAccount(null);
-                } catch (error) {
-                  console.error('Failed to save bank account:', error);
-                  addToast(
-                    language === 'ro' ? 'Eroare la salvarea contului bancar.' : 'Error saving bank account.',
-                    'error'
-                  );
-                }
-              }}>
-                <div className="space-y-4">
-                  {/* IBAN Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      IBAN *
-                    </label>
-                    <input
-                      type="text"
-                      name="iban"
-                      required
-                      defaultValue={editingBankAccount?.iban || ''}
-                      placeholder="RO49 AAAA 1B31 0075 9384 0000"
-                      className="w-full text-black px-4 py-3 border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                    />
-                  </div>
-
-                  {/* Account Name Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Nume Cont *' : 'Account Name *'}
-                    </label>
-                    <input
-                      type="text"
-                      name="accountName"
-                      required
-                      defaultValue={editingBankAccount?.accountName || ''}
-                      placeholder={language === 'ro' ? 'Cont Principal Companie' : 'Company Main Account'}
-                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                    />
-                  </div>
-
-                  {/* Bank Name Field */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Nume Bancă *' : 'Bank Name *'}
-                    </label>
-                    <input
-                      type="text"
-                      name="bankName"
-                      required
-                      defaultValue={editingBankAccount?.bankName || ''}
-                      placeholder={language === 'ro' ? 'Banca Transilvania' : 'Bank Name'}
-                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                    />
-                  </div>
-
-                  {/* Currency and Account Type Row */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Currency Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                        {language === 'ro' ? 'Monedă' : 'Currency'}
-                      </label>
-                      <select
-                        name="currency"
-                        defaultValue={editingBankAccount?.currency || 'RON'}
-                        className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                      >
-                        <option value="RON">RON</option>
-                        <option value="EUR">EUR</option>
-                        <option value="USD">USD</option>
-                        <option value="GBP">GBP</option>
-                      </select>
-                    </div>
-
-                    {/* Account Type Field */}
-                    <div>
-                      <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                        {language === 'ro' ? 'Tip Cont' : 'Account Type'}
-                      </label>
-                      <select
-                        name="accountType"
-                        defaultValue={editingBankAccount?.accountType || 'CURRENT'}
-                        className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                      >
-                        <option value="CURRENT">{language === 'ro' ? 'Cont Curent' : 'Current Account'}</option>
-                        <option value="SAVINGS">{language === 'ro' ? 'Cont Economii' : 'Savings Account'}</option>
-                        <option value="BUSINESS">{language === 'ro' ? 'Cont Business' : 'Business Account'}</option>
-                        <option value="CREDIT">{language === 'ro' ? 'Card de Credit' : 'Credit Card'}</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Analytic Suffix simple input (applies to both create and edit) */}
-                  <div>
-                    <label className="block text-sm font-medium text-[var(--text1)] mb-2">
-                      {language === 'ro' ? 'Sufix Analitic' : 'Analytic Suffix'}
-                    </label>
-                    <input
-                      type="text"
-                      name="analyticSuffix"
-                      defaultValue={editingBankAccount ? ((accountAnalytics as any[]).find(m => m.iban === editingBankAccount.iban && m.currency === (editingBankAccount.currency || 'RON'))?.analyticSuffix || '') : ''}
-                      placeholder="01"
-                      className="w-full px-4 py-3 text-black border border-[var(--text4)] rounded-xl focus:ring-2 focus:ring-[var(--primary)] focus:border-transparent bg-white"
-                    />
-                    <p className="text-xs text-[var(--text2)] mt-1">
-                      {language === 'ro' 
-                        ? 'Codul sintetic se setează automat: 5121 pentru RON, 5124 pentru alte valute.' 
-                        : 'Synthetic code is auto-set: 5121 for RON, 5124 for other currencies.'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Modal Actions */}
-                <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[var(--text4)]">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowBankAccountModal(false);
-                      setEditingBankAccount(null);
-                    }}
-                    className="flex-1 px-4 py-3 border bg-white border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors"
-                  >
-                    {language === 'ro' ? 'Anulează' : 'Cancel'}
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 px-4 py-3 bg-[var(--primary)] text-white rounded-xl hover:bg-[var(--primary)]/90 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <CreditCard size={16} />
-                    {editingBankAccount 
-                      ? (language === 'ro' ? 'Actualizează Cont' : 'Update Account')
-                      : (language === 'ro' ? 'Creează Cont' : 'Create Account')
-                    }
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <BankAccountModal
+        open={showBankAccountModal}
+        language={language as any}
+        editingBankAccount={editingBankAccount}
+        onClose={() => { setShowBankAccountModal(false); setEditingBankAccount(null); }}
+        clientCompanyEin={clientCompanyEin}
+        accountAnalytics={accountAnalytics as any}
+        createBankAccount={createBankAccount as any}
+        updateBankAccount={updateBankAccount as any}
+        createAccountAnalytic={createAccountAnalytic as any}
+        updateAccountAnalytic={updateAccountAnalytic as any}
+        refetchAccountAnalytics={refetchAccountAnalytics as any}
+        addToast={addToast}
+      />
 
       {/* Toast Notifications */}
-      <div className="fixed top-4 right-4 z-[60] space-y-2">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`min-w-[260px] max-w-sm px-4 py-3 rounded-xl shadow-lg border text-sm bg-white ${
-              t.type === 'success'
-                ? 'border-emerald-200 text-emerald-700'
-                : t.type === 'error'
-                ? 'border-red-200 text-red-700'
-                : 'border-blue-200 text-blue-700'
-            }`}
-          >
-            {t.message}
-          </div>
-        ))}
-      </div>
+      <ToastPortal toasts={toasts} />
 
       {/* Confirm Modal */}
-      <AnimatePresence>
-        {confirmOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-[var(--foreground)] rounded-2xl border border-[var(--text4)] shadow-2xl max-w-md w-full p-6"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 bg-red-500/10 rounded-xl flex items-center justify-center shrink-0">
-                  <AlertTriangle size={20} className="text-red-600" />
-                </div>
-                <div className="text-[var(--text1)]">
-                  <h4 className="font-semibold mb-1">{language === 'ro' ? 'Confirmare' : 'Confirm'}</h4>
-                  <p className="text-[var(--text2)]">{confirmMessage}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3 mt-6 pt-4 border-t border-[var(--text4)]">
-                <button
-                  onClick={closeConfirm}
-                  className="flex-1 px-4 py-2 border bg-white border-[var(--text4)] text-[var(--text2)] rounded-xl hover:bg-[var(--text4)]/10 transition-colors flex items-center justify-center gap-2"
-                >
-                  <X size={16} /> {language === 'ro' ? 'Anulează' : 'Cancel'}
-                </button>
-                <button
-                  onClick={async () => {
-                    if (confirmActionRef.current) {
-                      await Promise.resolve(confirmActionRef.current());
-                    } else {
-                      closeConfirm();
-                    }
-                  }}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
-                >
-                  <Check size={16} /> {language === 'ro' ? 'Confirmă' : 'Confirm'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ConfirmModal
+        open={confirmOpen}
+        message={confirmMessage}
+        language={language as any}
+        onCancel={closeConfirm}
+        onConfirm={async () => {
+          if (confirmActionRef.current) {
+            await Promise.resolve(confirmActionRef.current());
+          } else {
+            closeConfirm();
+          }
+        }}
+      />
     </div>
   );
 };
