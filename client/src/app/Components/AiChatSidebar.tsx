@@ -106,7 +106,19 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
       const parseDocResults = (text: string): DocPreviewItem[] | undefined => {
         try {
-          const trimmed = text.trim();
+          const unwrapCodeFence = (s: string): string => {
+            const t = s.trim();
+            if (t.startsWith('```')) {
+              // remove leading ```lang (optional) and trailing ```
+              const firstNl = t.indexOf('\n');
+              const afterHeader = firstNl >= 0 ? t.slice(firstNl + 1) : t.slice(3);
+              const endFence = afterHeader.lastIndexOf('```');
+              return (endFence >= 0 ? afterHeader.slice(0, endFence) : afterHeader).trim();
+            }
+            return t;
+          };
+
+          const trimmed = unwrapCodeFence(text);
           if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return undefined;
 
           const data = JSON.parse(trimmed);
