@@ -1464,82 +1464,38 @@ const BankPage = () => {
         } catch {}
         return false;
       }
+      // NOTE: Previously we filtered suggestions by the selected bank account using
+      // a paginated transaction ID set. This hid most non-transfer suggestions.
+      // We now keep all suggestions visible and only log debug info when an
+      // account filter is active, without excluding items.
       if (hasAccountFilterReady) {
         const isTransferAny = isTransferLike(s);
         if (isTransferAny) {
           const srcId = s.transfer?.sourceTransactionId;
           const dstId = s.transfer?.destinationTransactionId;
-          const hasSides = Boolean(srcId || dstId);
-          if (hasSides) {
-            const srcMatch = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
-            const dstMatch = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
-            // Debug transfer with sides
-            try {
-              console.log('[UI][filter][TRANSFER][sides]', {
-                sid: s.id,
-                bankTransactionId: s?.bankTransaction?.id,
-                srcId, dstId,
-                srcMatch, dstMatch,
-                selectedBankAccountId,
-              });
-            } catch {}
-            if (!srcMatch && !dstMatch) {
-              // Fall back to the suggestion's own bankTransaction when sides are not associated
-              const selfTxnId = s.bankTransaction?.id;
-              try {
-                console.log('[UI][filter][TRANSFER][fallback-self]', {
-                  sid: s.id,
-                  selfTxnId,
-                  inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
-                  selectedBankAccountId,
-                });
-              } catch {}
-              if (!selfTxnId || !accountTransactionIdSet.has(String(selfTxnId))) return false;
-            }
-          } else {
-            const selfTxnId = s.bankTransaction?.id;
-            if (!s?.transfer) {
-              try {
-                console.log('[UI][filter][TRANSFER][no-payload]', {
-                  sid: s.id,
-                  bankTransactionId: selfTxnId,
-                  inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
-                  selectedBankAccountId,
-                });
-              } catch {}
-            }
-            try {
-              console.log('[UI][filter][TRANSFER][no-sides]', {
-                sid: s.id,
-                selfTxnId,
-                inSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false,
-                selectedBankAccountId,
-              });
-            } catch {}
-            if (!selfTxnId || !accountTransactionIdSet.has(String(selfTxnId))) return false;
-          }
+          const selfTxnId = s.bankTransaction?.id;
+          try {
+            console.log('[UI][filter][TRANSFER][debug-only]', {
+              sid: s.id,
+              srcId,
+              dstId,
+              selfTxnId,
+              srcInSet: srcId ? accountTransactionIdSet.has(String(srcId)) : undefined,
+              dstInSet: dstId ? accountTransactionIdSet.has(String(dstId)) : undefined,
+              selfInSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : undefined,
+              selectedBankAccountId,
+            });
+          } catch {}
         } else {
           const txnId = s.bankTransaction?.id;
-          if (s?.matchingCriteria?.type === 'TRANSFER') {
-            try {
-              console.log('[UI][filter][TRANSFER][unexpected-nontransfer-branch]', {
-                sid: s.id,
-                hasPayload: Boolean(s?.transfer),
-                txnId,
-              });
-            } catch {}
-          }
-          if (txnId && !accountTransactionIdSet.has(String(txnId))) {
-            try {
-              console.log('[UI][filter][NONTRANSFER][account-mismatch]', {
-                sid: s.id,
-                txnId,
-                inSet: false,
-                selectedBankAccountId,
-              });
-            } catch {}
-            return false;
-          }
+          try {
+            console.log('[UI][filter][NONTRANSFER][debug-only]', {
+              sid: s.id,
+              txnId,
+              inSet: txnId ? accountTransactionIdSet.has(String(txnId)) : undefined,
+              selectedBankAccountId,
+            });
+          } catch {}
         }
       }
       return true;

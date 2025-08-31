@@ -104,31 +104,50 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
       const res = await sendChatMessage({ clientEin, message: newMessage.content, history }).unwrap();
 
-      // Try to parse document results from AI reply (JSON payload with items[].signedUrl)
       const parseDocResults = (text: string): DocPreviewItem[] | undefined => {
         try {
           const trimmed = text.trim();
-          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-            const data = JSON.parse(trimmed);
-            const items = (data?.items ?? data?.documents ?? []) as any[];
-            if (Array.isArray(items) && items.length) {
-              const docs: DocPreviewItem[] = items
-                .map((it) => ({
-                  id: it.id ?? it.docId ?? it.documentId,
-                  title: it.processedData?.document_number || it.processedData?.title || it.name || it.fileName,
-                  fileName: it.fileName,
-                  documentNumber: it.processedData?.document_number,
-                  signedUrl: it.signedUrl,
-                  type: it.type,
-                }))
-                .filter((d) => !!d.signedUrl);
-              return docs.length ? docs : undefined;
-            }
-          }
-        } catch (_) {
-          // ignore parse errors
+          if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return undefined;
+
+          const data = JSON.parse(trimmed);
+          const itemsCandidate = Array.isArray(data)
+            ? data
+            : (data?.items ?? data?.documents ?? data?.results ?? data?.data ?? []);
+
+          const items = Array.isArray(itemsCandidate) ? itemsCandidate : [];
+          if (!items.length) return undefined;
+
+          const docs: DocPreviewItem[] = items
+            .map((it: any) => {
+              // Extract document number from various shapes
+              let documentNumber: string | undefined = undefined;
+              const pd = it?.processedData;
+              if (Array.isArray(pd) && pd.length > 0) {
+                documentNumber = pd[0]?.extractedFields?.result?.document_number
+                  ?? pd[0]?.document_number
+                  ?? pd[0]?.title;
+              } else if (pd && typeof pd === 'object') {
+                documentNumber = pd.document_number ?? pd.title;
+              }
+
+              // Determine a usable URL
+              const url: string | undefined = it.signedUrl || it.url || it.path;
+
+              return {
+                id: it.id ?? it.docId ?? it.documentId,
+                title: documentNumber || it.title || it.name || it.fileName,
+                fileName: it.fileName || it.name,
+                documentNumber,
+                signedUrl: url,
+                type: it.type || it.documentType,
+              } as DocPreviewItem;
+            })
+            .filter((d: DocPreviewItem) => !!d.signedUrl);
+
+          return docs.length ? docs : undefined;
+        } catch {
+          return undefined;
         }
-        return undefined;
       };
 
       const docs = parseDocResults(res.reply);
@@ -189,16 +208,16 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           <div className="bg-white rounded-xl shadow-2xl w-[90vw] max-w-4xl h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div className="flex flex-col">
-                <span className="font-semibold text-sm">{previewDoc.documentNumber || previewDoc.title || previewDoc.fileName || 'Document'}</span>
-                <span className="text-xs text-gray-500">{previewDoc.type || ''}</span>
+                <span className="font-semibold text-sm text-left text-black">{previewDoc.documentNumber || previewDoc.title || previewDoc.fileName || 'Document'}</span>
+                <span className="text-xs text-gray-500 text-left">{previewDoc.type || ''}</span>
               </div>
               <div className="flex items-center gap-2">
                 {previewDoc.signedUrl && (
-                  <a href={previewDoc.signedUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300">
+                  <a href={previewDoc.signedUrl} target="_blank" rel="noreferrer" className="px-3 py-1.5 text-xs font-bold rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300">
                     {language === 'ro' ? 'Deschide în tab nou' : 'Open in new tab'}
                   </a>
                 )}
-                <button onClick={() => { setIsPreviewOpen(false); setPreviewDoc(null); }} className="px-3 py-1.5 text-xs rounded-md bg-red-500 text-white hover:bg-red-600">
+                <button onClick={() => { setIsPreviewOpen(false); setPreviewDoc(null); }} className="px-3 py-1.5 text-xs font-bold rounded-md bg-red-500 text-white hover:bg-red-600">
                   {language === 'ro' ? 'Închide' : 'Close'}
                 </button>
               </div>
@@ -239,7 +258,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
 
-                <div className={`relative rounded-3xl px-5 overflow-x-hidden min-w-[600px] max-w-[600px] 
+                <div className={`relative rounded-3xl px-5 overflow-x-hidden min-w-max max-w-[600px] 
                 py-4 shadow-lg border-0 backdrop-blur-sm ${
                   message.sender === 'user'
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white'
@@ -261,7 +280,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                                 <>
                                   <button
                                     onClick={() => { setPreviewDoc(doc); setIsPreviewOpen(true); }}
-                                    className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                                    className="px-3 py-1.5 text-xs rounded-md font-bold bg-blue-600 text-white hover:bg-blue-700"
                                   >
                                     {language === 'ro' ? 'Previzualizează' : 'Preview'}
                                   </button>
@@ -269,7 +288,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                                     href={doc.signedUrl}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="px-3 py-1.5 text-xs rounded-md bg-gray-200 text-gray-800 hover:bg-gray-300"
+                                    className="px-3 py-1.5 text-xs rounded-md font-bold bg-gray-200 text-gray-800 hover:bg-gray-300"
                                   >
                                     {language === 'ro' ? 'Deschide' : 'Open'}
                                   </a>
