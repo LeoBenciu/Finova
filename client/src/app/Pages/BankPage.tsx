@@ -2426,7 +2426,7 @@ const BankPage = () => {
                   <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugestii' : 'Suggestions'}</p>
                   <p className="text-xl font-bold text-[var(--text1)]">{suggestionsTotal}</p>
                   <p className="text-xs text-purple-600">
-                    {language === 'ro' ? 'Disponibile' : 'Available'} • {displayedSuggestions.length} {language === 'ro' ? 'afișate' : 'shown'}
+                    {language === 'ro' ? 'Disponibile' : 'Available'}
                   </p>
                 </div>
               </div>

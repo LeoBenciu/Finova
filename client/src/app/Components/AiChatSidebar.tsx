@@ -119,9 +119,17 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           };
 
           const trimmed = unwrapCodeFence(text);
-          if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return undefined;
+          
+          // Try to parse as JSON directly first
+          let data;
+          try {
+            data = JSON.parse(trimmed);
+          } catch {
+            // If direct parsing fails, check if it starts with JSON structure
+            if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return undefined;
+            data = JSON.parse(trimmed);
+          }
 
-          const data = JSON.parse(trimmed);
           const itemsCandidate = Array.isArray(data)
             ? data
             : (data?.items ?? data?.documents ?? data?.results ?? data?.data ?? []);
@@ -142,8 +150,20 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 documentNumber = pd.document_number ?? pd.title;
               }
 
-              // Determine a usable URL
+              // Determine a usable URL - check multiple possible locations
               const url: string | undefined = it.signedUrl || it.url || it.path;
+
+              // For debugging
+              console.log('Processing document item:', {
+                id: it.id,
+                name: it.name,
+                type: it.type,
+                signedUrl: it.signedUrl,
+                url: it.url,
+                path: it.path,
+                documentNumber,
+                hasProcessedData: !!pd
+              });
 
               return {
                 id: it.id ?? it.docId ?? it.documentId,
@@ -154,14 +174,26 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                 type: it.type || it.documentType,
               } as DocPreviewItem;
             })
-            .filter((d: DocPreviewItem) => !!d.signedUrl);
+            .filter((d: DocPreviewItem) => {
+              const hasUrl = !!d.signedUrl;
+              if (!hasUrl) {
+                console.log('Filtered out document without URL:', d);
+              }
+              return hasUrl;
+            });
 
           return docs.length ? docs : undefined;
-        } catch {
+        } catch (error) {
+          console.error('Error parsing document results:', error);
           return undefined;
         }
       };
 
+      // Debug: log the raw response
+      console.log('Raw chat response:', res.reply);
+      console.log('Response type:', typeof res.reply);
+      console.log('Response length:', res.reply?.length);
+      
       const docs = parseDocResults(res.reply);
 
       // If docs parsed from a raw JSON reply, don't show raw JSON text to the user
