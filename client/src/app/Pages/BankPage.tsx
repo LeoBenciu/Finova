@@ -1464,38 +1464,50 @@ const BankPage = () => {
         } catch {}
         return false;
       }
-      // NOTE: Previously we filtered suggestions by the selected bank account using
-      // a paginated transaction ID set. This hid most non-transfer suggestions.
-      // We now keep all suggestions visible and only log debug info when an
-      // account filter is active, without excluding items.
+      
+      // Apply account-specific filtering when a bank account is selected
       if (hasAccountFilterReady) {
         const isTransferAny = isTransferLike(s);
         if (isTransferAny) {
+          // For transfer suggestions, check if any of the transfer transactions are in the selected account
           const srcId = s.transfer?.sourceTransactionId;
           const dstId = s.transfer?.destinationTransactionId;
           const selfTxnId = s.bankTransaction?.id;
-          try {
-            console.log('[UI][filter][TRANSFER][debug-only]', {
-              sid: s.id,
-              srcId,
-              dstId,
-              selfTxnId,
-              srcInSet: srcId ? accountTransactionIdSet.has(String(srcId)) : undefined,
-              dstInSet: dstId ? accountTransactionIdSet.has(String(dstId)) : undefined,
-              selfInSet: selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : undefined,
-              selectedBankAccountId,
-            });
-          } catch {}
+          const srcInSet = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
+          const dstInSet = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
+          const selfInSet = selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false;
+          
+          if (!srcInSet && !dstInSet && !selfInSet) {
+            try {
+              console.log('[UI][filter][TRANSFER][excluded]', {
+                sid: s.id,
+                srcId,
+                dstId,
+                selfTxnId,
+                srcInSet,
+                dstInSet,
+                selfInSet,
+                selectedBankAccountId,
+              });
+            } catch {}
+            return false;
+          }
         } else {
+          // For non-transfer suggestions, check if the bank transaction is in the selected account
           const txnId = s.bankTransaction?.id;
-          try {
-            console.log('[UI][filter][NONTRANSFER][debug-only]', {
-              sid: s.id,
-              txnId,
-              inSet: txnId ? accountTransactionIdSet.has(String(txnId)) : undefined,
-              selectedBankAccountId,
-            });
-          } catch {}
+          const inSet = txnId ? accountTransactionIdSet.has(String(txnId)) : false;
+          
+          if (!inSet) {
+            try {
+              console.log('[UI][filter][NONTRANSFER][excluded]', {
+                sid: s.id,
+                txnId,
+                inSet,
+                selectedBankAccountId,
+              });
+            } catch {}
+            return false;
+          }
         }
       }
       return true;
@@ -1525,16 +1537,16 @@ const BankPage = () => {
     } catch {}
 
     // Show all suggestions - no filtering based on transfer involvement
-    const nonTransferKept = prelim;
+    const finalSuggestions = prelim;
 
-    const transfersCount = nonTransferKept.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer).length;
+    const transfersCount = finalSuggestions.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer).length;
     if (!selectedBankAccountId) {
       console.log('[UI] displayedSuggestions (no account filter)', {
         base: base.length,
         removed: removedSuggestions.size,
         prelim: prelim.length,
         transfers: transfersCount,
-        hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+        hiddenDueToTransfer: prelim.length - finalSuggestions.length,
         involvedTxnIds: Array.from(involvedTxnIds),
       });
     } else {
@@ -1544,14 +1556,14 @@ const BankPage = () => {
         selectedBankAccountId,
         prelim: prelim.length,
         transfers: transfersCount,
-        hiddenDueToTransfer: prelim.length - nonTransferKept.length,
+        hiddenDueToTransfer: prelim.length - finalSuggestions.length,
         accountTransactionIdSetSize: accountTransactionIdSet.size,
         hasAccountFilterReady,
         involvedTxnIds: Array.from(involvedTxnIds),
       });
     }
 
-    return nonTransferKept;
+    return finalSuggestions;
   }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
   useEffect(() => {
