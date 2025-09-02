@@ -778,145 +778,32 @@ const BankPage = () => {
   const displayedSuggestions = useMemo(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const hasAccountFilterReady = !!selectedBankAccountId && accountTransactionIdSet.size > 0;
-    const isTransferLike = (s: any): boolean => {
-      const t = (s?.matchingCriteria?.type || s?.matchingCriteria || '').toString();
-      const byType = typeof t === 'string' && t.toUpperCase() === 'TRANSFER';
-      const byPayload = Boolean(s?.transfer);
-      return byType || byPayload;
-    };
 
-    const prelim = base.filter((s: any) => {
-      if (removedSuggestions.has(String(s.id))) {
-        try {
-          console.log('[UI][filter][REMOVED][local]', { sid: s.id });
-        } catch {}
-        return false;
+  return base.filter((s: any) => {
+    if (removedSuggestions.has(String(s.id))) return false;
+    
+    // Apply account-specific filtering when a bank account is selected
+    if (hasAccountFilterReady) {
+      const isTransfer = s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer;
+      if (isTransfer) {
+        // For transfer suggestions, check if any of the transfer transactions are in the selected account
+        const srcId = s.transfer?.sourceTransactionId;
+        const dstId = s.transfer?.destinationTransactionId;
+        const srcInSet = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
+        const dstInSet = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
+        
+        if (!srcInSet && !dstInSet) return false;
+      } else {
+        // For non-transfer suggestions, check if the bank transaction is in the selected account
+        const txnId = s.bankTransaction?.id;
+        const inSet = txnId ? accountTransactionIdSet.has(String(txnId)) : false;
+        
+        if (!inSet) return false;
       }
-      
-      // Apply account-specific filtering when a bank account is selected
-      if (hasAccountFilterReady) {
-        const isTransferAny = isTransferLike(s);
-        if (isTransferAny) {
-          // For transfer suggestions, check if any of the transfer transactions are in the selected account
-          const srcId = s.transfer?.sourceTransactionId;
-          const dstId = s.transfer?.destinationTransactionId;
-          const selfTxnId = s.bankTransaction?.id;
-          const srcInSet = srcId ? accountTransactionIdSet.has(String(srcId)) : false;
-          const dstInSet = dstId ? accountTransactionIdSet.has(String(dstId)) : false;
-          const selfInSet = selfTxnId ? accountTransactionIdSet.has(String(selfTxnId)) : false;
-          
-          if (!srcInSet && !dstInSet && !selfInSet) {
-            try {
-              console.log('[UI][filter][TRANSFER][excluded]', {
-                sid: s.id,
-                srcId,
-                dstId,
-                selfTxnId,
-                srcInSet,
-                dstInSet,
-                selfInSet,
-                selectedBankAccountId,
-              });
-            } catch {}
-            return false;
-          }
-        } else {
-          // For non-transfer suggestions, check if the bank transaction is in the selected account
-          const txnId = s.bankTransaction?.id;
-          const inSet = txnId ? accountTransactionIdSet.has(String(txnId)) : false;
-          
-          if (!inSet) {
-            try {
-              console.log('[UI][filter][NONTRANSFER][excluded]', {
-                sid: s.id,
-                txnId,
-                inSet,
-                selectedBankAccountId,
-              });
-            } catch {}
-            return false;
-          }
-        }
-      }
-      return true;
-    });
-
-    // Debug: list unique types seen in prelim
-    try {
-      const uniqueTypes = Array.from(new Set((prelim as any[]).map(p => (p?.matchingCriteria?.type || p?.matchingCriteria || '(none)'))));
-      console.log('[UI][types] prelim unique matchingCriteria.type', uniqueTypes);
-      
-      // Log detailed breakdown of suggestion types
-      const typeBreakdown = prelim.reduce((acc: any, s: any) => {
-        const type = s?.matchingCriteria?.type || s?.matchingCriteria || 'UNKNOWN';
-        if (!acc[type]) acc[type] = [];
-        acc[type].push({
-          id: s.id,
-          hasDocument: !!s.document,
-          hasBankTransaction: !!s.bankTransaction,
-          hasChartOfAccount: !!s.chartOfAccount,
-          hasTransfer: !!s.transfer,
-          confidenceScore: s.confidenceScore
-        });
-        return acc;
-      }, {});
-      
-      console.log('[UI][types] detailed breakdown:', typeBreakdown);
-      
-      // Log sample suggestions of each type for debugging
-      Object.entries(typeBreakdown).forEach(([type, suggestions]) => {
-        console.log(`[UI][types] ${type} suggestions (${(suggestions as any[]).length}):`, (suggestions as any[]).slice(0, 3));
-      });
-      
-      // Expose for ad-hoc inspection
-      (window as any).__finovaPrelim = prelim;
-      (window as any).__finovaTypeBreakdown = typeBreakdown;
-    } catch {}
-
-    // Collect transfer suggestions (robust detection)
-    const transferItems = prelim.filter((s: any) => isTransferLike(s));
-    const involvedTxnIds = new Set<string>();
-    for (const t of transferItems) {
-      if (t?.transfer?.sourceTransactionId) involvedTxnIds.add(String(t.transfer.sourceTransactionId));
-      if (t?.transfer?.destinationTransactionId) involvedTxnIds.add(String(t.transfer.destinationTransactionId));
-      if (t?.bankTransaction?.id) involvedTxnIds.add(String(t.bankTransaction.id));
     }
-    try {
-      console.log('[UI][dedupe] transferItems/involvedTxnIds', {
-        transferCount: transferItems.length,
-        involved: Array.from(involvedTxnIds).slice(0, 10),
-      });
-    } catch {}
-
-    // Show all suggestions - no filtering based on transfer involvement
-    const finalSuggestions = prelim;
-
-    const transfersCount = finalSuggestions.filter((s: any) => s?.matchingCriteria?.type === 'TRANSFER' && s?.transfer).length;
-    if (!selectedBankAccountId) {
-      console.log('[UI] displayedSuggestions (no account filter)', {
-        base: base.length,
-        removed: removedSuggestions.size,
-        prelim: prelim.length,
-        transfers: transfersCount,
-        hiddenDueToTransfer: prelim.length - finalSuggestions.length,
-        involvedTxnIds: Array.from(involvedTxnIds),
-      });
-    } else {
-      console.log('[UI] displayedSuggestions (with account filter)', {
-        base: base.length,
-        removed: removedSuggestions.size,
-        selectedBankAccountId,
-        prelim: prelim.length,
-        transfers: transfersCount,
-        hiddenDueToTransfer: prelim.length - finalSuggestions.length,
-        accountTransactionIdSetSize: accountTransactionIdSet.size,
-        hasAccountFilterReady,
-        involvedTxnIds: Array.from(involvedTxnIds),
-      });
-    }
-
-    return finalSuggestions;
-  }, [suggestionsItems, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
+    return true;
+  });
+}, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
@@ -1440,6 +1327,17 @@ const BankPage = () => {
     setSelectedItems({documents: [], transactions: []});
     setShowBulkActions(false);
   };
+
+  useEffect(() => {
+    console.log('Suggestions received:', {
+      total: suggestionsData.length,
+      types: suggestionsData.reduce((acc: Record<string, number>, s) => {
+        const type = s?.matchingCriteria?.type || 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {})
+    });
+  }, [suggestionsData]);
 
   const [showBulkActions, setShowBulkActions] = useState(false);
 

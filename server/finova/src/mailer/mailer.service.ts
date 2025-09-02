@@ -24,10 +24,22 @@ export class MailerService {
                 options.from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@finova.com';
             }
             
+            console.log('Attempting to send email with options:', {
+                to: options.to,
+                subject: options.subject,
+                from: options.from,
+                hasText: !!options.text,
+                hasHtml: !!options.html,
+                hasCc: !!options.cc,
+                hasBcc: !!options.bcc
+            });
+            
             await this.transporter.sendMail(options);
+            console.log('Email sent successfully');
         } catch (error) {
             console.error('Error sending email:', error);
-            throw new InternalServerErrorException('Error sending email');
+            console.error('Email options that failed:', options);
+            throw new InternalServerErrorException(`Error sending email: ${error.message}`);
         }
     }
 }

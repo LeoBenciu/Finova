@@ -437,7 +437,7 @@ class SendEmailTool(BaseTool):
             return "Error: 'to' and 'subject' are required fields."
         
         if not text and not html:
-            return "Error: Either 'text' or 'html' content must be provided."
+            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content."
 
         try:
             # Prepare email payload
@@ -455,11 +455,14 @@ class SendEmailTool(BaseTool):
             if bcc:
                 payload["bcc"] = bcc
 
+            print(f"DEBUG: Sending email payload: {payload}", file=sys.stderr)
             url = f"{base}/mailer/send"
             r = requests.post(url, headers=headers, json=payload, timeout=30)
             r.raise_for_status()
             
             response_data = r.json()
+            print(f"DEBUG: Backend response: {response_data}", file=sys.stderr)
+            
             if response_data.get("success"):
                 return json.dumps({
                     "success": True,
@@ -469,9 +472,11 @@ class SendEmailTool(BaseTool):
                     "subject": subject
                 }, ensure_ascii=False)
             else:
+                error_msg = response_data.get("error", "Unknown error occurred")
+                print(f"DEBUG: Backend returned error: {error_msg}", file=sys.stderr)
                 return json.dumps({
                     "success": False,
-                    "error": response_data.get("error", "Unknown error occurred"),
+                    "error": error_msg,
                     "timestamp": response_data.get("timestamp")
                 }, ensure_ascii=False)
 

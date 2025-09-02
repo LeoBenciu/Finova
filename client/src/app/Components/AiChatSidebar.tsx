@@ -302,7 +302,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                   {message.sender === 'user' ? <User size={18} /> : <Aperture size={18} />}
                 </div>
 
-                <div className={`relative rounded-3xl px-5 overflow-x-hidden min-w-max max-w-[600px] 
+                <div className={`relative rounded-3xl px-5 overflow-x-hidden min-w-[100px] max-w-[600px] 
                 py-4 shadow-lg border-0 backdrop-blur-sm ${
                   message.sender === 'user'
                     ? 'bg-gradient-to-br from-[var(--primary)] to-blue-500 text-white'
