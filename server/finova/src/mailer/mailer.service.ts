@@ -19,6 +19,11 @@ export class MailerService {
 
     async sendMail(options: nodemailer.SendMailOptions): Promise<void>{
         try {
+            // Set default from address if not provided
+            if (!options.from) {
+                options.from = process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@finova.com';
+            }
+            
             await this.transporter.sendMail(options);
         } catch (error) {
             console.error('Error sending email:', error);

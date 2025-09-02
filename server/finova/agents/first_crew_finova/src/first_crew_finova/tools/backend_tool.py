@@ -329,6 +329,17 @@ class SearchDocumentsInput(BaseModel):
     sort: Optional[str] = Field(default="createdAt_desc", description="Sort key, e.g., createdAt_desc")
 
 
+class SendEmailInput(BaseModel):
+    """Inputs for sending emails via the Finova backend /mailer/send endpoint."""
+    to: str = Field(..., description="Recipient email address(es) - comma separated for multiple")
+    subject: str = Field(..., description="Email subject line")
+    text: Optional[str] = Field(default=None, description="Plain text email content")
+    html: Optional[str] = Field(default=None, description="HTML email content")
+    cc: Optional[str] = Field(default=None, description="CC recipient(s) - comma separated for multiple")
+    bcc: Optional[str] = Field(default=None, description="BCC recipient(s) - comma separated for multiple")
+    client_ein: Optional[str] = Field(default=None, description="Client EIN; if not provided, reads CLIENT_EIN from env")
+
+
 class SearchDocumentsTool(BaseTool):
     name: str = "search_documents"
     description: str = (
@@ -393,10 +404,87 @@ class SearchDocumentsTool(BaseTool):
             return f"Error searching documents: {str(e)}"
 
 
+class SendEmailTool(BaseTool):
+    name: str = "send_email"
+    description: str = (
+        "Send emails via the Finova backend mailer service. "
+        "Provide recipient(s), subject, and either text or HTML content. "
+        "Supports CC and BCC recipients."
+    )
+    args_schema: type[SendEmailInput] = SendEmailInput
+
+    def _run(
+        self,
+        to: str,
+        subject: str,
+        text: Optional[str] = None,
+        html: Optional[str] = None,
+        cc: Optional[str] = None,
+        bcc: Optional[str] = None,
+        client_ein: Optional[str] = None,
+    ) -> str:
+        base = _pick_backend_base()
+        headers = _auth_headers()
+        ein = client_ein or os.getenv("CLIENT_EIN")
+
+        if not base:
+            return "Backend base URL not configured. Set BACKEND_API_URL or BANK_BACKEND_URL."
+        if "Authorization" not in headers:
+            return "No backend JWT available. Set BACKEND_JWT in environment."
+
+        # Validate required fields
+        if not to or not subject:
+            return "Error: 'to' and 'subject' are required fields."
+        
+        if not text and not html:
+            return "Error: Either 'text' or 'html' content must be provided."
+
+        try:
+            # Prepare email payload
+            payload = {
+                "to": to,
+                "subject": subject,
+            }
+            
+            if text:
+                payload["text"] = text
+            if html:
+                payload["html"] = html
+            if cc:
+                payload["cc"] = cc
+            if bcc:
+                payload["bcc"] = bcc
+
+            url = f"{base}/mailer/send"
+            r = requests.post(url, headers=headers, json=payload, timeout=30)
+            r.raise_for_status()
+            
+            response_data = r.json()
+            if response_data.get("success"):
+                return json.dumps({
+                    "success": True,
+                    "message": "Email sent successfully",
+                    "timestamp": response_data.get("timestamp"),
+                    "recipients": to,
+                    "subject": subject
+                }, ensure_ascii=False)
+            else:
+                return json.dumps({
+                    "success": False,
+                    "error": response_data.get("error", "Unknown error occurred"),
+                    "timestamp": response_data.get("timestamp")
+                }, ensure_ascii=False)
+
+        except requests.exceptions.RequestException as e:
+            return f"Failed to send email: {str(e)}"
+        except Exception as e:
+            return f"Error sending email: {str(e)}"
+
+
 def get_backend_tools() -> List[BaseTool]:
     """Return available backend tools based on env. Empty if missing config."""
     base = _pick_backend_base()
     headers = _auth_headers()
     if not base or "Authorization" not in headers:
         return []
-    return [CompanyFinancialInfoTool(), UsersSearchTool(), CreateTodoTool(), SearchDocumentsTool()]
+    return [CompanyFinancialInfoTool(), UsersSearchTool(), CreateTodoTool(), SearchDocumentsTool(), SendEmailTool()]

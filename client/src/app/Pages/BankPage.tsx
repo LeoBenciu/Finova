@@ -687,6 +687,40 @@ const BankPage = () => {
     
     return 0;
   }, [suggestionsResp]);
+  
+  // Debug: Log API response
+  useEffect(() => {
+    if (suggestionsResp && suggestionsItems) {
+      console.log('[UI] API Response - suggestionsResp:', {
+        total: suggestionsTotal,
+        itemsCount: suggestionsItems.length,
+        page: suggestionsPage,
+        size: pageSize,
+        clientEin: clientCompanyEin,
+        hasError: !!suggestionsError
+      });
+      
+      if (suggestionsItems.length > 0) {
+        const apiTypes = suggestionsItems.reduce((acc: any, item: any) => {
+          const type = item?.matchingCriteria?.type || item?.matchingCriteria || 'UNKNOWN';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {});
+        
+        console.log('[UI] API Response - suggestion types:', apiTypes);
+        
+        // Log sample of each type
+        Object.entries(apiTypes).forEach(([type, count]) => {
+          const samples = suggestionsItems.filter((item: any) => {
+            const itemType = item?.matchingCriteria?.type || item?.matchingCriteria || 'UNKNOWN';
+            return itemType === type;
+          }).slice(0, 2);
+          
+          console.log(`[UI] API Response - ${type} samples (${count} total):`, samples);
+        });
+      }
+    }
+  }, [suggestionsResp, suggestionsItems, suggestionsTotal, suggestionsPage, pageSize, clientCompanyEin, suggestionsError]);
 
   // Outstanding items (for filtering and badges)
   const { data: outstandingList } = useGetOutstandingItemsQuery({
@@ -742,7 +776,7 @@ const BankPage = () => {
 
   // Suggestions displayed in UI, filtered by selected bank account (if any) and local removals
   const displayedSuggestions = useMemo(() => {
-    const base = Array.isArray(suggestionsItems) ? suggestionsItems : [];
+    const base = Array.isArray(suggestionsData) ? suggestionsData : [];
     const hasAccountFilterReady = !!selectedBankAccountId && accountTransactionIdSet.size > 0;
     const isTransferLike = (s: any): boolean => {
       const t = (s?.matchingCriteria?.type || s?.matchingCriteria || '').toString();
@@ -829,6 +863,11 @@ const BankPage = () => {
       
       console.log('[UI][types] detailed breakdown:', typeBreakdown);
       
+      // Log sample suggestions of each type for debugging
+      Object.entries(typeBreakdown).forEach(([type, suggestions]) => {
+        console.log(`[UI][types] ${type} suggestions (${(suggestions as any[]).length}):`, (suggestions as any[]).slice(0, 3));
+      });
+      
       // Expose for ad-hoc inspection
       (window as any).__finovaPrelim = prelim;
       (window as any).__finovaTypeBreakdown = typeBreakdown;
@@ -895,8 +934,23 @@ const BankPage = () => {
     if (suggestionsPage === 1) setSuggestionsData([]);
     if (suggestionsItems.length) {
       setSuggestionsData(prev => suggestionsPage === 1 ? suggestionsItems : [...prev, ...suggestionsItems]);
+      
+      // Debug: Log all suggestion types received from API
+      const allTypes = (suggestionsItems as any[]).reduce((acc: any, item) => {
+        const type = item?.matchingCriteria?.type || item?.matchingCriteria || 'UNKNOWN';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {});
+      
+      console.log('[UI] suggestionsItems fetched - ALL TYPES:', {
+        page: suggestionsPage,
+        pageSize: suggestionsItems.length,
+        typeBreakdown: allTypes,
+        totalItems: suggestionsItems.length
+      });
+      
       const transfers = (suggestionsItems as any[]).filter(it => it?.matchingCriteria?.type === 'TRANSFER');
-      console.log('[UI] suggestionsItems fetched', {
+      console.log('[UI] suggestionsItems fetched - TRANSFERS:', {
         page: suggestionsPage,
         pageSize: suggestionsItems.length,
         transferCount: transfers.length,
@@ -907,12 +961,28 @@ const BankPage = () => {
 
   useEffect(() => {
     const base = Array.isArray(suggestionsData) ? suggestionsData : [];
+    
+    // Debug: Log all suggestion types in the aggregated data
+    const allTypes = (base as any[]).reduce((acc: any, item) => {
+      const type = item?.matchingCriteria?.type || item?.matchingCriteria || 'UNKNOWN';
+      acc[type] = (acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    
     const transfers = (base as any[]).filter(s => s?.matchingCriteria?.type === 'TRANSFER');
-    console.log('[UI] suggestionsData aggregate', {
+    const documents = (base as any[]).filter(s => s?.document && !s?.transfer);
+    const accountCodes = (base as any[]).filter(s => s?.chartOfAccount && !s?.transfer);
+    
+    console.log('[UI] suggestionsData aggregate - ALL TYPES:', {
       total: base.length,
+      typeBreakdown: allTypes,
       transfers: transfers.length,
+      documents: documents.length,
+      accountCodes: accountCodes.length,
       removedLocal: removedSuggestions.size,
-      samples: transfers.slice(0, 5).map(dbgTransfer)
+      transferSamples: transfers.slice(0, 3).map(dbgTransfer),
+      documentSamples: documents.slice(0, 3).map(s => ({ id: s.id, docName: s.document?.name, type: s.document?.type })),
+      accountCodeSamples: accountCodes.slice(0, 3).map(s => ({ id: s.id, code: s.chartOfAccount?.accountCode || s.chartOfAccount?.code, name: s.chartOfAccount?.accountName || s.chartOfAccount?.name }))
     });
   }, [suggestionsData, removedSuggestions]);
   
@@ -1981,30 +2051,43 @@ const BankPage = () => {
       )}
 
       {activeTab === 'suggestions' && (
-        <SuggestionsList
-          language={language as string}
-          suggestionsLoading={suggestionsLoading}
-          suggestionsError={suggestionsError}
-          displayedSuggestions={displayedSuggestions}
-          isRegeneratingAll={isRegeneratingAll}
-          handleRegenerateAllSuggestions={handleRegenerateAllSuggestions}
-          loadingSuggestions={loadingSuggestions}
-          setLoadingSuggestions={setLoadingSuggestions}
-          rejectingSuggestions={rejectingSuggestions}
-          setRejectingSuggestions={setRejectingSuggestions}
-          setRemovedSuggestions={setRemovedSuggestions}
-          regeneratingTransactions={regeneratingTransactions}
-          handleRegenerateTransactionSuggestions={handleRegenerateTransactionSuggestions}
-          clientCompanyEin={clientCompanyEin}
-          transactionsData={transactionsData}
-          acceptSuggestion={acceptSuggestion}
-          rejectSuggestion={rejectSuggestion}
-          createManualAccountReconciliation={createManualAccountReconciliation}
-          createTransferReconciliation={createTransferReconciliation}
-          refetchSuggestions={refetchSuggestions as any}
-          formatDate={formatDate}
-          formatCurrency={formatCurrency}
-        />
+        <>
+          {/* Debug info for suggestions */}
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="font-semibold text-blue-800 mb-2">Debug Info - Suggestions</h4>
+            <div className="text-sm text-blue-700 space-y-1">
+              <div>Total suggestions: {displayedSuggestions.length}</div>
+              <div>Loading: {suggestionsLoading ? 'Yes' : 'No'}</div>
+              <div>Error: {suggestionsError ? 'Yes' : 'No'}</div>
+              <div>Types: {Array.from(new Set(displayedSuggestions.map(s => s?.matchingCriteria?.type || 'UNKNOWN'))).join(', ')}</div>
+            </div>
+          </div>
+          
+          <SuggestionsList
+            language={language as string}
+            suggestionsLoading={suggestionsLoading}
+            suggestionsError={suggestionsError}
+            displayedSuggestions={displayedSuggestions}
+            isRegeneratingAll={isRegeneratingAll}
+            handleRegenerateAllSuggestions={handleRegenerateAllSuggestions}
+            loadingSuggestions={loadingSuggestions}
+            setLoadingSuggestions={setLoadingSuggestions}
+            rejectingSuggestions={rejectingSuggestions}
+            setRejectingSuggestions={setRejectingSuggestions}
+            setRemovedSuggestions={setRemovedSuggestions}
+            regeneratingTransactions={regeneratingTransactions}
+            handleRegenerateTransactionSuggestions={handleRegenerateTransactionSuggestions}
+            clientCompanyEin={clientCompanyEin}
+            transactionsData={transactionsData}
+            acceptSuggestion={acceptSuggestion}
+            rejectSuggestion={rejectSuggestion}
+            createManualAccountReconciliation={createManualAccountReconciliation}
+            createTransferReconciliation={createTransferReconciliation}
+            refetchSuggestions={refetchSuggestions as any}
+            formatDate={formatDate}
+            formatCurrency={formatCurrency}
+          />
+        </>
       )}
 
       {activeTab === 'reports' && (
