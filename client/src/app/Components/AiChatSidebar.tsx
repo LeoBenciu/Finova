@@ -106,6 +106,10 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
 
       const parseDocResults = (text: string): DocPreviewItem[] | undefined => {
         try {
+          console.log('=== parseDocResults DEBUG ===');
+          console.log('Input text length:', text?.length);
+          console.log('Text starts with:', text?.substring(0, 100));
+          
           const unwrapCodeFence = (s: string): string => {
             const t = s.trim();
             if (t.startsWith('```')) {
@@ -119,11 +123,19 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           };
 
           const trimmed = unwrapCodeFence(text);
+          console.log('After unwrapCodeFence:', trimmed.substring(0, 100));
+          
+          // Check if the response might be truncated
+          if (trimmed.endsWith('...') || !trimmed.endsWith('}') && !trimmed.endsWith(']')) {
+            console.log('WARNING: Response appears to be truncated');
+            console.log('Response ends with:', trimmed.substring(trimmed.length - 20));
+          }
           
           // Try to parse as JSON directly first
           let data;
           try {
             data = JSON.parse(trimmed);
+            console.log('JSON parsed successfully, type:', typeof data, 'isArray:', Array.isArray(data));
           } catch {
             // If direct parsing fails, check if it starts with JSON structure
             if (!(trimmed.startsWith('{') || trimmed.startsWith('['))) return undefined;
@@ -133,6 +145,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           const itemsCandidate = Array.isArray(data)
             ? data
             : (data?.items ?? data?.documents ?? data?.results ?? data?.data ?? []);
+          
+          console.log('Items candidate length:', itemsCandidate?.length);
 
           const items = Array.isArray(itemsCandidate) ? itemsCandidate : [];
           if (!items.length) return undefined;
@@ -182,6 +196,8 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
               return hasUrl;
             });
 
+          console.log('Final docs count:', docs.length);
+          console.log('=== END parseDocResults DEBUG ===');
           return docs.length ? docs : undefined;
         } catch (error) {
           console.error('Error parsing document results:', error);

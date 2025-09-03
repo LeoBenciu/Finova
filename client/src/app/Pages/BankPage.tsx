@@ -662,6 +662,10 @@ const BankPage = () => {
   }, {
     skip: !clientCompanyEin
   });
+
+  useEffect(() => {
+    console.log('suggestionsResp', suggestionsResp);
+  }, [suggestionsResp]);
   
   // Robust extraction of suggestions data with fallbacks
   const suggestionsItems = useMemo(() => {
