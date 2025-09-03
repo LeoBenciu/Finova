@@ -794,11 +794,10 @@ const BankPage = () => {
         
         if (!srcInSet && !dstInSet) return false;
       } else {
-        // For non-transfer suggestions, check if the bank transaction is in the selected account
-        const txnId = s.bankTransaction?.id;
-        const inSet = txnId ? accountTransactionIdSet.has(String(txnId)) : false;
-        
-        if (!inSet) return false;
+        // For non-transfer suggestions, do NOT strictly filter by current (paged) transaction set,
+        // as it may exclude valid suggestions whose transactions are not in the current page.
+        // Keep them visible to restore full suggestion type coverage.
+        // Note: We intentionally do not gate visibility based on membership in the set here.
       }
     }
     return true;
@@ -1950,17 +1949,6 @@ const BankPage = () => {
 
       {activeTab === 'suggestions' && (
         <>
-          {/* Debug info for suggestions */}
-          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="font-semibold text-blue-800 mb-2">Debug Info - Suggestions</h4>
-            <div className="text-sm text-blue-700 space-y-1">
-              <div>Total suggestions: {displayedSuggestions.length}</div>
-              <div>Loading: {suggestionsLoading ? 'Yes' : 'No'}</div>
-              <div>Error: {suggestionsError ? 'Yes' : 'No'}</div>
-              <div>Types: {Array.from(new Set(displayedSuggestions.map(s => s?.matchingCriteria?.type || 'UNKNOWN'))).join(', ')}</div>
-            </div>
-          </div>
-          
           <SuggestionsList
             language={language as string}
             suggestionsLoading={suggestionsLoading}

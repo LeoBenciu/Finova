@@ -437,7 +437,7 @@ class SendEmailTool(BaseTool):
             return "Error: 'to' and 'subject' are required fields."
         
         if not text and not html:
-            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content."
+            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content. You can specify the content in your request, for example: 'Send an email to john@example.com with subject 'Meeting' and content 'Don't forget our meeting tomorrow'."
 
         try:
             # Prepare email payload

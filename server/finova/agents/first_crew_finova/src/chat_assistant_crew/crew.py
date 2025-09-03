@@ -144,8 +144,16 @@ class ChatAssistantCrew:
             - If asked about company financial data, use company_financial_info tool
             - If asked about documents, use search_documents tool  
             - If asked about accounting research, use serper_accounting_research tool
-            - Don't guess or assume data - use tools to get accurate information
-
+            - If asked to send an email, use the send_email tool with ALL required parameters
+            
+            EMAIL HANDLING INSTRUCTIONS:
+            - When a user asks to send an email, ALWAYS use the send_email tool
+            - You MUST provide: to (recipient), subject, and either text or html content
+            - If the user doesn't provide content, ask them what they want to say
+            - If the user doesn't provide a subject, ask them for one
+            - Always confirm the email details before sending
+            - After sending, provide clear feedback on success or failure
+            
             IMPORTANT: 
             - Always answer back in the same language as the user asked in
             
@@ -183,14 +191,16 @@ class ChatAssistantCrew:
             You have access to various tools - use them when they would help provide better, 
             more accurate information than general knowledge alone.
             
+            SPECIAL HANDLING:
+            - For document queries: If the query is about documents and you use the search_documents tool, return ONLY the raw JSON string from the tool (no additional commentary). The client UI parses JSON replies to render document previews.
+            - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, ask the user to provide them before proceeding.
+            
             Context Information:
             - Client Company EIN: {client_company_ein}
             - User Query: {user_query}
             - Recent Chat History: {chat_history}
             
             Provide a comprehensive and helpful response based on the user's query.
-            
-            IMPORTANT: If the query is about documents and you use the search_documents tool, return ONLY the raw JSON string from the tool (no additional commentary). The client UI parses JSON replies to render document previews.
             """,
             agent=self.chat_agent(),
             expected_output="A helpful, accurate response that utilizes available tools when appropriate to provide the most relevant and up-to-date information."
