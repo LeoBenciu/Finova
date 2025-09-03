@@ -138,7 +138,15 @@ class ChatAssistantCrew:
             
             You have access to these tools: {tool_list}
             
-            IMPORTANT TOOL USAGE GUIDELINES:
+            CRITICAL RULE - DOCUMENT RESPONSES:
+            When a user asks about documents (invoices, bank statements, etc.) and you use the search_documents tool:
+            - You MUST return ONLY the raw JSON string from the tool
+            - Do NOT add any explanatory text before or after the JSON
+            - Do NOT add "Here are the documents:" or similar phrases
+            - The frontend expects the response to start with '{{' or '[' to render document previews
+            - This is the MOST IMPORTANT rule - follow it exactly for document queries
+            
+            OTHER TOOL USAGE GUIDELINES:
             - ALWAYS use tools when they can help answer the user's question
             - If asked about current date/time, use the current_date tool
             - If asked about company financial data, use company_financial_info tool
@@ -156,10 +164,6 @@ class ChatAssistantCrew:
             
             IMPORTANT: 
             - Always answer back in the same language as the user asked in
-            
-            CRITICAL OUTPUT FORMAT:
-            - When you use the search_documents tool successfully, respond with ONLY the raw JSON string returned by the tool. Do NOT add any extra text before or after it. The frontend relies on the response starting with '{{' or '[' to render document previews.
-            - For all other cases, provide a normal textual response.
             
             Be helpful, accurate, and always prefer tool data over assumptions."""
         else:
@@ -191,8 +195,15 @@ class ChatAssistantCrew:
             You have access to various tools - use them when they would help provide better, 
             more accurate information than general knowledge alone.
             
-            SPECIAL HANDLING:
-            - For document queries: If the query is about documents and you use the search_documents tool, return ONLY the raw JSON string from the tool (no additional commentary). The client UI parses JSON replies to render document previews.
+            CRITICAL RULE FOR DOCUMENT QUERIES:
+            When a user asks about documents (invoices, bank statements, etc.) and you use the search_documents tool:
+            - You MUST return ONLY the raw JSON string from the tool
+            - Do NOT add any explanatory text before or after the JSON
+            - Do NOT add "Here are the documents:" or similar phrases
+            - The frontend expects the response to start with '{{' or '[' to render document previews
+            - This is the MOST IMPORTANT rule - follow it exactly for document queries
+            
+            OTHER SPECIAL HANDLING:
             - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, ask the user to provide them before proceeding.
             
             Context Information:
@@ -254,6 +265,70 @@ class ChatAssistantCrew:
                 response = result.raw
             else:
                 response = str(result)
+            
+            # CRITICAL: Post-process response to ensure document queries return only JSON
+            # Check if this looks like a document query and if the response contains JSON
+            is_document_query = any(keyword in user_query.lower() for keyword in [
+                'factur', 'invoice', 'document', 'ultima', 'last', 'recent', 'extras', 'statement',
+                'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded'
+            ])
+            
+            if is_document_query:
+                # Try to extract JSON from the response
+                import re
+                
+                # Look for JSON patterns in the response
+                json_patterns = [
+                    r'\{[^{}]*"[^"]*"[^{}]*\}',  # Simple JSON object
+                    r'\[[^\[\]]*\{[^{}]*\}[^\[\]]*\]',  # JSON array with objects
+                    r'\{.*\}',  # Any JSON object (greedy)
+                    r'\[.*\]',  # Any JSON array (greedy)
+                ]
+                
+                extracted_json = None
+                for pattern in json_patterns:
+                    matches = re.findall(pattern, response, re.DOTALL)
+                    for match in matches:
+                        try:
+                            # Try to parse as JSON
+                            parsed = json.loads(match)
+                            # Check if it has the expected structure for documents
+                            if isinstance(parsed, dict) and ('items' in parsed or 'documents' in parsed):
+                                extracted_json = match
+                                break
+                            elif isinstance(parsed, list) and len(parsed) > 0:
+                                # Check if first item has document-like structure
+                                first_item = parsed[0]
+                                if isinstance(first_item, dict) and any(key in first_item for key in ['id', 'signedUrl', 'url', 'name', 'fileName']):
+                                    extracted_json = match
+                                    break
+                        except json.JSONDecodeError:
+                            continue
+                    
+                    if extracted_json:
+                        break
+                
+                if extracted_json:
+                    # For document queries, return ONLY the JSON
+                    self.debug_info.append("🔍 Document query detected - returning raw JSON only")
+                    response = extracted_json
+                else:
+                    # If no valid JSON found, try to use the search_documents tool directly
+                    self.debug_info.append("🔍 Document query detected but no JSON found - attempting direct tool call")
+                    try:
+                        from .tools.backend_tool import SearchDocumentsTool
+                        search_tool = SearchDocumentsTool()
+                        # Use the client EIN as the company parameter
+                        tool_result = search_tool._run(company=self.client_company_ein, q=user_query, limit=10)
+                        # Check if the tool result is valid JSON
+                        try:
+                            json.loads(tool_result)
+                            response = tool_result
+                            self.debug_info.append("✅ Direct tool call successful")
+                        except json.JSONDecodeError:
+                            self.debug_info.append("⚠️ Tool result not valid JSON")
+                    except Exception as e:
+                        self.debug_info.append(f"⚠️ Direct tool call failed: {str(e)}")
             
             # Update chat history
             self.chat_history.append({"role": "user", "content": user_query})

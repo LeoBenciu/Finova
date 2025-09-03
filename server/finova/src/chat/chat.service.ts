@@ -91,18 +91,38 @@ export class ChatService {
         envVars['BANK_API_TOKEN'] = token; // alt name used by some tools
       }
       // Base API URL for backend HTTP tools (robust fallbacks for Render/local)
-      if (!envVars['BACKEND_API_URL']) {
-        envVars['BACKEND_API_URL'] =
-          process.env.BACKEND_API_URL ||
-          process.env.BANK_BACKEND_URL ||
-          process.env.RENDER_EXTERNAL_URL ||
-          'http://localhost:3001';
-      }
-      if (!envVars['BANK_BACKEND_URL']) {
-        envVars['BANK_BACKEND_URL'] = envVars['BACKEND_API_URL'] as string;
-      }
+      // Priority: explicit env vars > Render external URL > localhost fallback
+      const backendUrl = process.env.BACKEND_API_URL || 
+                        process.env.BANK_BACKEND_URL || 
+                        process.env.RENDER_EXTERNAL_URL || 
+                        `http://localhost:${process.env.PORT || 3000}`;
+      
+      envVars['BACKEND_API_URL'] = backendUrl;
+      envVars['BANK_BACKEND_URL'] = backendUrl;
       // Provide client EIN context directly
       envVars['CLIENT_EIN'] = clientEin;
+
+      // Log the configuration for debugging
+      this.logger.debug(`Python process environment: BACKEND_API_URL=${envVars['BACKEND_API_URL']}, CLIENT_EIN=${envVars['CLIENT_EIN']}`);
+      
+      // Log all relevant environment variables being passed to Python
+      const relevantEnvVars = {
+        BACKEND_API_URL: envVars['BACKEND_API_URL'],
+        BANK_BACKEND_URL: envVars['BANK_BACKEND_URL'],
+        BACKEND_JWT: envVars['BACKEND_JWT'] ? '***SET***' : 'NOT_SET',
+        BANK_API_TOKEN: envVars['BANK_API_TOKEN'] ? '***SET***' : 'NOT_SET',
+        CLIENT_EIN: envVars['CLIENT_EIN'],
+        SMTP_HOST: envVars['SMTP_HOST'],
+        SMTP_PORT: envVars['SMTP_PORT'],
+        SMTP_USER: envVars['SMTP_USER'] ? '***SET***' : 'NOT_SET',
+        SMTP_PASS: envVars['SMTP_PASS'] ? '***SET***' : 'NOT_SET',
+        SMTP_FROM: envVars['SMTP_FROM']
+      };
+      this.logger.debug(`Python process environment variables: ${JSON.stringify(relevantEnvVars, null, 2)}`);
+      
+      // Log the Python command being executed
+      this.logger.debug(`Executing Python command: ${pythonCmd} ${args.join(' ')}`);
+      this.logger.debug(`Python working directory: ${this.pythonCwd}`);
 
       const child = spawn(pythonCmd, args, {
         cwd: this.pythonCwd,

@@ -5,6 +5,7 @@ import requests
 import json
 from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
+import sys
 
 
 DEFAULT_BACKEND_URLS = [
@@ -15,10 +16,42 @@ DEFAULT_BACKEND_URLS = [
 ]
 
 
+def _dump_env_vars():
+    """Debug function to dump all relevant environment variables."""
+    relevant_vars = [
+        'BACKEND_API_URL', 'BANK_BACKEND_URL', 'BACKEND_JWT', 'BANK_API_TOKEN',
+        'CLIENT_EIN', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'
+    ]
+    
+    print("DEBUG: Environment variables:", file=sys.stderr)
+    for var in relevant_vars:
+        value = os.getenv(var)
+        if value:
+            if 'JWT' in var or 'TOKEN' in var or 'PASS' in var:
+                print(f"  {var}: {value[:10]}...", file=sys.stderr)
+            else:
+                print(f"  {var}: {value}", file=sys.stderr)
+        else:
+            print(f"  {var}: NOT_SET", file=sys.stderr)
+
+
 def _pick_backend_base() -> Optional[str]:
-    for u in DEFAULT_BACKEND_URLS:
+    urls = [
+        os.getenv("BACKEND_API_URL"),
+        os.getenv("BANK_BACKEND_URL"),
+        "http://localhost:3001",
+        "http://localhost:3000",
+    ]
+    
+    print(f"DEBUG: Available backend URLs: {urls}", file=sys.stderr)
+    
+    for u in urls:
         if u:
-            return u.rstrip("/")
+            result = u.rstrip("/")
+            print(f"DEBUG: Selected backend URL: {result}", file=sys.stderr)
+            return result
+    
+    print("DEBUG: No backend URL found", file=sys.stderr)
     return None
 
 
@@ -27,6 +60,9 @@ def _auth_headers() -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
+        print(f"DEBUG: JWT token found: {token[:10]}...", file=sys.stderr)
+    else:
+        print("DEBUG: No JWT token found", file=sys.stderr)
     return headers
 
 
@@ -427,6 +463,13 @@ class SendEmailTool(BaseTool):
         headers = _auth_headers()
         ein = client_ein or os.getenv("CLIENT_EIN")
 
+        # Dump environment variables for debugging
+        _dump_env_vars()
+
+        print(f"DEBUG: send_email tool called with: to={to}, subject={subject}, text={text}, html={html}", file=sys.stderr)
+        print(f"DEBUG: Backend base URL: {base}", file=sys.stderr)
+        print(f"DEBUG: Auth headers: {headers}", file=sys.stderr)
+
         if not base:
             return "Backend base URL not configured. Set BACKEND_API_URL or BANK_BACKEND_URL."
         if "Authorization" not in headers:
@@ -456,8 +499,14 @@ class SendEmailTool(BaseTool):
                 payload["bcc"] = bcc
 
             print(f"DEBUG: Sending email payload: {payload}", file=sys.stderr)
+            print(f"DEBUG: Target URL: {base}/mailer/send", file=sys.stderr)
+            
             url = f"{base}/mailer/send"
             r = requests.post(url, headers=headers, json=payload, timeout=30)
+            
+            print(f"DEBUG: HTTP response status: {r.status_code}", file=sys.stderr)
+            print(f"DEBUG: HTTP response headers: {dict(r.headers)}", file=sys.stderr)
+            
             r.raise_for_status()
             
             response_data = r.json()
@@ -481,8 +530,13 @@ class SendEmailTool(BaseTool):
                 }, ensure_ascii=False)
 
         except requests.exceptions.RequestException as e:
+            print(f"DEBUG: Request exception: {str(e)}", file=sys.stderr)
+            if hasattr(e, 'response') and e.response is not None:
+                print(f"DEBUG: Response status: {e.response.status_code}", file=sys.stderr)
+                print(f"DEBUG: Response text: {e.response.text}", file=sys.stderr)
             return f"Failed to send email: {str(e)}"
         except Exception as e:
+            print(f"DEBUG: General exception: {str(e)}", file=sys.stderr)
             return f"Error sending email: {str(e)}"
 
 

@@ -804,6 +804,10 @@ const BankPage = () => {
   });
 }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
+useEffect(() => {
+  console.log('displayedSuggestions', displayedSuggestions);
+}, [displayedSuggestions]);
+
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
     if (documentsItems.length) {
@@ -1326,17 +1330,6 @@ const BankPage = () => {
     setSelectedItems({documents: [], transactions: []});
     setShowBulkActions(false);
   };
-
-  useEffect(() => {
-    console.log('Suggestions received:', {
-      total: suggestionsData.length,
-      types: suggestionsData.reduce((acc: Record<string, number>, s) => {
-        const type = s?.matchingCriteria?.type || 'unknown';
-        acc[type] = (acc[type] || 0) + 1;
-        return acc;
-      }, {})
-    });
-  }, [suggestionsData]);
 
   const [showBulkActions, setShowBulkActions] = useState(false);
 
