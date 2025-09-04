@@ -1445,15 +1445,6 @@ export class BankService {
                   },
                 },
               },
-              {
-                documentId: null,
-                chartOfAccountId: { not: null },
-                bankTransaction: {
-                  bankStatementDocument: {
-                    accountingClientId: accountingClientRelation.id,
-                  },
-                },
-              },
             ],
           },
           include: {
@@ -1482,13 +1473,6 @@ export class BankService {
                 },
                 {
                   documentId: null,
-                  bankTransaction: {
-                    bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                  },
-                },
-                {
-                  documentId: null,
-                  chartOfAccountId: { not: null },
                   bankTransaction: {
                     bankStatementDocument: { accountingClientId: accountingClientRelation.id },
                   },
@@ -1723,19 +1707,6 @@ export class BankService {
         const merged = [...items, ...transferItems].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
         const mergedTotal = total + transferItems.length;
         console.log('[TransferSuggestions] normal merged suggestions =', { base: items.length, transfers: transferItems.length, total: mergedTotal });
-        // Service-level summary for frontend correlation
-        try {
-          console.log('[SVC][TRANSFER][augmented]', {
-            added: transferItems.length,
-            sample: transferItems.slice(0, 3).map((x: any) => ({
-              id: x?.id,
-              type: x?.matchingCriteria?.type,
-              bankTxnId: x?.bankTransaction?.id,
-              srcId: x?.transfer?.sourceTransactionId,
-              dstId: x?.transfer?.destinationTransactionId,
-            }))
-          });
-        } catch {}
 
         // NOTE: We return merged for the normal path below unless regeneration triggers.
 
@@ -1791,15 +1762,6 @@ export class BankService {
                         },
                       },
                     },
-                    {
-                      documentId: null,
-                      chartOfAccountId: { not: null },
-                      bankTransaction: {
-                        bankStatementDocument: {
-                          accountingClientId: accountingClientRelation.id,
-                        },
-                      },
-                    },
                   ],
                 },
                 include: {
@@ -1828,13 +1790,6 @@ export class BankService {
                     },
                     {
                       documentId: null,
-                      bankTransaction: {
-                        bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                      },
-                    },
-                    {
-                      documentId: null,
-                      chartOfAccountId: { not: null },
                       bankTransaction: {
                         bankStatementDocument: { accountingClientId: accountingClientRelation.id },
                       },
@@ -1967,21 +1922,6 @@ export class BankService {
             }
             const merged2 = [...newItems, ...transferItems2].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
             console.log('[TransferSuggestions] merged suggestions =', { base: newItems.length, transfers: transferItems2.length, total: newTotal + transferItems2.length });
-            try {
-              console.log('[SVC][TRANSFER][augmented]', {
-                added: transferItems2.length,
-                sample: transferItems2.slice(0, 3).map((x: any) => ({
-                  id: x?.id,
-                  type: x?.matchingCriteria?.type,
-                  bankTxnId: x?.bankTransaction?.id,
-                  srcId: x?.transfer?.sourceTransactionId,
-                  dstId: x?.transfer?.destinationTransactionId,
-                }))
-              });
-            } catch {}
-            try {
-              console.log('[SVC][suggestions][out]', { count: merged2.length });
-            } catch {}
             return { items: merged2, total: newTotal + transferItems2.length };
           } catch (error) {
             console.error('Failed to generate suggestions:', error);
@@ -1989,9 +1929,6 @@ export class BankService {
           }
         }
         
-        try {
-          console.log('[SVC][suggestions][out]', { count: merged.length });
-        } catch {}
         return { items: merged, total: mergedTotal };
       }
 
@@ -2365,96 +2302,6 @@ export class BankService {
             }
 
             return createdTransfer;
-          }
-
-          // Handle ACCOUNT-CODE suggestion (transaction ↔ account), when there's no document but a chartOfAccountId exists
-          if (!suggestion.documentId && suggestion.chartOfAccountId) {
-            try {
-              console.log('[ACCEPT ACCOUNT-CODE] Entered branch', {
-                suggestionId,
-                bankTransactionId: suggestion.bankTransactionId,
-                chartOfAccountId: suggestion.chartOfAccountId,
-              });
-            } catch {}
-            // Update the transaction with the chosen account code and mark as matched
-            const updatedTx = await prisma.bankTransaction.update({
-              where: { id: suggestion.bankTransactionId! },
-              data: {
-                chartOfAccountId: suggestion.chartOfAccountId,
-                reconciliationStatus: ReconciliationStatus.MATCHED,
-              },
-            });
-
-            // Mark this suggestion accepted and reject competing ones for the same transaction
-            await prisma.reconciliationSuggestion.update({
-              where: { id: suggestionId },
-              data: { status: SuggestionStatus.ACCEPTED },
-            });
-            await prisma.reconciliationSuggestion.updateMany({
-              where: {
-                id: { not: suggestionId },
-                bankTransactionId: suggestion.bankTransactionId!,
-                status: SuggestionStatus.PENDING,
-              },
-              data: { status: SuggestionStatus.REJECTED },
-            });
-
-            // Post ledger entries for this accepted account-code suggestion
-            try {
-              const accountingClientId = suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.id
-                || (suggestion.document ? suggestion.document.accountingClient.id : undefined);
-              if (accountingClientId) {
-                const bankAccountCode = await this.resolveBankAnalyticCode(prisma as any, accountingClientId, suggestion.bankTransactionId!);
-                const chart = await prisma.chartOfAccounts.findUnique({ where: { id: suggestion.chartOfAccountId } });
-                const counter = chart?.accountCode?.trim() || '';
-                const amt = Math.abs(Number(updatedTx.amount));
-                const postingDate = updatedTx.transactionDate || new Date();
-                const isCreditToBank = Number(updatedTx.amount) > 0; // money in
-                const entries = isCreditToBank
-                  ? [
-                      { accountCode: bankAccountCode, debit: amt },
-                      { accountCode: counter, credit: amt },
-                    ]
-                  : [
-                      { accountCode: counter, debit: amt },
-                      { accountCode: bankAccountCode, credit: amt },
-                    ];
-                try {
-                  console.log('[ACCEPT ACCOUNT-CODE] Posting input', {
-                    accountingClientId,
-                    postingDate,
-                    bankAccountCode,
-                    counter,
-                    amt,
-                    isCreditToBank,
-                    entries,
-                  });
-                } catch {}
-                await this.postingService.postEntries({
-                  accountingClientId,
-                  postingDate,
-                  entries,
-                  sourceType: 'RECONCILIATION',
-                  sourceId: String(updatedTx.id),
-                  postingKey: `account-suggestion:${suggestion.id}`,
-                  links: {
-                    documentId: null,
-                    bankTransactionId: suggestion.bankTransactionId || null,
-                    reconciliationId: null,
-                  },
-                });
-                try {
-                  console.log('[ACCEPT ACCOUNT-CODE] Posting done', {
-                    postingKey: `account-suggestion:${suggestion.id}`,
-                    bankTransactionId: suggestion.bankTransactionId,
-                  });
-                } catch {}
-              }
-            } catch (e) {
-              console.warn('⚠️ Ledger posting failed on acceptSuggestion (account-code):', e);
-            }
-
-            return updatedTx;
           }
 
           // Non-transfer suggestions (document ↔ transaction) continue with existing flow
