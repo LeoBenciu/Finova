@@ -1445,6 +1445,15 @@ export class BankService {
                   },
                 },
               },
+              {
+                documentId: null,
+                chartOfAccountId: { not: null },
+                bankTransaction: {
+                  bankStatementDocument: {
+                    accountingClientId: accountingClientRelation.id,
+                  },
+                },
+              },
             ],
           },
           include: {
@@ -1473,6 +1482,13 @@ export class BankService {
                 },
                 {
                   documentId: null,
+                  bankTransaction: {
+                    bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+                  },
+                },
+                {
+                  documentId: null,
+                  chartOfAccountId: { not: null },
                   bankTransaction: {
                     bankStatementDocument: { accountingClientId: accountingClientRelation.id },
                   },
@@ -1775,6 +1791,15 @@ export class BankService {
                         },
                       },
                     },
+                    {
+                      documentId: null,
+                      chartOfAccountId: { not: null },
+                      bankTransaction: {
+                        bankStatementDocument: {
+                          accountingClientId: accountingClientRelation.id,
+                        },
+                      },
+                    },
                   ],
                 },
                 include: {
@@ -1803,6 +1828,13 @@ export class BankService {
                     },
                     {
                       documentId: null,
+                      bankTransaction: {
+                        bankStatementDocument: { accountingClientId: accountingClientRelation.id },
+                      },
+                    },
+                    {
+                      documentId: null,
+                      chartOfAccountId: { not: null },
                       bankTransaction: {
                         bankStatementDocument: { accountingClientId: accountingClientRelation.id },
                       },

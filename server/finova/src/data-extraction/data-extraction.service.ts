@@ -1631,28 +1631,23 @@ export class DataExtractionService {
             bestSuggestion.accountName
           );
       
-          if (bestSuggestion.confidence > 0.7) {
-            await this.prisma.bankTransaction.update({
-              where: { id: bankTransactionId },
-              data: {
-                chartOfAccountId: chartOfAccount.id,
-                isStandalone: true,
-                accountingNotes: `AI-categorized: ${bestSuggestion.accountName} (confidence: ${Math.round(bestSuggestion.confidence * 100)}%)`
-              }
-            });
-        
-            this.logger.log(`Transaction ${bankTransactionId} AI-categorized as ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
-          } else {
-            await this.prisma.bankTransaction.update({
-              where: { id: bankTransactionId },
-              data: {
-                isStandalone: true,
-                accountingNotes: `Requires manual categorization - AI suggested: ${bestSuggestion.accountName} (low confidence: ${Math.round(bestSuggestion.confidence * 100)}%)`
-              }
-            });
-        
-            this.logger.log(`Transaction ${bankTransactionId} marked for manual categorization (low AI confidence)`);
-          }
+          const notes = bestSuggestion.confidence > 0.7 
+            ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
+            : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
+
+          // Create reconciliation suggestion instead of directly updating the transaction
+          await this.prisma.reconciliationSuggestion.create({
+            data: {
+              bankTransactionId: bankTransactionId,
+              chartOfAccountId: chartOfAccount.id,
+              documentId: null,
+              confidenceScore: bestSuggestion.confidence.toFixed(3) as unknown as any,
+              matchingCriteria: {},
+              reasons: [notes],
+            },
+          });
+
+          this.logger.log(`🤖 Created standalone suggestion for transaction ${bankTransactionId}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
       
         } catch (error) {
           this.logger.error(`Error categorizing standalone transaction ${bankTransactionId}:`, error);
