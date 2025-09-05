@@ -332,7 +332,7 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
                         {message.docs.map((doc, idx) => (
                           <div key={`${message.id}-doc-${idx}`} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm">
                             <div className="flex flex-col truncate mr-3">
-                              <span className="font-semibold truncate">{doc.documentNumber || doc.title || doc.fileName || 'Document'}</span>
+                              <span className="font-semibold truncate">{doc.documentNumber || doc.title || doc.fileName || doc.documentNumber || 'Document'}</span>
                               <span className="text-[11px] text-gray-500">{doc.type || 'Document'}</span>
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0">

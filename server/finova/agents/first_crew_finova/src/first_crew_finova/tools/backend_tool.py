@@ -445,7 +445,7 @@ class SendEmailTool(BaseTool):
     description: str = (
         "Send emails via the Finova backend mailer service. "
         "Provide recipient(s) and either text or HTML content. "
-        "The subject will automatically be set to 'Message from accountant'. "
+        "The subject will automatically be set to 'Mesaj din partea contabilului - [COMPANY_NAME]'. "
         "Supports CC and BCC recipients."
     )
     args_schema: type[SendEmailInput] = SendEmailInput
@@ -478,16 +478,16 @@ class SendEmailTool(BaseTool):
 
         # Validate required fields
         if not to:
-            return "Error: 'to' field is required. The subject will automatically be set to 'Message from accountant'."
+            return "Error: 'to' field is required. The subject will automatically be set to 'Mesaj din partea contabilului - [COMPANY_NAME]'."
         
         if not text and not html:
-            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content. You can specify the content in your request, for example: 'Send an email to john@example.com with content 'Don't forget our meeting tomorrow'. The subject will automatically be set to 'Message from accountant'."
+            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content. You can specify the content in your request, for example: 'Send an email to john@example.com with content 'Don't forget our meeting tomorrow'. The subject will automatically be set to 'Mesaj din partea contabilului - [COMPANY_NAME]'."
 
         try:
             # Prepare email payload
             payload = {
                 "to": to,
-                "subject": "Mesaj din partea contabilului",  # Always use consistent subject
+                "subject": "Mesaj din partea contabilului - [COMPANY_NAME]",  # Backend will override with actual company name
             }
             
             if text:
@@ -519,7 +519,7 @@ class SendEmailTool(BaseTool):
                     "message": "Email sent successfully",
                     "timestamp": response_data.get("timestamp"),
                     "recipients": to,
-                    "subject": "Mesaj din partea contabilului"
+                    "subject": "Mesaj din partea contabilului - [COMPANY_NAME]"
                 }, ensure_ascii=False)
             else:
                 error_msg = response_data.get("error", "Unknown error occurred")

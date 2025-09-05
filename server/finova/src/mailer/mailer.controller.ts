@@ -3,6 +3,7 @@ import { JwtGuard } from 'src/auth/guard/jwt.guard';
 import { GetUser } from 'src/auth/decorator';
 import { User } from '@prisma/client';
 import { MailerService } from './mailer.service';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 interface SendEmailDto {
   to: string | string[];
@@ -21,7 +22,10 @@ interface SendEmailDto {
 @UseGuards(JwtGuard)
 @Controller('mailer')
 export class MailerController {
-  constructor(private readonly mailerService: MailerService) {}
+  constructor(
+    private readonly mailerService: MailerService,
+    private readonly prisma: PrismaService
+  ) {}
 
   @Post('send')
   async sendEmail(
@@ -41,6 +45,15 @@ export class MailerController {
         }
       });
 
+      // Fetch accounting company information
+      const userWithCompany = await this.prisma.user.findUnique({
+        where: { id: user.id },
+        include: { accountingCompany: true }
+      });
+
+      const companyName = userWithCompany?.accountingCompany?.name || 'Contabil';
+      const subject = `Mesaj din partea contabilului - ${companyName}`;
+
       // Log SMTP configuration (without exposing sensitive data)
       console.log('SMTP Configuration:', {
         host: process.env.SMTP_HOST,
@@ -50,10 +63,12 @@ export class MailerController {
         hasPass: !!process.env.SMTP_PASS
       });
 
+      console.log('Email subject will be:', subject);
+
       await this.mailerService.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         ...emailData,
-        subject: "Mesaj din partea contabilului", // Override subject to always be consistent
+        subject: subject, // Override subject with company name
       });
       
       console.log('Email sent successfully for user:', user.email);
