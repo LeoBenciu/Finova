@@ -2536,6 +2536,20 @@ export class DataExtractionService {
                     destinationTransactionId: dst.id,
                     amountDiff: Number(amountDiff.toFixed(2)),
                     daysApart: Math.round(daysApart),
+                    sourceTransaction: {
+                      id: src.id,
+                      description: src.description,
+                      amount: src.amount,
+                      transactionDate: src.transactionDate,
+                      transactionType: src.transactionType,
+                    },
+                    destinationTransaction: {
+                      id: dst.id,
+                      description: dst.description,
+                      amount: dst.amount,
+                      transactionDate: dst.transactionDate,
+                      transactionType: dst.transactionType,
+                    },
                   },
                 } as any;
 
@@ -2739,10 +2753,24 @@ export class DataExtractionService {
           
           const filteredSuggestions = this.filterBestSuggestions(suggestions);
       
-          // Process standalone transactions (those that don't match any documents)
+          // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
           const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
-          const standaloneTransactions = unreconciliedTransactions.filter(t => !matchedTransactionIds.has(t.id));
           
+          // Also exclude transactions that are part of transfer pairs
+          const transferTransactionIds = new Set<string>();
+          for (const suggestion of filteredSuggestions) {
+            if (suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.matchingCriteria?.transfer?.destinationTransactionId) {
+              transferTransactionIds.add(suggestion.bankTransactionId);
+              transferTransactionIds.add(suggestion.matchingCriteria.transfer.destinationTransactionId);
+            }
+          }
+          
+          const standaloneTransactions = unreconciliedTransactions.filter(t => 
+            !matchedTransactionIds.has(t.id) && !transferTransactionIds.has(t.id)
+          );
+          
+          this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
+          this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
           this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
           
           for (const transaction of standaloneTransactions) {

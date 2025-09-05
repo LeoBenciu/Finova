@@ -1542,6 +1542,57 @@ export class BankService {
                 : bsDoc.path;
             }
 
+            // Check if this is a transfer suggestion from the database
+            const matchingCriteria = s.matchingCriteria as any;
+            const isTransferSuggestion = matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId;
+            
+            let transferData = null;
+            if (isTransferSuggestion) {
+              // Get the destination transaction details
+              const destinationTransaction = await this.prisma.bankTransaction.findUnique({
+                where: { id: matchingCriteria.transfer.destinationTransactionId },
+                include: {
+                  bankStatementDocument: true,
+                },
+              });
+
+              if (destinationTransaction) {
+                // Build signed URL for destination transaction's bank statement
+                let dstBankStmtUrl: string | null = null;
+                if (destinationTransaction.bankStatementDocument) {
+                  dstBankStmtUrl = destinationTransaction.bankStatementDocument.s3Key
+                    ? await s3.getSignedUrlPromise('getObject', {
+                        Bucket: process.env.AWS_S3_BUCKET_NAME,
+                        Key: destinationTransaction.bankStatementDocument.s3Key,
+                        Expires: 3600,
+                      })
+                    : destinationTransaction.bankStatementDocument.path;
+                }
+
+                transferData = {
+                  sourceTransactionId: s.bankTransactionId,
+                  destinationTransactionId: matchingCriteria.transfer.destinationTransactionId,
+                  counterpartyTransaction: {
+                    id: destinationTransaction.id,
+                    description: destinationTransaction.description,
+                    amount: destinationTransaction.amount,
+                    transactionDate: destinationTransaction.transactionDate,
+                    transactionType: destinationTransaction.transactionType,
+                    bankStatementDocument: destinationTransaction.bankStatementDocument
+                      ? {
+                          id: destinationTransaction.bankStatementDocument.id,
+                          name: destinationTransaction.bankStatementDocument.name,
+                          signedUrl: dstBankStmtUrl,
+                        }
+                      : null,
+                  },
+                  crossCurrency: matchingCriteria.transfer.crossCurrency,
+                  impliedFxRate: matchingCriteria.transfer.impliedFxRate,
+                  dateDiffDays: matchingCriteria.transfer.daysApart,
+                };
+              }
+            }
+
             return {
               id: s.id,
               confidenceScore: s.confidenceScore,
@@ -1581,6 +1632,7 @@ export class BankService {
                   accountName: s.chartOfAccount.accountName,
                 }
                 : null,
+              transfer: transferData,
             };
           })
         );
