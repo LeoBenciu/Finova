@@ -152,13 +152,14 @@ class ChatAssistantCrew:
             - If asked about company financial data, use company_financial_info tool
             - If asked about documents, use search_documents tool  
             - If asked about accounting research, use serper_accounting_research tool
-            - If asked to send an email, use the send_email tool with ALL required parameters
+            - If asked to send an email, use the send_email tool (subject is automatically set)
             
             EMAIL HANDLING INSTRUCTIONS:
             - When a user asks to send an email, ALWAYS use the send_email tool
-            - You MUST provide: to (recipient), subject, and either text or html content
+            - You MUST provide: to (recipient) and either text or html content
+            - The subject will automatically be set to "Mesaj din partea contabilului - [COMPANY_NAME]"
             - If the user doesn't provide content, ask them what they want to say
-            - If the user doesn't provide a subject, ask them for one
+            - Do NOT ask for a subject - it's automatically generated
             - Always confirm the email details before sending
             - After sending, provide clear feedback on success or failure
             

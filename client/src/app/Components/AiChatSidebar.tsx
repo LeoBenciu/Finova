@@ -112,13 +112,19 @@ const AIChatSidebar = ({ isOpen, onClose }: AIChatSidebarProps) => {
           
           const unwrapCodeFence = (s: string): string => {
             const t = s.trim();
+            console.log('unwrapCodeFence input:', t.substring(0, 50));
+            
             if (t.startsWith('```')) {
+              console.log('Detected code fence, unwrapping...');
               // remove leading ```lang (optional) and trailing ```
               const firstNl = t.indexOf('\n');
               const afterHeader = firstNl >= 0 ? t.slice(firstNl + 1) : t.slice(3);
               const endFence = afterHeader.lastIndexOf('```');
-              return (endFence >= 0 ? afterHeader.slice(0, endFence) : afterHeader).trim();
+              const result = (endFence >= 0 ? afterHeader.slice(0, endFence) : afterHeader).trim();
+              console.log('unwrapCodeFence result:', result.substring(0, 50));
+              return result;
             }
+            console.log('No code fence detected, returning as-is');
             return t;
           };
 
