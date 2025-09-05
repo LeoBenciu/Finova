@@ -245,7 +245,6 @@ class ChatAssistantCrew:
             """,
             agent=self.chat_agent(),
             expected_output="A helpful, accurate response that utilizes available tools when appropriate to provide the most relevant and up-to-date information."
-            # Note: Removed tools parameter - let the agent handle tool selection
         )
     
     @crew

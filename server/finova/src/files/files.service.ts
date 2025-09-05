@@ -724,9 +724,65 @@ export class FilesService {
                 }
             }
 
-            // Basic search by name
+            // Enhanced search by name and extracted content
             if (options?.q) {
-                where.name = { contains: options.q, mode: 'insensitive' } as any;
+                const searchTerm = options.q.toLowerCase();
+                
+                // First, try to find documents by name
+                const nameMatches = await this.prisma.document.findMany({
+                    where: {
+                        ...where,
+                        name: { contains: searchTerm, mode: 'insensitive' } as any,
+                    },
+                    select: { id: true }
+                });
+                
+                // Get all documents with processed data for content search
+                const allDocsWithProcessedData = await this.prisma.document.findMany({
+                    where: {
+                        ...where,
+                        processedData: {
+                            isNot: null
+                        }
+                    },
+                    select: { 
+                        id: true,
+                        processedData: {
+                            select: {
+                                extractedFields: true
+                            }
+                        }
+                    }
+                });
+                
+                // Filter documents that contain the search term in extracted content
+                const contentMatches = allDocsWithProcessedData.filter(doc => {
+                    if (!doc.processedData?.extractedFields) return false;
+                    
+                    try {
+                        const extractedFields = typeof doc.processedData.extractedFields === 'string'
+                            ? JSON.parse(doc.processedData.extractedFields)
+                            : doc.processedData.extractedFields;
+                        
+                        const searchableText = JSON.stringify(extractedFields).toLowerCase();
+                        return searchableText.includes(searchTerm);
+                    } catch (e) {
+                        return false;
+                    }
+                });
+                
+                // Combine both result sets
+                const allMatchIds = new Set([
+                    ...nameMatches.map(d => d.id),
+                    ...contentMatches.map(d => d.id)
+                ]);
+                
+                if (allMatchIds.size > 0) {
+                    where.id = { in: Array.from(allMatchIds) } as any;
+                } else {
+                    // No matches found, return empty result
+                    where.id = { in: [] } as any;
+                }
             }
 
             // Sorting
