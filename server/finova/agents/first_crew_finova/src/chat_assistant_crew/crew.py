@@ -141,28 +141,6 @@ class ChatAssistantCrew:
             CRITICAL RULE - DOCUMENT RESPONSES:
             When a user asks about documents (invoices, bank statements, etc.) you MUST use the search_documents tool:
             - You MUST return ONLY the raw JSON string from the tool
-                example: Raw chat response: [
-                  {
-                    "id": 107,
-                    "document_number": "FAS/1965/FBE/05/2025",
-                    "vendor": "KT-24 Spółka z ograniczoną odpowiedzialnością",
-                    "buyer": "NEXT CORP S.R.L.",
-                    "document_date": "22-05-2025",
-                    "total_amount": 539.99,
-                    "payment_status": "UNPAID",
-                    "signedUrl": "https://finovadocumentsbucket.s3.eu-north-1.amazonaws.com/1/1/1755323460944-683c5b190def6.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIATQZCSA6PN7S3ZANQ%2F20250905%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20250905T055052Z&X-Amz-Expires=3600&X-Amz-Signature=cac29436acd5ec6e26c2c9700249affd57478717fe75df0d68a738ba81ac5fcf&X-Amz-SignedHeaders=host"
-                  },
-                  {
-                    "id": 94,
-                    "document_number": "F20250802",
-                    "vendor": "Internet Provider SRL",
-                    "buyer": "Next Corp SRL",
-                    "document_date": "05-08-2025",
-                    "total_amount": 357,
-                    "payment_status": "FULLY_PAID",
-                    "signedUrl": "https://finovadocumentsbucket.s3.eu-north-1.amazonaws.com/1/1/1755170598936-FACTURA7.pdf?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIATQZCSA6PN7S3ZANQ%2F20250905%2Feu-north-1%2Fs3%2Faws4_request&X-Amz-Date=20250905T055052Z&X-Amz-Expires=3600&X-Amz-Signature=a209dff4ec60876b79c3dfac2e9379f43d74b79e2ed6e5a156d4955fde132938&X-Amz-SignedHeaders=host"
-                  }
-                ]
             - Do NOT add any explanatory text before or after the JSON
             - Do NOT add "Here are the documents:" or similar phrases
             - The frontend expects the response to start with '{{' or '[' to render document previews
