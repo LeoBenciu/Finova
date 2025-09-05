@@ -158,7 +158,7 @@ class ChatAssistantCrew:
                - vendor: vendor name (if applicable)
                - buyer: buyer name (if applicable)
             8. Example JSON structure:
-               [{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}]
+               [{{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}}]
             9. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER TOOL USAGE GUIDELINES:
@@ -230,7 +230,7 @@ class ChatAssistantCrew:
                - vendor: vendor name (if applicable)
                - buyer: buyer name (if applicable)
             7. Example JSON structure:
-               [{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}]
+               [{{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}}]
             8. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER SPECIAL HANDLING:
