@@ -139,12 +139,27 @@ class ChatAssistantCrew:
             You have access to these tools: {tool_list}
             
             CRITICAL RULE - DOCUMENT RESPONSES:
-            When a user asks about documents (invoices, bank statements, etc.) you MUST use the search_documents tool:
-            - You MUST return ONLY the raw JSON string from the tool
-            - Do NOT add any explanatory text before or after the JSON
-            - Do NOT add "Here are the documents:" or similar phrases
-            - The frontend expects the response to start with '{{' or '[' to render document previews
-            - This is the MOST IMPORTANT rule - follow it exactly for document queries
+            When a user asks about documents (invoices, bank statements, receipts, payment orders, etc.) you MUST:
+            1. ALWAYS use the search_documents tool - NEVER use any other tool for document queries
+            2. Return ONLY the raw JSON string from the search_documents tool
+            3. Do NOT add any explanatory text before or after the JSON
+            4. Do NOT add "Here are the documents:" or similar phrases
+            5. Do NOT use company_financial_info or any other tool for document queries
+            6. The frontend expects the response to start with '{{' or '[' to render document previews
+            7. The JSON structure must be an array of document objects with these required fields:
+               - id: document ID
+               - name: document filename
+               - type: document type (Invoice, Bank Statement, Payment Order, Receipt, etc.)
+               - signedUrl: direct download/preview URL
+               - createdAt: creation date
+               - paymentStatus: payment status
+               - total_amount: total amount (if applicable)
+               - document_number: document number (if applicable)
+               - vendor: vendor name (if applicable)
+               - buyer: buyer name (if applicable)
+            8. Example JSON structure:
+               [{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}]
+            9. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER TOOL USAGE GUIDELINES:
             - ALWAYS use tools when they can help answer the user's question
@@ -197,12 +212,26 @@ class ChatAssistantCrew:
             more accurate information than general knowledge alone.
             
             CRITICAL RULE FOR DOCUMENT QUERIES:
-            When a user asks about documents (invoices, bank statements, etc.) and you use the search_documents tool:
-            - You MUST return ONLY the raw JSON string from the tool
-            - Do NOT add any explanatory text before or after the JSON
-            - Do NOT add "Here are the documents:" or similar phrases
-            - The frontend expects the response to start with '{{' or '[' to render document previews
-            - This is the MOST IMPORTANT rule - follow it exactly for document queries
+            When a user asks about documents (invoices, bank statements, receipts, payment orders, etc.):
+            1. You MUST use ONLY the search_documents tool - NEVER use company_financial_info or other tools
+            2. You MUST return ONLY the raw JSON string from the search_documents tool
+            3. Do NOT add any explanatory text before or after the JSON
+            4. Do NOT add "Here are the documents:" or similar phrases
+            5. The frontend expects the response to start with '{{' or '[' to render document previews
+            6. The JSON structure must be an array of document objects with these required fields:
+               - id: document ID
+               - name: document filename
+               - type: document type (Invoice, Bank Statement, Payment Order, Receipt, etc.)
+               - signedUrl: direct download/preview URL
+               - createdAt: creation date
+               - paymentStatus: payment status
+               - total_amount: total amount (if applicable)
+               - document_number: document number (if applicable)
+               - vendor: vendor name (if applicable)
+               - buyer: buyer name (if applicable)
+            7. Example JSON structure:
+               [{"id": 123, "name": "invoice.pdf", "type": "Invoice", "signedUrl": "https://...", "createdAt": "2025-01-01T00:00:00Z", "paymentStatus": "UNPAID", "total_amount": 1000, "document_number": "INV-001", "vendor": "Company A", "buyer": "Company B"}]
+            8. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER SPECIAL HANDLING:
             - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, ask the user to provide them before proceeding.
@@ -271,7 +300,8 @@ class ChatAssistantCrew:
             # Check if this looks like a document query and if the response contains JSON
             is_document_query = any(keyword in user_query.lower() for keyword in [
                 'factura', 'invoice', 'document', 'ultima', 'last', 'recent', 'extras', 'statement',
-                'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded', 'ordine', 'payment'
+                'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded', 'ordine', 'payment',
+                'chitanta', 'receipt'
             ])
             
             if is_document_query:
@@ -322,12 +352,14 @@ class ChatAssistantCrew:
                         
                         # Determine document type from query
                         doc_type = None
-                        if any(word in user_query.lower() for word in ['factura', 'invoice']):
+                        if any(word in user_query.lower() for word in ['factura', 'invoice', 'facturi', 'invoices']):
                             doc_type = 'Invoice'
-                        elif any(word in user_query.lower() for word in ['extras', 'statement', 'bancar', 'bank']):
+                        elif any(word in user_query.lower() for word in ['extras', 'statement', 'bancar', 'bank', 'cont', 'account', 'extrase', 'statements']):
                             doc_type = 'Bank Statement'
-                        elif any(word in user_query.lower() for word in ['ordine', 'payment', 'order']):
+                        elif any(word in user_query.lower() for word in ['ordine', 'payment', 'order', 'incasare', 'dispozitie', 'dispozitii', 'dispozitie de plata', 'dispozitie de incasare', 'collection order', 'collection orders', 'payment order', 'payment orders']):
                             doc_type = 'Payment Order'
+                        elif any(word in user_query.lower() for word in ['chitanta', 'receipt', 'chitante', 'receipts']):
+                            doc_type = 'Receipt'
                         
                         # Use the client EIN as the company parameter
                         if doc_type:
