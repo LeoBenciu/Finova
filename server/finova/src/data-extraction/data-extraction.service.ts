@@ -2759,9 +2759,11 @@ export class DataExtractionService {
           // Also exclude transactions that are part of transfer pairs
           const transferTransactionIds = new Set<string>();
           for (const suggestion of filteredSuggestions) {
-            if (suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.matchingCriteria?.transfer?.destinationTransactionId) {
+            const matchingCriteria = suggestion.matchingCriteria as any;
+            if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
               transferTransactionIds.add(suggestion.bankTransactionId);
-              transferTransactionIds.add(suggestion.matchingCriteria.transfer.destinationTransactionId);
+              transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
+              this.logger.log(`🔁 Found transfer pair: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
             }
           }
           
@@ -2770,6 +2772,7 @@ export class DataExtractionService {
           );
           
           this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
+          this.logger.log(`🔁 Excluded transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
           this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
           this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
           

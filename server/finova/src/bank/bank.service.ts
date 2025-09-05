@@ -1638,6 +1638,15 @@ export class BankService {
         );
 
         // === Augment with unified TRANSFER suggestions (debit-side only, no DB insert) ===
+        // First, identify transactions that already have transfer suggestions in the database
+        const existingTransferTransactionIds = new Set<string>();
+        for (const item of items) {
+          if (item.transfer) {
+            existingTransferTransactionIds.add(item.transfer.sourceTransactionId);
+            existingTransferTransactionIds.add(item.transfer.destinationTransactionId);
+          }
+        }
+        
         // 1) Fetch top transfer candidates (service already scans debit->credit)
         const transferCand = await this.getTransferReconciliationCandidates(clientEin, user, {
           daysWindow: 2,
@@ -1646,13 +1655,21 @@ export class BankService {
           fxTolerancePct: 2,
         });
         console.log('[TransferSuggestions] normal transferCand.items count =', (transferCand.items || []).length);
+        console.log('[TransferSuggestions] existing database transfer transactions =', Array.from(existingTransferTransactionIds));
         if ((transferCand.items || []).length) {
           console.log('[TransferSuggestions] normal sample transferCand.items (max 3) =', (transferCand.items || []).slice(0, 3));
         }
 
-        // 2) Keep the best candidate per source (debit) to avoid duplicates
+        // 2) Keep the best candidate per source (debit) to avoid duplicates, but exclude transactions already covered by database suggestions
         const bestBySource = new Map<string, any>();
         for (const it of transferCand.items || []) {
+          // Skip if either transaction is already covered by a database transfer suggestion
+          if (existingTransferTransactionIds.has(it.sourceTransactionId) || 
+              existingTransferTransactionIds.has(it.destinationTransactionId)) {
+            console.log(`[TransferSuggestions] Skipping dynamic transfer ${it.sourceTransactionId} -> ${it.destinationTransactionId} (already covered by database suggestion)`);
+            continue;
+          }
+          
           const prev = bestBySource.get(it.sourceTransactionId);
           if (!prev || (it.score ?? 0) > (prev.score ?? 0)) {
             bestBySource.set(it.sourceTransactionId, it);
