@@ -141,7 +141,6 @@ class ChatAssistantCrew:
             CRITICAL RULE - DOCUMENT RESPONSES:
             When a user asks about documents (invoices, bank statements, etc.) you MUST use the search_documents tool:
             - You MUST return ONLY the raw JSON string from the tool
-                example: {{"items": [{"id": "123", "name": "Invoice 1", "signedUrl": "https://example.com/invoice1.pdf"}]}}
             - Do NOT add any explanatory text before or after the JSON
             - Do NOT add "Here are the documents:" or similar phrases
             - The frontend expects the response to start with '{{' or '[' to render document previews
