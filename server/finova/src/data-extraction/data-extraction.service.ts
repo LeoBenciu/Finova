@@ -2758,8 +2758,10 @@ export class DataExtractionService {
           
           // Also exclude transactions that are part of transfer pairs
           const transferTransactionIds = new Set<string>();
+          this.logger.log(`🔍 Checking ${filteredSuggestions.length} filtered suggestions for transfer pairs...`);
           for (const suggestion of filteredSuggestions) {
             const matchingCriteria = suggestion.matchingCriteria as any;
+            this.logger.log(`🔍 Suggestion ${suggestion.id}: bankTransactionId=${suggestion.bankTransactionId}, type=${matchingCriteria?.type}, hasTransfer=${!!matchingCriteria?.transfer}`);
             if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
               transferTransactionIds.add(suggestion.bankTransactionId);
               transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
@@ -2777,6 +2779,7 @@ export class DataExtractionService {
           this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
           
           for (const transaction of standaloneTransactions) {
+            this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
             try {
               const suggestions = await this.suggestAccountForTransaction({
                 description: transaction.description,
