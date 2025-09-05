@@ -53,6 +53,7 @@ export class MailerController {
       await this.mailerService.sendMail({
         from: process.env.SMTP_FROM || process.env.SMTP_USER,
         ...emailData,
+        subject: "Mesaj din partea contabilului", // Override subject to always be consistent
       });
       
       console.log('Email sent successfully for user:', user.email);

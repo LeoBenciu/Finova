@@ -444,7 +444,8 @@ class SendEmailTool(BaseTool):
     name: str = "send_email"
     description: str = (
         "Send emails via the Finova backend mailer service. "
-        "Provide recipient(s), subject, and either text or HTML content. "
+        "Provide recipient(s) and either text or HTML content. "
+        "The subject will automatically be set to 'Message from accountant'. "
         "Supports CC and BCC recipients."
     )
     args_schema: type[SendEmailInput] = SendEmailInput
@@ -476,17 +477,17 @@ class SendEmailTool(BaseTool):
             return "No backend JWT available. Set BACKEND_JWT in environment."
 
         # Validate required fields
-        if not to or not subject:
-            return "Error: 'to' and 'subject' are required fields."
+        if not to:
+            return "Error: 'to' field is required. The subject will automatically be set to 'Message from accountant'."
         
         if not text and not html:
-            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content. You can specify the content in your request, for example: 'Send an email to john@example.com with subject 'Meeting' and content 'Don't forget our meeting tomorrow'."
+            return "Error: Either 'text' or 'html' content must be provided. Please provide the email content. You can specify the content in your request, for example: 'Send an email to john@example.com with content 'Don't forget our meeting tomorrow'. The subject will automatically be set to 'Message from accountant'."
 
         try:
             # Prepare email payload
             payload = {
                 "to": to,
-                "subject": subject,
+                "subject": "Mesaj din partea contabilului",  # Always use consistent subject
             }
             
             if text:
@@ -518,7 +519,7 @@ class SendEmailTool(BaseTool):
                     "message": "Email sent successfully",
                     "timestamp": response_data.get("timestamp"),
                     "recipients": to,
-                    "subject": subject
+                    "subject": "Mesaj din partea contabilului"
                 }, ensure_ascii=False)
             else:
                 error_msg = response_data.get("error", "Unknown error occurred")

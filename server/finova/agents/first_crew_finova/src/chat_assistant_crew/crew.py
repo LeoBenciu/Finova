@@ -139,8 +139,9 @@ class ChatAssistantCrew:
             You have access to these tools: {tool_list}
             
             CRITICAL RULE - DOCUMENT RESPONSES:
-            When a user asks about documents (invoices, bank statements, etc.) and you use the search_documents tool:
+            When a user asks about documents (invoices, bank statements, etc.) you MUST use the search_documents tool:
             - You MUST return ONLY the raw JSON string from the tool
+                example: {{"items": [{"id": "123", "name": "Invoice 1", "signedUrl": "https://example.com/invoice1.pdf"}]}}
             - Do NOT add any explanatory text before or after the JSON
             - Do NOT add "Here are the documents:" or similar phrases
             - The frontend expects the response to start with '{{' or '[' to render document previews
@@ -269,8 +270,8 @@ class ChatAssistantCrew:
             # CRITICAL: Post-process response to ensure document queries return only JSON
             # Check if this looks like a document query and if the response contains JSON
             is_document_query = any(keyword in user_query.lower() for keyword in [
-                'factur', 'invoice', 'document', 'ultima', 'last', 'recent', 'extras', 'statement',
-                'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded'
+                'factura', 'invoice', 'document', 'ultima', 'last', 'recent', 'extras', 'statement',
+                'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded', 'ordine', 'payment'
             ])
             
             if is_document_query:
@@ -313,13 +314,27 @@ class ChatAssistantCrew:
                     self.debug_info.append("🔍 Document query detected - returning raw JSON only")
                     response = extracted_json
                 else:
-                    # If no valid JSON found, try to use the search_documents tool directly
-                    self.debug_info.append("🔍 Document query detected but no JSON found - attempting direct tool call")
+                    # If no valid JSON found, FORCE the use of search_documents tool
+                    self.debug_info.append("🔍 Document query detected but no JSON found - FORCING direct tool call")
                     try:
                         from .tools.backend_tool import SearchDocumentsTool
                         search_tool = SearchDocumentsTool()
+                        
+                        # Determine document type from query
+                        doc_type = None
+                        if any(word in user_query.lower() for word in ['factura', 'invoice']):
+                            doc_type = 'Invoice'
+                        elif any(word in user_query.lower() for word in ['extras', 'statement', 'bancar', 'bank']):
+                            doc_type = 'Bank Statement'
+                        elif any(word in user_query.lower() for word in ['ordine', 'payment', 'order']):
+                            doc_type = 'Payment Order'
+                        
                         # Use the client EIN as the company parameter
-                        tool_result = search_tool._run(company=self.client_company_ein, q=user_query, limit=10)
+                        if doc_type:
+                            tool_result = search_tool._run(company=self.client_company_ein, q=user_query, type=doc_type, limit=10)
+                        else:
+                            tool_result = search_tool._run(company=self.client_company_ein, q=user_query, limit=10)
+                        
                         # Check if the tool result is valid JSON
                         try:
                             json.loads(tool_result)
