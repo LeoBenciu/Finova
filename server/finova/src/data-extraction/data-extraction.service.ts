@@ -3121,13 +3121,26 @@ private calculateMatchSuggestion(
       }
       
       private filterBestSuggestions(suggestions: any[]): any[] {
+  this.logger.log(`🔍 FILTERING INPUT: ${suggestions.length} total suggestions`);
+  const transferSuggestionsInput = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+  if (transferSuggestionsInput.length > 0) {
+    this.logger.log(`🔁 Transfer suggestions in input: ${transferSuggestionsInput.length}`);
+    for (const ts of transferSuggestionsInput) {
+      this.logger.log(`🔁 Input Transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+    }
+  }
+  
   suggestions.sort((a, b) => {
     const aHasDoc = a.documentId !== null && a.documentId !== undefined;
     const bHasDoc = b.documentId !== null && b.documentId !== undefined;
+    const aIsTransfer = (a.matchingCriteria as any)?.type === 'TRANSFER';
+    const bIsTransfer = (b.matchingCriteria as any)?.type === 'TRANSFER';
 
-    if (aHasDoc !== bHasDoc) {
-      return aHasDoc ? -1 : 1;
-    }
+    // Priority order: Document suggestions > Transfer suggestions > Other suggestions
+    if (aHasDoc && !bHasDoc && !bIsTransfer) return -1;
+    if (!aHasDoc && !aIsTransfer && bHasDoc) return 1;
+    if (aIsTransfer && !bHasDoc && !bIsTransfer) return -1;
+    if (!aHasDoc && !aIsTransfer && bIsTransfer) return 1;
     
     // If confidence scores are very close (within 0.05), prioritize by document type
     const scoreDiff = b.confidenceScore - a.confidenceScore;
@@ -3198,6 +3211,17 @@ private calculateMatchSuggestion(
     `🔍 FILTERING RESULT: ${suggestions.length} → ${filteredSuggestions.length} suggestions ` +
     `(${Array.from(componentMatches.entries()).map(([doc, comps]) => `Doc${doc}:${Array.from(comps).join(',')}`).join(' | ')})`
   );
+
+  // Log transfer suggestions specifically
+  const transferSuggestions = filteredSuggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+  if (transferSuggestions.length > 0) {
+    this.logger.log(`🔁 Transfer suggestions in filtered results: ${transferSuggestions.length}`);
+    for (const ts of transferSuggestions) {
+      this.logger.log(`🔁 Transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+    }
+  } else {
+    this.logger.warn(`❌ NO TRANSFER SUGGESTIONS in filtered results!`);
+  }
 
   return filteredSuggestions;
 }
