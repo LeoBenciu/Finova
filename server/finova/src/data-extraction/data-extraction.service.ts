@@ -2223,6 +2223,8 @@ export class DataExtractionService {
     }
 
     async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
+        this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
+        
         try {
           const unreconciled = await this.prisma.document.findMany({
             where: {
@@ -2263,8 +2265,27 @@ export class DataExtractionService {
             }
           });
       
+          this.logger.log(`💳 Found ${unreconciliedTransactions.length} unreconciled transactions`);
           if (unreconciliedTransactions.length === 0) {
+            this.logger.log(`❌ No unreconciled transactions found, exiting`);
             return;
+          }
+          
+          // Log transaction breakdown
+          const txByType = unreconciliedTransactions.reduce((acc, tx) => {
+            acc[tx.transactionType] = (acc[tx.transactionType] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+          this.logger.log(`💳 Transaction breakdown: ${JSON.stringify(txByType)}`);
+          
+          // Log specific transactions we're tracking
+          const targetTxs = unreconciliedTransactions.filter(tx => 
+            tx.id === '110-0-1756203049797' || tx.id === '111-0-1756209938791'
+          );
+          if (targetTxs.length > 0) {
+            this.logger.log(`🎯 TARGET TRANSACTIONS FOUND: ${targetTxs.map(tx => `${tx.id}(${tx.description})`).join(', ')}`);
+          } else {
+            this.logger.warn(`❌ TARGET TRANSACTIONS NOT FOUND in unreconciled transactions!`);
           }
           
           const bankStatementReferencedDocs = new Set<number>();
@@ -2358,6 +2379,7 @@ export class DataExtractionService {
           // ------------------------------------------------------------------
           // Transfer suggestions: propose internal transfers between accounts
           // ------------------------------------------------------------------
+          this.logger.log(`🔁 STARTING TRANSFER SUGGESTION GENERATION`);
           try {
             const dbg = true;
             const daysWindow = 5; // +/- days to consider as close dates
@@ -2366,6 +2388,13 @@ export class DataExtractionService {
 
             const credits = unreconciliedTransactions.filter(t => t.transactionType === 'CREDIT');
             const debits = unreconciliedTransactions.filter(t => t.transactionType === 'DEBIT');
+            
+            this.logger.log(`🔁 Transfer candidates: ${credits.length} credits, ${debits.length} debits`);
+            
+            // Check if our target transactions are in the right categories
+            const targetCredits = credits.filter(t => t.id === '110-0-1756203049797');
+            const targetDebits = debits.filter(t => t.id === '111-0-1756209938791');
+            this.logger.log(`🎯 Target transactions in categories: credits=${targetCredits.length}, debits=${targetDebits.length}`);
 
             // Keep track of already paired destination credits to avoid duplicate suggestions
             const usedDestinationIds = new Set<string>();
@@ -2412,6 +2441,7 @@ export class DataExtractionService {
               return byDesc;
             };
 
+            this.logger.log(`🔁 Starting transfer matching loop for ${debits.length} debits`);
             for (const src of debits) {
               const srcAmt = Math.abs(Number(src.amount));
               const srcDate = new Date(src.transactionDate);
@@ -2421,6 +2451,9 @@ export class DataExtractionService {
               if (dbgSrc) {
                 this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
               }
+              
+              // Log every debit being processed
+              this.logger.log(`🔁 Processing debit ${src.id}: "${src.description}" (${srcAmt})`);
 
               console.log('🔍 Transfer detection - evaluating transactions:', {
                 sourceId: src.id,
@@ -2530,6 +2563,8 @@ export class DataExtractionService {
                 const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
                 usedDestinationIds.add(dst.id);
 
+                this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
+
                 const mc = {
                   type: 'TRANSFER',
                   transfer: {
@@ -2553,14 +2588,17 @@ export class DataExtractionService {
                   },
                 } as any;
 
-                transferSuggestions.push({
+                const transferSuggestion = {
                   documentId: null,
                   bankTransactionId: src.id, // source (outflow)
                   chartOfAccountId: null,
                   confidenceScore: Number(score.toFixed(3)) as unknown as any,
                   matchingCriteria: mc,
                   reasons,
-                });
+                };
+                
+                transferSuggestions.push(transferSuggestion);
+                this.logger.log(`✅ Added transfer suggestion to array: ${JSON.stringify(transferSuggestion.matchingCriteria)}`);
 
                 if (dbg) {
                   this.logger.log(
@@ -2571,11 +2609,25 @@ export class DataExtractionService {
             }
 
             if (transferSuggestions.length > 0) {
-              await this.prisma.reconciliationSuggestion.createMany({
+              this.logger.log(`💾 INSERTING ${transferSuggestions.length} transfer suggestions to database`);
+              const insertResult = await this.prisma.reconciliationSuggestion.createMany({
                 data: transferSuggestions,
                 skipDuplicates: true,
               });
+              this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
               this.logger.log(`🔁 Generated ${transferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+              
+              // Add transfer suggestions to the main suggestions array for filtering
+              this.logger.log(`📝 Adding ${transferSuggestions.length} transfer suggestions to main suggestions array (current size: ${suggestions.length})`);
+              suggestions.push(...transferSuggestions);
+              this.logger.log(`📝 Main suggestions array size after adding transfers: ${suggestions.length}`);
+              
+              // Log the transfer suggestions that were added
+              for (const ts of transferSuggestions) {
+                this.logger.log(`📝 Added transfer suggestion: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+              }
+            } else {
+              this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
             }
           } catch (e) {
             this.logger.error(`Transfer suggestion generation failed: ${e.message}`);
@@ -2744,12 +2796,20 @@ export class DataExtractionService {
           }
       
           // Debug: Log raw suggestions before filtering
+          this.logger.log(`🔍 RAW SUGGESTIONS BEFORE FILTERING: ${suggestions.length} total`);
           this.logger.log(
             `🔍 RAW SUGGESTIONS (${suggestions.length}): ` +
             suggestions
               .map(s => `${s.bankTransactionId}→${s.documentId || 'account'} ${(s.confidenceScore * 100).toFixed(0)}%`)
               .join(' | ')
           );
+          
+          // Count transfer suggestions in raw array
+          const rawTransferSuggestions = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+          this.logger.log(`🔍 RAW TRANSFER SUGGESTIONS: ${rawTransferSuggestions.length}`);
+          for (const ts of rawTransferSuggestions) {
+            this.logger.log(`🔍 Raw transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+          }
           
           const filteredSuggestions = this.filterBestSuggestions(suggestions);
       
@@ -2776,6 +2836,17 @@ export class DataExtractionService {
           this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
           this.logger.log(`🔁 Excluded transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
           this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
+          
+          // Check if our target transactions are in the standalone list
+          const targetStandalone = standaloneTransactions.filter(t => 
+            t.id === '110-0-1756203049797' || t.id === '111-0-1756209938791'
+          );
+          if (targetStandalone.length > 0) {
+            this.logger.warn(`❌ TARGET TRANSACTIONS STILL IN STANDALONE: ${targetStandalone.map(t => t.id).join(', ')}`);
+          } else {
+            this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
+          }
+          
           this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
           
           for (const transaction of standaloneTransactions) {
@@ -2836,7 +2907,16 @@ export class DataExtractionService {
           }
           
           const totalSuggestions = filteredSuggestions.length + standaloneTransactions.length;
-          this.logger.log(`Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
+          this.logger.log(`🏁 FINAL RESULTS: Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
+          
+          // Final summary
+          this.logger.log(`🏁 SUMMARY:`);
+          this.logger.log(`🏁 - Unreconciled documents: ${unreconciled.length}`);
+          this.logger.log(`🏁 - Unreconciled transactions: ${unreconciliedTransactions.length}`);
+          this.logger.log(`🏁 - Transfer suggestions created: ${rawTransferSuggestions.length}`);
+          this.logger.log(`🏁 - Filtered suggestions: ${filteredSuggestions.length}`);
+          this.logger.log(`🏁 - Standalone transactions processed: ${standaloneTransactions.length}`);
+          this.logger.log(`🏁 - Total final suggestions: ${totalSuggestions}`);
       
         } catch (error) {
           this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
