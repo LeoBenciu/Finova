@@ -2814,7 +2814,14 @@ export class DataExtractionService {
             this.logger.log(`🔍 Raw transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
           }
           
+          this.logger.log(`🔥 ABOUT TO CALL filterBestSuggestions - VERSION 2.0`);
+          this.logger.log(`🔥 INPUT TO filterBestSuggestions: ${suggestions.length} suggestions`);
+          for (const s of suggestions) {
+            const isTransfer = (s.matchingCriteria as any)?.type === 'TRANSFER';
+            this.logger.log(`🔥 Suggestion: ${s.bankTransactionId} - isTransfer: ${isTransfer} - confidence: ${s.confidenceScore}`);
+          }
           const filteredSuggestions = this.filterBestSuggestions(suggestions);
+          this.logger.log(`🔥 OUTPUT FROM filterBestSuggestions: ${filteredSuggestions.length} suggestions - VERSION 2.0`);
       
           // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
           const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
@@ -3205,7 +3212,9 @@ private calculateMatchSuggestion(
       
       private filterBestSuggestions(suggestions: any[]): any[] {
   this.logger.log(`🔍 FILTERING INPUT: ${suggestions.length} total suggestions`);
+  this.logger.log(`🔥 INSIDE filterBestSuggestions - VERSION 2.0`);
   const transferSuggestionsInput = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+  this.logger.log(`🔥 Transfer suggestions in input: ${transferSuggestionsInput.length}`);
   if (transferSuggestionsInput.length > 0) {
     this.logger.log(`🔁 Transfer suggestions in input: ${transferSuggestionsInput.length}`);
     for (const ts of transferSuggestionsInput) {
@@ -3306,6 +3315,12 @@ private calculateMatchSuggestion(
     this.logger.warn(`❌ NO TRANSFER SUGGESTIONS in filtered results!`);
   }
 
+  this.logger.log(`🔥 RETURNING FROM filterBestSuggestions: ${filteredSuggestions.length} suggestions - VERSION 2.0`);
+  const transferSuggestionsOutput = filteredSuggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+  this.logger.log(`🔥 Transfer suggestions in output: ${transferSuggestionsOutput.length}`);
+  for (const ts of transferSuggestionsOutput) {
+    this.logger.log(`🔥 Output Transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+  }
   return filteredSuggestions;
 }
 
