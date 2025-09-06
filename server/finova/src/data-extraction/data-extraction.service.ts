@@ -2225,737 +2225,793 @@ export class DataExtractionService {
     private generationInProgress = new Set<number>();
 
     async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
-        // Prevent multiple simultaneous generations for the same client
-        if (this.generationInProgress.has(accountingClientId)) {
-            this.logger.log(`⏳ Generation already in progress for client ${accountingClientId}, skipping`);
-            return;
-        }
-        
-        this.generationInProgress.add(accountingClientId);
-        this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
-        
-        try {
-          const unreconciled = await this.prisma.document.findMany({
-            where: {
-              accountingClientId,
-              reconciliationStatus: ReconciliationStatus.UNRECONCILED,
-              type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
-            },
-            include: { processedData: true }
-          });
-          
-          this.logger.warn(`📊 RECONCILIATION DEBUG: Found ${unreconciled.length} unreconciled documents`);
-          const docsByType = unreconciled.reduce((acc, doc) => {
-            acc[doc.type] = (acc[doc.type] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>);
-          this.logger.warn(`📊 Document breakdown: ${JSON.stringify(docsByType)}`);
-          
-          // Log Payment Orders and Z Reports specifically
-          const paymentOrders = unreconciled.filter(d => d.type === 'Payment Order');
-          const zReports = unreconciled.filter(d => d.type === 'Z Report');
-          
-          if (paymentOrders.length > 0) {
-            this.logger.warn(`💰 Payment Orders found: ${paymentOrders.map(p => `${p.id}(${p.name})`).join(', ')}`);
-          }
-          
-          if (zReports.length > 0) {
-            this.logger.warn(`🏦 Z Reports found: ${zReports.map(z => `${z.id}(${z.name})`).join(', ')}`);
-          }
-      
-          const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
-            where: {
-              bankStatementDocument: { accountingClientId },
-              reconciliationStatus: ReconciliationStatus.UNRECONCILED
-            },
-            include: {
-              bankStatementDocument: true,
-              bankAccount: true
-            }
-          });
-      
-          this.logger.log(`💳 Found ${unreconciliedTransactions.length} unreconciled transactions`);
-          if (unreconciliedTransactions.length === 0) {
-            this.logger.log(`❌ No unreconciled transactions found, exiting`);
-            return;
-          }
-          
-          // Log transaction breakdown
-          const txByType = unreconciliedTransactions.reduce((acc, tx) => {
-            acc[tx.transactionType] = (acc[tx.transactionType] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>);
-          this.logger.log(`💳 Transaction breakdown: ${JSON.stringify(txByType)}`);
-          
-          // Log specific transactions we're tracking
-          const targetTxs = unreconciliedTransactions.filter(tx => 
-            tx.id === '110-0-1756203049797' || tx.id === '111-0-1756209938791'
-          );
-          if (targetTxs.length > 0) {
-            this.logger.log(`🎯 TARGET TRANSACTIONS FOUND: ${targetTxs.map(tx => `${tx.id}(${tx.description})`).join(', ')}`);
-          } else {
-            this.logger.warn(`❌ TARGET TRANSACTIONS NOT FOUND in unreconciled transactions!`);
-          }
-          
-          const bankStatementReferencedDocs = new Set<number>();
-          for (const transaction of unreconciliedTransactions) {
-            if (transaction.bankStatementDocument?.references) {
-              transaction.bankStatementDocument.references.forEach((refId: number) => {
-                bankStatementReferencedDocs.add(refId);
-              });
-            }
-          }
-          
-          this.logger.warn(`🏦 MANDATORY RULE: Bank statements reference ${bankStatementReferencedDocs.size} documents: [${Array.from(bankStatementReferencedDocs).join(', ')}]`);
-          
-          const mandatoryDocs = await this.prisma.document.findMany({
-            where: {
-              id: { in: Array.from(bankStatementReferencedDocs) },
-              reconciliationStatus: ReconciliationStatus.UNRECONCILED
-            },
-            include: { processedData: true }
-          });
-          
-          this.logger.warn(`🎯 MANDATORY DOCS: Found ${mandatoryDocs.length} mandatory documents to suggest`);
-          
-          const existingDocIds = new Set(unreconciled.map(d => d.id));
-          for (const mandatoryDoc of mandatoryDocs) {
-            if (!existingDocIds.has(mandatoryDoc.id)) {
-              unreconciled.push(mandatoryDoc);
-              this.logger.warn(`➕ Added mandatory doc: ${mandatoryDoc.name} (${mandatoryDoc.id})`);
-            }
-          }
-      
-          // Get previously rejected suggestions to avoid regenerating them
-          const rejectedSuggestions = await this.prisma.reconciliationSuggestion.findMany({
-            where: {
-              status: SuggestionStatus.REJECTED,
-              OR: [
-                {
-                  document: { accountingClientId },
-                },
-                {
-                  documentId: null,
-                  bankTransaction: {
-                    bankStatementDocument: { accountingClientId },
-                  },
-                },
-              ],
-            },
-            select: {
-              documentId: true,
-              bankTransactionId: true,
-              chartOfAccountId: true
-            }
-          });
-          
-          this.logger.warn(`🚫 Found ${rejectedSuggestions.length} previously rejected suggestions to avoid regenerating`);
-          
-          // Create sets of rejected combinations to avoid regenerating
-          const rejectedDocTransactionPairs = new Set<string>();
-          const rejectedTransactionAccountPairs = new Set<string>();
-          
-          rejectedSuggestions.forEach(rejected => {
-            if (rejected.documentId && rejected.bankTransactionId) {
-              rejectedDocTransactionPairs.add(`${rejected.documentId}-${rejected.bankTransactionId}`);
-            } else if (rejected.bankTransactionId && rejected.chartOfAccountId) {
-              rejectedTransactionAccountPairs.add(`${rejected.bankTransactionId}-${rejected.chartOfAccountId}`);
-            }
-          });
-          
-          this.logger.warn(`🚫 Avoiding ${rejectedDocTransactionPairs.size} doc-transaction pairs and ${rejectedTransactionAccountPairs.size} transaction-account pairs`);
-
-          // Only delete pending suggestions (keep rejected ones for reference)
-          await this.prisma.reconciliationSuggestion.deleteMany({
-            where: {
-              status: SuggestionStatus.PENDING,
-              OR: [
-                {
-                  document: { accountingClientId },
-                },
-                {
-                  documentId: null,
-                  bankTransaction: {
-                    bankStatementDocument: { accountingClientId },
-                  },
-                },
-              ],
-            }
-          });
-      
-          const suggestions = [];
-
-          // ------------------------------------------------------------------
-          // Transfer suggestions: propose internal transfers between accounts
-          // ------------------------------------------------------------------
-          this.logger.log(`🔁 STARTING TRANSFER SUGGESTION GENERATION`);
-          try {
-            const dbg = true;
-            const daysWindow = 5; // +/- days to consider as close dates
-            const amountTolerancePct = 0.01; // 1%
-            const minAmountTolerance = 1; // RON minimum tolerance
-
-            const credits = unreconciliedTransactions.filter(t => t.transactionType === 'CREDIT');
-            const debits = unreconciliedTransactions.filter(t => t.transactionType === 'DEBIT');
-            
-            this.logger.log(`🔁 Transfer candidates: ${credits.length} credits, ${debits.length} debits`);
-            
-            // Check if our target transactions are in the right categories
-            const targetCredits = credits.filter(t => t.id === '110-0-1756203049797');
-            const targetDebits = debits.filter(t => t.id === '111-0-1756209938791');
-            this.logger.log(`🎯 Target transactions in categories: credits=${targetCredits.length}, debits=${targetDebits.length}`);
-
-            // Keep track of already paired destination credits to avoid duplicate suggestions
-            const usedDestinationIds = new Set<string>();
-            const createdTransferKeys = new Set<string>();
-
-            const transferSuggestions: Array<{
-              documentId: number | null;
-              bankTransactionId: string;
-              chartOfAccountId: number | null;
-              confidenceScore: number;
-              matchingCriteria: any;
-              reasons: string[];
-            }> = [];
-
-            // Precompute keyword presence for descriptions
-            const hasTransferKeyword = (desc?: string) => {
-              if (!desc) return false;
-              const d = desc.toLowerCase();
-              return (
-                d.includes('transfer') || d.includes('intrabank') || d.includes('interbank') ||
-                d.includes('interne') || d.includes('transfer intern') || d.includes('transf')
-              );
-            };
-
-            // Helpers for currency detection
-            const inferCurrency = (desc?: string) => {
-              if (!desc) return undefined as string | undefined;
-              const d = desc.toUpperCase();
-              if (d.includes(' EUR')) return 'EUR';
-              if (d.includes(' RON')) return 'RON';
-              if (d.includes('USD') || d.includes(' USD')) return 'USD';
-              if (d.includes('LEI')) return 'RON';
-              return undefined;
-            };
-            const getTxnCurrency = (t: any): string | undefined => {
-              // Prefer bankAccount.currency if present
-              const accCur = t?.bankAccount?.currency as string | undefined;
-              if (accCur) return accCur.toUpperCase();
-              // Try statement document name
-              const stmtName = t?.bankStatementDocument?.name as string | undefined;
-              const byName = stmtName ? inferCurrency(stmtName.replace(/[_.-]/g, ' ')) : undefined;
-              if (byName) return byName;
-              // Try description text
-              const byDesc = inferCurrency(t?.description);
-              return byDesc;
-            };
-
-            this.logger.log(`🔁 Starting transfer matching loop for ${debits.length} debits`);
-            for (const src of debits) {
-              const srcAmt = Math.abs(Number(src.amount));
-              const srcDate = new Date(src.transactionDate);
-              let bestCandidate: any = null;
-              let bestScore = 0;
-              const dbgSrc = dbg && src.id === '111-0-1756209938791';
-              if (dbgSrc) {
-                this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
-              }
-              
-              // Log every debit being processed
-              this.logger.log(`🔁 Processing debit ${src.id}: "${src.description}" (${srcAmt})`);
-
-              console.log('🔍 Transfer detection - evaluating transactions:', {
-                sourceId: src.id,
-                sourceAmount: srcAmt,
-                sourceType: src.transactionType,
-                sourceDate: srcDate,
-                sourceAccount: src.bankAccount?.id,
-                destinationCandidates: credits.length
-              });
-
-              for (const dst of credits) {
-                if (usedDestinationIds.has(dst.id)) {
-                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: already used`);
-                  continue;
-                }
-                if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
-                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: same account ${src.bankAccount.id}`);
-                  // Skip moves within the same account
-                  continue;
-                }
-
-                const dstAmt = Math.abs(Number(dst.amount));
-                const amountDiff = Math.abs(srcAmt - dstAmt);
-                const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
-                // Cross-currency handling: allow plausible FX rate differences (e.g., RON↔EUR around 4–6)
-                const srcCur = getTxnCurrency(src);
-                const dstCur = getTxnCurrency(dst);
-                let crossCurrencyOk = false;
-                let impliedRate: number | undefined;
-                if (srcCur && dstCur && srcCur !== dstCur) {
-                  const bigger = Math.max(srcAmt, dstAmt);
-                  const smaller = Math.max(1e-6, Math.min(srcAmt, dstAmt));
-                  impliedRate = Number((bigger / smaller).toFixed(3));
-                  // Heuristic bands
-                  if ((srcCur === 'RON' && dstCur === 'EUR') || (srcCur === 'EUR' && dstCur === 'RON')) {
-                    // Typical RON/EUR range; broaden slightly to avoid false negatives
-                    crossCurrencyOk = impliedRate >= 4.0 && impliedRate <= 6.0;
-                  } else if ((srcCur === 'RON' && dstCur === 'USD') || (srcCur === 'USD' && dstCur === 'RON')) {
-                    crossCurrencyOk = impliedRate >= 3.0 && impliedRate <= 6.0;
-                  } else {
-                    // Generic band for other pairs
-                    crossCurrencyOk = impliedRate >= 0.1 && impliedRate <= 20.0;
-                  }
-                  if (dbgSrc) this.logger.warn(`  [~] cross-currency ${srcCur}->${dstCur} impliedRate=${impliedRate} ok=${crossCurrencyOk}`);
-                }
-                if (amountDiff > amountTolerance) {
-                  if (!crossCurrencyOk) {
-                    if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: amountDiff=${amountDiff.toFixed(2)} > tol=${amountTolerance.toFixed(2)} (src=${srcAmt}, dst=${dstAmt})`);
-                    continue;
-                  }
-                }
-
-                const dstDate = new Date(dst.transactionDate);
-                const daysApart = Math.abs((+srcDate - +dstDate) / (1000 * 60 * 60 * 24));
-                if (daysApart > daysWindow) {
-                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: daysApart=${Math.round(daysApart)} > ${daysWindow}`);
-                  continue;
-                }
-
-                // Scoring
-                let score = 0.7; // base for amount+date proximity
-                const reasons: string[] = [];
-                const criteria: any = { transfer: {} };
-
-                if (amountDiff === 0 || crossCurrencyOk) {
-                  score += 0.1;
-                  if (crossCurrencyOk) {
-                    reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
-                  } else {
-                    reasons.push('Exact amount match');
-                  }
-                } else {
-                  reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
-                }
-
-                if (daysApart === 0) {
-                  score += 0.08;
-                  reasons.push('Same date');
-                } else if (daysApart <= 2) {
-                  score += 0.05;
-                  reasons.push(`Close dates (${Math.round(daysApart)} days apart)`);
-                }
-
-                const kwSrc = hasTransferKeyword(src.description);
-                const kwDst = hasTransferKeyword(dst.description);
-                if (kwSrc || kwDst) {
-                  score += 0.05;
-                  reasons.push('Transfer keyword detected in description');
-                }
-
-                if (src.bankAccount?.bankName && dst.bankAccount?.bankName) {
-                  if (src.bankAccount.bankName === dst.bankAccount.bankName) {
-                    score += 0.02;
-                    reasons.push('Same bank');
-                  }
-                }
-
-                // Keep best candidate per source
-                if (score > bestScore) {
-                  bestScore = score;
-                  bestCandidate = { dst, score, amountDiff, daysApart, reasons };
-                  if (dbgSrc) this.logger.warn(`  [✓] candidate dst=${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`);
-                }
-              }
-
-              if (bestCandidate && bestScore >= 0.5) {
-                const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
-                
-                // Check if we already created this exact transfer suggestion
-                const transferKey = `${src.id}-${dst.id}`;
-                if (createdTransferKeys.has(transferKey)) {
-                  this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER: ${src.id} -> ${dst.id}`);
-                  continue;
-                }
-                
-                usedDestinationIds.add(dst.id);
-                createdTransferKeys.add(transferKey);
-
-                this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
-
-                const mc = {
-                  type: 'TRANSFER',
-                  transfer: {
-                    destinationTransactionId: dst.id,
-                    amountDiff: Number(amountDiff.toFixed(2)),
-                    daysApart: Math.round(daysApart),
-                    sourceTransaction: {
-                      id: src.id,
-                      description: src.description,
-                      amount: src.amount,
-                      transactionDate: src.transactionDate,
-                      transactionType: src.transactionType,
-                    },
-                    destinationTransaction: {
-                      id: dst.id,
-                      description: dst.description,
-                      amount: dst.amount,
-                      transactionDate: dst.transactionDate,
-                      transactionType: dst.transactionType,
-                    },
-                  },
-                } as any;
-
-                const transferSuggestion = {
-                  documentId: null,
-                  bankTransactionId: src.id, // source (outflow)
-                  chartOfAccountId: null,
-                  confidenceScore: Number(score.toFixed(3)) as unknown as any,
-                  matchingCriteria: mc,
-                  reasons,
-                };
-                
-                transferSuggestions.push(transferSuggestion);
-                this.logger.log(`✅ Added transfer suggestion to array: ${JSON.stringify(transferSuggestion.matchingCriteria)}`);
-
-                if (dbg) {
-                  this.logger.log(
-                    `🔁 Transfer candidate: ${src.id} -> ${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`
-                  );
-                }
-              }
-            }
-
-            if (transferSuggestions.length > 0) {
-              // Remove duplicates within the same batch
-              const uniqueTransferSuggestions = [];
-              const seen = new Set();
-              
-              for (const ts of transferSuggestions) {
-                const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
-                if (!seen.has(key)) {
-                  seen.add(key);
-                  uniqueTransferSuggestions.push(ts);
-                }
-              }
-              
-              if (uniqueTransferSuggestions.length > 0) {
-                const insertResult = await this.prisma.reconciliationSuggestion.createMany({
-                  data: uniqueTransferSuggestions,
-                  skipDuplicates: true,
-                });
-                this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
-              }
-              this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
-              
-              // Add transfer suggestions to the main suggestions array for filtering
-              suggestions.push(...uniqueTransferSuggestions);
-            } else {
-              this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
-            }
-          } catch (e) {
-            this.logger.error(`Transfer suggestion generation failed: ${e.message}`);
-          }
-      
-          for (const document of unreconciled) {
-            let documentData: any = {};
-            
-            if (document.processedData?.extractedFields) {
-              try {
-                const parsedFields = typeof document.processedData.extractedFields === 'string'
-                  ? JSON.parse(document.processedData.extractedFields)
-                  : document.processedData.extractedFields;
-                
-                documentData = parsedFields.result || parsedFields || {};
-              } catch (e) {
-                continue; 
-              }
-            }
-      
-            const documentAmount = this.parseAmountForReconciliation(
-              documentData.total_amount,
-              documentData,
-              document.type
-            );
-            const documentNumber = documentData.document_number || documentData.receipt_number;
-            const documentDate = this.parseDate(documentData.document_date);
-            
-            // Enhanced debug logging for Payment/Collection Orders and Z Reports
-            if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
-              try {
-                const dateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
-                const keysStr = documentData && typeof documentData === 'object' ? Object.keys(documentData).join(', ') : 'none';
-                this.logger.warn(
-                  `🔍 ${document.type.toUpperCase()} DEBUG: Document ${document.id} (${document.name}) ` +
-                  `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber || 'null'}, ` +
-                  `Date: ${dateStr}, Direction: ${documentData?.direction || 'null'}, ` +
-                  `Raw data keys: ${keysStr}`
-                );
-              } catch (debugError) {
-                this.logger.error(`Debug logging error for document ${document.id}:`, debugError);
-              }
-            }
-  
-            if (documentAmount === 0) {
-              if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
-                this.logger.error(`❌ ${document.type.toUpperCase()} ${document.id} (${document.name}) has ZERO amount - skipping!`);
-                try {
-                  this.logger.error(`❌ Raw data for ${document.name}: ${JSON.stringify(documentData, null, 2)}`);
-                } catch (jsonError) {
-                  this.logger.error(`❌ Raw data logging failed for ${document.name}:`, jsonError);
-                }
-              }
-              continue;
-            }
-      
-            let bestMatchForDocument = { score: 0, transaction: null, suggestion: null };
-            
-            for (const transaction of unreconciliedTransactions) {
-              // Check if this document is mandatory (referenced by the bank statement for this transaction)
-              const isMandatory = bankStatementReferencedDocs.has(document.id) && 
-                                  transaction.bankStatementDocument?.references?.includes(document.id);
-              
-              const suggestion = this.calculateMatchSuggestion(
-                document,
-                transaction,
-                documentData,
-                documentAmount,
-                documentNumber,
-                documentDate,
-                isMandatory
-              );
-              
-              // Targeted per-pair debug logging
-              try {
-                if (this.shouldLogSuggestion(document.id as unknown as number, transaction.id as unknown as string)) {
-                  const txAmount = Math.abs(Number(transaction.amount));
-                  const txDate = new Date(transaction.transactionDate).toISOString().split('T')[0];
-                  const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
-                  const prefix = this.suggestionLogPrefix(document.id as unknown as number, transaction.id as unknown as string);
-                  this.logger.warn(
-                    `${prefix} Pair score ${suggestion.confidenceScore.toFixed(3)} | ` +
-                    `doc(${document.id}:${document.name}) ${document.type} amt=${documentAmount} date=${docDateStr} num=${documentNumber || 'null'} | ` +
-                    `tx(${transaction.id}) amt=${txAmount} type=${transaction.transactionType} date=${txDate} ref=${transaction.referenceNumber || 'null'} | ` +
-                    `mandatory=${isMandatory} | criteria=${JSON.stringify(suggestion.matchingCriteria)} | reasons=${JSON.stringify(suggestion.reasons)}`
-                  );
-                }
-              } catch (e) {
-                this.logger.error('Suggestion debug logging error:', e);
-              }
-              
-              // Track the best match for this document for debugging
-              if (suggestion.confidenceScore > bestMatchForDocument.score) {
-                bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
-              }
-      
-              if (suggestion.confidenceScore >= 0.25) {
-                // Check if this document-transaction pair was previously rejected
-                const pairKey = `${document.id}-${transaction.id}`;
-                if (rejectedDocTransactionPairs.has(pairKey)) {
-                  this.logger.warn(`🚫 SKIPPING previously rejected suggestion: Document ${document.id} + Transaction ${transaction.id}`);
-                  continue;
-                }
-                
-                const suggestionData = {
-                  documentId: document.id,
-                  bankTransactionId: transaction.id,
-                  confidenceScore: suggestion.confidenceScore,
-                  matchingCriteria: suggestion.matchingCriteria,
-                  reasons: suggestion.reasons
-                };
-                
-                if (suggestion.matchingCriteria.component_match) {
-                  suggestionData.matchingCriteria.component_type = suggestion.matchingCriteria.component_type;
-                  suggestionData.matchingCriteria.is_partial_match = true;
-                  
-                  this.logger.warn(
-                    `🧩 COMPONENT SUGGESTION: Document ${document.id} (${document.name}) ` +
-                    `${suggestion.matchingCriteria.component_type} component matches Transaction ${transaction.id} ` +
-                    `(Score: ${suggestion.confidenceScore.toFixed(3)})`
-                  );
-                }
-                
-                suggestions.push(suggestionData);
-              }
-            }
-            
-            if (bestMatchForDocument.score < 0.25) {
-              const bmTx = bestMatchForDocument.transaction;
-              const bmTxDate = bmTx ? new Date(bmTx.transactionDate).toISOString().split('T')[0] : 'null';
-              const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
-              const prefix = this.suggestionLogPrefix(document.id as unknown as number, bmTx?.id as unknown as string);
-              if (this.shouldLogSuggestion(document.id as unknown as number, bmTx?.id as unknown as string)) {
-                this.logger.warn(
-                  `${prefix} 📄 No matches >= 0.25. Best=${bestMatchForDocument.score.toFixed(3)} ` +
-                  `(doc ${document.id}:${document.name} amt=${documentAmount} date=${docDateStr} vs tx ${bmTx?.id} amt=${bmTx?.amount} date=${bmTxDate})`
-                );
-              } else {
-                this.logger.warn(
-                  `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
-                  `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bmTx?.id} ` +
-                  `(Amount: ${documentAmount} vs ${bmTx?.amount}, Date: ${docDateStr} vs ${bmTxDate})`
-                );
-              }
-              
-              // Fallback: If we have a very close amount match (within 10 RON or 10%), create a low-confidence suggestion
-              if (bestMatchForDocument.transaction) {
-                const amountDiff = Math.abs(documentAmount - Math.abs(Number(bestMatchForDocument.transaction.amount)));
-                const amountThreshold = Math.max(documentAmount * 0.1, 10); // 10% or 10 RON tolerance
-                
-                if (amountDiff <= amountThreshold) {
-                  this.logger.log(
-                    `💡 Creating fallback suggestion for document ${document.id} with close amount match (diff: ${amountDiff.toFixed(2)} RON)`
-                  );
-                  
-                  suggestions.push({
-                    documentId: document.id,
-                    bankTransactionId: bestMatchForDocument.transaction.id,
-                    confidenceScore: Math.max(bestMatchForDocument.score, 0.2), // Ensure minimum confidence
-                    matchingCriteria: { ...bestMatchForDocument.suggestion.matchingCriteria, fallback_match: true },
-                    reasons: [...bestMatchForDocument.suggestion.reasons, 'Fallback match based on amount proximity']
-                  });
-                }
-              }
-            }
-          }
-      
-          // Debug: Log raw suggestions before filtering
-          this.logger.log(`🔍 RAW SUGGESTIONS BEFORE FILTERING: ${suggestions.length} total`);
-          this.logger.log(
-            `🔍 RAW SUGGESTIONS (${suggestions.length}): ` +
-            suggestions
-              .map(s => `${s.bankTransactionId}→${s.documentId || 'account'} ${(s.confidenceScore * 100).toFixed(0)}%`)
-              .join(' | ')
-          );
-          
-          // Count transfer suggestions in raw array
-          const rawTransferSuggestions = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
-          this.logger.log(`🔍 RAW TRANSFER SUGGESTIONS: ${rawTransferSuggestions.length}`);
-          for (const ts of rawTransferSuggestions) {
-            this.logger.log(`🔍 Raw transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
-          }
-          
-          this.logger.log(`🔥 ABOUT TO CALL filterBestSuggestions - VERSION 2.0`);
-          this.logger.log(`🔥 INPUT TO filterBestSuggestions: ${suggestions.length} suggestions`);
-          for (const s of suggestions) {
-            const isTransfer = (s.matchingCriteria as any)?.type === 'TRANSFER';
-            this.logger.log(`🔥 Suggestion: ${s.bankTransactionId} - isTransfer: ${isTransfer} - confidence: ${s.confidenceScore}`);
-          }
-          const filteredSuggestions = this.filterBestSuggestions(suggestions);
-          this.logger.log(`🔥 OUTPUT FROM filterBestSuggestions: ${filteredSuggestions.length} suggestions - VERSION 2.0`);
-      
-          // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
-          const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
-          
-          // Also exclude transactions that are part of transfer pairs
-          const transferTransactionIds = new Set<string>();
-          this.logger.log(`🔍 Checking ${filteredSuggestions.length} filtered suggestions for transfer pairs...`);
-          for (const suggestion of filteredSuggestions) {
-            const matchingCriteria = suggestion.matchingCriteria as any;
-            this.logger.log(`🔍 Suggestion ${suggestion.id}: bankTransactionId=${suggestion.bankTransactionId}, type=${matchingCriteria?.type}, hasTransfer=${!!matchingCriteria?.transfer}`);
-            if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
-              transferTransactionIds.add(suggestion.bankTransactionId);
-              transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
-              this.logger.log(`🔁 Found transfer pair: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
-            }
-          }
-          
-          const standaloneTransactions = unreconciliedTransactions.filter(t => 
-            !matchedTransactionIds.has(t.id) && !transferTransactionIds.has(t.id)
-          );
-          
-          this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
-          this.logger.log(`🔁 Excluded transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
-          this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
-          
-          // Check if our target transactions are in the standalone list
-          const targetStandalone = standaloneTransactions.filter(t => 
-            t.id === '110-0-1756203049797' || t.id === '111-0-1756209938791'
-          );
-          if (targetStandalone.length > 0) {
-            this.logger.warn(`❌ TARGET TRANSACTIONS STILL IN STANDALONE: ${targetStandalone.map(t => t.id).join(', ')}`);
-          } else {
-            this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
-          }
-          
-          this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
-          
-          for (const transaction of standaloneTransactions) {
-            this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
-            try {
-              const suggestions = await this.suggestAccountForTransaction({
-                description: transaction.description,
-                amount: Number(transaction.amount),
-                transactionType: transaction.transactionType,
-                referenceNumber: transaction.referenceNumber || undefined,
-                transactionDate: transaction.transactionDate.toISOString()
-              }, accountingClientId);
-              
-              if (suggestions.length > 0) {
-                const bestSuggestion = suggestions[0];
-                const chartOfAccount = await this.getOrCreateChartOfAccount(
-                  bestSuggestion.accountCode,
-                  bestSuggestion.accountName
-                );
-                
-                // Check if this transaction-account pair was previously rejected
-                const pairKey = `${transaction.id}-${chartOfAccount.id}`;
-                if (rejectedTransactionAccountPairs.has(pairKey)) {
-                  this.logger.warn(`🚫 SKIPPING previously rejected standalone suggestion: Transaction ${transaction.id} + Account ${chartOfAccount.id}`);
-                  continue;
-                }
-                
-                const notes = bestSuggestion.confidence > 0.7 
-                  ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
-                  : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
-                
-                // Create suggestion for standalone transaction
-                await this.prisma.reconciliationSuggestion.create({
-                  data: {
-                    bankTransactionId: transaction.id,
-                    chartOfAccountId: chartOfAccount.id,
-                    documentId: null,
-                    confidenceScore: bestSuggestion.confidence.toFixed(3) as unknown as any,
-                    matchingCriteria: {},
-                    reasons: [notes],
-                  },
-                });
-                
-                this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
-              }
-            } catch (error) {
-              this.logger.error(`Failed to categorize standalone transaction ${transaction.id}:`, error);
-            }
-          }
-      
-          if (filteredSuggestions.length > 0) {
-            await this.prisma.reconciliationSuggestion.createMany({
-              data: filteredSuggestions,
-              skipDuplicates: true
-            });
-      
-            this.logger.log(`Generated ${filteredSuggestions.length} document-transaction match suggestions for client ${accountingClientId}`);
-          }
-          
-          const totalSuggestions = filteredSuggestions.length + standaloneTransactions.length;
-          this.logger.log(`🏁 FINAL RESULTS: Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
-          
-          // Final summary
-          this.logger.log(`🏁 SUMMARY:`);
-          this.logger.log(`🏁 - Unreconciled documents: ${unreconciled.length}`);
-          this.logger.log(`🏁 - Unreconciled transactions: ${unreconciliedTransactions.length}`);
-          this.logger.log(`🏁 - Transfer suggestions created: ${rawTransferSuggestions.length}`);
-          this.logger.log(`🏁 - Filtered suggestions: ${filteredSuggestions.length}`);
-          this.logger.log(`🏁 - Standalone transactions processed: ${standaloneTransactions.length}`);
-          this.logger.log(`🏁 - Total final suggestions: ${totalSuggestions}`);
-      
-        } catch (error) {
-          this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
-        } finally {
-          this.generationInProgress.delete(accountingClientId);
-        }
+      // Prevent multiple simultaneous generations for the same client
+      if (this.generationInProgress.has(accountingClientId)) {
+          this.logger.log(`⏳ Generation already in progress for client ${accountingClientId}, skipping`);
+          return;
       }
+      
+      this.generationInProgress.add(accountingClientId);
+      this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
+      
+      try {
+        const unreconciled = await this.prisma.document.findMany({
+          where: {
+            accountingClientId,
+            reconciliationStatus: ReconciliationStatus.UNRECONCILED,
+            type: { in: ['Invoice', 'Receipt', 'Payment Order', 'Collection Order', 'Z Report'] }
+          },
+          include: { processedData: true }
+        });
+        
+        this.logger.warn(`📊 RECONCILIATION DEBUG: Found ${unreconciled.length} unreconciled documents`);
+        const docsByType = unreconciled.reduce((acc, doc) => {
+          acc[doc.type] = (acc[doc.type] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        this.logger.warn(`📊 Document breakdown: ${JSON.stringify(docsByType)}`);
+        
+        // Log Payment Orders and Z Reports specifically
+        const paymentOrders = unreconciled.filter(d => d.type === 'Payment Order');
+        const zReports = unreconciled.filter(d => d.type === 'Z Report');
+        
+        if (paymentOrders.length > 0) {
+          this.logger.warn(`💰 Payment Orders found: ${paymentOrders.map(p => `${p.id}(${p.name})`).join(', ')}`);
+        }
+        
+        if (zReports.length > 0) {
+          this.logger.warn(`🏦 Z Reports found: ${zReports.map(z => `${z.id}(${z.name})`).join(', ')}`);
+        }
+    
+        const unreconciliedTransactions = await this.prisma.bankTransaction.findMany({
+          where: {
+            bankStatementDocument: { accountingClientId },
+            reconciliationStatus: ReconciliationStatus.UNRECONCILED
+          },
+          include: {
+            bankStatementDocument: true,
+            bankAccount: true
+          }
+        });
+    
+        this.logger.log(`💳 Found ${unreconciliedTransactions.length} unreconciled transactions`);
+        if (unreconciliedTransactions.length === 0) {
+          this.logger.log(`❌ No unreconciled transactions found, exiting`);
+          return;
+        }
+        
+        // Log transaction breakdown
+        const txByType = unreconciliedTransactions.reduce((acc, tx) => {
+          acc[tx.transactionType] = (acc[tx.transactionType] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        this.logger.log(`💳 Transaction breakdown: ${JSON.stringify(txByType)}`);
+        
+        // Log specific transactions we're tracking
+        const targetTxs = unreconciliedTransactions.filter(tx => 
+          tx.id === '110-0-1756203049797' || tx.id === '111-0-1756209938791'
+        );
+        if (targetTxs.length > 0) {
+          this.logger.log(`🎯 TARGET TRANSACTIONS FOUND: ${targetTxs.map(tx => `${tx.id}(${tx.description})`).join(', ')}`);
+        } else {
+          this.logger.warn(`❌ TARGET TRANSACTIONS NOT FOUND in unreconciled transactions!`);
+        }
+        
+        const bankStatementReferencedDocs = new Set<number>();
+        for (const transaction of unreconciliedTransactions) {
+          if (transaction.bankStatementDocument?.references) {
+            transaction.bankStatementDocument.references.forEach((refId: number) => {
+              bankStatementReferencedDocs.add(refId);
+            });
+          }
+        }
+        
+        this.logger.warn(`🏦 MANDATORY RULE: Bank statements reference ${bankStatementReferencedDocs.size} documents: [${Array.from(bankStatementReferencedDocs).join(', ')}]`);
+        
+        const mandatoryDocs = await this.prisma.document.findMany({
+          where: {
+            id: { in: Array.from(bankStatementReferencedDocs) },
+            reconciliationStatus: ReconciliationStatus.UNRECONCILED
+          },
+          include: { processedData: true }
+        });
+        
+        this.logger.warn(`🎯 MANDATORY DOCS: Found ${mandatoryDocs.length} mandatory documents to suggest`);
+        
+        const existingDocIds = new Set(unreconciled.map(d => d.id));
+        for (const mandatoryDoc of mandatoryDocs) {
+          if (!existingDocIds.has(mandatoryDoc.id)) {
+            unreconciled.push(mandatoryDoc);
+            this.logger.warn(`➕ Added mandatory doc: ${mandatoryDoc.name} (${mandatoryDoc.id})`);
+          }
+        }
+    
+        // Get previously rejected suggestions to avoid regenerating them
+        const rejectedSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+          where: {
+            status: SuggestionStatus.REJECTED,
+            OR: [
+              {
+                document: { accountingClientId },
+              },
+              {
+                documentId: null,
+                bankTransaction: {
+                  bankStatementDocument: { accountingClientId },
+                },
+              },
+            ],
+          },
+          select: {
+            documentId: true,
+            bankTransactionId: true,
+            chartOfAccountId: true
+          }
+        });
+        
+        this.logger.warn(`🚫 Found ${rejectedSuggestions.length} previously rejected suggestions to avoid regenerating`);
+        
+        // Create sets of rejected combinations to avoid regenerating
+        const rejectedDocTransactionPairs = new Set<string>();
+        const rejectedTransactionAccountPairs = new Set<string>();
+        
+        rejectedSuggestions.forEach(rejected => {
+          if (rejected.documentId && rejected.bankTransactionId) {
+            rejectedDocTransactionPairs.add(`${rejected.documentId}-${rejected.bankTransactionId}`);
+          } else if (rejected.bankTransactionId && rejected.chartOfAccountId) {
+            rejectedTransactionAccountPairs.add(`${rejected.bankTransactionId}-${rejected.chartOfAccountId}`);
+          }
+        });
+        
+        this.logger.warn(`🚫 Avoiding ${rejectedDocTransactionPairs.size} doc-transaction pairs and ${rejectedTransactionAccountPairs.size} transaction-account pairs`);
+
+        // Check for existing transfer suggestions to avoid duplicates
+        const existingTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+          where: {
+            status: { not: SuggestionStatus.REJECTED },
+            bankTransaction: {
+              bankStatementDocument: { accountingClientId }
+            },
+            matchingCriteria: {
+              path: ['type'],
+              equals: 'TRANSFER'
+            }
+          },
+          select: {
+            bankTransactionId: true,
+            matchingCriteria: true
+          }
+        });
+        
+        const existingTransferPairs = new Set<string>();
+        for (const existing of existingTransferSuggestions) {
+          const criteria = existing.matchingCriteria as any;
+          if (criteria?.transfer?.destinationTransactionId) {
+            // Create bidirectional keys to prevent duplicates in either direction
+            const key1 = `${existing.bankTransactionId}-${criteria.transfer.destinationTransactionId}`;
+            const key2 = `${criteria.transfer.destinationTransactionId}-${existing.bankTransactionId}`;
+            existingTransferPairs.add(key1);
+            existingTransferPairs.add(key2);
+          }
+        }
+        
+        this.logger.log(`🔍 Found ${existingTransferSuggestions.length} existing transfer suggestions, created ${existingTransferPairs.size} bidirectional pair keys`);
+
+        // Only delete pending suggestions (keep rejected ones for reference)
+        await this.prisma.reconciliationSuggestion.deleteMany({
+          where: {
+            status: SuggestionStatus.PENDING,
+            OR: [
+              {
+                document: { accountingClientId },
+              },
+              {
+                documentId: null,
+                bankTransaction: {
+                  bankStatementDocument: { accountingClientId },
+                },
+              },
+            ],
+          }
+        });
+    
+        const suggestions = [];
+
+        // ------------------------------------------------------------------
+        // Transfer suggestions: propose internal transfers between accounts
+        // ------------------------------------------------------------------
+        this.logger.log(`🔁 STARTING TRANSFER SUGGESTION GENERATION`);
+        try {
+          const dbg = true;
+          const daysWindow = 5; // +/- days to consider as close dates
+          const amountTolerancePct = 0.01; // 1%
+          const minAmountTolerance = 1; // RON minimum tolerance
+
+          const credits = unreconciliedTransactions.filter(t => t.transactionType === 'CREDIT');
+          const debits = unreconciliedTransactions.filter(t => t.transactionType === 'DEBIT');
+          
+          this.logger.log(`🔁 Transfer candidates: ${credits.length} credits, ${debits.length} debits`);
+          
+          // Check if our target transactions are in the right categories
+          const targetCredits = credits.filter(t => t.id === '110-0-1756203049797');
+          const targetDebits = debits.filter(t => t.id === '111-0-1756209938791');
+          this.logger.log(`🎯 Target transactions in categories: credits=${targetCredits.length}, debits=${targetDebits.length}`);
+
+          // Keep track of already paired destination credits to avoid duplicate suggestions
+          const usedDestinationIds = new Set<string>();
+          const createdTransferKeys = new Set<string>();
+
+          const transferSuggestions: Array<{
+            documentId: number | null;
+            bankTransactionId: string;
+            chartOfAccountId: number | null;
+            confidenceScore: number;
+            matchingCriteria: any;
+            reasons: string[];
+          }> = [];
+
+          // Precompute keyword presence for descriptions
+          const hasTransferKeyword = (desc?: string) => {
+            if (!desc) return false;
+            const d = desc.toLowerCase();
+            return (
+              d.includes('transfer') || d.includes('intrabank') || d.includes('interbank') ||
+              d.includes('interne') || d.includes('transfer intern') || d.includes('transf')
+            );
+          };
+
+          // Helpers for currency detection
+          const inferCurrency = (desc?: string) => {
+            if (!desc) return undefined as string | undefined;
+            const d = desc.toUpperCase();
+            if (d.includes(' EUR')) return 'EUR';
+            if (d.includes(' RON')) return 'RON';
+            if (d.includes('USD') || d.includes(' USD')) return 'USD';
+            if (d.includes('LEI')) return 'RON';
+            return undefined;
+          };
+          const getTxnCurrency = (t: any): string | undefined => {
+            // Prefer bankAccount.currency if present
+            const accCur = t?.bankAccount?.currency as string | undefined;
+            if (accCur) return accCur.toUpperCase();
+            // Try statement document name
+            const stmtName = t?.bankStatementDocument?.name as string | undefined;
+            const byName = stmtName ? inferCurrency(stmtName.replace(/[_.-]/g, ' ')) : undefined;
+            if (byName) return byName;
+            // Try description text
+            const byDesc = inferCurrency(t?.description);
+            return byDesc;
+          };
+
+          this.logger.log(`🔁 Starting transfer matching loop for ${debits.length} debits`);
+          for (const src of debits) {
+            const srcAmt = Math.abs(Number(src.amount));
+            const srcDate = new Date(src.transactionDate);
+            let bestCandidate: any = null;
+            let bestScore = 0;
+            const dbgSrc = dbg && src.id === '111-0-1756209938791';
+            if (dbgSrc) {
+              this.logger.warn(`🔍 TRANSFER DEBUG src=${src.id} amt=${srcAmt} date=${srcDate.toISOString().split('T')[0]} acct=${src.bankAccount?.id || 'null'}`);
+            }
+            
+            // Log every debit being processed
+            this.logger.log(`🔁 Processing debit ${src.id}: "${src.description}" (${srcAmt})`);
+
+            console.log('🔍 Transfer detection - evaluating transactions:', {
+              sourceId: src.id,
+              sourceAmount: srcAmt,
+              sourceType: src.transactionType,
+              sourceDate: srcDate,
+              sourceAccount: src.bankAccount?.id,
+              destinationCandidates: credits.length
+            });
+
+            for (const dst of credits) {
+              if (usedDestinationIds.has(dst.id)) {
+                if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: already used`);
+                continue;
+              }
+              if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
+                if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: same account ${src.bankAccount.id}`);
+                // Skip moves within the same account
+                continue;
+              }
+
+              // Check if this transfer pair already exists
+              const transferKey1 = `${src.id}-${dst.id}`;
+              const transferKey2 = `${dst.id}-${src.id}`;
+              if (existingTransferPairs.has(transferKey1) || existingTransferPairs.has(transferKey2)) {
+                if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: transfer pair already exists`);
+                continue;
+              }
+
+              const dstAmt = Math.abs(Number(dst.amount));
+              const amountDiff = Math.abs(srcAmt - dstAmt);
+              const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
+              
+              // Cross-currency handling: allow plausible FX rate differences (e.g., RON↔EUR around 4–6)
+              const srcCur = getTxnCurrency(src);
+              const dstCur = getTxnCurrency(dst);
+              let crossCurrencyOk = false;
+              let impliedRate: number | undefined;
+              if (srcCur && dstCur && srcCur !== dstCur) {
+                const bigger = Math.max(srcAmt, dstAmt);
+                const smaller = Math.max(1e-6, Math.min(srcAmt, dstAmt));
+                impliedRate = Number((bigger / smaller).toFixed(3));
+                // Heuristic bands
+                if ((srcCur === 'RON' && dstCur === 'EUR') || (srcCur === 'EUR' && dstCur === 'RON')) {
+                  // Typical RON/EUR range; broaden slightly to avoid false negatives
+                  crossCurrencyOk = impliedRate >= 4.0 && impliedRate <= 6.0;
+                } else if ((srcCur === 'RON' && dstCur === 'USD') || (srcCur === 'USD' && dstCur === 'RON')) {
+                  crossCurrencyOk = impliedRate >= 3.0 && impliedRate <= 6.0;
+                } else {
+                  // Generic band for other pairs
+                  crossCurrencyOk = impliedRate >= 0.1 && impliedRate <= 20.0;
+                }
+                if (dbgSrc) this.logger.warn(`  [~] cross-currency ${srcCur}->${dstCur} impliedRate=${impliedRate} ok=${crossCurrencyOk}`);
+              }
+              if (amountDiff > amountTolerance) {
+                if (!crossCurrencyOk) {
+                  if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: amountDiff=${amountDiff.toFixed(2)} > tol=${amountTolerance.toFixed(2)} (src=${srcAmt}, dst=${dstAmt})`);
+                  continue;
+                }
+              }
+
+              const dstDate = new Date(dst.transactionDate);
+              const daysApart = Math.abs((+srcDate - +dstDate) / (1000 * 60 * 60 * 24));
+              if (daysApart > daysWindow) {
+                if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: daysApart=${Math.round(daysApart)} > ${daysWindow}`);
+                continue;
+              }
+
+              // Scoring
+              let score = 0.7; // base for amount+date proximity
+              const reasons: string[] = [];
+              const criteria: any = { transfer: {} };
+
+              if (amountDiff === 0 || crossCurrencyOk) {
+                score += 0.1;
+                if (crossCurrencyOk) {
+                  reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
+                } else {
+                  reasons.push('Exact amount match');
+                }
+              } else {
+                reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
+              }
+
+              if (daysApart === 0) {
+                score += 0.08;
+                reasons.push('Same date');
+              } else if (daysApart <= 2) {
+                score += 0.05;
+                reasons.push(`Close dates (${Math.round(daysApart)} days apart)`);
+              }
+
+              const kwSrc = hasTransferKeyword(src.description);
+              const kwDst = hasTransferKeyword(dst.description);
+              if (kwSrc || kwDst) {
+                score += 0.05;
+                reasons.push('Transfer keyword detected in description');
+              }
+
+              if (src.bankAccount?.bankName && dst.bankAccount?.bankName) {
+                if (src.bankAccount.bankName === dst.bankAccount.bankName) {
+                  score += 0.02;
+                  reasons.push('Same bank');
+                }
+              }
+
+              // Keep best candidate per source
+              if (score > bestScore) {
+                bestScore = score;
+                bestCandidate = { dst, score, amountDiff, daysApart, reasons, impliedRate };
+                if (dbgSrc) this.logger.warn(`  [✓] candidate dst=${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`);
+              }
+            }
+
+            if (bestCandidate && bestScore >= 0.5) {
+              const { dst, score, amountDiff, daysApart, reasons, impliedRate } = bestCandidate;
+              
+              // Check if we already created this exact transfer suggestion in this batch
+              const transferKey = `${src.id}-${dst.id}`;
+              const reverseTransferKey = `${dst.id}-${src.id}`;
+              if (createdTransferKeys.has(transferKey) || createdTransferKeys.has(reverseTransferKey)) {
+                this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN BATCH: ${src.id} -> ${dst.id}`);
+                continue;
+              }
+              
+              usedDestinationIds.add(dst.id);
+              createdTransferKeys.add(transferKey);
+              existingTransferPairs.add(transferKey);
+              existingTransferPairs.add(reverseTransferKey);
+
+              this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
+
+              const mc = {
+                type: 'TRANSFER',
+                transfer: {
+                  destinationTransactionId: dst.id,
+                  amountDiff: Number(amountDiff.toFixed(2)),
+                  daysApart: Math.round(daysApart),
+                  sourceTransaction: {
+                    id: src.id,
+                    description: src.description,
+                    amount: src.amount,
+                    transactionDate: src.transactionDate,
+                    transactionType: src.transactionType,
+                    bankAccountId: src.bankAccount?.id,
+                    currency: getTxnCurrency(src),
+                  },
+                  destinationTransaction: {
+                    id: dst.id,
+                    description: dst.description,
+                    amount: dst.amount,
+                    transactionDate: dst.transactionDate,
+                    transactionType: dst.transactionType,
+                    bankAccountId: dst.bankAccount?.id,
+                    currency: getTxnCurrency(dst),
+                  },
+                  impliedExchangeRate: impliedRate,
+                },
+              } as any;
+
+              const transferSuggestion = {
+                documentId: null,
+                bankTransactionId: src.id, // source (outflow)
+                chartOfAccountId: null,
+                confidenceScore: Number(score.toFixed(3)) as unknown as any,
+                matchingCriteria: mc,
+                reasons,
+              };
+              
+              transferSuggestions.push(transferSuggestion);
+              this.logger.log(`✅ Added transfer suggestion to array: source=${src.id}, dest=${dst.id}`);
+
+              if (dbg) {
+                this.logger.log(
+                  `🔁 Transfer candidate: ${src.id} -> ${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`
+                );
+              }
+            }
+          }
+
+          if (transferSuggestions.length > 0) {
+            // Remove duplicates within the same batch (extra safety)
+            const uniqueTransferSuggestions = [];
+            const seen = new Set();
+            let duplicatesSkipped = 0;
+            
+            for (const ts of transferSuggestions) {
+              const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
+              const reverseKey = `${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}-${ts.bankTransactionId}`;
+              if (!seen.has(key) && !seen.has(reverseKey)) {
+                seen.add(key);
+                seen.add(reverseKey);
+                uniqueTransferSuggestions.push(ts);
+              } else {
+                duplicatesSkipped++;
+              }
+            }
+            
+            this.logger.log(`🔁 Filtered ${transferSuggestions.length} transfer suggestions to ${uniqueTransferSuggestions.length} unique (${duplicatesSkipped} duplicates skipped)`);
+            
+            if (uniqueTransferSuggestions.length > 0) {
+              const insertResult = await this.prisma.reconciliationSuggestion.createMany({
+                data: uniqueTransferSuggestions,
+                skipDuplicates: true,
+              });
+              this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
+            }
+            this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+            
+            // Add transfer suggestions to the main suggestions array for filtering
+            suggestions.push(...uniqueTransferSuggestions);
+          } else {
+            this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
+          }
+        } catch (e) {
+          this.logger.error(`Transfer suggestion generation failed: ${e.message}`);
+        }
+    
+        for (const document of unreconciled) {
+          let documentData: any = {};
+          
+          if (document.processedData?.extractedFields) {
+            try {
+              const parsedFields = typeof document.processedData.extractedFields === 'string'
+                ? JSON.parse(document.processedData.extractedFields)
+                : document.processedData.extractedFields;
+              
+              documentData = parsedFields.result || parsedFields || {};
+            } catch (e) {
+              continue; 
+            }
+          }
+    
+          const documentAmount = this.parseAmountForReconciliation(
+            documentData.total_amount,
+            documentData,
+            document.type
+          );
+          const documentNumber = documentData.document_number || documentData.receipt_number;
+          const documentDate = this.parseDate(documentData.document_date);
+          
+          // Enhanced debug logging for Payment/Collection Orders and Z Reports
+          if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
+            try {
+              const dateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+              const keysStr = documentData && typeof documentData === 'object' ? Object.keys(documentData).join(', ') : 'none';
+              this.logger.warn(
+                `🔍 ${document.type.toUpperCase()} DEBUG: Document ${document.id} (${document.name}) ` +
+                `Type: ${document.type}, Amount: ${documentAmount}, Number: ${documentNumber || 'null'}, ` +
+                `Date: ${dateStr}, Direction: ${documentData?.direction || 'null'}, ` +
+                `Raw data keys: ${keysStr}`
+              );
+            } catch (debugError) {
+              this.logger.error(`Debug logging error for document ${document.id}:`, debugError);
+            }
+          }
+
+          if (documentAmount === 0) {
+            if (document.type === 'Payment Order' || document.type === 'Collection Order' || document.type === 'Z Report') {
+              this.logger.error(`❌ ${document.type.toUpperCase()} ${document.id} (${document.name}) has ZERO amount - skipping!`);
+              try {
+                this.logger.error(`❌ Raw data for ${document.name}: ${JSON.stringify(documentData, null, 2)}`);
+              } catch (jsonError) {
+                this.logger.error(`❌ Raw data logging failed for ${document.name}:`, jsonError);
+              }
+            }
+            continue;
+          }
+    
+          let bestMatchForDocument = { score: 0, transaction: null, suggestion: null };
+          
+          for (const transaction of unreconciliedTransactions) {
+            // Check if this document is mandatory (referenced by the bank statement for this transaction)
+            const isMandatory = bankStatementReferencedDocs.has(document.id) && 
+                                transaction.bankStatementDocument?.references?.includes(document.id);
+            
+            const suggestion = this.calculateMatchSuggestion(
+              document,
+              transaction,
+              documentData,
+              documentAmount,
+              documentNumber,
+              documentDate,
+              isMandatory
+            );
+            
+            // Targeted per-pair debug logging
+            try {
+              if (this.shouldLogSuggestion(document.id as unknown as number, transaction.id as unknown as string)) {
+                const txAmount = Math.abs(Number(transaction.amount));
+                const txDate = new Date(transaction.transactionDate).toISOString().split('T')[0];
+                const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+                const prefix = this.suggestionLogPrefix(document.id as unknown as number, transaction.id as unknown as string);
+                this.logger.warn(
+                  `${prefix} Pair score ${suggestion.confidenceScore.toFixed(3)} | ` +
+                  `doc(${document.id}:${document.name}) ${document.type} amt=${documentAmount} date=${docDateStr} num=${documentNumber || 'null'} | ` +
+                  `tx(${transaction.id}) amt=${txAmount} type=${transaction.transactionType} date=${txDate} ref=${transaction.referenceNumber || 'null'} | ` +
+                  `mandatory=${isMandatory} | criteria=${JSON.stringify(suggestion.matchingCriteria)} | reasons=${JSON.stringify(suggestion.reasons)}`
+                );
+              }
+            } catch (e) {
+              this.logger.error('Suggestion debug logging error:', e);
+            }
+            
+            // Track the best match for this document for debugging
+            if (suggestion.confidenceScore > bestMatchForDocument.score) {
+              bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
+            }
+    
+            if (suggestion.confidenceScore >= 0.25) {
+              // Check if this document-transaction pair was previously rejected
+              const pairKey = `${document.id}-${transaction.id}`;
+              if (rejectedDocTransactionPairs.has(pairKey)) {
+                this.logger.warn(`🚫 SKIPPING previously rejected suggestion: Document ${document.id} + Transaction ${transaction.id}`);
+                continue;
+              }
+              
+              const suggestionData = {
+                documentId: document.id,
+                bankTransactionId: transaction.id,
+                confidenceScore: suggestion.confidenceScore,
+                matchingCriteria: suggestion.matchingCriteria,
+                reasons: suggestion.reasons
+              };
+              
+              if (suggestion.matchingCriteria.component_match) {
+                suggestionData.matchingCriteria.component_type = suggestion.matchingCriteria.component_type;
+                suggestionData.matchingCriteria.is_partial_match = true;
+                
+                this.logger.warn(
+                  `🧩 COMPONENT SUGGESTION: Document ${document.id} (${document.name}) ` +
+                  `${suggestion.matchingCriteria.component_type} component matches Transaction ${transaction.id} ` +
+                  `(Score: ${suggestion.confidenceScore.toFixed(3)})`
+                );
+              }
+              
+              suggestions.push(suggestionData);
+            }
+          }
+          
+          if (bestMatchForDocument.score < 0.25) {
+            const bmTx = bestMatchForDocument.transaction;
+            const bmTxDate = bmTx ? new Date(bmTx.transactionDate).toISOString().split('T')[0] : 'null';
+            const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
+            const prefix = this.suggestionLogPrefix(document.id as unknown as number, bmTx?.id as unknown as string);
+            if (this.shouldLogSuggestion(document.id as unknown as number, bmTx?.id as unknown as string)) {
+              this.logger.warn(
+                `${prefix} 📄 No matches >= 0.25. Best=${bestMatchForDocument.score.toFixed(3)} ` +
+                `(doc ${document.id}:${document.name} amt=${documentAmount} date=${docDateStr} vs tx ${bmTx?.id} amt=${bmTx?.amount} date=${bmTxDate})`
+              );
+            } else {
+              this.logger.warn(
+                `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
+                `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bmTx?.id} ` +
+                `(Amount: ${documentAmount} vs ${bmTx?.amount}, Date: ${docDateStr} vs ${bmTxDate})`
+              );
+            }
+            
+            // Fallback: If we have a very close amount match (within 10 RON or 10%), create a low-confidence suggestion
+            if (bestMatchForDocument.transaction) {
+              const amountDiff = Math.abs(documentAmount - Math.abs(Number(bestMatchForDocument.transaction.amount)));
+              const amountThreshold = Math.max(documentAmount * 0.1, 10); // 10% or 10 RON tolerance
+              
+              if (amountDiff <= amountThreshold) {
+                this.logger.log(
+                  `💡 Creating fallback suggestion for document ${document.id} with close amount match (diff: ${amountDiff.toFixed(2)} RON)`
+                );
+                
+                suggestions.push({
+                  documentId: document.id,
+                  bankTransactionId: bestMatchForDocument.transaction.id,
+                  confidenceScore: Math.max(bestMatchForDocument.score, 0.2), // Ensure minimum confidence
+                  matchingCriteria: { ...bestMatchForDocument.suggestion.matchingCriteria, fallback_match: true },
+                  reasons: [...bestMatchForDocument.suggestion.reasons, 'Fallback match based on amount proximity']
+                });
+              }
+            }
+          }
+        }
+    
+        // Debug: Log raw suggestions before filtering
+        this.logger.log(`🔍 RAW SUGGESTIONS BEFORE FILTERING: ${suggestions.length} total`);
+        this.logger.log(
+          `🔍 RAW SUGGESTIONS (${suggestions.length}): ` +
+          suggestions
+            .map(s => `${s.bankTransactionId}→${s.documentId || 'account'} ${(s.confidenceScore * 100).toFixed(0)}%`)
+            .join(' | ')
+        );
+        
+        // Count transfer suggestions in raw array
+        const rawTransferSuggestions = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+        this.logger.log(`🔍 RAW TRANSFER SUGGESTIONS: ${rawTransferSuggestions.length}`);
+        for (const ts of rawTransferSuggestions) {
+          this.logger.log(`🔍 Raw transfer: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+        }
+        
+        this.logger.log(`🔥 ABOUT TO CALL filterBestSuggestions - VERSION 2.0`);
+        this.logger.log(`🔥 INPUT TO filterBestSuggestions: ${suggestions.length} suggestions`);
+        for (const s of suggestions) {
+          const isTransfer = (s.matchingCriteria as any)?.type === 'TRANSFER';
+          this.logger.log(`🔥 Suggestion: ${s.bankTransactionId} - isTransfer: ${isTransfer} - confidence: ${s.confidenceScore}`);
+        }
+        const filteredSuggestions = this.filterBestSuggestions(suggestions);
+        this.logger.log(`🔥 OUTPUT FROM filterBestSuggestions: ${filteredSuggestions.length} suggestions - VERSION 2.0`);
+    
+        // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
+        const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
+        
+        // Also exclude transactions that are part of transfer pairs
+        const transferTransactionIds = new Set<string>();
+        this.logger.log(`🔍 Checking ${filteredSuggestions.length} filtered suggestions for transfer pairs...`);
+        for (const suggestion of filteredSuggestions) {
+          const matchingCriteria = suggestion.matchingCriteria as any;
+          this.logger.log(`🔍 Suggestion ${suggestion.id}: bankTransactionId=${suggestion.bankTransactionId}, type=${matchingCriteria?.type}, hasTransfer=${!!matchingCriteria?.transfer}`);
+          if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
+            transferTransactionIds.add(suggestion.bankTransactionId);
+            transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
+            this.logger.log(`🔁 Found transfer pair: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
+          }
+        }
+        
+        const standaloneTransactions = unreconciliedTransactions.filter(t => 
+          !matchedTransactionIds.has(t.id) && !transferTransactionIds.has(t.id)
+        );
+        
+        this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
+        this.logger.log(`🔁 Excluded transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
+        this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
+        
+        // Check if our target transactions are in the standalone list
+        const targetStandalone = standaloneTransactions.filter(t => 
+          t.id === '110-0-1756203049797' || t.id === '111-0-1756209938791'
+        );
+        if (targetStandalone.length > 0) {
+          this.logger.warn(`❌ TARGET TRANSACTIONS STILL IN STANDALONE: ${targetStandalone.map(t => t.id).join(', ')}`);
+        } else {
+          this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
+        }
+        
+        this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
+        
+        for (const transaction of standaloneTransactions) {
+          this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
+          try {
+            const suggestions = await this.suggestAccountForTransaction({
+              description: transaction.description,
+              amount: Number(transaction.amount),
+              transactionType: transaction.transactionType,
+              referenceNumber: transaction.referenceNumber || undefined,
+              transactionDate: transaction.transactionDate.toISOString()
+            }, accountingClientId);
+            
+            if (suggestions.length > 0) {
+              const bestSuggestion = suggestions[0];
+              const chartOfAccount = await this.getOrCreateChartOfAccount(
+                bestSuggestion.accountCode,
+                bestSuggestion.accountName
+              );
+              
+              // Check if this transaction-account pair was previously rejected
+              const pairKey = `${transaction.id}-${chartOfAccount.id}`;
+              if (rejectedTransactionAccountPairs.has(pairKey)) {
+                this.logger.warn(`🚫 SKIPPING previously rejected standalone suggestion: Transaction ${transaction.id} + Account ${chartOfAccount.id}`);
+                continue;
+              }
+              
+              const notes = bestSuggestion.confidence > 0.7 
+                ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
+                : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
+              
+              // Create suggestion for standalone transaction
+              await this.prisma.reconciliationSuggestion.create({
+                data: {
+                  bankTransactionId: transaction.id,
+                  chartOfAccountId: chartOfAccount.id,
+                  documentId: null,
+                  confidenceScore: bestSuggestion.confidence.toFixed(3) as unknown as any,
+                  matchingCriteria: {},
+                  reasons: [notes],
+                },
+              });
+              
+              this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+            }
+          } catch (error) {
+            this.logger.error(`Failed to categorize standalone transaction ${transaction.id}:`, error);
+          }
+        }
+    
+        if (filteredSuggestions.length > 0) {
+          await this.prisma.reconciliationSuggestion.createMany({
+            data: filteredSuggestions,
+            skipDuplicates: true
+          });
+    
+          this.logger.log(`Generated ${filteredSuggestions.length} document-transaction match suggestions for client ${accountingClientId}`);
+        }
+        
+        const totalSuggestions = filteredSuggestions.length + standaloneTransactions.length;
+        this.logger.log(`🏁 FINAL RESULTS: Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
+        
+        // Final summary
+        this.logger.log(`🏁 SUMMARY:`);
+        this.logger.log(`🏁 - Unreconciled documents: ${unreconciled.length}`);
+        this.logger.log(`🏁 - Unreconciled transactions: ${unreconciliedTransactions.length}`);
+        this.logger.log(`🏁 - Transfer suggestions created: ${rawTransferSuggestions.length}`);
+        this.logger.log(`🏁 - Filtered suggestions: ${filteredSuggestions.length}`);
+        this.logger.log(`🏁 - Standalone transactions processed: ${standaloneTransactions.length}`);
+        this.logger.log(`🏁 - Total final suggestions: ${totalSuggestions}`);
+    
+      } catch (error) {
+        this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
+      } finally {
+        this.generationInProgress.delete(accountingClientId);
+      }
+    }
       
       private tryComponentMatching(
   document: any,
