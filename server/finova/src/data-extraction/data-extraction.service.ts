@@ -2614,10 +2614,6 @@ export class DataExtractionService {
               const existingTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
                 where: {
                   status: 'PENDING',
-                  matchingCriteria: {
-                    path: ['type'],
-                    equals: 'TRANSFER',
-                  },
                   bankTransaction: {
                     bankStatementDocument: {
                       accountingClientId: accountingClientId,
@@ -2631,11 +2627,19 @@ export class DataExtractionService {
                 },
               });
               
-              this.logger.log(`🔍 Found ${existingTransferSuggestions.length} existing transfer suggestions`);
+              // Filter for transfer suggestions in application code
+              const existingTransfers = existingTransferSuggestions.filter(s => 
+                (s.matchingCriteria as any)?.type === 'TRANSFER'
+              );
+              
+              this.logger.log(`🔍 Found ${existingTransfers.length} existing transfer suggestions`);
+              for (const et of existingTransfers) {
+                this.logger.log(`🔍 Existing transfer: ${et.bankTransactionId} -> ${(et.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+              }
               
               // Filter out transfer suggestions that already exist
               const newTransferSuggestions = transferSuggestions.filter(ts => {
-                const existing = existingTransferSuggestions.find(ets => 
+                const existing = existingTransfers.find(ets => 
                   ets.bankTransactionId === ts.bankTransactionId &&
                   (ets.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
                 );
