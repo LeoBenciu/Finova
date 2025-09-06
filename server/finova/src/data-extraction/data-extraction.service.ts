@@ -2612,16 +2612,24 @@ export class DataExtractionService {
             if (transferSuggestions.length > 0) {
               // Check for existing transfer suggestions by bankTransactionId
               const bankTransactionIds = transferSuggestions.map(ts => ts.bankTransactionId);
+              this.logger.log(`🔍 Checking for duplicates for bankTransactionIds: ${bankTransactionIds.join(', ')}`);
+              
               const existingSuggestions = await this.prisma.reconciliationSuggestion.findMany({
                 where: {
                   bankTransactionId: { in: bankTransactionIds },
                   status: 'PENDING',
                 },
                 select: {
+                  id: true,
                   bankTransactionId: true,
                   matchingCriteria: true,
                 },
               });
+              
+              this.logger.log(`🔍 Found ${existingSuggestions.length} existing suggestions for these transaction IDs`);
+              for (const es of existingSuggestions) {
+                this.logger.log(`🔍 Existing: ID=${es.id}, bankTxId=${es.bankTransactionId}, type=${(es.matchingCriteria as any)?.type}`);
+              }
               
               // Filter out duplicates
               const newTransferSuggestions = transferSuggestions.filter(ts => {
@@ -2630,6 +2638,9 @@ export class DataExtractionService {
                   (es.matchingCriteria as any)?.type === 'TRANSFER' &&
                   (es.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
                 );
+                if (existing) {
+                  this.logger.log(`🔍 DUPLICATE FOUND: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId} (existing ID: ${existing.id})`);
+                }
                 return !existing;
               });
               
