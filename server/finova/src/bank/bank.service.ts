@@ -1445,28 +1445,6 @@ export class BankService {
                   },
                 },
               },
-              {
-                documentId: null,
-                chartOfAccountId: { not: null },
-                bankTransaction: {
-                  bankStatementDocument: {
-                    accountingClientId: accountingClientRelation.id,
-                  },
-                },
-              },
-              {
-                documentId: null,
-                chartOfAccountId: null,
-                matchingCriteria: {
-                  path: ['type'],
-                  equals: 'TRANSFER',
-                },
-                bankTransaction: {
-                  bankStatementDocument: {
-                    accountingClientId: accountingClientRelation.id,
-                  },
-                },
-              },
             ],
           },
           include: {
@@ -1533,6 +1511,13 @@ export class BankService {
         console.log(`🔥 DATABASE TRANSFER SUGGESTIONS DEBUG: Found ${transferSuggestions.length} transfer suggestions`);
         for (const ts of transferSuggestions) {
           console.log(`🔥 Transfer Suggestion ID: ${ts.id}, BankTransactionId: ${ts.bankTransactionId}, MatchingCriteria:`, ts.matchingCriteria);
+        }
+        
+        // Debug: Check all suggestions to see what we got
+        console.log(`🔥 ALL SUGGESTIONS DEBUG: Total ${suggestions.length} suggestions retrieved`);
+        for (const s of suggestions) {
+          const matchingCriteria = s.matchingCriteria as any;
+          console.log(`🔥 Suggestion ${s.id}: BankTransactionId=${s.bankTransactionId}, DocumentId=${s.documentId}, ChartOfAccountId=${s.chartOfAccountId}, MatchingCriteriaType=${matchingCriteria?.type}`);
         }
 
         const items = await Promise.all(
@@ -1878,28 +1863,6 @@ export class BankService {
                     },
                     {
                       documentId: null,
-                      bankTransaction: {
-                        bankStatementDocument: {
-                          accountingClientId: accountingClientRelation.id,
-                        },
-                      },
-                    },
-                    {
-                      documentId: null,
-                      chartOfAccountId: { not: null },
-                      bankTransaction: {
-                        bankStatementDocument: {
-                          accountingClientId: accountingClientRelation.id,
-                        },
-                      },
-                    },
-                    {
-                      documentId: null,
-                      chartOfAccountId: null,
-                      matchingCriteria: {
-                        path: ['type'],
-                        equals: 'TRANSFER',
-                      },
                       bankTransaction: {
                         bankStatementDocument: {
                           accountingClientId: accountingClientRelation.id,
