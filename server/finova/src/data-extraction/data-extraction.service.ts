@@ -2222,9 +2222,17 @@ export class DataExtractionService {
         return mapping[type] || CorrectionType.OTHER;
     }
 
+    private generationInProgress = new Set<number>();
+
     async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
+        // Prevent multiple simultaneous generations for the same client
+        if (this.generationInProgress.has(accountingClientId)) {
+            this.logger.log(`⏳ Generation already in progress for client ${accountingClientId}, skipping`);
+            return;
+        }
+        
+        this.generationInProgress.add(accountingClientId);
         this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
-        this.logger.log(`🔥 NEW DEBUG CODE IS EXECUTING - VERSION 2.0`);
         
         try {
           const unreconciled = await this.prisma.document.findMany({
@@ -2610,73 +2618,29 @@ export class DataExtractionService {
             }
 
             if (transferSuggestions.length > 0) {
-              // Check for existing transfer suggestions by bankTransactionId
-              const bankTransactionIds = transferSuggestions.map(ts => ts.bankTransactionId);
-              this.logger.log(`🔍 Checking for duplicates for bankTransactionIds: ${bankTransactionIds.join(', ')}`);
+              // Remove duplicates within the same batch
+              const uniqueTransferSuggestions = [];
+              const seen = new Set();
               
-              // First, let's check ALL suggestions for these transaction IDs (any status)
-              const allExistingSuggestions = await this.prisma.reconciliationSuggestion.findMany({
-                where: {
-                  bankTransactionId: { in: bankTransactionIds },
-                },
-                select: {
-                  id: true,
-                  bankTransactionId: true,
-                  matchingCriteria: true,
-                  status: true,
-                },
-              });
-              
-              this.logger.log(`🔍 Found ${allExistingSuggestions.length} total suggestions for these transaction IDs (any status)`);
-              for (const es of allExistingSuggestions) {
-                this.logger.log(`🔍 All existing: ID=${es.id}, bankTxId=${es.bankTransactionId}, status=${es.status}, type=${(es.matchingCriteria as any)?.type}`);
-              }
-              
-              // Filter for PENDING status
-              const existingSuggestions = allExistingSuggestions.filter(es => es.status === 'PENDING');
-              
-              this.logger.log(`🔍 Found ${existingSuggestions.length} existing suggestions for these transaction IDs`);
-              for (const es of existingSuggestions) {
-                this.logger.log(`🔍 Existing: ID=${es.id}, bankTxId=${es.bankTransactionId}, type=${(es.matchingCriteria as any)?.type}`);
-              }
-              
-              // Filter out duplicates
-              const newTransferSuggestions = transferSuggestions.filter(ts => {
-                const existing = existingSuggestions.find(es => 
-                  es.bankTransactionId === ts.bankTransactionId &&
-                  (es.matchingCriteria as any)?.type === 'TRANSFER' &&
-                  (es.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
-                );
-                if (existing) {
-                  this.logger.log(`🔍 DUPLICATE FOUND: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId} (existing ID: ${existing.id})`);
+              for (const ts of transferSuggestions) {
+                const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
+                if (!seen.has(key)) {
+                  seen.add(key);
+                  uniqueTransferSuggestions.push(ts);
                 }
-                return !existing;
-              });
+              }
               
-              this.logger.log(`💾 INSERTING ${newTransferSuggestions.length} new transfer suggestions to database (${transferSuggestions.length - newTransferSuggestions.length} duplicates skipped)`);
-              
-              if (newTransferSuggestions.length > 0) {
+              if (uniqueTransferSuggestions.length > 0) {
                 const insertResult = await this.prisma.reconciliationSuggestion.createMany({
-                  data: newTransferSuggestions,
+                  data: uniqueTransferSuggestions,
                   skipDuplicates: true,
                 });
                 this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
-              } else {
-                this.logger.log(`💾 No new transfer suggestions to insert (all were duplicates)`);
               }
-              this.logger.log(`🔁 Generated ${newTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
-              this.logger.log(`🔥 TRANSFER SUGGESTIONS CREATED - VERSION 2.0`);
+              this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
               
               // Add transfer suggestions to the main suggestions array for filtering
-              this.logger.log(`📝 Adding ${newTransferSuggestions.length} transfer suggestions to main suggestions array (current size: ${suggestions.length})`);
-              suggestions.push(...newTransferSuggestions);
-              this.logger.log(`📝 Main suggestions array size after adding transfers: ${suggestions.length}`);
-              this.logger.log(`🔥 TRANSFER SUGGESTIONS ADDED TO ARRAY - VERSION 2.0`);
-              
-              // Log the transfer suggestions that were added
-              for (const ts of newTransferSuggestions) {
-                this.logger.log(`📝 Added transfer suggestion: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
-              }
+              suggestions.push(...uniqueTransferSuggestions);
             } else {
               this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
             }
@@ -2978,6 +2942,8 @@ export class DataExtractionService {
       
         } catch (error) {
           this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
+        } finally {
+          this.generationInProgress.delete(accountingClientId);
         }
       }
       
