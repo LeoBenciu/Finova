@@ -2614,17 +2614,26 @@ export class DataExtractionService {
               const bankTransactionIds = transferSuggestions.map(ts => ts.bankTransactionId);
               this.logger.log(`🔍 Checking for duplicates for bankTransactionIds: ${bankTransactionIds.join(', ')}`);
               
-              const existingSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+              // First, let's check ALL suggestions for these transaction IDs (any status)
+              const allExistingSuggestions = await this.prisma.reconciliationSuggestion.findMany({
                 where: {
                   bankTransactionId: { in: bankTransactionIds },
-                  status: 'PENDING',
                 },
                 select: {
                   id: true,
                   bankTransactionId: true,
                   matchingCriteria: true,
+                  status: true,
                 },
               });
+              
+              this.logger.log(`🔍 Found ${allExistingSuggestions.length} total suggestions for these transaction IDs (any status)`);
+              for (const es of allExistingSuggestions) {
+                this.logger.log(`🔍 All existing: ID=${es.id}, bankTxId=${es.bankTransactionId}, status=${es.status}, type=${(es.matchingCriteria as any)?.type}`);
+              }
+              
+              // Filter for PENDING status
+              const existingSuggestions = allExistingSuggestions.filter(es => es.status === 'PENDING');
               
               this.logger.log(`🔍 Found ${existingSuggestions.length} existing suggestions for these transaction IDs`);
               for (const es of existingSuggestions) {
