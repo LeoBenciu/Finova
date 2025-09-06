@@ -1454,6 +1454,19 @@ export class BankService {
                   },
                 },
               },
+              {
+                documentId: null,
+                chartOfAccountId: null,
+                matchingCriteria: {
+                  path: ['type'],
+                  equals: 'TRANSFER',
+                },
+                bankTransaction: {
+                  bankStatementDocument: {
+                    accountingClientId: accountingClientRelation.id,
+                  },
+                },
+              },
             ],
           },
           include: {
@@ -1863,6 +1876,19 @@ export class BankService {
                     {
                       documentId: null,
                       chartOfAccountId: { not: null },
+                      bankTransaction: {
+                        bankStatementDocument: {
+                          accountingClientId: accountingClientRelation.id,
+                        },
+                      },
+                    },
+                    {
+                      documentId: null,
+                      chartOfAccountId: null,
+                      matchingCriteria: {
+                        path: ['type'],
+                        equals: 'TRANSFER',
+                      },
                       bankTransaction: {
                         bankStatementDocument: {
                           accountingClientId: accountingClientRelation.id,
