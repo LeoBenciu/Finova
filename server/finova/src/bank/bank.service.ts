@@ -1528,6 +1528,13 @@ export class BankService {
           }
         }
 
+        // Debug transfer suggestions retrieved from database
+        const transferSuggestions = suggestions.filter(s => (s.matchingCriteria as any)?.type === 'TRANSFER');
+        console.log(`🔥 DATABASE TRANSFER SUGGESTIONS DEBUG: Found ${transferSuggestions.length} transfer suggestions`);
+        for (const ts of transferSuggestions) {
+          console.log(`🔥 Transfer Suggestion ID: ${ts.id}, BankTransactionId: ${ts.bankTransactionId}, MatchingCriteria:`, ts.matchingCriteria);
+        }
+
         const items = await Promise.all(
           suggestions.map(async (s) => {
             // Build signed URL for document
@@ -1561,6 +1568,7 @@ export class BankService {
             
             let transferData = null;
             if (isTransferSuggestion) {
+              console.log(`🔥 PROCESSING TRANSFER SUGGESTION: ${s.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
               // Get the destination transaction details
               const destinationTransaction = await this.prisma.bankTransaction.findUnique({
                 where: { id: matchingCriteria.transfer.destinationTransactionId },
@@ -1603,6 +1611,9 @@ export class BankService {
                   impliedFxRate: matchingCriteria.transfer.impliedFxRate,
                   dateDiffDays: matchingCriteria.transfer.daysApart,
                 };
+                console.log(`🔥 BUILT TRANSFER DATA:`, transferData);
+              } else {
+                console.log(`🔥 DESTINATION TRANSACTION NOT FOUND: ${matchingCriteria.transfer.destinationTransactionId}`);
               }
             }
 
