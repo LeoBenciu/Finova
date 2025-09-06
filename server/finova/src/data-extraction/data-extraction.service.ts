@@ -2610,23 +2610,63 @@ export class DataExtractionService {
             }
 
             if (transferSuggestions.length > 0) {
-              this.logger.log(`💾 INSERTING ${transferSuggestions.length} transfer suggestions to database`);
-              const insertResult = await this.prisma.reconciliationSuggestion.createMany({
-                data: transferSuggestions,
-                skipDuplicates: true,
+              // Check for existing transfer suggestions to avoid duplicates
+              const existingTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+                where: {
+                  status: 'PENDING',
+                  matchingCriteria: {
+                    path: ['type'],
+                    equals: 'TRANSFER',
+                  },
+                  bankTransaction: {
+                    bankStatementDocument: {
+                      accountingClientId: accountingClientId,
+                    },
+                  },
+                },
+                select: {
+                  id: true,
+                  bankTransactionId: true,
+                  matchingCriteria: true,
+                },
               });
-              this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
-              this.logger.log(`🔁 Generated ${transferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+              
+              this.logger.log(`🔍 Found ${existingTransferSuggestions.length} existing transfer suggestions`);
+              
+              // Filter out transfer suggestions that already exist
+              const newTransferSuggestions = transferSuggestions.filter(ts => {
+                const existing = existingTransferSuggestions.find(ets => 
+                  ets.bankTransactionId === ts.bankTransactionId &&
+                  (ets.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
+                );
+                if (existing) {
+                  this.logger.log(`🔍 Skipping duplicate transfer suggestion: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
+                }
+                return !existing;
+              });
+              
+              this.logger.log(`💾 INSERTING ${newTransferSuggestions.length} new transfer suggestions to database (${transferSuggestions.length - newTransferSuggestions.length} duplicates skipped)`);
+              
+              if (newTransferSuggestions.length > 0) {
+                const insertResult = await this.prisma.reconciliationSuggestion.createMany({
+                  data: newTransferSuggestions,
+                  skipDuplicates: true,
+                });
+                this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
+              } else {
+                this.logger.log(`💾 No new transfer suggestions to insert (all were duplicates)`);
+              }
+              this.logger.log(`🔁 Generated ${newTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
               this.logger.log(`🔥 TRANSFER SUGGESTIONS CREATED - VERSION 2.0`);
               
               // Add transfer suggestions to the main suggestions array for filtering
-              this.logger.log(`📝 Adding ${transferSuggestions.length} transfer suggestions to main suggestions array (current size: ${suggestions.length})`);
-              suggestions.push(...transferSuggestions);
+              this.logger.log(`📝 Adding ${newTransferSuggestions.length} transfer suggestions to main suggestions array (current size: ${suggestions.length})`);
+              suggestions.push(...newTransferSuggestions);
               this.logger.log(`📝 Main suggestions array size after adding transfers: ${suggestions.length}`);
               this.logger.log(`🔥 TRANSFER SUGGESTIONS ADDED TO ARRAY - VERSION 2.0`);
               
               // Log the transfer suggestions that were added
-              for (const ts of transferSuggestions) {
+              for (const ts of newTransferSuggestions) {
                 this.logger.log(`📝 Added transfer suggestion: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
               }
             } else {
