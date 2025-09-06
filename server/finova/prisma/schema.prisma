@@ -189,12 +189,12 @@ model AccountingCompany {
 }
 
 model AccountingClients {
-  id                   Int                   @id @default(autoincrement())
+  id                   Int                     @id @default(autoincrement())
   accountingCompanyId  Int
   clientCompanyId      Int
-  accountingCompany    AccountingCompany     @relation(fields: [accountingCompanyId], references: [id])
-  clientCompany        ClientCompany         @relation(fields: [clientCompanyId], references: [id])
-  createdAt            DateTime              @default(now())
+  accountingCompany    AccountingCompany       @relation(fields: [accountingCompanyId], references: [id])
+  clientCompany        ClientCompany           @relation(fields: [clientCompanyId], references: [id])
+  createdAt            DateTime                @default(now())
   documents            Document[]
   rpaActions           RpaAction[]
   articles             Article[]
@@ -844,11 +844,11 @@ model AccountBalanceMonthly {
   accountingClientId Int
   accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
 
-  year         Int
-  month        Int              // 1-12
-  accountCode  String
-  endingBalance Decimal         @db.Decimal(16, 2)
-  lastUpdatedAt DateTime        @default(now())
+  year          Int
+  month         Int // 1-12
+  accountCode   String
+  endingBalance Decimal  @db.Decimal(16, 2)
+  lastUpdatedAt DateTime @default(now())
 
   @@unique([accountingClientId, accountCode, year, month])
   @@index([accountingClientId, year, month])

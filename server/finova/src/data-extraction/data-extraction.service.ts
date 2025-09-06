@@ -2610,42 +2610,26 @@ export class DataExtractionService {
             }
 
             if (transferSuggestions.length > 0) {
-              // Check for existing transfer suggestions to avoid duplicates
-              const existingTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+              // Check for existing transfer suggestions by bankTransactionId
+              const bankTransactionIds = transferSuggestions.map(ts => ts.bankTransactionId);
+              const existingSuggestions = await this.prisma.reconciliationSuggestion.findMany({
                 where: {
+                  bankTransactionId: { in: bankTransactionIds },
                   status: 'PENDING',
-                  bankTransaction: {
-                    bankStatementDocument: {
-                      accountingClientId: accountingClientId,
-                    },
-                  },
                 },
                 select: {
-                  id: true,
                   bankTransactionId: true,
                   matchingCriteria: true,
                 },
               });
               
-              // Filter for transfer suggestions in application code
-              const existingTransfers = existingTransferSuggestions.filter(s => 
-                (s.matchingCriteria as any)?.type === 'TRANSFER'
-              );
-              
-              this.logger.log(`🔍 Found ${existingTransfers.length} existing transfer suggestions`);
-              for (const et of existingTransfers) {
-                this.logger.log(`🔍 Existing transfer: ${et.bankTransactionId} -> ${(et.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
-              }
-              
-              // Filter out transfer suggestions that already exist
+              // Filter out duplicates
               const newTransferSuggestions = transferSuggestions.filter(ts => {
-                const existing = existingTransfers.find(ets => 
-                  ets.bankTransactionId === ts.bankTransactionId &&
-                  (ets.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
+                const existing = existingSuggestions.find(es => 
+                  es.bankTransactionId === ts.bankTransactionId &&
+                  (es.matchingCriteria as any)?.type === 'TRANSFER' &&
+                  (es.matchingCriteria as any)?.transfer?.destinationTransactionId === (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
                 );
-                if (existing) {
-                  this.logger.log(`🔍 Skipping duplicate transfer suggestion: ${ts.bankTransactionId} -> ${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`);
-                }
                 return !existing;
               });
               
