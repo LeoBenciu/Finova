@@ -2224,6 +2224,7 @@ export class DataExtractionService {
 
     async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
         this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
+        this.logger.log(`🔥 NEW DEBUG CODE IS EXECUTING - VERSION 2.0`);
         
         try {
           const unreconciled = await this.prisma.document.findMany({
@@ -2616,11 +2617,13 @@ export class DataExtractionService {
               });
               this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
               this.logger.log(`🔁 Generated ${transferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+              this.logger.log(`🔥 TRANSFER SUGGESTIONS CREATED - VERSION 2.0`);
               
               // Add transfer suggestions to the main suggestions array for filtering
               this.logger.log(`📝 Adding ${transferSuggestions.length} transfer suggestions to main suggestions array (current size: ${suggestions.length})`);
               suggestions.push(...transferSuggestions);
               this.logger.log(`📝 Main suggestions array size after adding transfers: ${suggestions.length}`);
+              this.logger.log(`🔥 TRANSFER SUGGESTIONS ADDED TO ARRAY - VERSION 2.0`);
               
               // Log the transfer suggestions that were added
               for (const ts of transferSuggestions) {
