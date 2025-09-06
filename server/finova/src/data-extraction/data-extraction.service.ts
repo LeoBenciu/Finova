@@ -2414,6 +2414,20 @@ export class DataExtractionService {
             ],
           }
         });
+
+        // AGGRESSIVE CLEANUP: Delete ALL existing transfer suggestions for this client to start fresh
+        const deletedTransfers = await this.prisma.reconciliationSuggestion.deleteMany({
+          where: {
+            status: { not: SuggestionStatus.REJECTED },
+            documentId: null,
+            chartOfAccountId: null,
+            bankTransaction: {
+              bankStatementDocument: { accountingClientId }
+            }
+          }
+        });
+        
+        this.logger.warn(`🧹 CLEANUP: Deleted ${deletedTransfers.count} existing transfer suggestions to start fresh`);
     
         const suggestions = [];
 
