@@ -2407,6 +2407,7 @@ export class DataExtractionService {
 
             // Keep track of already paired destination credits to avoid duplicate suggestions
             const usedDestinationIds = new Set<string>();
+            const createdTransferKeys = new Set<string>();
 
             const transferSuggestions: Array<{
               documentId: number | null;
@@ -2570,7 +2571,16 @@ export class DataExtractionService {
 
               if (bestCandidate && bestScore >= 0.5) {
                 const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
+                
+                // Check if we already created this exact transfer suggestion
+                const transferKey = `${src.id}-${dst.id}`;
+                if (createdTransferKeys.has(transferKey)) {
+                  this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER: ${src.id} -> ${dst.id}`);
+                  continue;
+                }
+                
                 usedDestinationIds.add(dst.id);
+                createdTransferKeys.add(transferKey);
 
                 this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
 
