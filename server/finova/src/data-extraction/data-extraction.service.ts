@@ -2619,13 +2619,13 @@ export class DataExtractionService {
               // Keep best candidate per source
               if (score > bestScore) {
                 bestScore = score;
-                bestCandidate = { dst, score, amountDiff, daysApart, reasons, impliedRate };
+                bestCandidate = { dst, score, amountDiff, daysApart, reasons };
                 if (dbgSrc) this.logger.warn(`  [✓] candidate dst=${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`);
               }
             }
 
             if (bestCandidate && bestScore >= 0.5) {
-              const { dst, score, amountDiff, daysApart, reasons, impliedRate } = bestCandidate;
+              const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
               
               // Check if we already created this exact transfer suggestion in this batch
               const transferKey = `${src.id}-${dst.id}`;
@@ -2641,6 +2641,18 @@ export class DataExtractionService {
               existingTransferPairs.add(reverseTransferKey);
 
               this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
+
+              // Recalculate impliedRate for cross-currency transfers
+              const srcAmt = Math.abs(Number(src.amount));
+              const dstAmt = Math.abs(Number(dst.amount));
+              const srcCur = getTxnCurrency(src);
+              const dstCur = getTxnCurrency(dst);
+              let impliedRate: number | undefined;
+              if (srcCur && dstCur && srcCur !== dstCur) {
+                const bigger = Math.max(srcAmt, dstAmt);
+                const smaller = Math.max(1e-6, Math.min(srcAmt, dstAmt));
+                impliedRate = Number((bigger / smaller).toFixed(3));
+              }
 
               const mc = {
                 type: 'TRANSFER',
@@ -2918,16 +2930,37 @@ export class DataExtractionService {
         // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
         const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
         
-        // Also exclude transactions that are part of transfer pairs
+        // Get ALL transfer suggestions from database (not just from filteredSuggestions)
+        const allTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
+          where: {
+            status: { not: SuggestionStatus.REJECTED },
+            bankTransaction: {
+              bankStatementDocument: { accountingClientId }
+            },
+            documentId: null,
+            chartOfAccountId: null,
+          },
+          select: {
+            bankTransactionId: true,
+            matchingCriteria: true
+          }
+        });
+        
+        // Extract all transaction IDs that are part of transfer pairs from database
         const transferTransactionIds = new Set<string>();
-        this.logger.log(`🔍 Checking ${filteredSuggestions.length} filtered suggestions for transfer pairs...`);
-        for (const suggestion of filteredSuggestions) {
-          const matchingCriteria = suggestion.matchingCriteria as any;
-          this.logger.log(`🔍 Suggestion ${suggestion.id}: bankTransactionId=${suggestion.bankTransactionId}, type=${matchingCriteria?.type}, hasTransfer=${!!matchingCriteria?.transfer}`);
-          if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
-            transferTransactionIds.add(suggestion.bankTransactionId);
-            transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
-            this.logger.log(`🔁 Found transfer pair: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
+        this.logger.log(`🔍 Checking ${allTransferSuggestions.length} database transfer suggestions for exclusion...`);
+        
+        for (const suggestion of allTransferSuggestions) {
+          try {
+            const matchingCriteria = suggestion.matchingCriteria as any;
+            this.logger.log(`🔍 DB Transfer suggestion: bankTransactionId=${suggestion.bankTransactionId}, type=${matchingCriteria?.type}, hasTransfer=${!!matchingCriteria?.transfer}`);
+            if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
+              transferTransactionIds.add(suggestion.bankTransactionId);
+              transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
+              this.logger.log(`🔁 Found transfer pair in DB: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
+            }
+          } catch (e) {
+            this.logger.error(`Error processing transfer suggestion ${suggestion.bankTransactionId}:`, e);
           }
         }
         
