@@ -329,6 +329,11 @@ const SuggestionsList: React.FC<Props> = ({
                     </div>
                     {suggestion.matchingCriteria?.type === 'TRANSFER' && suggestion.transfer ? (
                       (() => {
+                        console.log('🔍 FRONTEND TRANSFER DEBUG:', {
+                          suggestionId: suggestion.id,
+                          transfer: suggestion.transfer,
+                          counterpartyTransaction: (suggestion.transfer as any).counterpartyTransaction
+                        });
                         let cp: any = (suggestion.transfer as any).counterpartyTransaction;
                         if (!cp) {
                           const srcId = suggestion.transfer.sourceTransactionId ? String(suggestion.transfer.sourceTransactionId) : undefined;
