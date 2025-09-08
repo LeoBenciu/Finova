@@ -721,6 +721,18 @@ const BankPage = () => {
           }).slice(0, 2);
           
           console.log(`[UI] API Response - ${type} samples (${count} total):`, samples);
+          
+          // Special debug for TRANSFER type
+          if (type === 'TRANSFER') {
+            samples.forEach((sample: any, index: number) => {
+              console.log(`[UI] TRANSFER SAMPLE ${index}:`, {
+                id: sample.id,
+                hasTransfer: !!sample.transfer,
+                transfer: sample.transfer,
+                matchingCriteria: sample.matchingCriteria
+              });
+            });
+          }
         });
       }
     }
@@ -849,6 +861,16 @@ useEffect(() => {
         pageSize: suggestionsItems.length,
         transferCount: transfers.length,
         samples: transfers.slice(0, 5).map(dbgTransfer)
+      });
+      
+      // Debug transfer field specifically
+      transfers.forEach((transfer: any, index: number) => {
+        console.log(`[UI] TRANSFER ITEM ${index} in suggestionsItems:`, {
+          id: transfer.id,
+          hasTransfer: !!transfer.transfer,
+          transfer: transfer.transfer,
+          matchingCriteria: transfer.matchingCriteria
+        });
       });
     }
   }, [suggestionsItems]);
