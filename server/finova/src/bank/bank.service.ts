@@ -2095,6 +2095,23 @@ export class BankService {
         try {
           console.log('[SVC][suggestions][out]', { count: merged.length });
         } catch {}
+        
+        // Debug: Check final response before sending
+        const finalTransferItems = merged.filter((item: any) => item.matchingCriteria?.type === 'TRANSFER');
+        console.log('[SVC][suggestions][final] transfer items:', finalTransferItems.length);
+        if (finalTransferItems.length > 0) {
+          console.log('[SVC][suggestions][final] transfer sample:', {
+            id: finalTransferItems[0].id,
+            hasTransfer: !!finalTransferItems[0].transfer,
+            transfer: finalTransferItems[0].transfer,
+            keys: Object.keys(finalTransferItems[0])
+          });
+        }
+        
+        // Debug: Check if transfer field exists in all items
+        const allItemsWithTransfer = merged.filter((item: any) => item.transfer);
+        console.log('[SVC][suggestions][final] items with transfer field:', allItemsWithTransfer.length);
+        
         return { items: merged, total: mergedTotal };
       }
 
