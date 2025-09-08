@@ -2631,13 +2631,23 @@ export class DataExtractionService {
             if (bestCandidate && bestScore >= 0.5) {
               const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
               
-              // Check if we already created this exact transfer suggestion in this batch
-              const transferKey = `${src.id}-${dst.id}`;
-              const reverseTransferKey = `${dst.id}-${src.id}`;
-              if (createdTransferKeys.has(transferKey) || createdTransferKeys.has(reverseTransferKey)) {
-                this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN BATCH: ${src.id} -> ${dst.id}`);
-                continue;
-              }
+               // Check if we already created this exact transfer suggestion in this batch
+               const transferKey = `${src.id}-${dst.id}`;
+               const reverseTransferKey = `${dst.id}-${src.id}`;
+               if (createdTransferKeys.has(transferKey) || createdTransferKeys.has(reverseTransferKey)) {
+                 this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN BATCH: ${src.id} -> ${dst.id}`);
+                 continue;
+               }
+               
+               // Also check if this exact transfer already exists in the transferSuggestions array
+               const alreadyExists = transferSuggestions.some(ts => 
+                 ts.bankTransactionId === src.id && 
+                 (ts.matchingCriteria as any)?.transfer?.destinationTransactionId === dst.id
+               );
+               if (alreadyExists) {
+                 this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN ARRAY: ${src.id} -> ${dst.id}`);
+                 continue;
+               }
               
               usedDestinationIds.add(dst.id);
               createdTransferKeys.add(transferKey);

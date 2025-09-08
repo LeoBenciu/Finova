@@ -1561,6 +1561,16 @@ export class BankService {
                   bankStatementDocument: true,
                 },
               });
+              
+              console.log(`🔥 DESTINATION TRANSACTION QUERY RESULT:`, destinationTransaction ? 'FOUND' : 'NOT FOUND');
+              if (destinationTransaction) {
+                console.log(`🔥 DESTINATION TRANSACTION DETAILS:`, {
+                  id: destinationTransaction.id,
+                  description: destinationTransaction.description,
+                  amount: destinationTransaction.amount,
+                  transactionType: destinationTransaction.transactionType
+                });
+              }
 
               if (destinationTransaction) {
                 // Build signed URL for destination transaction's bank statement
