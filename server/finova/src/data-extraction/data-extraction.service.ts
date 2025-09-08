@@ -2642,7 +2642,7 @@ export class DataExtractionService {
 
               this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
 
-              // Recalculate impliedRate for cross-currency transfers
+              // Calculate impliedRate for cross-currency transfers
               const srcAmt = Math.abs(Number(src.amount));
               const dstAmt = Math.abs(Number(dst.amount));
               const srcCur = getTxnCurrency(src);
