@@ -2444,12 +2444,16 @@ export class DataExtractionService {
           const credits = unreconciliedTransactions.filter(t => t.transactionType === 'CREDIT');
           const debits = unreconciliedTransactions.filter(t => t.transactionType === 'DEBIT');
           
-          this.logger.log(`🔁 Transfer candidates: ${credits.length} credits, ${debits.length} debits`);
-          
-          // Check if our target transactions are in the right categories
-          const targetCredits = credits.filter(t => t.id === '110-0-1756203049797');
-          const targetDebits = debits.filter(t => t.id === '111-0-1756209938791');
-          this.logger.log(`🎯 Target transactions in categories: credits=${targetCredits.length}, debits=${targetDebits.length}`);
+           this.logger.log(`🔁 Transfer candidates: ${credits.length} credits, ${debits.length} debits`);
+           
+           // Check if our target transactions are in the right categories
+           const targetCredits = credits.filter(t => t.id === '110-0-1756203049797' || t.id === '113-0-1757150333605');
+           const targetDebits = debits.filter(t => t.id === '111-0-1756209938791' || t.id === '112-0-1757144193573');
+           this.logger.log(`🎯 Target transactions in categories: credits=${targetCredits.length}, debits=${targetDebits.length}`);
+           
+           // Log all credit and debit IDs for debugging
+           this.logger.log(`🔍 All credit IDs: [${credits.map(t => t.id).join(', ')}]`);
+           this.logger.log(`🔍 All debit IDs: [${debits.map(t => t.id).join(', ')}]`);
 
           // Keep track of already paired destination credits to avoid duplicate suggestions
           const usedDestinationIds = new Set<string>();
@@ -2702,40 +2706,43 @@ export class DataExtractionService {
             }
           }
 
-          if (transferSuggestions.length > 0) {
-            // Remove duplicates within the same batch (extra safety)
-            const uniqueTransferSuggestions = [];
-            const seen = new Set();
-            let duplicatesSkipped = 0;
-            
-            for (const ts of transferSuggestions) {
-              const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
-              const reverseKey = `${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}-${ts.bankTransactionId}`;
-              if (!seen.has(key) && !seen.has(reverseKey)) {
-                seen.add(key);
-                seen.add(reverseKey);
-                uniqueTransferSuggestions.push(ts);
-              } else {
-                duplicatesSkipped++;
-              }
-            }
-            
-            this.logger.log(`🔁 Filtered ${transferSuggestions.length} transfer suggestions to ${uniqueTransferSuggestions.length} unique (${duplicatesSkipped} duplicates skipped)`);
-            
-            if (uniqueTransferSuggestions.length > 0) {
-              const insertResult = await this.prisma.reconciliationSuggestion.createMany({
-                data: uniqueTransferSuggestions,
-                skipDuplicates: true,
-              });
-              this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
-            }
-            this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
-            
-            // Add transfer suggestions to the main suggestions array for filtering
-            suggestions.push(...uniqueTransferSuggestions);
-          } else {
-            this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
-          }
+           this.logger.log(`🔍 TRANSFER GENERATION COMPLETE: Created ${transferSuggestions.length} transfer suggestions`);
+           
+           if (transferSuggestions.length > 0) {
+             // Remove duplicates within the same batch (extra safety)
+             const uniqueTransferSuggestions = [];
+             const seen = new Set();
+             let duplicatesSkipped = 0;
+             
+             for (const ts of transferSuggestions) {
+               const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
+               const reverseKey = `${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}-${ts.bankTransactionId}`;
+               if (!seen.has(key) && !seen.has(reverseKey)) {
+                 seen.add(key);
+                 seen.add(reverseKey);
+                 uniqueTransferSuggestions.push(ts);
+               } else {
+                 duplicatesSkipped++;
+               }
+             }
+             
+             this.logger.log(`🔁 Filtered ${transferSuggestions.length} transfer suggestions to ${uniqueTransferSuggestions.length} unique (${duplicatesSkipped} duplicates skipped)`);
+             
+             if (uniqueTransferSuggestions.length > 0) {
+               const insertResult = await this.prisma.reconciliationSuggestion.createMany({
+                 data: uniqueTransferSuggestions,
+                 skipDuplicates: true,
+               });
+               this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
+             }
+             this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
+             
+             // Add transfer suggestions to the main suggestions array for filtering
+             suggestions.push(...uniqueTransferSuggestions);
+           } else {
+             this.logger.warn(`❌ NO TRANSFER SUGGESTIONS CREATED!`);
+             this.logger.warn(`❌ This means both transactions will be treated as standalone transactions!`);
+           }
         } catch (e) {
           this.logger.error(`Transfer suggestion generation failed: ${e.message}`);
         }
