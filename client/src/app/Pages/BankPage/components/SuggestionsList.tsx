@@ -127,6 +127,12 @@ const SuggestionsList: React.FC<Props> = ({
           <div className="space-y-6">
             {displayedSuggestions.map((s) => {
               const suggestion = s as Suggestion;
+              console.log('🔍 ALL SUGGESTIONS DEBUG:', {
+                id: suggestion.id,
+                matchingCriteria: suggestion.matchingCriteria,
+                hasTransfer: !!suggestion.transfer,
+                transfer: suggestion.transfer
+              });
               return (
               <motion.div
                 key={suggestion.id}
