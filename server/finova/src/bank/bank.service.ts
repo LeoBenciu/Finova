@@ -1658,7 +1658,10 @@ export class BankService {
               console.log(`🔥 FINAL RESPONSE ITEM FOR TRANSFER:`, {
                 id: responseItem.id,
                 hasTransfer: !!responseItem.transfer,
-                transfer: responseItem.transfer
+                transfer: responseItem.transfer,
+                transferData: transferData,
+                isTransferDataNull: transferData === null,
+                isTransferDataUndefined: transferData === undefined
               });
             }
             
@@ -1815,6 +1818,17 @@ export class BankService {
         console.log('[TransferSuggestions] normal built transferItems count =', transferItems.length);
         if (transferItems.length) {
           console.log('[TransferSuggestions] normal sample transferItems ids (max 5) =', transferItems.slice(0, 5).map((i: any) => i.id));
+        }
+        
+        // Debug: Check what's in the items array before merging
+        const dbTransferItems = items.filter((item: any) => item.matchingCriteria?.type === 'TRANSFER');
+        console.log('[TransferSuggestions] DB transfer items count =', dbTransferItems.length);
+        if (dbTransferItems.length) {
+          console.log('[TransferSuggestions] DB transfer items sample:', dbTransferItems.slice(0, 3).map((item: any) => ({
+            id: item.id,
+            hasTransfer: !!item.transfer,
+            transfer: item.transfer
+          })));
         }
 
         // Merge and adjust totals. Keep original order by confidenceScore across both.
