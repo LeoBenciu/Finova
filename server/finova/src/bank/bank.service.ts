@@ -2085,6 +2085,22 @@ export class BankService {
             try {
               console.log('[SVC][suggestions][out]', { count: merged2.length });
             } catch {}
+            
+            // Debug: Check final response before sending (path 1)
+            const finalTransferItems2 = merged2.filter((item: any) => item.matchingCriteria?.type === 'TRANSFER');
+            console.log('[SVC][suggestions][final2] transfer items:', finalTransferItems2.length);
+            if (finalTransferItems2.length > 0) {
+              console.log('[SVC][suggestions][final2] transfer sample:', {
+                id: finalTransferItems2[0].id,
+                hasTransfer: !!finalTransferItems2[0].transfer,
+                transfer: finalTransferItems2[0].transfer,
+                keys: Object.keys(finalTransferItems2[0])
+              });
+            }
+            
+            const allItemsWithTransfer2 = merged2.filter((item: any) => item.transfer);
+            console.log('[SVC][suggestions][final2] items with transfer field:', allItemsWithTransfer2.length);
+            
             return { items: merged2, total: newTotal + transferItems2.length };
           } catch (error) {
             console.error('Failed to generate suggestions:', error);
