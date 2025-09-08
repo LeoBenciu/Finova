@@ -1612,7 +1612,7 @@ export class BankService {
               }
             }
 
-            return {
+            const responseItem = {
               id: s.id,
               confidenceScore: s.confidenceScore,
               matchingCriteria: s.matchingCriteria,
@@ -1653,6 +1653,16 @@ export class BankService {
                 : null,
               transfer: transferData,
             };
+            
+            if (isTransferSuggestion) {
+              console.log(`🔥 FINAL RESPONSE ITEM FOR TRANSFER:`, {
+                id: responseItem.id,
+                hasTransfer: !!responseItem.transfer,
+                transfer: responseItem.transfer
+              });
+            }
+            
+            return responseItem;
           })
         );
 

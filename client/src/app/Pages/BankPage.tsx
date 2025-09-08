@@ -930,10 +930,6 @@ useEffect(() => {
 
   const filteredDocuments = useMemo(() => {
     const dList: Document[] = Array.isArray(documentsData) ? documentsData : [];
-    console.log(`🔍 DOCUMENT FILTERING DEBUG:`);
-    console.log(`📄 Total documents: ${dList.length}`);
-    console.log(`🔍 Filter status: ${filterStatus}`);
-    console.log(`🔍 Search term: '${searchTerm}'`);
     
     if (dList.length === 0) {
       console.log(`❌ No documents to filter`);
