@@ -1524,6 +1524,17 @@ export class BankService {
 
         const items = await Promise.all(
           suggestions.map(async (s) => {
+            // Debug: Log the raw suggestion data from database
+            console.log(`🔥 RAW SUGGESTION DATA:`, {
+              suggestionId: s.id,
+              bankTransactionId: s.bankTransactionId,
+              hasBankTransaction: !!s.bankTransaction,
+              bankTransactionKeys: s.bankTransaction ? Object.keys(s.bankTransaction) : 'null',
+              bankStatementDocumentId: s.bankTransaction?.bankStatementDocumentId,
+              hasBankStatementDocument: !!s.bankTransaction?.bankStatementDocument,
+              bankStatementDocumentKeys: s.bankTransaction?.bankStatementDocument ? Object.keys(s.bankTransaction.bankStatementDocument) : 'null',
+              fullBankTransaction: s.bankTransaction
+            });
             // Build signed URL for document
             let documentSignedUrl: string | null = null;
             if (s.document) {
@@ -1573,7 +1584,8 @@ export class BankService {
               bankTransactionId: s.bankTransactionId,
               hasBankTransaction: !!s.bankTransaction,
               hasBankStatementDocument: !!s.bankTransaction?.bankStatementDocument,
-              bankStatementDocument: s.bankTransaction?.bankStatementDocument
+              bankStatementDocument: s.bankTransaction?.bankStatementDocument,
+              fullBankTransaction: s.bankTransaction
             });
             
             if (s.bankTransaction?.bankStatementDocument) {

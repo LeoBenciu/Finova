@@ -665,6 +665,13 @@ const BankPage = () => {
 
   useEffect(() => {
     console.log('suggestionsResp', suggestionsResp);
+    if (suggestionsResp?.items) {
+      console.log('🔍 API RESPONSE DEBUG - First suggestion:', suggestionsResp.items[0]);
+      if (suggestionsResp.items[0]?.bankTransaction) {
+        console.log('🔍 API RESPONSE DEBUG - Bank Transaction:', suggestionsResp.items[0].bankTransaction);
+        console.log('🔍 API RESPONSE DEBUG - Bank Statement Document:', suggestionsResp.items[0].bankTransaction.bankStatementDocument);
+      }
+    }
   }, [suggestionsResp]);
   
   // Robust extraction of suggestions data with fallbacks
