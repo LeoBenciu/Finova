@@ -2225,6 +2225,7 @@ export class DataExtractionService {
     private generationInProgress = new Set<number>();
 
     async generateReconciliationSuggestions(accountingClientId: number): Promise<void> {
+        this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId} at ${new Date().toISOString()}`);
       // Prevent multiple simultaneous generations for the same client
       if (this.generationInProgress.has(accountingClientId)) {
           this.logger.log(`⏳ Generation already in progress for client ${accountingClientId}, skipping`);

@@ -1692,6 +1692,17 @@ export class BankService {
               });
             }
             
+            // Debug: Check if signed URLs are in the final response
+            console.log(`🔥 FINAL RESPONSE SIGNED URLS:`, {
+              suggestionId: responseItem.id,
+              hasDocument: !!responseItem.document,
+              documentSignedUrl: responseItem.document?.signedUrl,
+              hasBankTransaction: !!responseItem.bankTransaction,
+              bankStatementSignedUrl: responseItem.bankTransaction?.bankStatementDocument?.signedUrl,
+              hasTransfer: !!responseItem.transfer,
+              transferCounterpartySignedUrl: responseItem.transfer?.counterpartyTransaction?.bankStatementDocument?.signedUrl
+            });
+            
             return responseItem;
           })
         );
@@ -2039,48 +2050,48 @@ export class BankService {
               }
               
               return {
-                id: s.id,
-                confidenceScore: s.confidenceScore,
-                matchingCriteria: s.matchingCriteria,
-                reasons: s.reasons,
-                createdAt: s.createdAt,
-                document: s.document
-                  ? (() => {
-                      let totalAmount: number | null = null;
-                      try {
-                        const extracted = s.document.processedData?.extractedFields;
-                        if (extracted) {
-                          const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
-                          const result = (parsed as any).result || parsed;
-                          totalAmount = result?.total_amount ?? null;
-                        }
-                      } catch (_) {
+              id: s.id,
+              confidenceScore: s.confidenceScore,
+              matchingCriteria: s.matchingCriteria,
+              reasons: s.reasons,
+              createdAt: s.createdAt,
+              document: s.document
+                ? (() => {
+                    let totalAmount: number | null = null;
+                    try {
+                      const extracted = s.document.processedData?.extractedFields;
+                      if (extracted) {
+                        const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
+                        const result = (parsed as any).result || parsed;
+                        totalAmount = result?.total_amount ?? null;
                       }
-                      return {
-                        id: s.document.id,
-                        name: s.document.name,
-                        type: s.document.type,
-                        total_amount: totalAmount,
-                      };
-                    })()
-                  : null,
-                bankTransaction: s.bankTransaction
-                  ? {
-                      id: s.bankTransaction.id,
-                      description: s.bankTransaction.description,
-                      amount: s.bankTransaction.amount,
-                      transactionDate: s.bankTransaction.transactionDate,
-                      transactionType: s.bankTransaction.transactionType,
+                    } catch (_) {
                     }
-                  : null,
-                chartOfAccount: s.chartOfAccount
-                  ? ({
-                      code: s.chartOfAccount.accountCode,
-                      name: s.chartOfAccount.accountName,
-                      accountCode: s.chartOfAccount.accountCode,
-                      accountName: s.chartOfAccount.accountName,
-                    } as any)
-                  : null,
+                    return {
+                      id: s.document.id,
+                      name: s.document.name,
+                      type: s.document.type,
+                      total_amount: totalAmount,
+                    };
+                  })()
+                : null,
+              bankTransaction: s.bankTransaction
+                ? {
+                    id: s.bankTransaction.id,
+                    description: s.bankTransaction.description,
+                    amount: s.bankTransaction.amount,
+                    transactionDate: s.bankTransaction.transactionDate,
+                    transactionType: s.bankTransaction.transactionType,
+                  }
+                : null,
+              chartOfAccount: s.chartOfAccount
+                ? ({
+                    code: s.chartOfAccount.accountCode,
+                    name: s.chartOfAccount.accountName,
+                    accountCode: s.chartOfAccount.accountCode,
+                    accountName: s.chartOfAccount.accountName,
+                  } as any)
+                : null,
                 transfer: transferData,
               };
             }));
