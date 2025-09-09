@@ -1527,13 +1527,23 @@ export class BankService {
             // Build signed URL for document
             let documentSignedUrl: string | null = null;
             if (s.document) {
-              documentSignedUrl = s.document.s3Key
-                ? await s3.getSignedUrlPromise('getObject', {
-                  Bucket: process.env.AWS_S3_BUCKET_NAME,
-                  Key: s.document.s3Key,
-                  Expires: 3600,
-                })
-                : s.document.path;
+              try {
+                documentSignedUrl = s.document.s3Key
+                  ? await s3.getSignedUrlPromise('getObject', {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: s.document.s3Key,
+                    Expires: 3600,
+                  })
+                  : s.document.path;
+              } catch (error) {
+                console.error(`🔥 ERROR GENERATING DOCUMENT SIGNED URL:`, {
+                  suggestionId: s.id,
+                  documentId: s.document.id,
+                  s3Key: s.document.s3Key,
+                  error: error.message
+                });
+                documentSignedUrl = s.document.path; // Fallback to path
+              }
               
               console.log(`🔥 DOCUMENT SIGNED URL DEBUG:`, {
                 suggestionId: s.id,
@@ -1558,13 +1568,23 @@ export class BankService {
             
             if (s.bankTransaction?.bankStatementDocument) {
               const bsDoc = s.bankTransaction.bankStatementDocument;
-              bankStatementSignedUrl = bsDoc.s3Key
-                ? await s3.getSignedUrlPromise('getObject', {
-                  Bucket: process.env.AWS_S3_BUCKET_NAME,
-                  Key: bsDoc.s3Key,
-                  Expires: 3600,
-                })
-                : bsDoc.path;
+              try {
+                bankStatementSignedUrl = bsDoc.s3Key
+                  ? await s3.getSignedUrlPromise('getObject', {
+                    Bucket: process.env.AWS_S3_BUCKET_NAME,
+                    Key: bsDoc.s3Key,
+                    Expires: 3600,
+                  })
+                  : bsDoc.path;
+              } catch (error) {
+                console.error(`🔥 ERROR GENERATING SIGNED URL:`, {
+                  suggestionId: s.id,
+                  bankTransactionId: s.bankTransactionId,
+                  s3Key: bsDoc.s3Key,
+                  error: error.message
+                });
+                bankStatementSignedUrl = bsDoc.path; // Fallback to path
+              }
               
               console.log(`🔥 MAIN TRANSACTION SIGNED URL DEBUG:`, {
                 suggestionId: s.id,
@@ -1612,13 +1632,23 @@ export class BankService {
                 // Build signed URL for destination transaction's bank statement
                 let dstBankStmtUrl: string | null = null;
                 if (destinationTransaction.bankStatementDocument) {
-                  dstBankStmtUrl = destinationTransaction.bankStatementDocument.s3Key
-                    ? await s3.getSignedUrlPromise('getObject', {
-                        Bucket: process.env.AWS_S3_BUCKET_NAME,
-                        Key: destinationTransaction.bankStatementDocument.s3Key,
-                        Expires: 3600,
-                      })
-                    : destinationTransaction.bankStatementDocument.path;
+                  try {
+                    dstBankStmtUrl = destinationTransaction.bankStatementDocument.s3Key
+                      ? await s3.getSignedUrlPromise('getObject', {
+                          Bucket: process.env.AWS_S3_BUCKET_NAME,
+                          Key: destinationTransaction.bankStatementDocument.s3Key,
+                          Expires: 3600,
+                        })
+                      : destinationTransaction.bankStatementDocument.path;
+                  } catch (error) {
+                    console.error(`🔥 ERROR GENERATING DESTINATION SIGNED URL:`, {
+                      suggestionId: s.id,
+                      destinationTransactionId: destinationTransaction.id,
+                      s3Key: destinationTransaction.bankStatementDocument.s3Key,
+                      error: error.message
+                    });
+                    dstBankStmtUrl = destinationTransaction.bankStatementDocument.path; // Fallback to path
+                  }
                 }
 
                 transferData = {
@@ -1719,6 +1749,12 @@ export class BankService {
               hasTransfer: !!responseItem.transfer,
               transferCounterpartySignedUrl: responseItem.transfer?.counterpartyTransaction?.bankStatementDocument?.signedUrl,
               fullBankTransaction: responseItem.bankTransaction
+            });
+            
+            // Additional debug: Log the complete response item structure
+            console.log(`🔥 COMPLETE RESPONSE ITEM STRUCTURE:`, {
+              suggestionId: responseItem.id,
+              fullResponseItem: JSON.stringify(responseItem, null, 2)
             });
             
             // Debug: Check if the bankStatementDocument is being constructed correctly

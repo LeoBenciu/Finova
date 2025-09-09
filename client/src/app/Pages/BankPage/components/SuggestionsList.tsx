@@ -156,6 +156,23 @@ const SuggestionsList: React.FC<Props> = ({
                     </div>
                   </div>
                   <div className="flex gap-2">
+                    {/* Debug button to log suggestion data */}
+                    <button
+                      onClick={() => {
+                        console.log('🔍 DEBUG SUGGESTION DATA:', {
+                          suggestionId: suggestion.id,
+                          fullSuggestion: suggestion,
+                          bankTransaction: suggestion.bankTransaction,
+                          bankStatementDocument: suggestion.bankTransaction?.bankStatementDocument,
+                          transfer: suggestion.transfer,
+                          document: suggestion.document
+                        });
+                      }}
+                      className="px-2 py-1 bg-gray-500 text-white rounded text-xs"
+                      title="Debug suggestion data"
+                    >
+                      Debug
+                    </button>
                     <button
                       onClick={async () => {
                         const suggestionId = String(suggestion.id);
@@ -316,8 +333,14 @@ const SuggestionsList: React.FC<Props> = ({
                               path: cp?.bankStatementDocument?.path,
                               fullStructure: cp
                             });
-                            if (cp?.bankStatementDocument?.signedUrl) {
-                              window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
+                            
+                            // Try to open the document with signed URL or fallback to path
+                            const urlToOpen = cp?.bankStatementDocument?.signedUrl || cp?.bankStatementDocument?.path;
+                            if (urlToOpen) {
+                              window.open(urlToOpen, '_blank', 'noopener,noreferrer');
+                            } else {
+                              console.warn('No signed URL or path available for counterparty bank statement document');
+                              alert(language === 'ro' ? 'Documentul nu este disponibil momentan' : 'Document is not available at the moment');
                             }
                           }}
                           className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -336,8 +359,14 @@ const SuggestionsList: React.FC<Props> = ({
                               path: doc?.path,
                               fullStructure: doc
                             });
-                            if (doc?.signedUrl || doc?.path) {
-                              window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
+                            
+                            // Try to open the document with signed URL or fallback to path
+                            const urlToOpen = doc?.signedUrl || doc?.path;
+                            if (urlToOpen) {
+                              window.open(urlToOpen, '_blank', 'noopener,noreferrer');
+                            } else {
+                              console.warn('No signed URL or path available for document');
+                              alert(language === 'ro' ? 'Documentul nu este disponibil momentan' : 'Document is not available at the moment');
                             }
                           }}
                           className="p-1 hover:bg-gray-100 bg-[var(--primary)]/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -516,8 +545,14 @@ const SuggestionsList: React.FC<Props> = ({
                               path: txn?.bankStatementDocument?.path,
                               fullStructure: txn
                             });
-                            if (txn?.bankStatementDocument?.signedUrl) {
-                              window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
+                            
+                            // Try to open the document with signed URL or fallback to path
+                            const urlToOpen = txn?.bankStatementDocument?.signedUrl || txn?.bankStatementDocument?.path;
+                            if (urlToOpen) {
+                              window.open(urlToOpen, '_blank', 'noopener,noreferrer');
+                            } else {
+                              console.warn('No signed URL or path available for bank statement document');
+                              alert(language === 'ro' ? 'Documentul nu este disponibil momentan' : 'Document is not available at the moment');
                             }
                           }}
                           className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
