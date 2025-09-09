@@ -1735,7 +1735,10 @@ export class BankService {
               bankStatementDocumentId: s.bankTransaction?.bankStatementDocument?.id,
               bankStatementDocumentName: s.bankTransaction?.bankStatementDocument?.name,
               bankStatementSignedUrl: bankStatementSignedUrl,
-              bankStatementPath: s.bankTransaction?.bankStatementDocument?.path
+              bankStatementPath: s.bankTransaction?.bankStatementDocument?.path,
+              hasDocument: !!s.document,
+              documentSignedUrl: documentSignedUrl,
+              documentPath: s.document?.path
             });
 
             const responseItem = {
@@ -1819,6 +1822,15 @@ export class BankService {
               hasBankStatementDocument: !!responseItem.bankTransaction?.bankStatementDocument,
               bankStatementDocument: responseItem.bankTransaction?.bankStatementDocument,
               bankTransactionKeys: responseItem.bankTransaction ? Object.keys(responseItem.bankTransaction) : 'null'
+            });
+            
+            // Debug: Check if document is in the response
+            console.log(`🔥 RESPONSE DOCUMENT DEBUG:`, {
+              suggestionId: responseItem.id,
+              hasDocument: !!responseItem.document,
+              documentSignedUrl: responseItem.document?.signedUrl,
+              documentPath: responseItem.document?.path,
+              documentKeys: responseItem.document ? Object.keys(responseItem.document) : 'null'
             });
             
             // Debug: Check if the bankStatementDocument is being constructed correctly
