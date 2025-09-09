@@ -2428,6 +2428,23 @@ export class DataExtractionService {
         });
         
         this.logger.warn(`🧹 CLEANUP: Deleted ${deletedTransfers.count} existing transfer suggestions to start fresh`);
+        
+        // Debug: Check if there are any remaining transfer suggestions after cleanup
+        const remainingTransfers = await this.prisma.reconciliationSuggestion.findMany({
+          where: {
+            status: { not: SuggestionStatus.REJECTED },
+            documentId: null,
+            chartOfAccountId: null,
+            bankTransaction: {
+              bankStatementDocument: { accountingClientId }
+            }
+          },
+          select: { id: true, bankTransactionId: true, matchingCriteria: true }
+        });
+        
+        this.logger.log(`🔍 POST-CLEANUP: Found ${remainingTransfers.length} remaining transfer suggestions:`, 
+          remainingTransfers.map(t => ({ id: t.id, bankTransactionId: t.bankTransactionId, type: (t.matchingCriteria as any)?.type }))
+        );
     
         const suggestions = [];
 
@@ -2527,6 +2544,7 @@ export class DataExtractionService {
             for (const dst of credits) {
               if (usedDestinationIds.has(dst.id)) {
                 if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: already used`);
+                this.logger.log(`🔍 DUPLICATE PREVENTION: Skipping destination ${dst.id} - already in usedDestinationIds`);
                 continue;
               }
               if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
@@ -2636,6 +2654,7 @@ export class DataExtractionService {
                const reverseTransferKey = `${dst.id}-${src.id}`;
                if (createdTransferKeys.has(transferKey) || createdTransferKeys.has(reverseTransferKey)) {
                  this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN BATCH: ${src.id} -> ${dst.id}`);
+                 this.logger.log(`🔍 DUPLICATE PREVENTION: transferKey=${transferKey}, reverseTransferKey=${reverseTransferKey}, hasTransferKey=${createdTransferKeys.has(transferKey)}, hasReverseKey=${createdTransferKeys.has(reverseTransferKey)}`);
                  continue;
                }
                
@@ -2646,6 +2665,7 @@ export class DataExtractionService {
                );
                if (alreadyExists) {
                  this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN ARRAY: ${src.id} -> ${dst.id}`);
+                 this.logger.log(`🔍 DUPLICATE PREVENTION: Found existing transfer in array, count=${transferSuggestions.length}`);
                  continue;
                }
               

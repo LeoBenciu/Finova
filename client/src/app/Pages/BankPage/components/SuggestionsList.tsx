@@ -311,7 +311,6 @@ const SuggestionsList: React.FC<Props> = ({
                               window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
                             }
                           }}
-                          disabled={!((suggestion.transfer.counterpartyTransaction as any)?.bankStatementDocument?.signedUrl)}
                           className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title={language === 'ro' ? 'Vezi extrasul băncii (contraparte)' : 'View bank statement (counterparty)'}
                         >
@@ -325,7 +324,6 @@ const SuggestionsList: React.FC<Props> = ({
                               window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
                             }
                           }}
-                          disabled={!(suggestion.document as any)?.signedUrl && !(suggestion.document as any)?.path}
                           className="p-1 hover:bg-gray-100 bg-[var(--primary)]/20 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title={language === 'ro' ? 'Vezi documentul' : 'View document'}
                         >
@@ -498,7 +496,6 @@ const SuggestionsList: React.FC<Props> = ({
                               window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
                             }
                           }}
-                          disabled={!(suggestion.bankTransaction as any)?.bankStatementDocument?.signedUrl}
                           className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
                         >
