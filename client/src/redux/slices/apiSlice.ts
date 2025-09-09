@@ -627,7 +627,10 @@ export const finovaApi = createApi({
                     itemsCount: response.items?.length || 0,
                     firstItem: response.items?.[0],
                     firstItemBankTransaction: response.items?.[0]?.bankTransaction,
-                    firstItemBankStatementDocument: response.items?.[0]?.bankTransaction?.bankStatementDocument
+                    firstItemBankStatementDocument: response.items?.[0]?.bankTransaction?.bankStatementDocument,
+                    firstItemDocument: response.items?.[0]?.document,
+                    firstItemDocumentSignedUrl: response.items?.[0]?.document?.signedUrl,
+                    firstItemDocumentPath: response.items?.[0]?.document?.path
                 });
                 return { items: response.items ?? [], total: response.total ?? 0 };
             },
