@@ -307,6 +307,15 @@ const SuggestionsList: React.FC<Props> = ({
                         <button
                           onClick={() => {
                             const cp = suggestion.transfer!.counterpartyTransaction as any;
+                            console.log('🔍 FRONTEND TRANSFER COUNTERPARTY EYE BUTTON:', {
+                              suggestionId: suggestion.id,
+                              hasTransfer: !!suggestion.transfer,
+                              hasCounterpartyTransaction: !!cp,
+                              hasBankStatementDocument: !!cp?.bankStatementDocument,
+                              signedUrl: cp?.bankStatementDocument?.signedUrl,
+                              path: cp?.bankStatementDocument?.path,
+                              fullStructure: cp
+                            });
                             if (cp?.bankStatementDocument?.signedUrl) {
                               window.open(cp.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
                             }
@@ -320,6 +329,13 @@ const SuggestionsList: React.FC<Props> = ({
                         <button
                           onClick={() => {
                             const doc = suggestion.document as any;
+                            console.log('🔍 FRONTEND DOCUMENT EYE BUTTON:', {
+                              suggestionId: suggestion.id,
+                              hasDocument: !!suggestion.document,
+                              signedUrl: doc?.signedUrl,
+                              path: doc?.path,
+                              fullStructure: doc
+                            });
                             if (doc?.signedUrl || doc?.path) {
                               window.open(doc.signedUrl || doc.path, '_blank', 'noopener,noreferrer');
                             }
@@ -492,6 +508,14 @@ const SuggestionsList: React.FC<Props> = ({
                         <button
                           onClick={() => {
                             const txn = suggestion.bankTransaction as any;
+                            console.log('🔍 FRONTEND MAIN TRANSACTION EYE BUTTON:', {
+                              suggestionId: suggestion.id,
+                              hasBankTransaction: !!suggestion.bankTransaction,
+                              hasBankStatementDocument: !!txn?.bankStatementDocument,
+                              signedUrl: txn?.bankStatementDocument?.signedUrl,
+                              path: txn?.bankStatementDocument?.path,
+                              fullStructure: txn
+                            });
                             if (txn?.bankStatementDocument?.signedUrl) {
                               window.open(txn.bankStatementDocument.signedUrl, '_blank', 'noopener,noreferrer');
                             }

@@ -2229,10 +2229,12 @@ export class DataExtractionService {
       // Prevent multiple simultaneous generations for the same client
       if (this.generationInProgress.has(accountingClientId)) {
           this.logger.log(`⏳ Generation already in progress for client ${accountingClientId}, skipping`);
+          this.logger.log(`🔍 CONCURRENCY LOCK: generationInProgress has ${this.generationInProgress.size} items: [${Array.from(this.generationInProgress).join(', ')}]`);
           return;
       }
       
       this.generationInProgress.add(accountingClientId);
+      this.logger.log(`🔍 CONCURRENCY LOCK: Added client ${accountingClientId} to generationInProgress, now has ${this.generationInProgress.size} items: [${Array.from(this.generationInProgress).join(', ')}]`);
       this.logger.log(`🚀 STARTING generateReconciliationSuggestions for client ${accountingClientId}`);
       
       try {
@@ -3104,6 +3106,7 @@ export class DataExtractionService {
         this.logger.error(`Failed to generate reconciliation suggestions: ${error.message}`);
       } finally {
         this.generationInProgress.delete(accountingClientId);
+        this.logger.log(`🔍 CONCURRENCY LOCK: Removed client ${accountingClientId} from generationInProgress, now has ${this.generationInProgress.size} items: [${Array.from(this.generationInProgress).join(', ')}]`);
       }
     }
       
