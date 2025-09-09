@@ -621,6 +621,14 @@ export const finovaApi = createApi({
             }),
             transformResponse: (response: any) => {
                 if (!response) return { items: [], total: 0 };
+                console.log('🔍 API SLICE TRANSFORM RESPONSE:', {
+                    hasResponse: !!response,
+                    hasItems: !!response.items,
+                    itemsCount: response.items?.length || 0,
+                    firstItem: response.items?.[0],
+                    firstItemBankTransaction: response.items?.[0]?.bankTransaction,
+                    firstItemBankStatementDocument: response.items?.[0]?.bankTransaction?.bankStatementDocument
+                });
                 return { items: response.items ?? [], total: response.total ?? 0 };
             },
             providesTags: ['BankReconciliation']

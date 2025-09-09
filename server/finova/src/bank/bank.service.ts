@@ -1708,6 +1708,17 @@ export class BankService {
               }
             }
 
+            // Debug: Check what we're about to put in the response
+            console.log(`🔥 PRE-RESPONSE CONSTRUCTION DEBUG:`, {
+              suggestionId: s.id,
+              hasBankTransaction: !!s.bankTransaction,
+              hasBankStatementDocument: !!s.bankTransaction?.bankStatementDocument,
+              bankStatementDocumentId: s.bankTransaction?.bankStatementDocument?.id,
+              bankStatementDocumentName: s.bankTransaction?.bankStatementDocument?.name,
+              bankStatementSignedUrl: bankStatementSignedUrl,
+              bankStatementPath: s.bankTransaction?.bankStatementDocument?.path
+            });
+
             const responseItem = {
               id: s.id,
               confidenceScore: s.confidenceScore,
@@ -1787,7 +1798,8 @@ export class BankService {
               suggestionId: responseItem.id,
               hasBankTransaction: !!responseItem.bankTransaction,
               hasBankStatementDocument: !!responseItem.bankTransaction?.bankStatementDocument,
-              bankStatementDocument: responseItem.bankTransaction?.bankStatementDocument
+              bankStatementDocument: responseItem.bankTransaction?.bankStatementDocument,
+              bankTransactionKeys: responseItem.bankTransaction ? Object.keys(responseItem.bankTransaction) : 'null'
             });
             
             // Debug: Check if the bankStatementDocument is being constructed correctly
