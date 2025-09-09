@@ -1782,6 +1782,14 @@ export class BankService {
               fullResponseItem: JSON.stringify(responseItem, null, 2)
             });
             
+            // Debug: Check if bankStatementDocument is in the response
+            console.log(`🔥 RESPONSE BANK TRANSACTION DEBUG:`, {
+              suggestionId: responseItem.id,
+              hasBankTransaction: !!responseItem.bankTransaction,
+              hasBankStatementDocument: !!responseItem.bankTransaction?.bankStatementDocument,
+              bankStatementDocument: responseItem.bankTransaction?.bankStatementDocument
+            });
+            
             // Debug: Check if the bankStatementDocument is being constructed correctly
             if (responseItem.bankTransaction) {
               console.log(`🔥 BANK TRANSACTION RESPONSE DEBUG:`, {
@@ -1912,6 +1920,7 @@ export class BankService {
                     id: src.bankStatementDocument.id,
                     name: src.bankStatementDocument.name,
                     signedUrl: srcBankStmtUrl,
+                    path: src.bankStatementDocument.path,
                   }
                   : null,
               },
@@ -1931,6 +1940,7 @@ export class BankService {
                       id: dst.bankStatementDocument.id,
                       name: dst.bankStatementDocument.name,
                       signedUrl: dstBankStmtUrl,
+                      path: dst.bankStatementDocument.path,
                     }
                     : null,
                 },
@@ -2237,7 +2247,7 @@ export class BankService {
                   amount: src.amount,
                   transactionDate: src.transactionDate,
                   transactionType: src.transactionType,
-                  bankStatementDocument: src.bankStatementDocument ? { id: src.bankStatementDocument.id, name: src.bankStatementDocument.name, signedUrl: srcUrl } : null,
+                  bankStatementDocument: src.bankStatementDocument ? { id: src.bankStatementDocument.id, name: src.bankStatementDocument.name, signedUrl: srcUrl, path: src.bankStatementDocument.path } : null,
                 },
                 chartOfAccount: null,
                 transfer: {
@@ -2249,7 +2259,7 @@ export class BankService {
                     amount: dst.amount,
                     transactionDate: dst.transactionDate,
                     transactionType: dst.transactionType,
-                    bankStatementDocument: dst.bankStatementDocument ? { id: dst.bankStatementDocument.id, name: dst.bankStatementDocument.name, signedUrl: dstUrl } : null,
+                    bankStatementDocument: dst.bankStatementDocument ? { id: dst.bankStatementDocument.id, name: dst.bankStatementDocument.name, signedUrl: dstUrl, path: dst.bankStatementDocument.path } : null,
                   },
                   crossCurrency: !!cand.crossCurrency,
                   impliedFxRate: cand.impliedFxRate ?? 1,
