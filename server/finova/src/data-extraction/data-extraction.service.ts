@@ -2817,19 +2817,32 @@ export class DataExtractionService {
            
            if (transferSuggestions.length > 0) {
              // Remove duplicates within the same batch (extra safety)
+             // Use a more robust deduplication that ensures only one suggestion per transfer pair
              const uniqueTransferSuggestions = [];
-             const seen = new Set();
+             const seenTransferPairs = new Set<string>();
              let duplicatesSkipped = 0;
              
              for (const ts of transferSuggestions) {
-               const key = `${ts.bankTransactionId}-${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}`;
-               const reverseKey = `${(ts.matchingCriteria as any)?.transfer?.destinationTransactionId}-${ts.bankTransactionId}`;
-               if (!seen.has(key) && !seen.has(reverseKey)) {
-                 seen.add(key);
-                 seen.add(reverseKey);
+               const sourceId = ts.bankTransactionId;
+               const destId = (ts.matchingCriteria as any)?.transfer?.destinationTransactionId;
+               
+               if (!sourceId || !destId) {
+                 this.logger.warn(`🔍 SKIPPING INVALID TRANSFER SUGGESTION: missing source or destination ID`, { sourceId, destId });
+                 duplicatesSkipped++;
+                 continue;
+               }
+               
+               // Create a normalized key that represents the transfer pair regardless of direction
+               // Always use the lexicographically smaller ID as the first part to ensure consistency
+               const normalizedKey = sourceId < destId ? `${sourceId}-${destId}` : `${destId}-${sourceId}`;
+               
+               if (!seenTransferPairs.has(normalizedKey)) {
+                 seenTransferPairs.add(normalizedKey);
                  uniqueTransferSuggestions.push(ts);
+                 this.logger.log(`✅ KEPT TRANSFER SUGGESTION: ${sourceId} -> ${destId} (normalized key: ${normalizedKey})`);
                } else {
                  duplicatesSkipped++;
+                 this.logger.log(`🔍 SKIPPED DUPLICATE TRANSFER: ${sourceId} -> ${destId} (normalized key: ${normalizedKey} already exists)`);
                }
              }
              

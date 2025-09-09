@@ -125,15 +125,47 @@ const SuggestionsList: React.FC<Props> = ({
           </div>
         ) : (
           <div className="space-y-6">
-            {displayedSuggestions.map((s) => {
-              const suggestion = s as Suggestion;
-              console.log('🔍 ALL SUGGESTIONS DEBUG:', {
-                id: suggestion.id,
-                matchingCriteria: suggestion.matchingCriteria,
-                hasTransfer: !!suggestion.transfer,
-                transfer: suggestion.transfer
+            {(() => {
+              // Filter out duplicate transfer suggestions
+              const seenTransferPairs = new Set<string>();
+              const filteredSuggestions = displayedSuggestions.filter((s) => {
+                const suggestion = s as Suggestion;
+                
+                // Only apply filtering to transfer suggestions
+                if (suggestion.matchingCriteria?.type !== 'TRANSFER' || !suggestion.transfer) {
+                  return true;
+                }
+                
+                const sourceId = suggestion.bankTransaction?.id;
+                const destId = suggestion.transfer.destinationTransactionId;
+                
+                if (!sourceId || !destId) {
+                  return true; // Keep invalid suggestions for now, let backend handle them
+                }
+                
+                // Create a normalized key that represents the transfer pair regardless of direction
+                const normalizedKey = sourceId < destId ? `${sourceId}-${destId}` : `${destId}-${sourceId}`;
+                
+                if (seenTransferPairs.has(normalizedKey)) {
+                  console.log(`🔍 FRONTEND: Skipping duplicate transfer suggestion ${suggestion.id} (${sourceId} -> ${destId})`);
+                  return false;
+                }
+                
+                seenTransferPairs.add(normalizedKey);
+                return true;
               });
-              return (
+              
+              console.log(`🔍 FRONTEND: Filtered ${displayedSuggestions.length} suggestions to ${filteredSuggestions.length} unique suggestions`);
+              
+              return filteredSuggestions.map((s) => {
+                const suggestion = s as Suggestion;
+                console.log('🔍 ALL SUGGESTIONS DEBUG:', {
+                  id: suggestion.id,
+                  matchingCriteria: suggestion.matchingCriteria,
+                  hasTransfer: !!suggestion.transfer,
+                  transfer: suggestion.transfer
+                });
+                return (
               <motion.div
                 key={suggestion.id}
                 initial={{ opacity: 0, y: 10 }}
@@ -516,30 +548,39 @@ const SuggestionsList: React.FC<Props> = ({
                           );
                         })()}
                       </p>
-                      {suggestion.bankTransaction && (
+                      {(suggestion.bankTransaction?.bankStatementDocument || suggestion.document) && (
                         <button
                           onClick={() => {
                             const txn = suggestion.bankTransaction as any;
-                            console.log('🔍 FRONTEND MAIN TRANSACTION EYE BUTTON:', {
+                            const doc = suggestion.document as any;
+                            
+                            console.log('🔍 FRONTEND MAIN EYE BUTTON:', {
                               suggestionId: suggestion.id,
                               hasBankTransaction: !!suggestion.bankTransaction,
                               hasBankStatementDocument: !!txn?.bankStatementDocument,
-                              signedUrl: txn?.bankStatementDocument?.signedUrl,
-                              path: txn?.bankStatementDocument?.path,
-                              fullStructure: txn
+                              hasDocument: !!suggestion.document,
+                              bankStatementSignedUrl: txn?.bankStatementDocument?.signedUrl,
+                              bankStatementPath: txn?.bankStatementDocument?.path,
+                              documentSignedUrl: doc?.signedUrl,
+                              documentPath: doc?.path,
+                              fullStructure: { txn, doc }
                             });
                             
-                            // Try to open the document with signed URL or fallback to path
-                            const urlToOpen = txn?.bankStatementDocument?.signedUrl || txn?.bankStatementDocument?.path;
+                            // Try to open the document - prioritize bank statement document, then fallback to document
+                            const urlToOpen = txn?.bankStatementDocument?.signedUrl || 
+                                             txn?.bankStatementDocument?.path || 
+                                             doc?.signedUrl || 
+                                             doc?.path;
+                            
                             if (urlToOpen) {
                               window.open(urlToOpen, '_blank', 'noopener,noreferrer');
                             } else {
-                              console.warn('No signed URL or path available for bank statement document');
+                              console.warn('No signed URL or path available for document');
                               alert(language === 'ro' ? 'Documentul nu este disponibil momentan' : 'Document is not available at the moment');
                             }
                           }}
                           className="p-1 hover:bg-gray-100 bg-emerald-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={language === 'ro' ? 'Vezi extractul bancar' : 'View bank statement'}
+                          title={language === 'ro' ? 'Vezi documentul' : 'View document'}
                         >
                           <Eye size={14} className="text-emerald-500" />
                         </button>
@@ -554,7 +595,8 @@ const SuggestionsList: React.FC<Props> = ({
                 </div>
               </motion.div>
               );
-            })}
+            });
+            })()}
           </div>
         )}
       </div>
