@@ -1549,19 +1549,38 @@ export class BankService {
               });
               
               try {
-                documentSignedUrl = s.document.s3Key
-                  ? await s3.getSignedUrlPromise('getObject', {
+                if (s.document.s3Key) {
+                  console.log(`🔥 GENERATING DOCUMENT SIGNED URL:`, {
+                    suggestionId: s.id,
+                    documentId: s.document.id,
+                    s3Key: s.document.s3Key,
+                    bucket: process.env.AWS_S3_BUCKET_NAME
+                  });
+                  documentSignedUrl = await s3.getSignedUrlPromise('getObject', {
                     Bucket: process.env.AWS_S3_BUCKET_NAME,
                     Key: s.document.s3Key,
                     Expires: 3600,
-                  })
-                  : s.document.path;
+                  });
+                  console.log(`🔥 DOCUMENT SIGNED URL GENERATED:`, {
+                    suggestionId: s.id,
+                    documentId: s.document.id,
+                    signedUrl: documentSignedUrl
+                  });
+                } else {
+                  console.log(`🔥 USING DOCUMENT PATH (NO S3KEY):`, {
+                    suggestionId: s.id,
+                    documentId: s.document.id,
+                    path: s.document.path
+                  });
+                  documentSignedUrl = s.document.path;
+                }
               } catch (error) {
                 console.error(`🔥 ERROR GENERATING DOCUMENT SIGNED URL:`, {
                   suggestionId: s.id,
                   documentId: s.document.id,
                   s3Key: s.document.s3Key,
-                  error: error.message
+                  error: error.message,
+                  stack: error.stack
                 });
                 documentSignedUrl = s.document.path; // Fallback to path
               }

@@ -827,9 +827,39 @@ const BankPage = () => {
   });
 }, [suggestionsData, removedSuggestions, selectedBankAccountId, accountTransactionIdSet]);
 
+  // Apply the same duplicate filtering logic as in SuggestionsList to get accurate count
+  const filteredSuggestionsCount = useMemo(() => {
+    const seenTransferPairs = new Set<string>();
+    
+    return displayedSuggestions.filter((s: any) => {
+      // Only apply filtering to transfer suggestions
+      if (s.matchingCriteria?.type !== 'TRANSFER' || !s.transfer) {
+        return true;
+      }
+      
+      const sourceId = s.bankTransaction?.id;
+      const destId = s.transfer.destinationTransactionId;
+      
+      if (!sourceId || !destId) {
+        return true; // Keep invalid suggestions for now, let backend handle them
+      }
+      
+      // Create a normalized key that represents the transfer pair regardless of direction
+      const normalizedKey = sourceId < destId ? `${sourceId}-${destId}` : `${destId}-${sourceId}`;
+      
+      if (seenTransferPairs.has(normalizedKey)) {
+        return false;
+      }
+      
+      seenTransferPairs.add(normalizedKey);
+      return true;
+    }).length;
+  }, [displayedSuggestions]);
+
 useEffect(() => {
   console.log('displayedSuggestions', displayedSuggestions);
-}, [displayedSuggestions]);
+  console.log('filteredSuggestionsCount', filteredSuggestionsCount);
+}, [displayedSuggestions, filteredSuggestionsCount]);
 
   useEffect(() => {
     if (documentsPage === 1) setDocumentsData([]);
@@ -1726,7 +1756,7 @@ useEffect(() => {
                 </div>
                 <div>
                   <p className="text-sm text-[var(--text3)]">{language === 'ro' ? 'Sugestii' : 'Suggestions'}</p>
-                  <p className="text-xl font-bold text-[var(--text1)]">{suggestionsTotal}</p>
+                  <p className="text-xl font-bold text-[var(--text1)]">{filteredSuggestionsCount}</p>
                   <p className="text-xs text-purple-600">
                     {language === 'ro' ? 'Disponibile' : 'Available'}
                   </p>

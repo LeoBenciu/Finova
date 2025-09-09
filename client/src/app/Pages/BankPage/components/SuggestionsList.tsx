@@ -567,10 +567,17 @@ const SuggestionsList: React.FC<Props> = ({
                             });
                             
                             // Try to open the document - prioritize bank statement document, then fallback to document
-                            const urlToOpen = txn?.bankStatementDocument?.signedUrl || 
-                                             txn?.bankStatementDocument?.path || 
-                                             doc?.signedUrl || 
-                                             doc?.path;
+                            let urlToOpen = txn?.bankStatementDocument?.signedUrl || 
+                                           txn?.bankStatementDocument?.path || 
+                                           doc?.signedUrl || 
+                                           doc?.path;
+                            
+                            // If no URL is available, try to construct a fallback URL for documents
+                            if (!urlToOpen && doc?.id && doc?.name) {
+                              // Try to construct a potential document URL (this is a fallback)
+                              urlToOpen = `/api/documents/${doc.id}/download`;
+                              console.log('🔍 FRONTEND: Using fallback document URL:', urlToOpen);
+                            }
                             
                             if (urlToOpen) {
                               window.open(urlToOpen, '_blank', 'noopener,noreferrer');
