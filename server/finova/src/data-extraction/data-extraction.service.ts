@@ -2655,6 +2655,8 @@ export class DataExtractionService {
               existingTransferPairs.add(reverseTransferKey);
 
               this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
+              this.logger.log(`🔍 DUPLICATE PREVENTION: usedDestinationIds now has ${usedDestinationIds.size} items: [${Array.from(usedDestinationIds).join(', ')}]`);
+              this.logger.log(`🔍 DUPLICATE PREVENTION: createdTransferKeys now has ${createdTransferKeys.size} items: [${Array.from(createdTransferKeys).join(', ')}]`);
 
               // Calculate impliedRate for cross-currency transfers
               const srcAmt = Math.abs(Number(src.amount));

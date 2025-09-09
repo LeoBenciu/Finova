@@ -1607,6 +1607,13 @@ export class BankService {
                   dateDiffDays: matchingCriteria.transfer.daysApart,
                 };
                 console.log(`🔥 BUILT TRANSFER DATA:`, transferData);
+                console.log(`🔥 SIGNED URL DEBUG:`, {
+                  hasBankStatementDocument: !!destinationTransaction.bankStatementDocument,
+                  s3Key: destinationTransaction.bankStatementDocument?.s3Key,
+                  path: destinationTransaction.bankStatementDocument?.path,
+                  signedUrl: dstBankStmtUrl,
+                  signedUrlGenerated: !!dstBankStmtUrl
+                });
               } else {
                 console.log(`🔥 DESTINATION TRANSACTION NOT FOUND: ${matchingCriteria.transfer.destinationTransactionId}`);
               }
@@ -1999,6 +2006,14 @@ export class BankService {
                       impliedFxRate: matchingCriteria.transfer.impliedFxRate,
                       dateDiffDays: matchingCriteria.transfer.dateDiffDays,
                     };
+                    
+                    console.log(`🔥 REGENERATION SIGNED URL DEBUG:`, {
+                      hasBankStatementDocument: !!destinationTransaction.bankStatementDocument,
+                      s3Key: destinationTransaction.bankStatementDocument?.s3Key,
+                      path: destinationTransaction.bankStatementDocument?.path,
+                      signedUrl: dstBankStmtUrl,
+                      signedUrlGenerated: !!dstBankStmtUrl
+                    });
                   }
                 }
               }
