@@ -1712,9 +1712,11 @@ export class BankService {
               hasDocument: !!responseItem.document,
               documentSignedUrl: responseItem.document?.signedUrl,
               hasBankTransaction: !!responseItem.bankTransaction,
+              hasBankStatementDocument: !!responseItem.bankTransaction?.bankStatementDocument,
               bankStatementSignedUrl: responseItem.bankTransaction?.bankStatementDocument?.signedUrl,
               hasTransfer: !!responseItem.transfer,
-              transferCounterpartySignedUrl: responseItem.transfer?.counterpartyTransaction?.bankStatementDocument?.signedUrl
+              transferCounterpartySignedUrl: responseItem.transfer?.counterpartyTransaction?.bankStatementDocument?.signedUrl,
+              fullBankTransaction: responseItem.bankTransaction
             });
             
             return responseItem;

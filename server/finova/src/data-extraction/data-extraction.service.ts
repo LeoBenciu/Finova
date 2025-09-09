@@ -2666,6 +2666,28 @@ export class DataExtractionService {
                  continue;
                }
                
+               // Check if this transfer suggestion already exists in the database (across all runs)
+               const existingTransfer = await this.prisma.reconciliationSuggestion.findFirst({
+                 where: {
+                   status: { not: SuggestionStatus.REJECTED },
+                   documentId: null,
+                   chartOfAccountId: null,
+                   bankTransactionId: src.id,
+                   matchingCriteria: {
+                     path: ['type'],
+                     equals: 'TRANSFER'
+                   }
+                 }
+               });
+               
+               if (existingTransfer) {
+                 const existingMatchingCriteria = existingTransfer.matchingCriteria as any;
+                 if (existingMatchingCriteria?.transfer?.destinationTransactionId === dst.id) {
+                   this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN DATABASE: ${src.id} -> ${dst.id} (existing suggestion ID: ${existingTransfer.id})`);
+                   continue;
+                 }
+               }
+               
                // Also check if this exact transfer already exists in the transferSuggestions array
                const alreadyExists = transferSuggestions.some(ts => 
                  ts.bankTransactionId === src.id && 
