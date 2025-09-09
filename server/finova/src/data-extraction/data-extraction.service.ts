@@ -2680,6 +2680,15 @@ export class DataExtractionService {
                  }
                });
                
+               this.logger.log(`🔍 DATABASE DUPLICATE CHECK: ${src.id} -> ${dst.id}, existingTransfer: ${existingTransfer ? 'FOUND' : 'NOT FOUND'}`);
+               if (existingTransfer) {
+                 this.logger.log(`🔍 EXISTING TRANSFER DETAILS:`, {
+                   id: existingTransfer.id,
+                   bankTransactionId: existingTransfer.bankTransactionId,
+                   matchingCriteria: existingTransfer.matchingCriteria
+                 });
+               }
+               
                if (existingTransfer) {
                  const existingMatchingCriteria = existingTransfer.matchingCriteria as any;
                  if (existingMatchingCriteria?.transfer?.destinationTransactionId === dst.id) {

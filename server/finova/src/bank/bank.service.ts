@@ -1719,6 +1719,17 @@ export class BankService {
               fullBankTransaction: responseItem.bankTransaction
             });
             
+            // Debug: Check if the bankStatementDocument is being constructed correctly
+            if (responseItem.bankTransaction) {
+              console.log(`🔥 BANK TRANSACTION RESPONSE DEBUG:`, {
+                suggestionId: responseItem.id,
+                hasBankTransaction: !!responseItem.bankTransaction,
+                hasBankStatementDocument: !!responseItem.bankTransaction.bankStatementDocument,
+                bankStatementDocument: responseItem.bankTransaction.bankStatementDocument,
+                bankStatementSignedUrl: responseItem.bankTransaction.bankStatementDocument?.signedUrl
+              });
+            }
+            
             return responseItem;
           })
         );
