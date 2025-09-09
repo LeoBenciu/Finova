@@ -1947,49 +1947,107 @@ export class BankService {
               })
             ]);
             
-            const newItems = newSuggestions.map(s => ({
-              id: s.id,
-              confidenceScore: s.confidenceScore,
-              matchingCriteria: s.matchingCriteria,
-              reasons: s.reasons,
-              createdAt: s.createdAt,
-              document: s.document
-                ? (() => {
-                    let totalAmount: number | null = null;
-                    try {
-                      const extracted = s.document.processedData?.extractedFields;
-                      if (extracted) {
-                        const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
-                        const result = (parsed as any).result || parsed;
-                        totalAmount = result?.total_amount ?? null;
-                      }
-                    } catch (_) {
+            const newItems = await Promise.all(newSuggestions.map(async s => {
+              // Check if this is a transfer suggestion
+              const isTransferSuggestion = s.matchingCriteria && 
+                typeof s.matchingCriteria === 'object' && 
+                (s.matchingCriteria as any).type === 'TRANSFER';
+              
+              let transferData = null;
+              if (isTransferSuggestion) {
+                const matchingCriteria = s.matchingCriteria as any;
+                if (matchingCriteria.transfer?.destinationTransactionId) {
+                  // Get the destination transaction details
+                  const destinationTransaction = await this.prisma.bankTransaction.findUnique({
+                    where: { id: matchingCriteria.transfer.destinationTransactionId },
+                    include: {
+                      bankStatementDocument: true,
+                    },
+                  });
+                  
+                  if (destinationTransaction) {
+                    // Get signed URL for destination bank statement
+                    let dstBankStmtUrl: string | null = null;
+                    if (destinationTransaction.bankStatementDocument) {
+                      dstBankStmtUrl = destinationTransaction.bankStatementDocument.s3Key
+                        ? await s3.getSignedUrlPromise('getObject', {
+                          Bucket: process.env.AWS_S3_BUCKET_NAME,
+                          Key: destinationTransaction.bankStatementDocument.s3Key,
+                          Expires: 3600,
+                        })
+                        : destinationTransaction.bankStatementDocument.path;
                     }
-                    return {
-                      id: s.document.id,
-                      name: s.document.name,
-                      type: s.document.type,
-                      total_amount: totalAmount,
+                    
+                    transferData = {
+                      sourceTransactionId: matchingCriteria.transfer.sourceTransaction?.id || s.bankTransaction?.id,
+                      destinationTransactionId: matchingCriteria.transfer.destinationTransactionId,
+                      counterpartyTransaction: {
+                        id: destinationTransaction.id,
+                        description: destinationTransaction.description,
+                        amount: destinationTransaction.amount,
+                        transactionDate: destinationTransaction.transactionDate,
+                        transactionType: destinationTransaction.transactionType,
+                        bankStatementDocument: destinationTransaction.bankStatementDocument
+                          ? {
+                            id: destinationTransaction.bankStatementDocument.id,
+                            name: destinationTransaction.bankStatementDocument.name,
+                            signedUrl: dstBankStmtUrl,
+                          }
+                          : null,
+                      },
+                      crossCurrency: matchingCriteria.transfer.crossCurrency,
+                      impliedFxRate: matchingCriteria.transfer.impliedFxRate,
+                      dateDiffDays: matchingCriteria.transfer.dateDiffDays,
                     };
-                  })()
-                : null,
-              bankTransaction: s.bankTransaction
-                ? {
-                    id: s.bankTransaction.id,
-                    description: s.bankTransaction.description,
-                    amount: s.bankTransaction.amount,
-                    transactionDate: s.bankTransaction.transactionDate,
-                    transactionType: s.bankTransaction.transactionType,
                   }
-                : null,
-              chartOfAccount: s.chartOfAccount
-                ? ({
-                    code: s.chartOfAccount.accountCode,
-                    name: s.chartOfAccount.accountName,
-                    accountCode: s.chartOfAccount.accountCode,
-                    accountName: s.chartOfAccount.accountName,
-                  } as any)
-                : null,
+                }
+              }
+              
+              return {
+                id: s.id,
+                confidenceScore: s.confidenceScore,
+                matchingCriteria: s.matchingCriteria,
+                reasons: s.reasons,
+                createdAt: s.createdAt,
+                document: s.document
+                  ? (() => {
+                      let totalAmount: number | null = null;
+                      try {
+                        const extracted = s.document.processedData?.extractedFields;
+                        if (extracted) {
+                          const parsed = typeof extracted === 'string' ? JSON.parse(extracted) : extracted;
+                          const result = (parsed as any).result || parsed;
+                          totalAmount = result?.total_amount ?? null;
+                        }
+                      } catch (_) {
+                      }
+                      return {
+                        id: s.document.id,
+                        name: s.document.name,
+                        type: s.document.type,
+                        total_amount: totalAmount,
+                      };
+                    })()
+                  : null,
+                bankTransaction: s.bankTransaction
+                  ? {
+                      id: s.bankTransaction.id,
+                      description: s.bankTransaction.description,
+                      amount: s.bankTransaction.amount,
+                      transactionDate: s.bankTransaction.transactionDate,
+                      transactionType: s.bankTransaction.transactionType,
+                    }
+                  : null,
+                chartOfAccount: s.chartOfAccount
+                  ? ({
+                      code: s.chartOfAccount.accountCode,
+                      name: s.chartOfAccount.accountName,
+                      accountCode: s.chartOfAccount.accountCode,
+                      accountName: s.chartOfAccount.accountName,
+                    } as any)
+                  : null,
+                transfer: transferData,
+              };
             }));
             // Also augment regenerated items with transfer suggestions
             const regenAug = await this.getTransferReconciliationCandidates(clientEin, user, {
@@ -2068,6 +2126,18 @@ export class BankService {
             if (transferItems2.length) {
               console.log('[TransferSuggestions] sample transferItems2 ids (max 5) =', transferItems2.slice(0, 5).map((i: any) => i.id));
             }
+            // Debug: Check what's in newItems before merging
+            const newItemsTransferItems = newItems.filter((item: any) => item.matchingCriteria?.type === 'TRANSFER');
+            console.log('[TransferSuggestions] newItems transfer items before merge:', newItemsTransferItems.length);
+            if (newItemsTransferItems.length > 0) {
+              console.log('[TransferSuggestions] newItems transfer sample before merge:', {
+                id: newItemsTransferItems[0].id,
+                hasTransfer: !!(newItemsTransferItems[0] as any).transfer,
+                transfer: (newItemsTransferItems[0] as any).transfer,
+                keys: Object.keys(newItemsTransferItems[0])
+              });
+            }
+            
             const merged2 = [...newItems, ...transferItems2].sort((a, b) => (b.confidenceScore ?? 0) - (a.confidenceScore ?? 0));
             console.log('[TransferSuggestions] merged suggestions =', { base: newItems.length, transfers: transferItems2.length, total: newTotal + transferItems2.length });
             try {
