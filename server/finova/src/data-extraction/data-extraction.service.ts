@@ -2667,31 +2667,42 @@ export class DataExtractionService {
                }
                
                // Check if this transfer suggestion already exists in the database (across all runs)
-               const existingTransfer = await this.prisma.reconciliationSuggestion.findFirst({
+               // First, let's see what transfer suggestions actually exist in the database
+               const allTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
                  where: {
                    status: { not: SuggestionStatus.REJECTED },
                    documentId: null,
                    chartOfAccountId: null,
-                   bankTransactionId: src.id,
-                   matchingCriteria: {
-                     path: ['type'],
-                     equals: 'TRANSFER'
+                   bankTransaction: {
+                     bankStatementDocument: { accountingClientId }
                    }
+                 },
+                 select: {
+                   id: true,
+                   bankTransactionId: true,
+                   matchingCriteria: true
                  }
                });
                
-               // Also check for the reverse direction (dst -> src)
-               const existingReverseTransfer = await this.prisma.reconciliationSuggestion.findFirst({
-                 where: {
-                   status: { not: SuggestionStatus.REJECTED },
-                   documentId: null,
-                   chartOfAccountId: null,
-                   bankTransactionId: dst.id,
-                   matchingCriteria: {
-                     path: ['type'],
-                     equals: 'TRANSFER'
-                   }
-                 }
+               this.logger.log(`🔍 ALL TRANSFER SUGGESTIONS IN DATABASE:`, allTransferSuggestions.map(ts => ({
+                 id: ts.id,
+                 bankTransactionId: ts.bankTransactionId,
+                 matchingCriteria: ts.matchingCriteria
+               })));
+               
+               // Now check if this specific transfer pair already exists
+               const existingTransfer = allTransferSuggestions.find(ts => {
+                 const mc = ts.matchingCriteria as any;
+                 return ts.bankTransactionId === src.id && 
+                        mc?.type === 'TRANSFER' && 
+                        mc?.transfer?.destinationTransactionId === dst.id;
+               });
+               
+               const existingReverseTransfer = allTransferSuggestions.find(ts => {
+                 const mc = ts.matchingCriteria as any;
+                 return ts.bankTransactionId === dst.id && 
+                        mc?.type === 'TRANSFER' && 
+                        mc?.transfer?.destinationTransactionId === src.id;
                });
                
                this.logger.log(`🔍 DATABASE DUPLICATE CHECK: ${src.id} -> ${dst.id}, existingTransfer: ${existingTransfer ? 'FOUND' : 'NOT FOUND'}, existingReverseTransfer: ${existingReverseTransfer ? 'FOUND' : 'NOT FOUND'}`);

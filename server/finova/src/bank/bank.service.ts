@@ -1408,6 +1408,8 @@ export class BankService {
 
       
       async getReconciliationSuggestions(clientEin: string, user: User, page = 1, size = 25) {
+        console.log(`🔥 getReconciliationSuggestions CALLED: clientEin=${clientEin}, page=${page}, size=${size}`);
+        
         const clientCompany = await this.prisma.clientCompany.findUnique({
           where: { ein: clientEin }
         });
