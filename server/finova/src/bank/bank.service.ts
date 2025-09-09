@@ -1527,6 +1527,16 @@ export class BankService {
             // Build signed URL for document
             let documentSignedUrl: string | null = null;
             if (s.document) {
+              console.log(`🔥 DOCUMENT OBJECT DEBUG:`, {
+                suggestionId: s.id,
+                documentId: s.document.id,
+                documentName: s.document.name,
+                documentType: s.document.type,
+                documentS3Key: s.document.s3Key,
+                documentPath: s.document.path,
+                fullDocumentObject: s.document
+              });
+              
               try {
                 documentSignedUrl = s.document.s3Key
                   ? await s3.getSignedUrlPromise('getObject', {
@@ -1665,6 +1675,7 @@ export class BankService {
                           id: destinationTransaction.bankStatementDocument.id,
                           name: destinationTransaction.bankStatementDocument.name,
                           signedUrl: dstBankStmtUrl,
+                          path: destinationTransaction.bankStatementDocument.path,
                         }
                       : null,
                   },
@@ -1697,6 +1708,7 @@ export class BankService {
                   name: s.document.name,
                   type: s.document.type,
                   signedUrl: documentSignedUrl,
+                  path: s.document.path,
                   total_amount: this.extractDocumentAmount(s.document),
                 }
                 : null,
@@ -1712,6 +1724,7 @@ export class BankService {
                       id: s.bankTransaction.bankStatementDocument.id,
                       name: s.bankTransaction.bankStatementDocument.name,
                       signedUrl: bankStatementSignedUrl,
+                      path: s.bankTransaction.bankStatementDocument.path,
                     }
                     : null,
                 }

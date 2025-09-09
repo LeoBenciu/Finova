@@ -156,23 +156,6 @@ const SuggestionsList: React.FC<Props> = ({
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    {/* Debug button to log suggestion data */}
-                    <button
-                      onClick={() => {
-                        console.log('🔍 DEBUG SUGGESTION DATA:', {
-                          suggestionId: suggestion.id,
-                          fullSuggestion: suggestion,
-                          bankTransaction: suggestion.bankTransaction,
-                          bankStatementDocument: suggestion.bankTransaction?.bankStatementDocument,
-                          transfer: suggestion.transfer,
-                          document: suggestion.document
-                        });
-                      }}
-                      className="px-2 py-1 bg-gray-500 text-white rounded text-xs"
-                      title="Debug suggestion data"
-                    >
-                      Debug
-                    </button>
                     <button
                       onClick={async () => {
                         const suggestionId = String(suggestion.id);
