@@ -2655,6 +2655,11 @@ export class DataExtractionService {
                // Check if we already created this exact transfer suggestion in this batch
                const transferKey = `${src.id}-${dst.id}`;
                const reverseTransferKey = `${dst.id}-${src.id}`;
+               
+               this.logger.log(`🔍 TRANSFER CANDIDATE CHECK: ${src.id} -> ${dst.id}, score=${score.toFixed(3)}`);
+               this.logger.log(`🔍 DUPLICATE PREVENTION: transferKey=${transferKey}, reverseTransferKey=${reverseTransferKey}, hasTransferKey=${createdTransferKeys.has(transferKey)}, hasReverseKey=${createdTransferKeys.has(reverseTransferKey)}`);
+               this.logger.log(`🔍 DUPLICATE PREVENTION: createdTransferKeys now has ${createdTransferKeys.size} items: [${Array.from(createdTransferKeys).join(', ')}]`);
+               
                if (createdTransferKeys.has(transferKey) || createdTransferKeys.has(reverseTransferKey)) {
                  this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN BATCH: ${src.id} -> ${dst.id}`);
                  this.logger.log(`🔍 DUPLICATE PREVENTION: transferKey=${transferKey}, reverseTransferKey=${reverseTransferKey}, hasTransferKey=${createdTransferKeys.has(transferKey)}, hasReverseKey=${createdTransferKeys.has(reverseTransferKey)}`);

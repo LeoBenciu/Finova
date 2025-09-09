@@ -1546,6 +1546,14 @@ export class BankService {
 
             // Build signed URL for bank statement
             let bankStatementSignedUrl: string | null = null;
+            console.log(`🔥 BANK TRANSACTION DEBUG:`, {
+              suggestionId: s.id,
+              bankTransactionId: s.bankTransactionId,
+              hasBankTransaction: !!s.bankTransaction,
+              hasBankStatementDocument: !!s.bankTransaction?.bankStatementDocument,
+              bankStatementDocument: s.bankTransaction?.bankStatementDocument
+            });
+            
             if (s.bankTransaction?.bankStatementDocument) {
               const bsDoc = s.bankTransaction.bankStatementDocument;
               bankStatementSignedUrl = bsDoc.s3Key
@@ -1564,6 +1572,12 @@ export class BankService {
                 path: bsDoc.path,
                 signedUrl: bankStatementSignedUrl,
                 signedUrlGenerated: !!bankStatementSignedUrl
+              });
+            } else {
+              console.log(`🔥 NO BANK STATEMENT DOCUMENT:`, {
+                suggestionId: s.id,
+                bankTransactionId: s.bankTransactionId,
+                bankTransaction: s.bankTransaction
               });
             }
 
