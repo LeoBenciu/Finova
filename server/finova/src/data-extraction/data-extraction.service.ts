@@ -2680,19 +2680,44 @@ export class DataExtractionService {
                  }
                });
                
-               this.logger.log(`🔍 DATABASE DUPLICATE CHECK: ${src.id} -> ${dst.id}, existingTransfer: ${existingTransfer ? 'FOUND' : 'NOT FOUND'}`);
+               // Also check for the reverse direction (dst -> src)
+               const existingReverseTransfer = await this.prisma.reconciliationSuggestion.findFirst({
+                 where: {
+                   status: { not: SuggestionStatus.REJECTED },
+                   documentId: null,
+                   chartOfAccountId: null,
+                   bankTransactionId: dst.id,
+                   matchingCriteria: {
+                     path: ['type'],
+                     equals: 'TRANSFER'
+                   }
+                 }
+               });
+               
+               this.logger.log(`🔍 DATABASE DUPLICATE CHECK: ${src.id} -> ${dst.id}, existingTransfer: ${existingTransfer ? 'FOUND' : 'NOT FOUND'}, existingReverseTransfer: ${existingReverseTransfer ? 'FOUND' : 'NOT FOUND'}`);
+               
                if (existingTransfer) {
                  this.logger.log(`🔍 EXISTING TRANSFER DETAILS:`, {
                    id: existingTransfer.id,
                    bankTransactionId: existingTransfer.bankTransactionId,
                    matchingCriteria: existingTransfer.matchingCriteria
                  });
-               }
-               
-               if (existingTransfer) {
                  const existingMatchingCriteria = existingTransfer.matchingCriteria as any;
                  if (existingMatchingCriteria?.transfer?.destinationTransactionId === dst.id) {
                    this.logger.log(`🔍 SKIPPING DUPLICATE TRANSFER IN DATABASE: ${src.id} -> ${dst.id} (existing suggestion ID: ${existingTransfer.id})`);
+                   continue;
+                 }
+               }
+               
+               if (existingReverseTransfer) {
+                 this.logger.log(`🔍 EXISTING REVERSE TRANSFER DETAILS:`, {
+                   id: existingReverseTransfer.id,
+                   bankTransactionId: existingReverseTransfer.bankTransactionId,
+                   matchingCriteria: existingReverseTransfer.matchingCriteria
+                 });
+                 const existingReverseMatchingCriteria = existingReverseTransfer.matchingCriteria as any;
+                 if (existingReverseMatchingCriteria?.transfer?.destinationTransactionId === src.id) {
+                   this.logger.log(`🔍 SKIPPING DUPLICATE REVERSE TRANSFER IN DATABASE: ${src.id} -> ${dst.id} (existing suggestion ID: ${existingReverseTransfer.id})`);
                    continue;
                  }
                }

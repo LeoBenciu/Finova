@@ -2271,6 +2271,19 @@ export class BankService {
         const allItemsWithTransfer = merged.filter((item: any) => item.transfer);
         console.log('[SVC][suggestions][final] items with transfer field:', allItemsWithTransfer.length);
         
+        // Debug: Log the final response structure
+        console.log(`🔥 FINAL API RESPONSE DEBUG:`, {
+          totalItems: merged.length,
+          sampleItem: merged[0] ? {
+            id: merged[0].id,
+            hasBankTransaction: !!merged[0].bankTransaction,
+            hasBankStatementDocument: !!merged[0].bankTransaction?.bankStatementDocument,
+            bankStatementSignedUrl: merged[0].bankTransaction?.bankStatementDocument?.signedUrl,
+            hasDocument: !!merged[0].document,
+            documentSignedUrl: merged[0].document?.signedUrl
+          } : null
+        });
+        
         return { items: merged, total: mergedTotal };
       }
 
