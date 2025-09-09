@@ -1532,6 +1532,16 @@ export class BankService {
                   Expires: 3600,
                 })
                 : s.document.path;
+              
+              console.log(`🔥 DOCUMENT SIGNED URL DEBUG:`, {
+                suggestionId: s.id,
+                documentId: s.document.id,
+                hasDocument: !!s.document,
+                s3Key: s.document.s3Key,
+                path: s.document.path,
+                signedUrl: documentSignedUrl,
+                signedUrlGenerated: !!documentSignedUrl
+              });
             }
 
             // Build signed URL for bank statement
@@ -1545,6 +1555,16 @@ export class BankService {
                   Expires: 3600,
                 })
                 : bsDoc.path;
+              
+              console.log(`🔥 MAIN TRANSACTION SIGNED URL DEBUG:`, {
+                suggestionId: s.id,
+                bankTransactionId: s.bankTransactionId,
+                hasBankStatementDocument: !!s.bankTransaction?.bankStatementDocument,
+                s3Key: bsDoc.s3Key,
+                path: bsDoc.path,
+                signedUrl: bankStatementSignedUrl,
+                signedUrlGenerated: !!bankStatementSignedUrl
+              });
             }
 
             // Check if this is a transfer suggestion from the database

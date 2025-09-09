@@ -2761,10 +2761,17 @@ export class DataExtractionService {
              this.logger.log(`🔁 Filtered ${transferSuggestions.length} transfer suggestions to ${uniqueTransferSuggestions.length} unique (${duplicatesSkipped} duplicates skipped)`);
              
              if (uniqueTransferSuggestions.length > 0) {
+               this.logger.log(`🔍 PRE-INSERT: About to insert transfer suggestions:`, uniqueTransferSuggestions.map(ts => ({
+                 bankTransactionId: ts.bankTransactionId,
+                 destinationTransactionId: (ts.matchingCriteria as any)?.transfer?.destinationTransactionId
+               })));
+               
                const insertResult = await this.prisma.reconciliationSuggestion.createMany({
                  data: uniqueTransferSuggestions,
                  skipDuplicates: true,
                });
+               
+               this.logger.log(`🔍 POST-INSERT: Successfully inserted ${insertResult.count} transfer suggestions`);
                this.logger.log(`💾 Database insert result: ${insertResult.count} suggestions inserted`);
              }
              this.logger.log(`🔁 Generated ${uniqueTransferSuggestions.length} internal transfer suggestions for client ${accountingClientId}`);
