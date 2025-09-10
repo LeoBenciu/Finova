@@ -548,7 +548,7 @@ const SuggestionsList: React.FC<Props> = ({
                           );
                         })()}
                       </p>
-                      {(suggestion.bankTransaction?.bankStatementDocument || suggestion.document) && (
+                      {suggestion.bankTransaction && (
                         <button
                           onClick={() => {
                             const txn = suggestion.bankTransaction as any;
