@@ -2129,6 +2129,30 @@ export class BankService {
             ]);
             
             const newItems = await Promise.all(newSuggestions.map(async s => {
+              // Generate signed URL for document
+              let documentSignedUrl: string | null = null;
+              if (s.document) {
+                try {
+                  if (s.document.s3Key) {
+                    documentSignedUrl = await s3.getSignedUrlPromise('getObject', {
+                      Bucket: process.env.AWS_S3_BUCKET_NAME,
+                      Key: s.document.s3Key,
+                      Expires: 3600,
+                    });
+                  } else {
+                    documentSignedUrl = s.document.path;
+                  }
+                } catch (error) {
+                  console.error(`🔥 ERROR GENERATING DOCUMENT SIGNED URL:`, {
+                    suggestionId: s.id,
+                    documentId: s.document.id,
+                    s3Key: s.document.s3Key,
+                    error: error.message,
+                  });
+                  documentSignedUrl = s.document.path; // Fallback to path
+                }
+              }
+              
               // Check if this is a transfer suggestion
               const isTransferSuggestion = s.matchingCriteria && 
                 typeof s.matchingCriteria === 'object' && 
@@ -2215,6 +2239,8 @@ export class BankService {
                       name: s.document.name,
                       type: s.document.type,
                       total_amount: totalAmount,
+                      signedUrl: documentSignedUrl,
+                      path: s.document.path,
                     };
                   })()
                 : null,
