@@ -2153,6 +2153,30 @@ export class BankService {
                 }
               }
               
+              // Generate signed URL for bank statement
+              let bankStatementSignedUrl: string | null = null;
+              if (s.bankTransaction?.bankStatementDocument) {
+                try {
+                  if (s.bankTransaction.bankStatementDocument.s3Key) {
+                    bankStatementSignedUrl = await s3.getSignedUrlPromise('getObject', {
+                      Bucket: process.env.AWS_S3_BUCKET_NAME,
+                      Key: s.bankTransaction.bankStatementDocument.s3Key,
+                      Expires: 3600,
+                    });
+                  } else {
+                    bankStatementSignedUrl = s.bankTransaction.bankStatementDocument.path;
+                  }
+                } catch (error) {
+                  console.error(`🔥 ERROR GENERATING BANK STATEMENT SIGNED URL:`, {
+                    suggestionId: s.id,
+                    bankTransactionId: s.bankTransaction?.id,
+                    s3Key: s.bankTransaction?.bankStatementDocument?.s3Key,
+                    error: error.message,
+                  });
+                  bankStatementSignedUrl = s.bankTransaction?.bankStatementDocument?.path; // Fallback to path
+                }
+              }
+              
               // Check if this is a transfer suggestion
               const isTransferSuggestion = s.matchingCriteria && 
                 typeof s.matchingCriteria === 'object' && 
@@ -2251,6 +2275,14 @@ export class BankService {
                     amount: s.bankTransaction.amount,
                     transactionDate: s.bankTransaction.transactionDate,
                     transactionType: s.bankTransaction.transactionType,
+                    bankStatementDocument: s.bankTransaction.bankStatementDocument
+                      ? {
+                        id: s.bankTransaction.bankStatementDocument.id,
+                        name: s.bankTransaction.bankStatementDocument.name,
+                        signedUrl: bankStatementSignedUrl,
+                        path: s.bankTransaction.bankStatementDocument.path,
+                      }
+                      : null,
                   }
                 : null,
               chartOfAccount: s.chartOfAccount
