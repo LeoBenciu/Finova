@@ -81,6 +81,7 @@ model Document {
   outstandingItems          OutstandingItem[]
   todos                     TodoItem[]
   ledgerEntries             GeneralLedgerEntry[]
+  lineItems                 DocumentLineItem[]
 
   @@index([documentHash])
   @@index([accountingClientId])
@@ -189,25 +190,29 @@ model AccountingCompany {
 }
 
 model AccountingClients {
-  id                   Int                     @id @default(autoincrement())
-  accountingCompanyId  Int
-  clientCompanyId      Int
-  accountingCompany    AccountingCompany       @relation(fields: [accountingCompanyId], references: [id])
-  clientCompany        ClientCompany           @relation(fields: [clientCompanyId], references: [id])
-  createdAt            DateTime                @default(now())
-  documents            Document[]
-  rpaActions           RpaAction[]
-  articles             Article[]
-  managements          Management[]
-  outstandingItems     OutstandingItem[]
-  bankAccounts         BankAccount[]
-  bankAccountAnalytics BankAccountAnalytic[]
+  id                     Int                      @id @default(autoincrement())
+  accountingCompanyId    Int
+  clientCompanyId        Int
+  accountingCompany      AccountingCompany        @relation(fields: [accountingCompanyId], references: [id])
+  clientCompany          ClientCompany            @relation(fields: [clientCompanyId], references: [id])
+  createdAt              DateTime                 @default(now())
+  documents              Document[]
+  rpaActions             RpaAction[]
+  articles               Article[]
+  managements            Management[]
+  outstandingItems       OutstandingItem[]
+  bankAccounts           BankAccount[]
+  bankAccountAnalytics   BankAccountAnalytic[]
   // Todos scoped to this accounting client
-  todos                TodoItem[]
+  todos                  TodoItem[]
   // Ledger relations
-  ledgerEntries        GeneralLedgerEntry[]
-  dailyBalances        AccountBalanceDaily[]
-  monthlyBalances      AccountBalanceMonthly[]
+  ledgerEntries          GeneralLedgerEntry[]
+  dailyBalances          AccountBalanceDaily[]
+  monthlyBalances        AccountBalanceMonthly[]
+  // Financial metrics relations
+  lineItems              DocumentLineItem[]
+  financialMetrics       FinancialMetrics[]
+  accountCategoryMetrics AccountCategoryMetrics[]
 
   @@unique([accountingCompanyId, clientCompanyId])
 }
@@ -863,4 +868,103 @@ enum LedgerSourceType {
   RECONCILIATION
   TRANSFER
   ADJUSTMENT
+}
+
+/// ==================== DOCUMENT LINE ITEMS ====================
+
+model DocumentLineItem {
+  id                 Int               @id @default(autoincrement())
+  documentId         Int
+  document           Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  lineNumber   Int
+  description  String
+  quantity     Decimal @db.Decimal(10, 3)
+  unitPrice    Decimal @db.Decimal(10, 2)
+  totalAmount  Decimal @db.Decimal(12, 2)
+  vatRate      Decimal @db.Decimal(5, 2)
+  vatAmount    Decimal @db.Decimal(10, 2)
+  itemType     String? // inventory, office_supplies, transport, etc.
+  accountCode  String // The account this line item was posted to
+  aiSuggestion Json? // Store AI suggestion details for audit trail
+
+  createdAt DateTime @default(now())
+
+  @@index([documentId])
+  @@index([accountingClientId])
+  @@index([itemType])
+  @@index([accountCode])
+}
+
+/// ==================== FINANCIAL METRICS ====================
+
+model FinancialMetrics {
+  id                 Int               @id @default(autoincrement())
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  // Time period
+  periodType  PeriodType // DAILY, MONTHLY, QUARTERLY, YEARLY
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // P&L Metrics
+  totalRevenue  Decimal @db.Decimal(14, 2)
+  totalExpenses Decimal @db.Decimal(14, 2)
+  grossProfit   Decimal @db.Decimal(14, 2)
+  netIncome     Decimal @db.Decimal(14, 2)
+
+  // Balance Sheet Metrics
+  totalAssets      Decimal @db.Decimal(14, 2)
+  totalLiabilities Decimal @db.Decimal(14, 2)
+  totalEquity      Decimal @db.Decimal(14, 2)
+
+  // Cash Flow Metrics
+  operatingCashFlow Decimal @db.Decimal(14, 2)
+  investingCashFlow Decimal @db.Decimal(14, 2)
+  financingCashFlow Decimal @db.Decimal(14, 2)
+  netCashFlow       Decimal @db.Decimal(14, 2)
+
+  // Key Ratios
+  grossProfitMargin Decimal @db.Decimal(5, 4) // percentage
+  netProfitMargin   Decimal @db.Decimal(5, 4) // percentage
+  currentRatio      Decimal @db.Decimal(8, 4)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([accountingClientId, periodType, periodStart])
+  @@index([accountingClientId, periodType])
+}
+
+// Detailed breakdown by account category
+model AccountCategoryMetrics {
+  id                 Int               @id @default(autoincrement())
+  accountingClientId Int
+  accountingClient   AccountingClients @relation(fields: [accountingClientId], references: [id], onDelete: Cascade)
+
+  periodType  PeriodType
+  periodStart DateTime
+  periodEnd   DateTime
+
+  accountType  AccountType // ASSETS, LIABILITIES, INCOME, EXPENSE, EQUITY
+  categoryName String // e.g., "Current Assets", "Operating Expenses"
+
+  totalDebit  Decimal @db.Decimal(14, 2)
+  totalCredit Decimal @db.Decimal(14, 2)
+  netAmount   Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now())
+
+  @@unique([accountingClientId, periodType, periodStart, accountType, categoryName])
+  @@index([accountingClientId, periodType])
+}
+
+enum PeriodType {
+  DAILY
+  MONTHLY
+  QUARTERLY
+  YEARLY
 }

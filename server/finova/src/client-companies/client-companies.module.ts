@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { ClientCompaniesService } from './client-companies.service';
 import { ClientCompaniesController } from './client-companies.controller';
 import { AnafModule } from 'src/anaf/anaf.module';
+import { AccountingModule } from 'src/accounting/accounting.module';
 
 @Module({
-  imports:[AnafModule],
+  imports: [AnafModule, AccountingModule],
   providers: [ClientCompaniesService],
   controllers: [ClientCompaniesController]
 })

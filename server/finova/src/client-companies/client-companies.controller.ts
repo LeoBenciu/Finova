@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Req, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Req, UploadedFiles, UseGuards, UseInterceptors, Query } from '@nestjs/common';
 import {Request} from 'express';
 import { JwtGuard } from 'src/auth/guard';
 import { ClientCompaniesService } from './client-companies.service';
@@ -106,5 +106,70 @@ export class ClientCompaniesController {
         @GetUser() user: User
     ) {
         return this.clientCompaniesService.saveNewManagement(dto, user);
-}
+    }
+
+    // ==================== LEDGER ENDPOINTS ====================
+
+    @Get(':ein/ledger-entries')
+    async getLedgerEntries(
+        @Param('ein') ein: string,
+        @Req() req: Request,
+        @Query('page') page: string = '1',
+        @Query('size') size: string = '50',
+        @Query('startDate') startDate?: string,
+        @Query('endDate') endDate?: string,
+        @Query('accountCode') accountCode?: string
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.getLedgerEntries(
+            ein,
+            user,
+            parseInt(page),
+            parseInt(size),
+            startDate,
+            endDate,
+            accountCode
+        );
+    }
+
+    @Get(':ein/ledger-summary')
+    async getLedgerSummary(
+        @Param('ein') ein: string,
+        @Query('startDate') startDate: string,
+        @Query('endDate') endDate: string,
+        @Req() req: Request
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.getLedgerSummary(ein, user, startDate, endDate);
+    }
+
+    @Get(':ein/dashboard-metrics')
+    async getDashboardMetrics(
+        @Param('ein') ein: string,
+        @Req() req: Request
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.getDashboardMetrics(ein, user);
+    }
+
+    @Get(':ein/financial-reports')
+    async getFinancialReports(
+        @Param('ein') ein: string,
+        @Query('year') year: string,
+        @Query('type') type: 'pnl' | 'balance' | 'cashflow',
+        @Req() req: Request
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.getFinancialReports(ein, user, parseInt(year), type);
+    }
+
+    @Post(':ein/calculate-metrics')
+    async triggerMetricsCalculation(
+        @Param('ein') ein: string,
+        @Query('periodType') periodType: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' = 'MONTHLY',
+        @Req() req: Request
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.triggerMetricsCalculation(ein, user, periodType);
+    }
 }

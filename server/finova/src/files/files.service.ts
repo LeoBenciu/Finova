@@ -542,6 +542,35 @@ export class FilesService {
         return 'unknown';
     }
 
+    private determinePaymentMethod(extractedData: any): 'cash' | 'bank' {
+        // Check for bank-related indicators in the extracted data
+        const paymentInfo = extractedData.payment_method || extractedData.payment_info || '';
+        const bankKeywords = ['bank', 'transfer', 'iban', 'cont', 'bancar', '5121', '5124'];
+        
+        if (typeof paymentInfo === 'string') {
+            const lowerPaymentInfo = paymentInfo.toLowerCase();
+            if (bankKeywords.some(keyword => lowerPaymentInfo.includes(keyword))) {
+                return 'bank';
+            }
+        }
+        
+        // Default to cash if no bank indicators found
+        return 'cash';
+    }
+
+    private determineBankAccount(extractedData: any): string {
+        // Check for foreign currency indicators
+        const currency = extractedData.currency || extractedData.currency_code || '';
+        const isForeignCurrency = currency && currency.toUpperCase() !== 'RON' && currency.toUpperCase() !== 'LEI';
+        
+        if (isForeignCurrency) {
+            return '5124'; // Foreign currency bank account
+        }
+        
+        // Default to RON bank account
+        return '5121';
+    }
+
     private async smartArticleProcessing(
         lineItems: any[], 
         existingArticles: any[], 
@@ -1413,11 +1442,18 @@ export class FilesService {
                         if (amount && amount > 0) {
                             const postingDate = this.extractDateFromProcessed(processedData) || new Date();
                             const postingKey = `DOC:${document.id}:RECEIPT:${amount}:${postingDate.toISOString().slice(0,10)}`;
-                            // 5311 Cash in hand (Debit), 411 Clients (Credit)
+                            
+                            // Determine payment method to choose correct cash/bank account
+                            // For now, default to 5311 (Cash), but this should be enhanced to detect payment method
+                            const paymentMethod = this.determinePaymentMethod(processedData.result);
+                            const cashAccount = paymentMethod === 'bank' ? '5121' : '5311';
+                            
+                            // Receipt: Cr 5311/5121 (Cash/Bank) = Dr 401 (Payables)
                             const entries = [
-                                { accountCode: '5311', debit: amount },
-                                { accountCode: '411', credit: amount }
+                                { accountCode: cashAccount, credit: amount },
+                                { accountCode: '401', debit: amount }
                             ];
+                            
                             // Fire-and-forget to avoid blocking upload flow
                             setTimeout(async () => {
                                 try {
@@ -1430,9 +1466,9 @@ export class FilesService {
                                         postingKey,
                                         links: { documentId: document.id }
                                     });
-                                    console.log(`[LEDGER] Posted cash receipt for document ${document.id} amount ${amount}`);
+                                    console.log(`[LEDGER] Posted receipt for document ${document.id} amount ${amount} using ${cashAccount}`);
                                 } catch (postErr) {
-                                    console.warn(`[LEDGER_WARN] Failed to post cash receipt for document ${document.id}:`, postErr?.message || postErr);
+                                    console.warn(`[LEDGER_WARN] Failed to post receipt for document ${document.id}:`, postErr?.message || postErr);
                                 }
                             }, 0);
                         } else {
@@ -1440,15 +1476,19 @@ export class FilesService {
                         }
                     }
 
-                    // Payment Order (vendor payment): Debit 401 / Credit 5121
+                    // Payment Order (vendor payment): Dr 401 (Payables) = Cr 5121/5124 (Bank)
                     if (docType === 'payment order' && docHasRefs) {
                         const amount = this.extractAmountFromProcessed(processedData);
                         if (amount && amount > 0) {
                             const postingDate = this.extractDateFromProcessed(processedData) || new Date();
                             const postingKey = `DOC:${document.id}:PAYMENT_ORDER:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            
+                            // Determine bank account (RON vs Foreign Currency)
+                            const bankAccount = this.determineBankAccount(processedData.result);
+                            
                             const entries = [
                                 { accountCode: '401', debit: amount },
-                                { accountCode: '5121', credit: amount }
+                                { accountCode: bankAccount, credit: amount }
                             ];
                             setTimeout(async () => {
                                 try {
@@ -1461,7 +1501,7 @@ export class FilesService {
                                         postingKey,
                                         links: { documentId: document.id }
                                     });
-                                    console.log(`[LEDGER] Posted payment order for document ${document.id} amount ${amount}`);
+                                    console.log(`[LEDGER] Posted payment order for document ${document.id} amount ${amount} using ${bankAccount}`);
                                 } catch (postErr) {
                                     console.warn(`[LEDGER_WARN] Failed to post payment order for document ${document.id}:`, postErr?.message || postErr);
                                 }
@@ -1471,14 +1511,18 @@ export class FilesService {
                         }
                     }
 
-                    // Collection Order (customer collection): Debit 5121 / Credit 411
+                    // Collection Order (customer collection): Dr 5121/5124 (Bank) = Cr 411 (Receivables)
                     if (docType === 'collection order' && docHasRefs) {
                         const amount = this.extractAmountFromProcessed(processedData);
                         if (amount && amount > 0) {
                             const postingDate = this.extractDateFromProcessed(processedData) || new Date();
                             const postingKey = `DOC:${document.id}:COLLECTION_ORDER:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            
+                            // Determine bank account (RON vs Foreign Currency)
+                            const bankAccount = this.determineBankAccount(processedData.result);
+                            
                             const entries = [
-                                { accountCode: '5121', debit: amount },
+                                { accountCode: bankAccount, debit: amount },
                                 { accountCode: '411', credit: amount }
                             ];
                             setTimeout(async () => {
@@ -1492,7 +1536,7 @@ export class FilesService {
                                         postingKey,
                                         links: { documentId: document.id }
                                     });
-                                    console.log(`[LEDGER] Posted collection order for document ${document.id} amount ${amount}`);
+                                    console.log(`[LEDGER] Posted collection order for document ${document.id} amount ${amount} using ${bankAccount}`);
                                 } catch (postErr) {
                                     console.warn(`[LEDGER_WARN] Failed to post collection order for document ${document.id}:`, postErr?.message || postErr);
                                 }
@@ -1502,7 +1546,7 @@ export class FilesService {
                         }
                     }
 
-                    // Invoices: post on save based on direction
+                    // Invoices: post on save with proper double-entry using AI-extracted line item account codes
                     if (docType === 'invoice') {
                         const amount = this.extractAmountFromProcessed(processedData);
                         if (amount && amount > 0) {
@@ -1511,22 +1555,52 @@ export class FilesService {
                             const sourceBase = direction === 'outgoing' ? 'INVOICE_OUT' : direction === 'incoming' ? 'INVOICE_IN' : 'INVOICE';
                             const postingKey = `DOC:${document.id}:${sourceBase}:${amount}:${postingDate.toISOString().slice(0,10)}`;
 
-                            let entries: { accountCode: string; debit?: number; credit?: number }[] | null = null;
+                            // Get line items with AI-extracted account codes
+                            const lineItems = processedData.result?.line_items || [];
+                            const vatAmount = processedData.result?.vat_amount || 0;
+                            const netAmount = amount - vatAmount;
+
+                            let entries: { accountCode: string; debit?: number; credit?: number }[] = [];
+
                             if (direction === 'outgoing') {
-                                // Outgoing (we issued): Dr 411 / Cr 707 (generic sales revenue)
-                                entries = [
-                                    { accountCode: '411', debit: amount },
-                                    { accountCode: '707', credit: amount }
-                                ];
+                                // Outgoing invoice (we issued): Dr 411 (Receivables) = Cr Line Items + Cr 4427 (Output VAT)
+                                entries.push({ accountCode: '411', debit: amount }); // Receivables
+                                
+                                // Add line items as credits (revenue)
+                                for (const lineItem of lineItems) {
+                                    if (lineItem.account_code && lineItem.total) {
+                                        entries.push({ 
+                                            accountCode: lineItem.account_code, 
+                                            credit: lineItem.total 
+                                        });
+                                    }
+                                }
+                                
+                                // Add output VAT if present
+                                if (vatAmount > 0) {
+                                    entries.push({ accountCode: '4427', credit: vatAmount });
+                                }
                             } else if (direction === 'incoming') {
-                                // Incoming (vendor invoice): Dr 628 (other expenses) / Cr 401
-                                entries = [
-                                    { accountCode: '628', debit: amount },
-                                    { accountCode: '401', credit: amount }
-                                ];
+                                // Incoming invoice (from supplier): Dr Line Items + Dr 4426 (Input VAT) = Cr 401 (Payables)
+                                entries.push({ accountCode: '401', credit: amount }); // Payables
+                                
+                                // Add line items as debits (expenses/assets)
+                                for (const lineItem of lineItems) {
+                                    if (lineItem.account_code && lineItem.total) {
+                                        entries.push({ 
+                                            accountCode: lineItem.account_code, 
+                                            debit: lineItem.total 
+                                        });
+                                    }
+                                }
+                                
+                                // Add input VAT if present
+                                if (vatAmount > 0) {
+                                    entries.push({ accountCode: '4426', debit: vatAmount });
+                                }
                             }
 
-                            if (entries) {
+                            if (entries.length > 0) {
                                 setTimeout(async () => {
                                     try {
                                         await this.postingService.postEntries({
@@ -1538,13 +1612,13 @@ export class FilesService {
                                             postingKey,
                                             links: { documentId: document.id }
                                         });
-                                        console.log(`[LEDGER] Posted ${sourceBase.toLowerCase()} for document ${document.id} amount ${amount} direction=${direction}`);
+                                        console.log(`[LEDGER] Posted ${sourceBase.toLowerCase()} for document ${document.id} with ${lineItems.length} line items, amount ${amount}, direction=${direction}`);
                                     } catch (postErr) {
                                         console.warn(`[LEDGER_WARN] Failed to post invoice for document ${document.id}:`, postErr?.message || postErr);
                                     }
                                 }, 0);
                             } else {
-                                console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: unknown direction`);
+                                console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: no valid line items with account codes`);
                             }
                         } else {
                             console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: no parsable positive amount`);

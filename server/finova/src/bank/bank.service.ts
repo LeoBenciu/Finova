@@ -2520,6 +2520,64 @@ export class BankService {
               notes: matchData.notes
             }
           });
+
+          // Create ledger entries for reconciliation
+          try {
+            const accountingClientId = document.accountingClient.id;
+            const postingDate = bankTransaction.transactionDate || new Date();
+            const amount = Math.abs(Number(bankTransaction.amount));
+            const isCreditToBank = Number(bankTransaction.amount) > 0;
+            
+            // Determine bank account code (RON vs Foreign Currency)
+            const bankAccountCode = await this.resolveBankAnalyticCode(prisma, accountingClientId, matchData.bankTransactionId);
+            
+            let entries: { accountCode: string; debit?: number; credit?: number }[] = [];
+            
+            if (document.type.toLowerCase().includes('invoice')) {
+              // Invoice reconciliation: Dr 401 (Payables) = Cr 5121/5124 (Bank)
+              entries = [
+                { accountCode: '401', debit: amount },
+                { accountCode: bankAccountCode, credit: amount }
+              ];
+            } else if (document.type.toLowerCase().includes('receipt')) {
+              // Receipt reconciliation: Dr 5121/5124 (Bank) = Cr 401 (Payables)
+              entries = [
+                { accountCode: bankAccountCode, debit: amount },
+                { accountCode: '401', credit: amount }
+              ];
+            } else {
+              // Generic document reconciliation: Dr/Cr based on transaction direction
+              if (isCreditToBank) {
+                entries = [
+                  { accountCode: '401', debit: amount },
+                  { accountCode: bankAccountCode, credit: amount }
+                ];
+              } else {
+                entries = [
+                  { accountCode: bankAccountCode, debit: amount },
+                  { accountCode: '401', credit: amount }
+                ];
+              }
+            }
+            
+            await this.postingService.postEntries({
+              accountingClientId,
+              postingDate,
+              entries,
+              sourceType: 'RECONCILIATION',
+              sourceId: String(reconciliationRecord.id),
+              postingKey: `RECONCILIATION:${reconciliationRecord.id}:${amount}:${postingDate.toISOString().slice(0,10)}`,
+              links: { 
+                documentId: document.id,
+                bankTransactionId: matchData.bankTransactionId,
+                reconciliationId: reconciliationRecord.id
+              }
+            });
+            
+            console.log(`[LEDGER] Posted reconciliation entries for document ${document.id} and transaction ${matchData.bankTransactionId} amount ${amount}`);
+          } catch (ledgerError) {
+            console.warn(`[LEDGER_WARN] Failed to post reconciliation entries:`, ledgerError?.message || ledgerError);
+          }
       
           await prisma.document.update({
             where: { id: matchData.documentId },
@@ -2975,44 +3033,62 @@ export class BankService {
             data: { status: SuggestionStatus.REJECTED }
           });
 
-          // Post ledger entries synchronously (non-transfer)
+          // Post ledger entries synchronously (non-transfer) using proper double-entry logic
           try {
             const bankTx = await prisma.bankTransaction.findUnique({
               where: { id: suggestion.bankTransactionId! },
             });
-            if (bankTx) {
-              const accountingClientId = suggestion.document
-                ? suggestion.document.accountingClient.id
-                : suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.id;
-              if (accountingClientId) {
-                const bankAccountCode = await this.resolveBankAnalyticCode(prisma as any, accountingClientId, suggestion.bankTransactionId!);
-                const amt = Math.abs(Number(bankTx.amount));
-                const postingDate = bankTx.transactionDate || new Date();
-                const counter = this.inferCounterAccountCode(suggestion.document?.type);
-                const isCreditToBank = Number(bankTx.amount) > 0; // money in
-                const entries = isCreditToBank
-                  ? [
-                      { accountCode: bankAccountCode, debit: amt },
-                      { accountCode: counter, credit: amt },
-                    ]
-                  : [
-                      { accountCode: counter, debit: amt },
-                      { accountCode: bankAccountCode, credit: amt },
-                    ];
-                await this.postingService.postEntries({
-                  accountingClientId,
-                  postingDate,
-                  entries,
-                  sourceType: 'RECONCILIATION',
-                  sourceId: String(reconciliationRecord.id),
-                  postingKey: `recon:${reconciliationRecord.id}`,
-                  links: {
-                    documentId: suggestion.documentId || null,
-                    bankTransactionId: suggestion.bankTransactionId || null,
-                    reconciliationId: reconciliationRecord.id,
-                  },
-                });
+            if (bankTx && suggestion.document) {
+              const accountingClientId = suggestion.document.accountingClient.id;
+              const bankAccountCode = await this.resolveBankAnalyticCode(prisma as any, accountingClientId, suggestion.bankTransactionId!);
+              const amt = Math.abs(Number(bankTx.amount));
+              const postingDate = bankTx.transactionDate || new Date();
+              const isCreditToBank = Number(bankTx.amount) > 0;
+              
+              let entries: { accountCode: string; debit?: number; credit?: number }[] = [];
+              
+              if (suggestion.document.type.toLowerCase().includes('invoice')) {
+                // Invoice reconciliation: Dr 401 (Payables) = Cr 5121/5124 (Bank)
+                entries = [
+                  { accountCode: '401', debit: amt },
+                  { accountCode: bankAccountCode, credit: amt }
+                ];
+              } else if (suggestion.document.type.toLowerCase().includes('receipt')) {
+                // Receipt reconciliation: Dr 5121/5124 (Bank) = Cr 401 (Payables)
+                entries = [
+                  { accountCode: bankAccountCode, debit: amt },
+                  { accountCode: '401', credit: amt }
+                ];
+              } else {
+                // Generic document reconciliation: Dr/Cr based on transaction direction
+                if (isCreditToBank) {
+                  entries = [
+                    { accountCode: '401', debit: amt },
+                    { accountCode: bankAccountCode, credit: amt }
+                  ];
+                } else {
+                  entries = [
+                    { accountCode: bankAccountCode, debit: amt },
+                    { accountCode: '401', credit: amt }
+                  ];
+                }
               }
+              
+              await this.postingService.postEntries({
+                accountingClientId,
+                postingDate,
+                entries,
+                sourceType: 'RECONCILIATION',
+                sourceId: String(reconciliationRecord.id),
+                postingKey: `RECONCILIATION:${reconciliationRecord.id}:${amt}:${postingDate.toISOString().slice(0,10)}`,
+                links: {
+                  documentId: suggestion.documentId || null,
+                  bankTransactionId: suggestion.bankTransactionId || null,
+                  reconciliationId: reconciliationRecord.id,
+                },
+              });
+              
+              console.log(`[LEDGER] Posted suggested reconciliation entries for document ${suggestion.documentId} and transaction ${suggestion.bankTransactionId} amount ${amt}`);
             }
           } catch (e) {
             console.warn('⚠️ Ledger posting failed on acceptSuggestion:', e);

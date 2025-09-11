@@ -3,6 +3,7 @@ import User from "../Components/Settings/User";
 import Company from "../Components/Settings/Company";
 import Privacy from "../Components/Settings/Privacy";
 import RPA from '../Components/Settings/RPA';
+import LedgerViewer from './SettingsPage/LedgerViewer';
 import { useSelector } from "react-redux";
 
 enum Section{
@@ -10,7 +11,8 @@ enum Section{
   COMPANY,
   CLIENTCOMPANIES,
   PRIVACY,
-  RPA
+  RPA,
+  LEDGER
 }
 
 const SettingsPage = () => {
@@ -44,6 +46,12 @@ const SettingsPage = () => {
          onClick={()=>setSection(Section.RPA)}>
           {language==='ro'?'RPA':'RPA'}
         </button>
+
+        <button className={`${section===Section.LEDGER?'bg-transparent text-[var(--primary)] font-bold':'text-[var(--text3)] hover:bg-[var(--background)]'} 
+        text-lg m-2 rounded-xl bg-[var(--background)]`}
+         onClick={()=>setSection(Section.LEDGER)}>
+          {language==='ro'?'Registru':'Ledger'}
+        </button>
         
       </div>
 
@@ -61,6 +69,10 @@ const SettingsPage = () => {
 
       {section===Section.RPA&&(
         <RPA/>
+      )}
+
+      {section===Section.LEDGER&&(
+        <LedgerViewer/>
       )}
     </div>
   )

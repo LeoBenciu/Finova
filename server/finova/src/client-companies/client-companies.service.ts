@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, InternalServerErrorException, Logger, 
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateClientCompanyDto, DeleteClientCompanyDto, NewManagementDto } from './dto';
 import { AnafService } from 'src/anaf/anaf.service';
+import { FinancialMetricsService } from 'src/accounting/financial-metrics.service';
 import * as fs from 'fs';
 import { parse } from 'csv-parse';
 import { User, UnitOfMeasure, ArticleType, ManagementType, VatRate} from '@prisma/client';
@@ -10,7 +11,11 @@ import { User, UnitOfMeasure, ArticleType, ManagementType, VatRate} from '@prism
 export class ClientCompaniesService {
     private readonly logger = new Logger(ClientCompaniesService.name);
 
-    constructor(private prisma:PrismaService, private anaf:AnafService){}
+    constructor(
+        private prisma: PrismaService, 
+        private anaf: AnafService,
+        private financialMetricsService: FinancialMetricsService
+    ) {}
 
     async getClientCompany(clientId: number, reqUser: User)
     {
@@ -924,4 +929,203 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
       throw e;
   }
 }
+
+    // ==================== LEDGER ENDPOINTS ====================
+
+    async getLedgerEntries(
+        ein: string,
+        user: User,
+        page: number = 1,
+        size: number = 50,
+        startDate?: string,
+        endDate?: string,
+        accountCode?: string
+    ) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        const whereCondition: any = {
+            accountingClientId: accountingClient.id
+        };
+
+        if (startDate && endDate) {
+            whereCondition.postingDate = {
+                gte: new Date(startDate),
+                lte: new Date(endDate)
+            };
+        }
+
+        if (accountCode) {
+            whereCondition.accountCode = accountCode;
+        }
+
+        const [entries, total] = await Promise.all([
+            this.prisma.generalLedgerEntry.findMany({
+                where: whereCondition,
+                include: {
+                    document: {
+                        select: { id: true, name: true, type: true }
+                    },
+                    bankTransaction: {
+                        select: { id: true, description: true, transactionDate: true }
+                    },
+                    reconciliation: {
+                        select: { id: true, notes: true }
+                    }
+                },
+                orderBy: { postingDate: 'desc' },
+                skip: (page - 1) * size,
+                take: size
+            }),
+            this.prisma.generalLedgerEntry.count({ where: whereCondition })
+        ]);
+
+        return {
+            entries: entries.map(entry => ({
+                id: entry.id,
+                postingDate: entry.postingDate,
+                accountCode: entry.accountCode,
+                debit: Number(entry.debit),
+                credit: Number(entry.credit),
+                sourceType: entry.sourceType,
+                sourceId: entry.sourceId,
+                document: entry.document,
+                bankTransaction: entry.bankTransaction,
+                reconciliation: entry.reconciliation,
+                createdAt: entry.createdAt
+            })),
+            pagination: {
+                page,
+                size,
+                total,
+                totalPages: Math.ceil(total / size)
+            }
+        };
+    }
+
+    async getLedgerSummary(
+        ein: string,
+        user: User,
+        startDate: string,
+        endDate: string
+    ) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        const entries = await this.prisma.generalLedgerEntry.findMany({
+            where: {
+                accountingClientId: accountingClient.id,
+                postingDate: {
+                    gte: new Date(startDate),
+                    lte: new Date(endDate)
+                }
+            },
+            select: {
+                accountCode: true,
+                debit: true,
+                credit: true,
+                sourceType: true
+            }
+        });
+
+        // Group by account code
+        const accountSummary = new Map<string, { debit: number; credit: number; net: number }>();
+        
+        entries.forEach(entry => {
+            const current = accountSummary.get(entry.accountCode) || { debit: 0, credit: 0, net: 0 };
+            current.debit += Number(entry.debit);
+            current.credit += Number(entry.credit);
+            current.net = current.debit - current.credit;
+            accountSummary.set(entry.accountCode, current);
+        });
+
+        // Group by source type
+        const sourceSummary = new Map<string, number>();
+        entries.forEach(entry => {
+            const current = sourceSummary.get(entry.sourceType) || 0;
+            sourceSummary.set(entry.sourceType, current + 1);
+        });
+
+        return {
+            period: { startDate, endDate },
+            totalEntries: entries.length,
+            accountSummary: Array.from(accountSummary.entries()).map(([code, summary]) => ({
+                accountCode: code,
+                ...summary
+            })),
+            sourceSummary: Array.from(sourceSummary.entries()).map(([type, count]) => ({
+                sourceType: type,
+                count
+            }))
+        };
+    }
+
+    async getDashboardMetrics(ein: string, user: User) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        return await this.financialMetricsService.getDashboardMetrics(accountingClient.id);
+    }
+
+    async getFinancialReports(
+        ein: string,
+        user: User,
+        year: number,
+        type: 'pnl' | 'balance' | 'cashflow'
+    ) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        const startDate = new Date(year, 0, 1);
+        const endDate = new Date(year, 11, 31);
+        
+        return await this.financialMetricsService.getHistoricalMetrics(
+            accountingClient.id,
+            'MONTHLY',
+            startDate,
+            endDate
+        );
+    }
+
+    async triggerMetricsCalculation(
+        ein: string,
+        user: User,
+        periodType: 'DAILY' | 'MONTHLY' | 'QUARTERLY' | 'YEARLY' = 'MONTHLY'
+    ) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        return await this.financialMetricsService.triggerMetricsCalculation(
+            accountingClient.id,
+            periodType
+        );
+    }
+
+    // Helper methods
+    private async getClientCompanyByEin(ein: string, user: User) {
+        const clientCompany = await this.prisma.clientCompany.findUnique({
+            where: { ein }
+        });
+
+        if (!clientCompany) {
+            throw new NotFoundException('Client company not found');
+        }
+
+        return clientCompany;
+    }
+
+    private async getAccountingClient(clientCompanyId: number, user: User) {
+        const accountingClient = await this.prisma.accountingClients.findFirst({
+            where: {
+                accountingCompanyId: user.accountingCompanyId,
+                clientCompanyId: clientCompanyId
+            }
+        });
+
+        if (!accountingClient) {
+            throw new UnauthorizedException('No access to this client company');
+        }
+
+        return accountingClient;
+    }
 }

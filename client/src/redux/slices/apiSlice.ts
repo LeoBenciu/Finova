@@ -517,6 +517,47 @@ export const finovaApi = createApi({
             })
         }),
 
+        // ==================== LEDGER ENDPOINTS ====================
+        
+        getLedgerEntries: build.query({
+            query: ({ ein, page = 1, size = 50, startDate, endDate, accountCode }) => ({
+                url: `client-companies/${ein}/ledger-entries`,
+                method: 'GET',
+                params: { page, size, startDate, endDate, accountCode }
+            })
+        }),
+
+        getLedgerSummary: build.query({
+            query: ({ ein, startDate, endDate }) => ({
+                url: `client-companies/${ein}/ledger-summary`,
+                method: 'GET',
+                params: { startDate, endDate }
+            })
+        }),
+
+        getDashboardMetrics: build.query({
+            query: (ein) => ({
+                url: `client-companies/${ein}/dashboard-metrics`,
+                method: 'GET'
+            })
+        }),
+
+        getFinancialReports: build.query({
+            query: ({ ein, year, type }) => ({
+                url: `client-companies/${ein}/financial-reports`,
+                method: 'GET',
+                params: { year, type }
+            })
+        }),
+
+        triggerMetricsCalculation: build.mutation({
+            query: ({ ein, periodType = 'MONTHLY' }) => ({
+                url: `client-companies/${ein}/calculate-metrics`,
+                method: 'POST',
+                params: { periodType }
+            })
+        }),
+
         getUserAgreements: build.query({
             query: () => ({
                 url: '/users/me/agreements',
@@ -1220,19 +1261,6 @@ export const finovaApi = createApi({
           },
         }),
 
-        // ==================== ACCOUNTING / LEDGER ====================
-        getLedgerEntries: build.query<
-          { items: any[]; total: number; page: number; size: number },
-          { clientEin: string; startDate?: string; endDate?: string; accountCode?: string; page?: number; size?: number }
-        >({
-          query: ({ clientEin, startDate, endDate, accountCode, page = 1, size = 50 }) => {
-            const params = new URLSearchParams({ page: String(page), size: String(size) });
-            if (startDate) params.append('startDate', startDate);
-            if (endDate) params.append('endDate', endDate);
-            if (accountCode) params.append('accountCode', accountCode);
-            return `/accounting/${clientEin}/ledger?${params.toString()}`;
-          },
-        }),
 
         // ==================== CHAT API ====================
         sendChatMessage: build.mutation<
@@ -1345,4 +1373,5 @@ export const {
   useGetCompanyUsersQuery,
   useSendChatMessageMutation,
   useGetLedgerEntriesQuery,
+  useGetLedgerSummaryQuery,
 } = finovaApi;
