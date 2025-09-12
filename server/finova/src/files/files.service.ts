@@ -1,5 +1,5 @@
 import { Injectable, InternalServerErrorException, NotFoundException, UnauthorizedException, Logger } from '@nestjs/common';
-import { ArticleType, User, CorrectionType, DuplicateStatus, DuplicateType, VatRate, UnitOfMeasure, Document, ComplianceStatus, Prisma } from '@prisma/client';
+import { ArticleType, User, CorrectionType, DuplicateStatus, DuplicateType, VatRate, UnitOfMeasure, Document, ComplianceStatus, Prisma, LedgerSourceType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { DataExtractionService } from '../data-extraction/data-extraction.service';
 import { PostingService } from '../accounting/posting.service';
@@ -1461,7 +1461,7 @@ export class FilesService {
                                         accountingClientId: accountingClientRelation.id,
                                         postingDate,
                                         entries,
-                                        sourceType: 'RECEIPT',
+                                        sourceType: LedgerSourceType.RECEIPT,
                                         sourceId: String(document.id),
                                         postingKey,
                                         links: { documentId: document.id }
@@ -1496,7 +1496,7 @@ export class FilesService {
                                         accountingClientId: accountingClientRelation.id,
                                         postingDate,
                                         entries,
-                                        sourceType: 'PAYMENT_ORDER',
+                                        sourceType: LedgerSourceType.PAYMENT_ORDER,
                                         sourceId: String(document.id),
                                         postingKey,
                                         links: { documentId: document.id }
@@ -1531,7 +1531,7 @@ export class FilesService {
                                         accountingClientId: accountingClientRelation.id,
                                         postingDate,
                                         entries,
-                                        sourceType: 'COLLECTION_ORDER',
+                                        sourceType: LedgerSourceType.PAYMENT_ORDER,
                                         sourceId: String(document.id),
                                         postingKey,
                                         links: { documentId: document.id }
@@ -1552,7 +1552,7 @@ export class FilesService {
                         if (amount && amount > 0) {
                             const direction = this.determineInvoiceDirection(processedData.result, clientEin);
                             const postingDate = this.extractDateFromProcessed(processedData) || new Date();
-                            const sourceBase = direction === 'outgoing' ? 'INVOICE_OUT' : direction === 'incoming' ? 'INVOICE_IN' : 'INVOICE';
+                            const sourceBase = direction === 'outgoing' ? 'INVOICE_OUT' : 'INVOICE_IN';
                             const postingKey = `DOC:${document.id}:${sourceBase}:${amount}:${postingDate.toISOString().slice(0,10)}`;
 
                             // Get line items with AI-extracted account codes
@@ -1607,7 +1607,7 @@ export class FilesService {
                                             accountingClientId: accountingClientRelation.id,
                                             postingDate,
                                             entries,
-                                            sourceType: (sourceBase as any),
+                                            sourceType: sourceBase as LedgerSourceType,
                                             sourceId: String(document.id),
                                             postingKey,
                                             links: { documentId: document.id }

@@ -8,18 +8,8 @@ export type PostingEntry = {
   credit?: number; // RON
 };
 
-// Temporary local type until Prisma migration generates the enum
-// Align with Prisma enum LedgerSourceType in schema.prisma
-export type LedgerSourceType =
-  | 'INVOICE_IN'
-  | 'INVOICE_OUT'
-  | 'RECEIPT'
-  | 'PAYMENT_ORDER'
-  | 'COLLECTION_ORDER'
-  | 'Z_REPORT'
-  | 'RECONCILIATION'
-  | 'TRANSFER'
-  | 'ADJUSTMENT';
+// Use the Prisma generated enum
+import { LedgerSourceType } from '@prisma/client';
 
 export interface PostEntriesInput {
   accountingClientId: number;
@@ -71,10 +61,9 @@ export class PostingService {
     } catch {}
 
     // Try to find existing by unique postingKey
-    const prismaAny = this.prisma as any; // avoid TS errors before migration generates models
-    const existing = await prismaAny.generalLedgerEntry?.findFirst?.({ where: { postingKey } });
+    const existing = await this.prisma.generalLedgerEntry.findFirst({ where: { postingKey } });
     if (existing) {
-      const siblings = await prismaAny.generalLedgerEntry.findMany({ where: { accountingClientId, postingKey } });
+      const siblings = await this.prisma.generalLedgerEntry.findMany({ where: { accountingClientId, postingKey } });
       try {
         console.log('[Ledger] postEntries idempotent reuse', {
           postingKey,
@@ -87,11 +76,10 @@ export class PostingService {
     }
 
     const created = await this.prisma.$transaction(async (tx) => {
-      const txAny = tx as any; // avoid TS errors before migration generates models
       const createdRows = [] as any[];
 
       for (const e of entries) {
-        const row = await txAny.generalLedgerEntry.create({
+        const row = await tx.generalLedgerEntry.create({
           data: {
             accountingClientId,
             postingDate,
@@ -130,7 +118,7 @@ export class PostingService {
 
         // Update Daily balance (increment by debit-credit)
         const delta = new Prisma.Decimal((e.debit ?? 0) - (e.credit ?? 0));
-        await txAny.accountBalanceDaily.upsert({
+        await tx.accountBalanceDaily.upsert({
           where: {
             accountingClientId_accountCode_date: {
               accountingClientId,
@@ -153,7 +141,7 @@ export class PostingService {
         // Update Monthly balance
         const y = postingDate.getFullYear();
         const m = postingDate.getMonth() + 1;
-        await txAny.accountBalanceMonthly.upsert({
+        await tx.accountBalanceMonthly.upsert({
           where: {
             accountingClientId_accountCode_year_month: {
               accountingClientId,
@@ -199,10 +187,8 @@ export class PostingService {
   }) {
     const { accountingClientId, documentId = null, bankTransactionId = null, reconciliationId = null } = params;
 
-    const prismaAny = this.prisma as any;
-
     // Find entries by links
-    const entries: any[] = await prismaAny.generalLedgerEntry?.findMany?.({
+    const entries = await this.prisma.generalLedgerEntry.findMany({
       where: {
         accountingClientId,
         documentId: documentId,
@@ -226,12 +212,11 @@ export class PostingService {
     }
 
     await this.prisma.$transaction(async (tx) => {
-      const txAny = tx as any;
       for (const row of entries) {
         const delta = new Prisma.Decimal(Number(row.debit || 0) - Number(row.credit || 0));
 
         // Reverse Daily balance
-        await txAny.accountBalanceDaily.update({
+        await tx.accountBalanceDaily.update({
           where: {
             accountingClientId_accountCode_date: {
               accountingClientId,
@@ -245,7 +230,7 @@ export class PostingService {
           },
         }).catch(async () => {
           // If daily balance row doesn't exist (edge case), create with negative delta
-          await txAny.accountBalanceDaily.create({
+          await tx.accountBalanceDaily.create({
             data: {
               accountingClientId,
               date: new Date(new Date(row.postingDate).toDateString()),
@@ -258,7 +243,7 @@ export class PostingService {
         // Reverse Monthly balance
         const y = new Date(row.postingDate).getFullYear();
         const m = new Date(row.postingDate).getMonth() + 1;
-        await txAny.accountBalanceMonthly.update({
+        await tx.accountBalanceMonthly.update({
           where: {
             accountingClientId_accountCode_year_month: {
               accountingClientId,
@@ -273,7 +258,7 @@ export class PostingService {
           },
         }).catch(async () => {
           // If monthly balance row doesn't exist, create with negative delta
-          await txAny.accountBalanceMonthly.create({
+          await tx.accountBalanceMonthly.create({
             data: {
               accountingClientId,
               accountCode: row.accountCode,
@@ -285,7 +270,7 @@ export class PostingService {
         });
 
         // Delete ledger entry row
-        await txAny.generalLedgerEntry.delete({ where: { id: row.id } });
+        await tx.generalLedgerEntry.delete({ where: { id: row.id } });
       }
     });
 
