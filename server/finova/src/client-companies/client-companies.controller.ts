@@ -172,4 +172,5 @@ export class ClientCompaniesController {
         const user = req.user as User;
         return this.clientCompaniesService.triggerMetricsCalculation(ein, user, periodType);
     }
+
 }

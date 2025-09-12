@@ -1,6 +1,6 @@
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Injectable, NotFoundException, UnauthorizedException, BadRequestException } from '@nestjs/common';
-import { Prisma, User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType } from '@prisma/client';
+import { Prisma, User, ReconciliationStatus, MatchType, SuggestionStatus, PaymentStatus, BankAccountType, LedgerSourceType } from '@prisma/client';
 import { DataExtractionService } from 'src/data-extraction/data-extraction.service';
 import * as AWS from 'aws-sdk';
 import { PostingService } from 'src/accounting/posting.service';
@@ -192,7 +192,7 @@ export class BankService {
           accountingClientId: accountingClient.id,
           postingDate,
           entries,
-          sourceType: 'RECONCILIATION',
+          sourceType: LedgerSourceType.RECONCILIATION,
           sourceId: String(created.id),
           postingKey: `transfer:${created.id}`,
           links: {
@@ -2564,7 +2564,7 @@ export class BankService {
               accountingClientId,
               postingDate,
               entries,
-              sourceType: 'RECONCILIATION',
+              sourceType: LedgerSourceType.RECONCILIATION,
               sourceId: String(reconciliationRecord.id),
               postingKey: `RECONCILIATION:${reconciliationRecord.id}:${amount}:${postingDate.toISOString().slice(0,10)}`,
               links: { 
@@ -2927,6 +2927,12 @@ export class BankService {
             try {
               const accountingClientId = suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.id
                 || (suggestion.document ? suggestion.document.accountingClient.id : undefined);
+              console.log('[ACCEPT ACCOUNT-CODE] Starting ledger posting', {
+                suggestionId,
+                accountingClientId,
+                bankTransactionId: suggestion.bankTransactionId,
+                chartOfAccountId: suggestion.chartOfAccountId
+              });
               if (accountingClientId) {
                 const bankAccountCode = await this.resolveBankAnalyticCode(prisma as any, accountingClientId, suggestion.bankTransactionId!);
                 const chart = await prisma.chartOfAccounts.findUnique({ where: { id: suggestion.chartOfAccountId } });
@@ -2958,7 +2964,7 @@ export class BankService {
                   accountingClientId,
                   postingDate,
                   entries,
-                  sourceType: 'RECONCILIATION',
+                  sourceType: LedgerSourceType.RECONCILIATION,
                   sourceId: String(updatedTx.id),
                   postingKey: `account-suggestion:${suggestion.id}`,
                   links: {
@@ -2975,7 +2981,11 @@ export class BankService {
                 } catch {}
               }
             } catch (e) {
-              console.warn('⚠️ Ledger posting failed on acceptSuggestion (account-code):', e);
+              console.error('❌ Ledger posting failed on acceptSuggestion (account-code):', {
+                suggestionId,
+                error: e.message || e,
+                stack: e.stack
+              });
             }
 
             return updatedTx;
@@ -3078,7 +3088,7 @@ export class BankService {
                 accountingClientId,
                 postingDate,
                 entries,
-                sourceType: 'RECONCILIATION',
+                sourceType: LedgerSourceType.RECONCILIATION,
                 sourceId: String(reconciliationRecord.id),
                 postingKey: `RECONCILIATION:${reconciliationRecord.id}:${amt}:${postingDate.toISOString().slice(0,10)}`,
                 links: {
@@ -4325,7 +4335,7 @@ export class BankService {
           accountingClientId,
           postingDate,
           entries,
-          sourceType: 'RECONCILIATION',
+          sourceType: LedgerSourceType.RECONCILIATION,
           sourceId: String(updatedTransaction.id),
           postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}`,
           links: {
