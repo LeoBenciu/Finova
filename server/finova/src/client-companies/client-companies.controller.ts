@@ -173,4 +173,13 @@ export class ClientCompaniesController {
         return this.clientCompaniesService.triggerMetricsCalculation(ein, user, periodType);
     }
 
+    @Get(':ein/debug-ledger')
+    async debugLedger(
+        @Param('ein') ein: string,
+        @Req() req: Request
+    ) {
+        const user = req.user as User;
+        return this.clientCompaniesService.debugLedger(ein, user);
+    }
+
 }

@@ -959,6 +959,13 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
             whereCondition.accountCode = accountCode;
         }
 
+        console.log('[LEDGER API] Fetching ledger entries with conditions:', {
+            accountingClientId: accountingClient.id,
+            whereCondition,
+            page,
+            size
+        });
+
         const [entries, total] = await Promise.all([
             this.prisma.generalLedgerEntry.findMany({
                 where: whereCondition,
@@ -979,6 +986,12 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
             }),
             this.prisma.generalLedgerEntry.count({ where: whereCondition })
         ]);
+
+        console.log('[LEDGER API] Query results:', {
+            entriesFound: entries.length,
+            totalCount: total,
+            firstEntry: entries[0] || null
+        });
 
         return {
             entries: entries.map(entry => ({
@@ -1127,5 +1140,77 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
         }
 
         return accountingClient;
+    }
+
+    async debugLedger(ein: string, user: User) {
+        const clientCompany = await this.getClientCompanyByEin(ein, user);
+        const accountingClient = await this.getAccountingClient(clientCompany.id, user);
+        
+        try {
+            // Check if GeneralLedgerEntry table exists and is accessible
+            const totalCount = await this.prisma.generalLedgerEntry.count();
+            const clientCount = await this.prisma.generalLedgerEntry.count({
+                where: { accountingClientId: accountingClient.id }
+            });
+            
+            // Get some sample entries
+            const sampleEntries = await this.prisma.generalLedgerEntry.findMany({
+                where: { accountingClientId: accountingClient.id },
+                take: 5,
+                orderBy: { createdAt: 'desc' }
+            });
+            
+            // Check if there are any bank transactions
+            const bankTransactions = await this.prisma.bankTransaction.count({
+                where: {
+                    bankStatementDocument: {
+                        accountingClient: {
+                            id: accountingClient.id
+                        }
+                    }
+                }
+            });
+            
+            // Check if there are any reconciliation suggestions
+            const suggestions = await this.prisma.reconciliationSuggestion.count({
+                where: {
+                    bankTransaction: {
+                        bankStatementDocument: {
+                            accountingClient: {
+                                id: accountingClient.id
+                            }
+                        }
+                    }
+                }
+            });
+            
+            return {
+                success: true,
+                accountingClientId: accountingClient.id,
+                totalLedgerEntries: totalCount,
+                clientLedgerEntries: clientCount,
+                sampleEntries: sampleEntries.map(entry => ({
+                    id: entry.id,
+                    postingDate: entry.postingDate,
+                    accountCode: entry.accountCode,
+                    debit: Number(entry.debit),
+                    credit: Number(entry.credit),
+                    sourceType: entry.sourceType,
+                    sourceId: entry.sourceId,
+                    postingKey: entry.postingKey,
+                    createdAt: entry.createdAt
+                })),
+                bankTransactions,
+                reconciliationSuggestions: suggestions,
+                message: 'Ledger debug information retrieved successfully'
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: error.message,
+                stack: error.stack,
+                message: 'Error retrieving ledger debug information'
+            };
+        }
     }
 }

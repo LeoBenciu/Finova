@@ -2960,7 +2960,21 @@ export class BankService {
                     entries,
                   });
                 } catch {}
-                await this.postingService.postEntries({
+                console.log('[ACCEPT ACCOUNT-CODE] About to post ledger entries:', {
+                  accountingClientId,
+                  postingDate,
+                  entries,
+                  sourceType: 'RECONCILIATION',
+                  sourceId: String(updatedTx.id),
+                  postingKey: `account-suggestion:${suggestion.id}`,
+                  links: {
+                    documentId: null,
+                    bankTransactionId: suggestion.bankTransactionId || null,
+                    reconciliationId: null,
+                  },
+                });
+
+                const postingResult = await this.postingService.postEntries({
                   accountingClientId,
                   postingDate,
                   entries,
@@ -2973,6 +2987,8 @@ export class BankService {
                     reconciliationId: null,
                   },
                 });
+
+                console.log('[ACCEPT ACCOUNT-CODE] Posting result:', postingResult);
                 try {
                   console.log('[ACCEPT ACCOUNT-CODE] Posting done', {
                     postingKey: `account-suggestion:${suggestion.id}`,

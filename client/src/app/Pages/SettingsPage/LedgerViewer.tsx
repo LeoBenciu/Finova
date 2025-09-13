@@ -21,7 +21,7 @@ export default function LedgerViewer() {
   );
   const [selectedAccount, setSelectedAccount] = useState('');
 
-  const { data: ledgerData, isLoading: entriesLoading } = useGetLedgerEntriesQuery({
+  const { data: ledgerData, isLoading: entriesLoading, error: entriesError } = useGetLedgerEntriesQuery({
     ein: clientCompanyEin,
     page,
     size: 50,
@@ -30,10 +30,25 @@ export default function LedgerViewer() {
     accountCode: selectedAccount || undefined
   });
 
-  const { data: summaryData, isLoading: summaryLoading } = useGetLedgerSummaryQuery({
+  const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useGetLedgerSummaryQuery({
     ein: clientCompanyEin,
     startDate,
     endDate
+  });
+
+  // Debug logging
+  console.log('[LEDGER VIEWER] Component state:', {
+    clientCompanyEin,
+    page,
+    startDate,
+    endDate,
+    selectedAccount,
+    entriesLoading,
+    summaryLoading,
+    entriesError,
+    summaryError,
+    ledgerData,
+    summaryData
   });
 
   if (entriesLoading || summaryLoading) {
@@ -44,6 +59,27 @@ export default function LedgerViewer() {
           <p className="text-[var(--text2)]">
             {language === 'ro' ? 'Se încarcă datele registrului contabil...' : 'Loading ledger data...'}
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (entriesError || summaryError) {
+    return (
+      <div className="p-4 flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="text-red-500 mb-4">
+            <p className="text-lg font-semibold">Error Loading Ledger Data</p>
+            <p className="text-sm mt-2">
+              {language === 'ro' ? 'Eroare la încărcarea datelor registrului contabil' : 'Error loading ledger data'}
+            </p>
+            <details className="mt-4 text-left">
+              <summary className="cursor-pointer text-sm">Debug Info</summary>
+              <pre className="mt-2 text-xs bg-gray-100 p-2 rounded overflow-auto">
+                {JSON.stringify({ entriesError, summaryError }, null, 2)}
+              </pre>
+            </details>
+          </div>
         </div>
       </div>
     );

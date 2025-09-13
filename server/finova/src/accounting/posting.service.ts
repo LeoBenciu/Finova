@@ -75,10 +75,22 @@ export class PostingService {
       return { created: siblings, reused: true };
     }
 
+    console.log('[POSTING SERVICE] Starting transaction to create ledger entries');
     const created = await this.prisma.$transaction(async (tx) => {
       const createdRows = [] as any[];
 
       for (const e of entries) {
+        console.log('[POSTING SERVICE] Creating ledger entry:', {
+          accountingClientId,
+          postingDate,
+          accountCode: e.accountCode,
+          debit: e.debit,
+          credit: e.credit,
+          sourceType,
+          sourceId,
+          postingKey
+        });
+
         const row = await tx.generalLedgerEntry.create({
           data: {
             accountingClientId,
@@ -164,16 +176,20 @@ export class PostingService {
         });
       }
 
+      console.log('[POSTING SERVICE] Transaction completed, created rows:', createdRows.length);
       return createdRows;
     });
 
     try {
-      console.log('[Ledger] postEntries completed', {
+      console.log('[POSTING SERVICE] Posting completed successfully:', {
+        accountingClientId,
         postingKey,
         createdCount: created.length,
         firstIds: created.slice(0, 5).map((r: any) => r.id),
       });
-    } catch {}
+    } catch (e) {
+      console.error('[POSTING SERVICE] Error logging completion:', e);
+    }
 
     return { created, reused: false };
   }

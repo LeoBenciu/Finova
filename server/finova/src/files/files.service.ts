@@ -794,7 +794,31 @@ export class FilesService {
                             : doc.processedData.extractedFields;
                         
                         const searchableText = JSON.stringify(extractedFields).toLowerCase();
-                        return searchableText.includes(searchTerm);
+                        
+                        // First try exact match
+                        if (searchableText.includes(searchTerm)) {
+                            return true;
+                        }
+                        
+                        // Then try to extract and normalize dates from the search term
+                        const datePatterns = [
+                            /(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/g,  // dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy
+                            /(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/g,  // yyyy/mm/dd, yyyy-mm-dd, yyyy.mm.dd
+                        ];
+                        
+                        for (const pattern of datePatterns) {
+                            const matches = searchTerm.matchAll(pattern);
+                            for (const match of matches) {
+                                const [, part1, part2, part3] = match;
+                                // Normalize to dd-mm-yyyy format (same as stored in database)
+                                const normalizedDate = `${part1.padStart(2, '0')}-${part2.padStart(2, '0')}-${part3}`;
+                                if (searchableText.includes(normalizedDate)) {
+                                    return true;
+                                }
+                            }
+                        }
+                        
+                        return false;
                     } catch (e) {
                         return false;
                     }
