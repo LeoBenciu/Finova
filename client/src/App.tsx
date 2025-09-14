@@ -15,6 +15,7 @@ import DataProcessingAgreementPage from './app/Pages/DataProcessingAgreementPage
 import BankPage from './app/Pages/BankPage';
 import ClientsPage from './app/Pages/ClientsPage';
 import TodosPage from './app/Pages/TodosPage';
+import ExportsPage from './app/Pages/ExportsPage';
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
           <Route path='/clients' element={<ClientsPage/>}></Route>
           <Route path='/bank' element={<BankPage/>}></Route>
           <Route path='/todos' element={<TodosPage/>}></Route>
+          <Route path='/exports' element={<ExportsPage/>}></Route>
         </Route>
       </Routes>
     </BrowserRouter>
