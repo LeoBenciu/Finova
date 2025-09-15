@@ -2,7 +2,7 @@
 import { useSelector } from "react-redux";
 import { useState } from "react";
 import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
-import { Download, Calendar, FileText, Database, Filter, CheckCircle, Settings, Monitor, Info } from "lucide-react";
+import { Download, Calendar, Database, Filter, CheckCircle, Settings, Monitor } from "lucide-react";
 
 type RootState = {
   clientCompany: { current: { name: string; ein: string } };
