@@ -2,21 +2,21 @@
 import { useSelector } from "react-redux";
 import { useState } from "react";
 import InitialClientCompanyModalSelect from "../Components/InitialClientCompanyModalSelect";
-import { Download, Calendar, FileText, Database, Filter, CheckCircle } from "lucide-react";
+import { Download, Calendar, FileText, Database, Filter, CheckCircle, Settings, Monitor, Info } from "lucide-react";
 
 type RootState = {
   clientCompany: { current: { name: string; ein: string } };
   user: { language: string };
 };
 
-type ExportFormat = 'excel' | 'csv' | 'pdf' | 'json';
+type AccountingSoftware = 'saga' | 'winmentor' | 'ciel' | 'smartbill-conta' | 'generic';
 type TimeFrame = 'custom' | 'last7days' | 'last30days' | 'last3months' | 'last6months' | 'lastyear' | 'thisyear';
 
 function ExportsPage() {
   const clientCompanyName = useSelector((state: RootState) => state.clientCompany.current.name);
   const language = useSelector((state: RootState) => state.user.language);
 
-  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('excel');
+  const [selectedSoftware, setSelectedSoftware] = useState<AccountingSoftware>('winmentor');
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('last30days');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
@@ -35,11 +35,67 @@ function ExportsPage() {
     { value: 'custom', label: language === 'ro' ? 'Perioadă personalizată' : 'Custom period' }
   ];
 
-  const exportFormats = [
-    { value: 'excel', label: 'Excel (.xlsx)', icon: FileText },
-    { value: 'csv', label: 'CSV (.csv)', icon: Database },
-    { value: 'pdf', label: 'PDF (.pdf)', icon: FileText },
-    { value: 'json', label: 'JSON (.json)', icon: Database }
+  const accountingSoftware = [
+    {
+      value: 'saga',
+      label: 'SAGA',
+      description: language === 'ro' ? 'Software contabil SAGA - format CSV cu delimitare prin virgulă' : 'SAGA accounting software - CSV format with comma delimiter',
+      icon: Monitor,
+      format: 'CSV',
+      encoding: 'UTF-8',
+      delimiter: ',',
+      dateFormat: 'DD/MM/YYYY',
+      decimalSeparator: ',',
+      fields: ['Data', 'Cont', 'Descriere', 'Debit', 'Credit', 'Document', 'Explicatii']
+    },
+    {
+      value: 'winmentor',
+      label: 'WinMentor',
+      description: language === 'ro' ? 'Software contabil WinMentor - format CSV optimizat' : 'WinMentor accounting software - optimized CSV format',
+      icon: Monitor,
+      format: 'CSV',
+      encoding: 'UTF-8',
+      delimiter: ';',
+      dateFormat: 'DD/MM/YYYY',
+      decimalSeparator: ',',
+      fields: ['Data', 'Cont_Debitor', 'Cont_Creditor', 'Suma', 'Explicatii', 'Document', 'Tip_Tranzactie']
+    },
+    {
+      value: 'ciel',
+      label: 'CIEL',
+      description: language === 'ro' ? 'Software contabil CIEL - format XML și CSV' : 'CIEL accounting software - XML and CSV format',
+      icon: Monitor,
+      format: 'XML/CSV',
+      encoding: 'UTF-8',
+      delimiter: ';',
+      dateFormat: 'YYYY-MM-DD',
+      decimalSeparator: '.',
+      fields: ['Date', 'Account_Code', 'Description', 'Debit_Amount', 'Credit_Amount', 'Reference']
+    },
+    {
+      value: 'smartbill-conta',
+      label: 'SmartBill Conta',
+      description: language === 'ro' ? 'SmartBill Conta - format JSON și CSV' : 'SmartBill Conta - JSON and CSV format',
+      icon: Monitor,
+      format: 'JSON/CSV',
+      encoding: 'UTF-8',
+      delimiter: ',',
+      dateFormat: 'DD/MM/YYYY',
+      decimalSeparator: ',',
+      fields: ['data', 'cont_debit', 'cont_credit', 'suma', 'explicatii', 'document', 'categorie']
+    },
+    {
+      value: 'generic',
+      label: language === 'ro' ? 'Format Generic' : 'Generic Format',
+      description: language === 'ro' ? 'Format universal pentru import în alte software-uri' : 'Universal format for importing into other software',
+      icon: Database,
+      format: 'CSV/Excel',
+      encoding: 'UTF-8',
+      delimiter: ',',
+      dateFormat: 'DD/MM/YYYY',
+      decimalSeparator: ',',
+      fields: ['Date', 'Account', 'Description', 'Debit', 'Credit', 'Reference', 'Category']
+    }
   ];
 
   const dataTypes = [
@@ -85,13 +141,17 @@ function ExportsPage() {
       });
     }, 200);
 
-    // Here you would call the actual export API
+    // Here you would call the actual export API with software-specific format
     // For now, we'll just simulate the process
     setTimeout(() => {
       clearInterval(progressInterval);
       setIsExporting(false);
       setExportProgress(0);
-      alert(language === 'ro' ? 'Exportul a fost inițiat cu succes!' : 'Export initiated successfully!');
+      const selectedSoftwareInfo = accountingSoftware.find(s => s.value === selectedSoftware);
+      alert(language === 'ro' 
+        ? `Exportul pentru ${selectedSoftwareInfo?.label} a fost generat cu succes!` 
+        : `Export for ${selectedSoftwareInfo?.label} generated successfully!`
+      );
     }, 2000);
   };
 
@@ -139,9 +199,17 @@ function ExportsPage() {
       )}
 
       <div className="flex items-center justify-between mb-8">
-        <h1 className="text-4xl font-bold text-left text-[var(--text1)]">
-          {language === 'ro' ? 'Exporturi' : 'Exports'}
-        </h1>
+        <div>
+          <h1 className="text-4xl font-bold text-left text-[var(--text1)]">
+            {language === 'ro' ? 'Exporturi Software Contabil' : 'Accounting Software Exports'}
+          </h1>
+          <p className="text-[var(--text2)] mt-2">
+            {language === 'ro' 
+              ? 'Exportați datele în format compatibil cu software-ul contabil ales' 
+              : 'Export data in format compatible with your chosen accounting software'
+            }
+          </p>
+        </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Calendar size={20} className="text-[var(--text2)]" />
@@ -163,6 +231,53 @@ function ExportsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Export Configuration */}
         <div className="space-y-6">
+          {/* Software Selection */}
+          <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)]">
+            <h3 className="text-xl font-semibold text-[var(--text1)] mb-4 flex items-center gap-2">
+              <Monitor size={20} />
+              {language === 'ro' ? 'Selectați Software-ul Contabil' : 'Select Accounting Software'}
+            </h3>
+            
+            <div className="space-y-3">
+              {accountingSoftware.map((software) => {
+                const IconComponent = software.icon;
+                return (
+                  <button
+                    key={software.value}
+                    onClick={() => setSelectedSoftware(software.value as AccountingSoftware)}
+                    className={`w-full flex items-start gap-4 p-4 rounded-xl border text-left transition-all duration-200 ${
+                      selectedSoftware === software.value
+                        ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]'
+                        : 'border-[var(--text4)] bg-[var(--background)] text-[var(--text2)] hover:border-[var(--text3)]'
+                    }`}
+                  >
+                    <IconComponent size={24} className="mt-1" />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h4 className="font-semibold text-lg">{software.label}</h4>
+                        <span className="text-xs bg-[var(--text4)] text-[var(--text1)] px-2 py-1 rounded-full">
+                          {software.format}
+                        </span>
+                      </div>
+                      <p className="text-sm opacity-75 mb-2">{software.description}</p>
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        <span className="bg-[var(--text4)] text-[var(--text1)] px-2 py-1 rounded">
+                          {software.encoding}
+                        </span>
+                        <span className="bg-[var(--text4)] text-[var(--text1)] px-2 py-1 rounded">
+                          {software.delimiter}
+                        </span>
+                        <span className="bg-[var(--text4)] text-[var(--text1)] px-2 py-1 rounded">
+                          {software.dateFormat}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Time Frame Selection */}
           <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)]">
             <h3 className="text-xl font-semibold text-[var(--text1)] mb-4 flex items-center gap-2">
@@ -241,32 +356,67 @@ function ExportsPage() {
 
         {/* Export Format and Actions */}
         <div className="space-y-6">
-          {/* Export Format Selection */}
+          {/* Software Format Details */}
           <div className="bg-[var(--foreground)] rounded-2xl p-6 border border-[var(--text4)]">
             <h3 className="text-xl font-semibold text-[var(--text1)] mb-4 flex items-center gap-2">
-              <FileText size={20} />
-              {language === 'ro' ? 'Format de export' : 'Export Format'}
+              <Settings size={20} />
+              {language === 'ro' ? 'Detalii Format' : 'Format Details'}
             </h3>
             
-            <div className="grid grid-cols-2 gap-3">
-              {exportFormats.map((format) => {
-                const IconComponent = format.icon;
-                return (
-                  <button
-                    key={format.value}
-                    onClick={() => setSelectedFormat(format.value as ExportFormat)}
-                    className={`flex items-center gap-3 p-4 rounded-xl border transition-all duration-200 ${
-                      selectedFormat === format.value
-                        ? 'border-[var(--primary)] bg-[var(--primary)]/10 text-[var(--primary)]'
-                        : 'border-[var(--text4)] bg-[var(--background)] text-[var(--text2)] hover:border-[var(--text3)]'
-                    }`}
-                  >
-                    <IconComponent size={20} />
-                    <span className="text-sm font-medium">{format.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            {(() => {
+              const selectedSoftwareInfo = accountingSoftware.find(s => s.value === selectedSoftware);
+              return selectedSoftwareInfo ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Monitor size={20} className="text-[var(--primary)]" />
+                    <div>
+                      <h4 className="font-semibold text-[var(--text1)]">{selectedSoftwareInfo.label}</h4>
+                      <p className="text-sm text-[var(--text2)]">{selectedSoftwareInfo.description}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm font-medium text-[var(--text2)]">
+                        {language === 'ro' ? 'Format fișier' : 'File Format'}
+                      </label>
+                      <p className="text-[var(--text1)] font-semibold">{selectedSoftwareInfo.format}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[var(--text2)]">
+                        {language === 'ro' ? 'Codare' : 'Encoding'}
+                      </label>
+                      <p className="text-[var(--text1)] font-semibold">{selectedSoftwareInfo.encoding}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[var(--text2)]">
+                        {language === 'ro' ? 'Delimitator' : 'Delimiter'}
+                      </label>
+                      <p className="text-[var(--text1)] font-semibold">"{selectedSoftwareInfo.delimiter}"</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-[var(--text2)]">
+                        {language === 'ro' ? 'Format dată' : 'Date Format'}
+                      </label>
+                      <p className="text-[var(--text1)] font-semibold">{selectedSoftwareInfo.dateFormat}</p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-sm font-medium text-[var(--text2)] mb-2 block">
+                      {language === 'ro' ? 'Câmpuri exportate' : 'Exported Fields'}
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedSoftwareInfo.fields.map((field, index) => (
+                        <span key={index} className="bg-[var(--primary)]/10 text-[var(--primary)] px-2 py-1 rounded text-xs">
+                          {field}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null;
+            })()}
           </div>
 
           {/* Export Summary */}
@@ -282,9 +432,15 @@ function ExportsPage() {
                 <span className="text-[var(--text1)] font-medium">{clientCompanyName || 'N/A'}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-[var(--text2)]">{language === 'ro' ? 'Format' : 'Format'}:</span>
+                <span className="text-[var(--text2)]">{language === 'ro' ? 'Software' : 'Software'}:</span>
                 <span className="text-[var(--text1)] font-medium">
-                  {exportFormats.find(f => f.value === selectedFormat)?.label}
+                  {accountingSoftware.find(s => s.value === selectedSoftware)?.label}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text2)]">{language === 'ro' ? 'Format fișier' : 'File Format'}:</span>
+                <span className="text-[var(--text1)] font-medium">
+                  {accountingSoftware.find(s => s.value === selectedSoftware)?.format}
                 </span>
               </div>
               <div className="flex justify-between">
