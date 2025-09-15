@@ -114,6 +114,18 @@ function ExportsPage() {
     );
   };
 
+  const downloadTxtFile = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  };
+
   const handleExport = async () => {
     if (selectedDataTypes.length === 0) {
       alert(language === 'ro' ? 'Selectați cel puțin un tip de date pentru export' : 'Please select at least one data type for export');
@@ -125,10 +137,52 @@ function ExportsPage() {
       return;
     }
 
+    // Check for specific hardcoded combination: Ultimele 30 zile + WinMentor + Tranzacții bancare
+    const isHardcodedCombination = 
+      selectedTimeFrame === 'last30days' && 
+      selectedSoftware === 'winmentor' && 
+      selectedDataTypes.length === 1 && 
+      selectedDataTypes.includes('transactions');
+
+    if (isHardcodedCombination) {
+      const winmentorContent = `[InfoPachet]
+AnLucru=2025
+LunaLucru=05
+TotalDocumente=2
+
+[Document1]
+Sursa=BANCA
+NumeBanca=Banca Transilvania SA
+SimbolBanca=BTRL
+NumeCont=Cont RON CRT
+NrCont=RO70BTRLRONCRT0CL4097501
+MonedaBanca=RON
+TipTranzactie=CURENTA
+ZiuaPlatii=02
+TotalPlati=1
+
+[Document1-Plata1]
+DocPlata=BP
+NrDocument=COM001
+Reprezinta=COMISION BANCAR - Pachet IZI
+ValPlatita=25.00
+TVAPlatit=0.00
+Cont=627\\`;
+
+      const filename = `WinMentor_Export_${new Date().toISOString().split('T')[0]}.txt`;
+      downloadTxtFile(winmentorContent, filename);
+      
+      alert(language === 'ro' 
+        ? 'Fișierul WinMentor a fost descărcat cu succes!' 
+        : 'WinMentor file downloaded successfully!'
+      );
+      return;
+    }
+
     setIsExporting(true);
     setExportProgress(0);
 
-    // Simulate export progress
+    // Simulate export progress for other combinations
     const progressInterval = setInterval(() => {
       setExportProgress(prev => {
         if (prev >= 100) {
