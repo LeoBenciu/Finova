@@ -2773,6 +2773,14 @@ export class BankService {
             }
           });
 
+          console.log('[ACCEPT SUGGESTION] Suggestion details:', {
+            suggestionId,
+            documentId: suggestion?.documentId,
+            chartOfAccountId: suggestion?.chartOfAccountId,
+            bankTransactionId: suggestion?.bankTransactionId,
+            type: suggestion?.documentId ? 'DOCUMENT' : suggestion?.chartOfAccountId ? 'ACCOUNT_CODE' : 'UNKNOWN'
+          });
+
           if (!suggestion) {
             throw new NotFoundException('Suggestion not found');
           }
@@ -2891,8 +2899,8 @@ export class BankService {
             return createdTransfer;
           }
 
-          // Handle ACCOUNT-CODE suggestion (transaction ↔ account), when there's no document but a chartOfAccountId exists
-          if (!suggestion.documentId && suggestion.chartOfAccountId) {
+          // Handle ACCOUNT-CODE suggestion (transaction ↔ account), when a chartOfAccountId exists
+          if (suggestion.chartOfAccountId) {
             try {
               console.log('[ACCEPT ACCOUNT-CODE] Entered branch', {
                 suggestionId,
@@ -3007,8 +3015,9 @@ export class BankService {
             return updatedTx;
           }
 
-          // Non-transfer suggestions (document ↔ transaction) continue with existing flow
-          const existingMatch = await prisma.reconciliationRecord.findUnique({
+          // Handle DOCUMENT suggestions (document ↔ transaction) when there's a documentId but no chartOfAccountId
+          if (suggestion.documentId && !suggestion.chartOfAccountId) {
+            const existingMatch = await prisma.reconciliationRecord.findUnique({
             where: {
               documentId_bankTransactionId: {
                 documentId: suggestion.documentId!,
@@ -3061,6 +3070,13 @@ export class BankService {
 
           // Post ledger entries synchronously (non-transfer) using proper double-entry logic
           try {
+            console.log('[ACCEPT DOCUMENT] Starting ledger posting for document suggestion', {
+              suggestionId,
+              documentId: suggestion.documentId,
+              bankTransactionId: suggestion.bankTransactionId,
+              reconciliationRecordId: reconciliationRecord.id
+            });
+
             const bankTx = await prisma.bankTransaction.findUnique({
               where: { id: suggestion.bankTransactionId! },
             });
@@ -3114,10 +3130,18 @@ export class BankService {
                 },
               });
               
-              console.log(`[LEDGER] Posted suggested reconciliation entries for document ${suggestion.documentId} and transaction ${suggestion.bankTransactionId} amount ${amt}`);
+              console.log(`[ACCEPT DOCUMENT] Posted suggested reconciliation entries for document ${suggestion.documentId} and transaction ${suggestion.bankTransactionId} amount ${amt}`);
+            } else {
+              console.log('[ACCEPT DOCUMENT] No bank transaction or document found, skipping ledger posting');
             }
           } catch (e) {
-            console.warn('⚠️ Ledger posting failed on acceptSuggestion:', e);
+            console.error('❌ [ACCEPT DOCUMENT] Ledger posting failed on acceptSuggestion:', {
+              suggestionId,
+              documentId: suggestion.documentId,
+              bankTransactionId: suggestion.bankTransactionId,
+              error: e.message || e,
+              stack: e.stack
+            });
           }
 
           // Auto-clear any related outstanding item when a suggestion is accepted
@@ -3286,6 +3310,10 @@ export class BankService {
           }
       
           return reconciliationRecord;
+          } else {
+            // Handle case where suggestion has neither documentId nor chartOfAccountId
+            throw new Error('Invalid suggestion: must have either documentId or chartOfAccountId');
+          }
         });
       }
       

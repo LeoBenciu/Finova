@@ -373,6 +373,13 @@ class ChatAssistantCrew:
                             self.debug_info.append("✅ Direct tool call successful")
                         except json.JSONDecodeError:
                             self.debug_info.append("⚠️ Tool result not valid JSON")
+                            # If it's not JSON, it might be an error message - return it
+                            if isinstance(tool_result, str) and tool_result.strip():
+                                response = tool_result
+                                self.debug_info.append(f"📝 Returning error message: {tool_result[:100]}...")
+                            else:
+                                response = "[]"  # Return empty array for document queries
+                                self.debug_info.append("📝 Returning empty array for failed document query")
                     except Exception as e:
                         self.debug_info.append(f"⚠️ Direct tool call failed: {str(e)}")
             
