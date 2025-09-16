@@ -3062,7 +3062,14 @@ export class DataExtractionService {
         this.logger.log(`🔥 OUTPUT FROM filterBestSuggestions: ${filteredSuggestions.length} suggestions - VERSION 2.0`);
     
         // Process standalone transactions (those that don't match any documents AND are not part of transfer pairs)
-        const matchedTransactionIds = new Set(filteredSuggestions.map(s => s.bankTransactionId));
+        // Note: We now allow multiple suggestions per transaction, so we need to check if ANY suggestion
+        // for a transaction involves a document match (not just the filtered ones)
+        const matchedTransactionIds = new Set();
+        for (const suggestion of filteredSuggestions) {
+          if (suggestion.documentId !== null && suggestion.documentId !== undefined) {
+            matchedTransactionIds.add(suggestion.bankTransactionId);
+          }
+        }
         
         // Get ALL transfer suggestions from database (not just from filteredSuggestions)
         const allTransferSuggestions = await this.prisma.reconciliationSuggestion.findMany({
@@ -3521,9 +3528,13 @@ private calculateMatchSuggestion(
     const isComponentMatch = suggestion.matchingCriteria?.component_match;
     const componentType = suggestion.matchingCriteria?.component_type;
     
-    if (seenTx.has(suggestion.bankTransactionId)) {
-      continue; // Skip, transaction already has a suggestion
-    }
+    // REMOVED: Skip transactions that already have suggestions
+    // This was preventing the system from creating suggestions for unreconciled transactions
+    // that previously had suggestions. The user should be able to get new suggestions
+    // for any unreconciled transaction, even if it had previous suggestions.
+    // if (seenTx.has(suggestion.bankTransactionId)) {
+    //   continue; // Skip, transaction already has a suggestion
+    // }
     
     // Enhanced logic for component-based reconciliation
     if (suggestion.documentId) {
@@ -3558,7 +3569,8 @@ private calculateMatchSuggestion(
     }
     
     filteredSuggestions.push(suggestion);
-    seenTx.add(suggestion.bankTransactionId);
+    // REMOVED: seenTx.add(suggestion.bankTransactionId);
+    // We no longer track seen transactions since we want to allow multiple suggestions per transaction
   }
 
   this.logger.warn(

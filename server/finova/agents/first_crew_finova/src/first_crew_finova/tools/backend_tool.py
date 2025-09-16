@@ -422,18 +422,28 @@ class SearchDocumentsTool(BaseTool):
                 params["dateTo"] = dateTo
 
             url = f"{base}/files/search?" + urllib.parse.urlencode(params)
+            print(f"🔍 SEARCH DEBUG: URL={url}")
+            print(f"🔍 SEARCH DEBUG: Headers={headers}")
+            print(f"🔍 SEARCH DEBUG: Params={params}")
+            
             r = requests.get(url, headers=headers, timeout=20)
+            print(f"🔍 SEARCH DEBUG: Status={r.status_code}")
+            print(f"🔍 SEARCH DEBUG: Response={r.text[:500]}...")
+            
             r.raise_for_status()
             data = r.json()
             # Normalize minimal structure for the agent
             items = (data or {}).get("items") or (data or {}).get("documents") or []
             total = (data or {}).get("totalCount") or (data or {}).get("total") or len(items)
-            return json.dumps({
+            
+            result = {
                 "items": items,
                 "total": total,
                 "accountingCompany": (data or {}).get("accountingCompany"),
                 "clientCompany": (data or {}).get("clientCompany"),
-            }, ensure_ascii=False)
+            }
+            print(f"🔍 SEARCH DEBUG: Final result={json.dumps(result, ensure_ascii=False)[:200]}...")
+            return json.dumps(result, ensure_ascii=False)
         except requests.exceptions.RequestException:
             return "Backend temporarily unavailable or network error."
         except Exception as e:

@@ -2751,6 +2751,12 @@ export class BankService {
       }
       
       async acceptSuggestion(suggestionId: number, user: User, notes?: string) {
+        console.log('[ACCEPT SUGGESTION] Method called with:', {
+          suggestionId,
+          userId: user.id,
+          notes
+        });
+        
         return await this.prisma.$transaction(async (prisma) => {
           const suggestion = await prisma.reconciliationSuggestion.findUnique({
             where: { id: suggestionId },
@@ -2782,21 +2788,33 @@ export class BankService {
           });
 
           if (!suggestion) {
+            console.error('[ACCEPT SUGGESTION] Suggestion not found for ID:', suggestionId);
             throw new NotFoundException('Suggestion not found');
           }
+
+          console.log('[ACCEPT SUGGESTION] Suggestion found, checking status:', {
+            suggestionId,
+            status: suggestion.status,
+            isPending: suggestion.status === 'PENDING'
+          });
       
           const suggestionCompanyId = suggestion.document
            ? suggestion.document.accountingClient.accountingCompanyId
            : suggestion.bankTransaction?.bankStatementDocument?.accountingClient?.accountingCompanyId;
          const userCompanyId = user.accountingCompanyId;
-         if (process.env.SUGGESTIONS_DEBUG === '1') {
-           console.log('🔐 Authorization check for suggestion', {
+         console.log('[ACCEPT SUGGESTION] Authorization check:', {
+           suggestionId,
+           userCompanyId,
+           suggestionCompanyId,
+           isAuthorized: userCompanyId && suggestionCompanyId === userCompanyId
+         });
+         
+         if (!userCompanyId || suggestionCompanyId !== userCompanyId) {
+           console.error('[ACCEPT SUGGESTION] Authorization failed:', {
              suggestionId,
              userCompanyId,
              suggestionCompanyId
            });
-         }
-         if (!userCompanyId || suggestionCompanyId !== userCompanyId) {
            throw new UnauthorizedException('You do not have access to this company');
          }
          console.log('✅ Authorization passed for suggestion', suggestionId);

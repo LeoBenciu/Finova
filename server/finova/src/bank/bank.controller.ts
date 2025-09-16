@@ -116,7 +116,28 @@ export class BankController {
       @GetUser() user: User,
       @Body() data: { notes?: string }
     ) {
-      return this.bankService.acceptSuggestion(suggestionId, user, data.notes);
+      console.log('[BANK CONTROLLER] acceptSuggestion called:', {
+        suggestionId,
+        userId: user.id,
+        userCompanyId: user.accountingCompanyId,
+        notes: data.notes
+      });
+      
+      try {
+        const result = await this.bankService.acceptSuggestion(suggestionId, user, data.notes);
+        console.log('[BANK CONTROLLER] acceptSuggestion completed successfully:', {
+          suggestionId,
+          result: result ? 'Success' : 'No result'
+        });
+        return result;
+      } catch (error) {
+        console.error('[BANK CONTROLLER] acceptSuggestion failed:', {
+          suggestionId,
+          error: error.message,
+          stack: error.stack
+        });
+        throw error;
+      }
     }
     
     @Put('suggestion/:id/reject')
