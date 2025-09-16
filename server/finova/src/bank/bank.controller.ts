@@ -288,12 +288,32 @@ export class BankController {
       @Body() reconciliationData: { accountCode: string; notes?: string },
       @GetUser() user: User
     ) {
-      return this.bankService.createManualAccountReconciliation(
+      console.log('[BANK CONTROLLER] reconcileTransactionWithAccount called:', {
         transactionId,
-        reconciliationData.accountCode,
-        reconciliationData.notes || '',
-        user
-      );
+        accountCode: reconciliationData.accountCode,
+        notes: reconciliationData.notes,
+        userId: user.id,
+        userCompanyId: user.accountingCompanyId
+      });
+      
+      try {
+        const result = await this.bankService.createManualAccountReconciliation(
+          transactionId,
+          reconciliationData.accountCode,
+          reconciliationData.notes || '',
+          user
+        );
+        console.log('[BANK CONTROLLER] reconcileTransactionWithAccount completed successfully');
+        return result;
+      } catch (error) {
+        console.error('[BANK CONTROLLER] reconcileTransactionWithAccount failed:', {
+          transactionId,
+          accountCode: reconciliationData.accountCode,
+          error: error.message,
+          stack: error.stack
+        });
+        throw error;
+      }
     }
 
     // Outstanding Items Management Endpoints

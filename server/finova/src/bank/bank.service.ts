@@ -4309,6 +4309,12 @@ export class BankService {
       notes: string,
       user: User
     ) {
+      console.log('[MANUAL ACCOUNT RECONCILIATION] Method called with:', {
+        transactionId,
+        accountCode,
+        notes,
+        userId: user.id
+      });
       const transaction = await this.prisma.bankTransaction.findUnique({
         where: { id: transactionId },
         include: {
@@ -4378,6 +4384,7 @@ export class BankService {
 
       // Post ledger entries for manual reconciliation
       try {
+        console.log('[MANUAL ACCOUNT RECONCILIATION] Starting ledger posting');
         const accountingClientId = transaction.bankStatementDocument.accountingClient.id;
         const bankAccountCode = await this.resolveBankAnalyticCode(this.prisma, accountingClientId, transactionId);
         const amt = Math.abs(Number(transaction.amount));
@@ -4393,6 +4400,16 @@ export class BankService {
               { accountCode: counter, debit: amt },
               { accountCode: bankAccountCode, credit: amt },
             ];
+        
+        console.log('[MANUAL ACCOUNT RECONCILIATION] About to post ledger entries:', {
+          accountingClientId,
+          postingDate,
+          entries,
+          sourceType: 'RECONCILIATION',
+          sourceId: String(updatedTransaction.id),
+          postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}`
+        });
+        
         await this.postingService.postEntries({
           accountingClientId,
           postingDate,
@@ -4406,8 +4423,15 @@ export class BankService {
             reconciliationId: null,
           },
         });
+        
+        console.log('[MANUAL ACCOUNT RECONCILIATION] Ledger posting completed successfully');
       } catch (e) {
-        console.warn('⚠️ Ledger posting failed on manual reconciliation:', e);
+        console.error('❌ [MANUAL ACCOUNT RECONCILIATION] Ledger posting failed:', {
+          transactionId,
+          accountCode,
+          error: e.message || e,
+          stack: e.stack
+        });
       }
 
       return {

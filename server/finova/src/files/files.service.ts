@@ -742,15 +742,79 @@ export class FilesService {
                 (where as any).paymentStatus = options.paymentStatus as any;
             }
 
-            // Filter by date range
+            // Filter by date range - search both createdAt and extracted document dates
             if (options?.dateFrom || options?.dateTo) {
-                where.createdAt = {};
-                if (options.dateFrom) {
-                    (where.createdAt as any).gte = new Date(options.dateFrom);
-                }
-                if (options.dateTo) {
-                    (where.createdAt as any).lte = new Date(options.dateTo);
-                }
+                const dateFrom = options.dateFrom ? new Date(options.dateFrom) : null;
+                const dateTo = options.dateTo ? new Date(options.dateTo) : null;
+                
+                // Convert ISO dates to DD-MM-YYYY format for document_date comparison
+                const formatDateForDocument = (date: Date) => {
+                    const day = date.getDate().toString().padStart(2, '0');
+                    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                    const year = date.getFullYear();
+                    return `${day}-${month}-${year}`;
+                };
+                
+                const dateFromFormatted = dateFrom ? formatDateForDocument(dateFrom) : null;
+                const dateToFormatted = dateTo ? formatDateForDocument(dateTo) : null;
+                
+                // First, find documents that match the date range in their extracted data
+                const allDocsWithProcessedData = await this.prisma.document.findMany({
+                    where: {
+                        accountingClientId: accountingClientRelation.id,
+                        processedData: {
+                            isNot: null
+                        }
+                    },
+                    select: {
+                        id: true,
+                        processedData: {
+                            select: {
+                                extractedFields: true
+                            }
+                        }
+                    }
+                });
+                
+                // Filter by extracted document dates (comparing DD-MM-YYYY format)
+                const docsWithMatchingDates = allDocsWithProcessedData.filter(doc => {
+                    if (!doc.processedData?.extractedFields) return false;
+                    
+                    try {
+                        const extractedFields = typeof doc.processedData.extractedFields === 'string'
+                            ? JSON.parse(doc.processedData.extractedFields)
+                            : doc.processedData.extractedFields;
+                        
+                        // Look for document_date in the extracted fields
+                        const result = extractedFields?.result || extractedFields;
+                        const documentDate = result?.document_date;
+                        
+                        if (documentDate && typeof documentDate === 'string') {
+                            // documentDate is in DD-MM-YYYY format
+                            if (dateFromFormatted && documentDate < dateFromFormatted) return false;
+                            if (dateToFormatted && documentDate > dateToFormatted) return false;
+                            
+                            return true;
+                        }
+                    } catch (e) {
+                        return false;
+                    }
+                    return false;
+                });
+                
+                // Get IDs of documents that match the date range
+                const matchingDocIds = docsWithMatchingDates.map(doc => doc.id);
+                
+                // Also include documents that match the createdAt date range
+                where.OR = [
+                    { id: { in: matchingDocIds } },
+                    {
+                        createdAt: {
+                            gte: dateFrom,
+                            lte: dateTo
+                        }
+                    }
+                ];
             }
 
             // Enhanced search by name and extracted content

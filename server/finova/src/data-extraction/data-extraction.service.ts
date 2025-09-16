@@ -2965,7 +2965,7 @@ export class DataExtractionService {
               bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
             }
     
-            if (suggestion.confidenceScore >= 0.25) {
+            if (suggestion.confidenceScore >= 0.15) { // Lowered from 0.25 to 0.15 to be more inclusive
               // Check if this document-transaction pair was previously rejected
               const pairKey = `${document.id}-${transaction.id}`;
               if (rejectedDocTransactionPairs.has(pairKey)) {
@@ -2996,19 +2996,19 @@ export class DataExtractionService {
             }
           }
           
-          if (bestMatchForDocument.score < 0.25) {
+          if (bestMatchForDocument.score < 0.15) { // Updated to match the new threshold
             const bmTx = bestMatchForDocument.transaction;
             const bmTxDate = bmTx ? new Date(bmTx.transactionDate).toISOString().split('T')[0] : 'null';
             const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
             const prefix = this.suggestionLogPrefix(document.id as unknown as number, bmTx?.id as unknown as string);
             if (this.shouldLogSuggestion(document.id as unknown as number, bmTx?.id as unknown as string)) {
               this.logger.warn(
-                `${prefix} 📄 No matches >= 0.25. Best=${bestMatchForDocument.score.toFixed(3)} ` +
+                `${prefix} 📄 No matches >= 0.15. Best=${bestMatchForDocument.score.toFixed(3)} ` +
                 `(doc ${document.id}:${document.name} amt=${documentAmount} date=${docDateStr} vs tx ${bmTx?.id} amt=${bmTx?.amount} date=${bmTxDate})`
               );
             } else {
               this.logger.warn(
-                `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
+                `📄 Document ${document.id} (${document.name}) has no matches above 0.15 threshold. ` +
                 `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bmTx?.id} ` +
                 `(Amount: ${documentAmount} vs ${bmTx?.amount}, Date: ${docDateStr} vs ${bmTxDate})`
               );
@@ -3105,13 +3105,14 @@ export class DataExtractionService {
           }
         }
         
-        const standaloneTransactions = unreconciliedTransactions.filter(t => 
-          !matchedTransactionIds.has(t.id) && !transferTransactionIds.has(t.id)
-        );
+        // MODIFIED: Process ALL unreconciled transactions for account suggestions
+        // Previously, we only processed transactions that didn't have document matches or transfer pairs
+        // Now we process ALL transactions to give users multiple suggestion options
+        const standaloneTransactions = unreconciliedTransactions;
         
-        this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions excluded from standalone processing`);
-        this.logger.log(`🔁 Excluded transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
-        this.logger.log(`📊 Transaction filtering: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} standalone`);
+        this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions have transfer suggestions`);
+        this.logger.log(`🔁 Transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
+        this.logger.log(`📊 Transaction processing: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} getting account suggestions`);
         
         // Check if our target transactions are in the standalone list
         const targetStandalone = standaloneTransactions.filter(t => 
@@ -3123,7 +3124,7 @@ export class DataExtractionService {
           this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
         }
         
-        this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
+        this.logger.log(`Processing ${standaloneTransactions.length} transactions for account categorization (all unreconciled transactions)`);
         
         for (const transaction of standaloneTransactions) {
           this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
@@ -3191,7 +3192,7 @@ export class DataExtractionService {
         this.logger.log(`🏁 - Unreconciled transactions: ${unreconciliedTransactions.length}`);
         this.logger.log(`🏁 - Transfer suggestions created: ${rawTransferSuggestions.length}`);
         this.logger.log(`🏁 - Filtered suggestions: ${filteredSuggestions.length}`);
-        this.logger.log(`🏁 - Standalone transactions processed: ${standaloneTransactions.length}`);
+        this.logger.log(`🏁 - Account suggestions created: ${standaloneTransactions.length}`);
         this.logger.log(`🏁 - Total final suggestions: ${totalSuggestions}`);
     
       } catch (error) {
