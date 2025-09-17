@@ -658,7 +658,8 @@ const BankPage = () => {
   const { data: suggestionsResp, isLoading: suggestionsLoading, error: suggestionsError, refetch: refetchSuggestions } = useGetReconciliationSuggestionsQuery({
     clientEin: clientCompanyEin,
     page: suggestionsPage,
-    size: pageSize
+    size: pageSize,
+    accountId: selectedBankAccountId
   }, {
     skip: !clientCompanyEin
   });
@@ -673,6 +674,14 @@ const BankPage = () => {
       }
     }
   }, [suggestionsResp]);
+
+  // Refetch suggestions when bank account selection changes
+  useEffect(() => {
+    if (clientCompanyEin) {
+      console.log('🔄 Bank account changed, refetching suggestions for account:', selectedBankAccountId);
+      refetchSuggestions();
+    }
+  }, [selectedBankAccountId, clientCompanyEin, refetchSuggestions]);
   
   // Robust extraction of suggestions data with fallbacks
   const suggestionsItems = useMemo(() => {

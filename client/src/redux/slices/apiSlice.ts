@@ -656,10 +656,19 @@ export const finovaApi = createApi({
         }),
 
         getReconciliationSuggestions: build.query({
-            query: ({ clientEin, page = 1, size = 25 }: { clientEin: string; page?: number; size?: number }) => ({
-                url: `/bank/${clientEin}/suggestions?page=${page}&size=${size}`,
-                method: 'GET'
-            }),
+            query: ({ clientEin, page = 1, size = 25, accountId }: { clientEin: string; page?: number; size?: number; accountId?: number }) => {
+                const params = new URLSearchParams({
+                    page: page.toString(),
+                    size: size.toString()
+                });
+                if (accountId) {
+                    params.append('accountId', accountId.toString());
+                }
+                return {
+                    url: `/bank/${clientEin}/suggestions?${params.toString()}`,
+                    method: 'GET'
+                };
+            },
             transformResponse: (response: any) => {
                 if (!response) return { items: [], total: 0 };
                 console.log('🔍 API SLICE TRANSFORM RESPONSE:', {

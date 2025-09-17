@@ -79,7 +79,10 @@ export class PostingService {
     const created = await this.prisma.$transaction(async (tx) => {
       const createdRows = [] as any[];
 
-      for (const e of entries) {
+      for (let i = 0; i < entries.length; i++) {
+        const e = entries[i];
+        const uniquePostingKey = `${postingKey}:${i}`;
+        
         console.log('[POSTING SERVICE] Creating ledger entry:', {
           accountingClientId,
           postingDate,
@@ -88,7 +91,7 @@ export class PostingService {
           credit: e.credit,
           sourceType,
           sourceId,
-          postingKey
+          postingKey: uniquePostingKey
         });
 
         const row = await tx.generalLedgerEntry.create({
@@ -101,7 +104,7 @@ export class PostingService {
             currency: 'RON',
             sourceType,
             sourceId: String(sourceId),
-            postingKey,
+            postingKey: uniquePostingKey,
             documentId: links?.documentId ?? null,
             bankTransactionId: links?.bankTransactionId ?? null,
             reconciliationId: links?.reconciliationId ?? null,
