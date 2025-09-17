@@ -74,13 +74,15 @@ export class BankController {
       @Param('clientEin') clientEin: string,
       @GetUser() user: User,
       @Query('page') page?: string,
-      @Query('size') size?: string
+      @Query('size') size?: string,
+      @Query('accountId') accountId?: string
     ) {
       return this.bankService.getReconciliationSuggestions(
         clientEin,
         user,
         Number(page) || 1,
-        Number(size) || 25
+        Number(size) || 25,
+        accountId ? Number(accountId) : undefined
       );
     }
     

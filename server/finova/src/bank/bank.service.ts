@@ -1407,7 +1407,7 @@ export class BankService {
       }
 
       
-      async getReconciliationSuggestions(clientEin: string, user: User, page = 1, size = 25) {
+      async getReconciliationSuggestions(clientEin: string, user: User, page = 1, size = 25, accountId?: number) {
         console.log(`🔥 getReconciliationSuggestions CALLED: clientEin=${clientEin}, page=${page}, size=${size}`);
         
         const clientCompany = await this.prisma.clientCompany.findUnique({
@@ -1429,26 +1429,53 @@ export class BankService {
           throw new UnauthorizedException('No access to this client company');
         }
       
-        const [suggestions, total] = await this.prisma.$transaction([
-          this.prisma.reconciliationSuggestion.findMany({
-          where: {
-            status: SuggestionStatus.PENDING,
-            OR: [
-              {
-                document: {
+        // Build the where condition with optional bank account filtering
+        const whereCondition: any = {
+          status: SuggestionStatus.PENDING,
+          OR: [
+            {
+              document: {
+                accountingClientId: accountingClientRelation.id,
+              },
+            },
+            {
+              documentId: null,
+              bankTransaction: {
+                bankStatementDocument: {
                   accountingClientId: accountingClientRelation.id,
                 },
               },
-              {
-                documentId: null,
-                bankTransaction: {
-                  bankStatementDocument: {
+            },
+          ],
+        };
+
+        // Add bank account filtering if accountId is provided
+        if (accountId) {
+          whereCondition.AND = [
+            {
+              OR: [
+                {
+                  document: {
                     accountingClientId: accountingClientRelation.id,
                   },
                 },
-              },
-            ],
-          },
+                {
+                  documentId: null,
+                  bankTransaction: {
+                    bankAccountId: accountId,
+                    bankStatementDocument: {
+                      accountingClientId: accountingClientRelation.id,
+                    },
+                  },
+                },
+              ],
+            },
+          ];
+        }
+
+        const [suggestions, total] = await this.prisma.$transaction([
+          this.prisma.reconciliationSuggestion.findMany({
+          where: whereCondition,
           include: {
             document: {
               include: {
@@ -1467,27 +1494,7 @@ export class BankService {
             take: size
           }),
           this.prisma.reconciliationSuggestion.count({
-            where: {
-              status: SuggestionStatus.PENDING,
-              OR: [
-                {
-                  document: { accountingClientId: accountingClientRelation.id },
-                },
-                {
-                  documentId: null,
-                  bankTransaction: {
-                    bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                  },
-                },
-                {
-                  documentId: null,
-                  chartOfAccountId: { not: null },
-                  bankTransaction: {
-                    bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                  },
-                },
-              ],
-            },
+            where: whereCondition,
           })
         ]);
         
@@ -2068,24 +2075,7 @@ export class BankService {
             
             const [newSuggestions, newTotal] = await this.prisma.$transaction([
               this.prisma.reconciliationSuggestion.findMany({
-                where: {
-                  status: SuggestionStatus.PENDING,
-                  OR: [
-                    {
-                      document: {
-                        accountingClientId: accountingClientRelation.id,
-                      },
-                    },
-                    {
-                      documentId: null,
-                      bankTransaction: {
-                        bankStatementDocument: {
-                          accountingClientId: accountingClientRelation.id,
-                        },
-                      },
-                    },
-                  ],
-                },
+                where: whereCondition,
                 include: {
                   document: {
                     include: {
@@ -2104,27 +2094,7 @@ export class BankService {
                 take: size
               }),
               this.prisma.reconciliationSuggestion.count({
-                where: {
-                  status: SuggestionStatus.PENDING,
-                  OR: [
-                    {
-                      document: { accountingClientId: accountingClientRelation.id },
-                    },
-                    {
-                      documentId: null,
-                      bankTransaction: {
-                        bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                      },
-                    },
-                    {
-                      documentId: null,
-                      chartOfAccountId: { not: null },
-                      bankTransaction: {
-                        bankStatementDocument: { accountingClientId: accountingClientRelation.id },
-                      },
-                    },
-                  ],
-                },
+                where: whereCondition,
               })
             ]);
             
@@ -3002,7 +2972,7 @@ export class BankService {
                   entries,
                   sourceType: 'RECONCILIATION',
                   sourceId: String(updatedTx.id),
-                  postingKey: `account-suggestion:${suggestion.id}`,
+                  postingKey: `account-suggestion:${suggestion.id}:${Date.now()}`,
                   links: {
                     documentId: null,
                     bankTransactionId: suggestion.bankTransactionId || null,
@@ -3016,7 +2986,7 @@ export class BankService {
                   entries,
                   sourceType: LedgerSourceType.RECONCILIATION,
                   sourceId: String(updatedTx.id),
-                  postingKey: `account-suggestion:${suggestion.id}`,
+                  postingKey: `account-suggestion:${suggestion.id}:${Date.now()}`,
                   links: {
                     documentId: null,
                     bankTransactionId: suggestion.bankTransactionId || null,
@@ -3027,7 +2997,7 @@ export class BankService {
                 console.log('[ACCEPT ACCOUNT-CODE] Posting result:', postingResult);
                 try {
                   console.log('[ACCEPT ACCOUNT-CODE] Posting done', {
-                    postingKey: `account-suggestion:${suggestion.id}`,
+                    postingKey: `account-suggestion:${suggestion.id}:${Date.now()}`,
                     bankTransactionId: suggestion.bankTransactionId,
                   });
                 } catch {}
@@ -4438,7 +4408,7 @@ export class BankService {
           entries,
           sourceType: LedgerSourceType.RECONCILIATION,
           sourceId: String(updatedTransaction.id),
-          postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}`,
+          postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}:${Date.now()}`,
           links: {
             documentId: null,
             bankTransactionId: transactionId,
