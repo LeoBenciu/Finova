@@ -659,7 +659,7 @@ const BankPage = () => {
     clientEin: clientCompanyEin,
     page: suggestionsPage,
     size: pageSize,
-    accountId: selectedBankAccountId
+    accountId: selectedBankAccountId || undefined
   }, {
     skip: !clientCompanyEin
   });
