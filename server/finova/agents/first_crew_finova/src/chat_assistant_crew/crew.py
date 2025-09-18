@@ -173,8 +173,9 @@ class ChatAssistantCrew:
             - When a user asks to send an email, ALWAYS use the send_email tool
             - You MUST provide: to (recipient) and either text or html content
             - The subject will automatically be set to "Mesaj din partea contabilului - [COMPANY_NAME]"
-            - If the user doesn't provide content, ask them what they want to say
+            - If the user doesn't provide content, write a professional email yourself and ask for confirmation
             - Do NOT ask for a subject - it's automatically generated
+            - Do NOT search for documents when the user asks to send an email, even if the email content mentions documents, unless the user explicitly asks for you to look for documents and attach them to the email
             - Always confirm the email details before sending
             - After sending, provide clear feedback on success or failure
             
@@ -234,7 +235,7 @@ class ChatAssistantCrew:
             8. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER SPECIAL HANDLING:
-            - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, ask the user to provide them before proceeding.
+            - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, write a professional email yourself and ask for confirmation. NEVER search for documents when the user wants to send an email, even if the email content mentions documents like "factura" or "extras de cont" etc.
             
             Context Information:
             - Client Company EIN: {client_company_ein}
@@ -297,7 +298,13 @@ class ChatAssistantCrew:
             
             # CRITICAL: Post-process response to ensure document queries return only JSON
             # Check if this looks like a document query and if the response contains JSON
-            is_document_query = any(keyword in user_query.lower() for keyword in [
+            # BUT exclude email requests from automatic document search
+            is_email_request = any(email_keyword in user_query.lower() for email_keyword in [
+                'send email', 'trimite email', 'trimite un email', 'send an email', 'email to', 'email către',
+                'trimite mesaj', 'send message', 'mesaj către', 'message to'
+            ])
+            
+            is_document_query = not is_email_request and any(keyword in user_query.lower() for keyword in [
                 'factura', 'invoice', 'document', 'ultima', 'last', 'recent', 'extras', 'statement',
                 'bank', 'bancar', 'cont', 'account', 'incarcat', 'loaded', 'uploaded', 'ordine', 'payment',
                 'chitanta', 'receipt'

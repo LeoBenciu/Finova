@@ -2988,7 +2988,7 @@ export class BankService {
                   sourceId: String(updatedTx.id),
                   postingKey: `account-suggestion:${suggestion.id}:${Date.now()}`,
                   links: {
-                    documentId: null,
+                    documentId: suggestion.bankTransaction?.bankStatementDocument?.id || null,
                     bankTransactionId: suggestion.bankTransactionId || null,
                     reconciliationId: null,
                   },
@@ -4410,7 +4410,7 @@ export class BankService {
           sourceId: String(updatedTransaction.id),
           postingKey: `manual:${transactionId}:${counter}:${postingDate.toISOString().slice(0,10)}:${Date.now()}`,
           links: {
-            documentId: null,
+            documentId: transaction.bankStatementDocument.id,
             bankTransactionId: transactionId,
             reconciliationId: null,
           },
