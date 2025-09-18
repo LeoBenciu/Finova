@@ -20,19 +20,26 @@ export default function LedgerViewer() {
   });
   const [selectedAccount, setSelectedAccount] = useState('');
 
+  // Helper function to convert DD-MM-YYYY to YYYY-MM-DD
+  const convertDateFormat = (dateStr: string | undefined): string | undefined => {
+    if (!dateStr) return undefined;
+    const [day, month, year] = dateStr.split('-');
+    return `${year}-${month}-${day}`;
+  };
+
   const { data: ledgerData, isLoading: entriesLoading, error: entriesError } = useGetLedgerEntriesQuery({
     ein: clientCompanyEin,
     page,
     size: 50,
-    startDate: dateRange.from,
-    endDate: dateRange.to,
+    startDate: convertDateFormat(dateRange.from),
+    endDate: convertDateFormat(dateRange.to),
     accountCode: selectedAccount || undefined
   });
 
   const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useGetLedgerSummaryQuery({
     ein: clientCompanyEin,
-    startDate: dateRange.from,
-    endDate: dateRange.to
+    startDate: convertDateFormat(dateRange.from),
+    endDate: convertDateFormat(dateRange.to)
   });
 
   // Debug logging

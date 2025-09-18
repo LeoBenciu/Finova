@@ -2965,7 +2965,7 @@ export class DataExtractionService {
               bestMatchForDocument = { score: suggestion.confidenceScore, transaction, suggestion };
             }
     
-            if (suggestion.confidenceScore >= 0.15) { // Lowered from 0.25 to 0.15 to be more inclusive
+            if (suggestion.confidenceScore >= 0.25) {
               // Check if this document-transaction pair was previously rejected
               const pairKey = `${document.id}-${transaction.id}`;
               if (rejectedDocTransactionPairs.has(pairKey)) {
@@ -2996,19 +2996,19 @@ export class DataExtractionService {
             }
           }
           
-          if (bestMatchForDocument.score < 0.15) { // Updated to match the new threshold
+          if (bestMatchForDocument.score < 0.25) {
             const bmTx = bestMatchForDocument.transaction;
             const bmTxDate = bmTx ? new Date(bmTx.transactionDate).toISOString().split('T')[0] : 'null';
             const docDateStr = documentDate ? documentDate.toISOString().split('T')[0] : 'null';
             const prefix = this.suggestionLogPrefix(document.id as unknown as number, bmTx?.id as unknown as string);
             if (this.shouldLogSuggestion(document.id as unknown as number, bmTx?.id as unknown as string)) {
               this.logger.warn(
-                `${prefix} 📄 No matches >= 0.15. Best=${bestMatchForDocument.score.toFixed(3)} ` +
+                `${prefix} 📄 No matches >= 0.25. Best=${bestMatchForDocument.score.toFixed(3)} ` +
                 `(doc ${document.id}:${document.name} amt=${documentAmount} date=${docDateStr} vs tx ${bmTx?.id} amt=${bmTx?.amount} date=${bmTxDate})`
               );
             } else {
               this.logger.warn(
-                `📄 Document ${document.id} (${document.name}) has no matches above 0.15 threshold. ` +
+                `📄 Document ${document.id} (${document.name}) has no matches above 0.25 threshold. ` +
                 `Best match: ${bestMatchForDocument.score.toFixed(3)} with transaction ${bmTx?.id} ` +
                 `(Amount: ${documentAmount} vs ${bmTx?.amount}, Date: ${docDateStr} vs ${bmTxDate})`
               );
@@ -3105,14 +3105,21 @@ export class DataExtractionService {
           }
         }
         
-        // MODIFIED: Process ALL unreconciled transactions for account suggestions
-        // Previously, we only processed transactions that didn't have document matches or transfer pairs
-        // Now we process ALL transactions to give users multiple suggestion options
-        const standaloneTransactions = unreconciliedTransactions;
+        // Ensure ALL unreconciled transactions get at least one suggestion
+        // First, identify transactions that already have suggestions
+        const transactionsWithSuggestions = new Set([
+          ...matchedTransactionIds,
+          ...transferTransactionIds
+        ]);
         
-        this.logger.log(`🔁 Transfer pairs detected: ${transferTransactionIds.size} transactions have transfer suggestions`);
-        this.logger.log(`🔁 Transfer transaction IDs: [${Array.from(transferTransactionIds).join(', ')}]`);
-        this.logger.log(`📊 Transaction processing: ${unreconciliedTransactions.length} total → ${matchedTransactionIds.size} matched to documents → ${transferTransactionIds.size} part of transfers → ${standaloneTransactions.length} getting account suggestions`);
+        // Get transactions that need account suggestions (those without any suggestions)
+        const standaloneTransactions = unreconciliedTransactions.filter(t => 
+          !transactionsWithSuggestions.has(t.id)
+        );
+        
+        this.logger.log(`🔁 Transactions with suggestions: ${transactionsWithSuggestions.size} (${matchedTransactionIds.size} document matches + ${transferTransactionIds.size} transfers)`);
+        this.logger.log(`🔁 Transactions needing account suggestions: ${standaloneTransactions.length}`);
+        this.logger.log(`📊 Transaction coverage: ${unreconciliedTransactions.length} total → ${transactionsWithSuggestions.size} have suggestions → ${standaloneTransactions.length} need account suggestions`);
         
         // Check if our target transactions are in the standalone list
         const targetStandalone = standaloneTransactions.filter(t => 
@@ -3124,7 +3131,13 @@ export class DataExtractionService {
           this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
         }
         
-        this.logger.log(`Processing ${standaloneTransactions.length} transactions for account categorization (all unreconciled transactions)`);
+        // Safety check: ensure we have suggestions for all transactions
+        const totalTransactionsWithSuggestions = transactionsWithSuggestions.size + standaloneTransactions.length;
+        if (totalTransactionsWithSuggestions !== unreconciliedTransactions.length) {
+          this.logger.warn(`⚠️ MISMATCH: Expected ${unreconciliedTransactions.length} transactions, but will have suggestions for ${totalTransactionsWithSuggestions}`);
+        }
+        
+        this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
         
         for (const transaction of standaloneTransactions) {
           this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
@@ -3192,7 +3205,7 @@ export class DataExtractionService {
         this.logger.log(`🏁 - Unreconciled transactions: ${unreconciliedTransactions.length}`);
         this.logger.log(`🏁 - Transfer suggestions created: ${rawTransferSuggestions.length}`);
         this.logger.log(`🏁 - Filtered suggestions: ${filteredSuggestions.length}`);
-        this.logger.log(`🏁 - Account suggestions created: ${standaloneTransactions.length}`);
+        this.logger.log(`🏁 - Standalone transactions processed: ${standaloneTransactions.length}`);
         this.logger.log(`🏁 - Total final suggestions: ${totalSuggestions}`);
     
       } catch (error) {
@@ -3529,13 +3542,9 @@ private calculateMatchSuggestion(
     const isComponentMatch = suggestion.matchingCriteria?.component_match;
     const componentType = suggestion.matchingCriteria?.component_type;
     
-    // REMOVED: Skip transactions that already have suggestions
-    // This was preventing the system from creating suggestions for unreconciled transactions
-    // that previously had suggestions. The user should be able to get new suggestions
-    // for any unreconciled transaction, even if it had previous suggestions.
-    // if (seenTx.has(suggestion.bankTransactionId)) {
-    //   continue; // Skip, transaction already has a suggestion
-    // }
+    if (seenTx.has(suggestion.bankTransactionId)) {
+      continue; // Skip, transaction already has a suggestion
+    }
     
     // Enhanced logic for component-based reconciliation
     if (suggestion.documentId) {
@@ -3570,8 +3579,7 @@ private calculateMatchSuggestion(
     }
     
     filteredSuggestions.push(suggestion);
-    // REMOVED: seenTx.add(suggestion.bankTransactionId);
-    // We no longer track seen transactions since we want to allow multiple suggestions per transaction
+    seenTx.add(suggestion.bankTransactionId);
   }
 
   this.logger.warn(
