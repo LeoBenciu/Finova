@@ -3143,6 +3143,7 @@ export class DataExtractionService {
         }
         
         this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
+        this.logger.log(`🔍 BATCH TRANSACTION IDs: [${standaloneTransactions.map(t => t.id).join(', ')}]`);
         
         let successfulSuggestions = 0;
         let failedSuggestions = 0;
@@ -3161,11 +3162,14 @@ export class DataExtractionService {
             this.logger.log(`🤖 AI returned ${suggestions.length} account suggestions for transaction ${transaction.id}`);
             
             if (suggestions.length > 0) {
+              this.logger.log(`🤖 Processing suggestion for transaction ${transaction.id}: ${suggestions[0].accountCode} - ${suggestions[0].accountName} (confidence: ${suggestions[0].confidence})`);
               const bestSuggestion = suggestions[0];
+              this.logger.log(`🤖 Getting/creating chart of account for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
               const chartOfAccount = await this.getOrCreateChartOfAccount(
                 bestSuggestion.accountCode,
                 bestSuggestion.accountName
               );
+              this.logger.log(`🤖 Chart of account result for transaction ${transaction.id}: ID=${chartOfAccount.id}`);
               
               // Check if this transaction-account pair was previously rejected
               const pairKey = `${transaction.id}-${chartOfAccount.id}`;
