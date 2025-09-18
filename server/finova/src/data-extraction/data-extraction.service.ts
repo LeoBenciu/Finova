@@ -3121,6 +3121,11 @@ export class DataExtractionService {
         this.logger.log(`🔁 Transactions needing account suggestions: ${standaloneTransactions.length}`);
         this.logger.log(`📊 Transaction coverage: ${unreconciliedTransactions.length} total → ${transactionsWithSuggestions.size} have suggestions → ${standaloneTransactions.length} need account suggestions`);
         
+        // Debug: List all transaction IDs
+        this.logger.log(`🔍 ALL UNRECONCILED TRANSACTIONS: [${unreconciliedTransactions.map(t => t.id).join(', ')}]`);
+        this.logger.log(`🔍 TRANSACTIONS WITH SUGGESTIONS: [${Array.from(transactionsWithSuggestions).join(', ')}]`);
+        this.logger.log(`🔍 TRANSACTIONS NEEDING ACCOUNT SUGGESTIONS: [${standaloneTransactions.map(t => t.id).join(', ')}]`);
+        
         // Check if our target transactions are in the standalone list
         const targetStandalone = standaloneTransactions.filter(t => 
           t.id === '110-0-1756203049797' || t.id === '111-0-1756209938791'
@@ -3149,6 +3154,8 @@ export class DataExtractionService {
               referenceNumber: transaction.referenceNumber || undefined,
               transactionDate: transaction.transactionDate.toISOString()
             }, accountingClientId);
+            
+            this.logger.log(`🤖 AI returned ${suggestions.length} account suggestions for transaction ${transaction.id}`);
             
             if (suggestions.length > 0) {
               const bestSuggestion = suggestions[0];
@@ -3181,6 +3188,8 @@ export class DataExtractionService {
               });
               
               this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+            } else {
+              this.logger.warn(`🤖 No account suggestions returned for transaction ${transaction.id}`);
             }
           } catch (error) {
             this.logger.error(`Failed to categorize standalone transaction ${transaction.id}:`, error);

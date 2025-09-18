@@ -23,23 +23,37 @@ export default function LedgerViewer() {
   // Helper function to convert DD-MM-YYYY to YYYY-MM-DD
   const convertDateFormat = (dateStr: string | undefined): string | undefined => {
     if (!dateStr) return undefined;
+    console.log('[LEDGER VIEWER] Converting date:', dateStr);
     const [day, month, year] = dateStr.split('-');
-    return `${year}-${month}-${day}`;
+    const convertedDate = `${year}-${month}-${day}`;
+    console.log('[LEDGER VIEWER] Converted date:', convertedDate);
+    return convertedDate;
   };
+
+  const convertedStartDate = convertDateFormat(dateRange.from);
+  const convertedEndDate = convertDateFormat(dateRange.to);
+  
+  console.log('[LEDGER VIEWER] API call parameters:', {
+    ein: clientCompanyEin,
+    startDate: convertedStartDate,
+    endDate: convertedEndDate,
+    originalFrom: dateRange.from,
+    originalTo: dateRange.to
+  });
 
   const { data: ledgerData, isLoading: entriesLoading, error: entriesError } = useGetLedgerEntriesQuery({
     ein: clientCompanyEin,
     page,
     size: 50,
-    startDate: convertDateFormat(dateRange.from),
-    endDate: convertDateFormat(dateRange.to),
+    startDate: convertedStartDate,
+    endDate: convertedEndDate,
     accountCode: selectedAccount || undefined
   });
 
   const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useGetLedgerSummaryQuery({
     ein: clientCompanyEin,
-    startDate: convertDateFormat(dateRange.from),
-    endDate: convertDateFormat(dateRange.to)
+    startDate: convertedStartDate,
+    endDate: convertedEndDate
   });
 
   // Debug logging

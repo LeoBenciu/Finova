@@ -949,10 +949,19 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
         };
 
         if (startDate && endDate && startDate.trim() !== '' && endDate.trim() !== '') {
-            whereCondition.postingDate = {
-                gte: new Date(startDate),
-                lte: new Date(endDate)
-            };
+            console.log('[LEDGER API] Parsing dates:', { startDate, endDate });
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            console.log('[LEDGER API] Parsed date objects:', { startDateObj, endDateObj, startDateValid: !isNaN(startDateObj.getTime()), endDateValid: !isNaN(endDateObj.getTime()) });
+            
+            if (!isNaN(startDateObj.getTime()) && !isNaN(endDateObj.getTime())) {
+                whereCondition.postingDate = {
+                    gte: startDateObj,
+                    lte: endDateObj
+                };
+            } else {
+                console.log('[LEDGER API] Invalid dates detected, skipping date filter');
+            }
         }
 
         if (accountCode) {
@@ -1030,10 +1039,19 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
         };
 
         if (startDate && endDate && startDate.trim() !== '' && endDate.trim() !== '') {
-            whereCondition.postingDate = {
-                gte: new Date(startDate),
-                lte: new Date(endDate)
-            };
+            console.log('[LEDGER SUMMARY] Parsing dates:', { startDate, endDate });
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            console.log('[LEDGER SUMMARY] Parsed date objects:', { startDateObj, endDateObj, startDateValid: !isNaN(startDateObj.getTime()), endDateValid: !isNaN(endDateObj.getTime()) });
+            
+            if (!isNaN(startDateObj.getTime()) && !isNaN(endDateObj.getTime())) {
+                whereCondition.postingDate = {
+                    gte: startDateObj,
+                    lte: endDateObj
+                };
+            } else {
+                console.log('[LEDGER SUMMARY] Invalid dates detected, skipping date filter');
+            }
         }
 
         const entries = await this.prisma.generalLedgerEntry.findMany({
