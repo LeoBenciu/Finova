@@ -2,6 +2,8 @@
 import { useState } from "react";
 import { useGetLedgerEntriesQuery, useGetLedgerSummaryQuery } from "@/redux/slices/apiSlice";
 import { useSelector } from "react-redux";
+import { Button } from "@/components/ui/button";
+import { CalendarIcon } from "lucide-react";
 
 type RootState = {
   clientCompany: { current: { ein: string } };
@@ -94,25 +96,30 @@ export default function LedgerViewer() {
         <div className="flex gap-4">
           <div className="flex items-center gap-2">
             <label className="text-[var(--text2)] text-sm">
-              {language === 'ro' ? 'De la:' : 'From:'}
+              {language === 'ro' ? 'Perioada:' : 'Date Range:'}
             </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-[var(--foreground)] text-[var(--text1)] text-sm"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className="text-[var(--text2)] text-sm">
-              {language === 'ro' ? 'Până la:' : 'To:'}
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-3 py-2 border border-[var(--text4)] rounded-lg bg-[var(--foreground)] text-[var(--text1)] text-sm"
-            />
+            <Button
+              variant="outline"
+              className="w-[280px] justify-start text-left font-normal bg-[var(--foreground)] border-[var(--text4)] text-[var(--text1)] hover:bg-[var(--background)]"
+              onClick={() => {
+                // Create a simple date picker dialog
+                const start = prompt(language === 'ro' ? 'Data de început (YYYY-MM-DD):' : 'Start date (YYYY-MM-DD):', startDate);
+                const end = prompt(language === 'ro' ? 'Data de sfârșit (YYYY-MM-DD):' : 'End date (YYYY-MM-DD):', endDate);
+                if (start && end) {
+                  setStartDate(start);
+                  setEndDate(end);
+                }
+              }}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {startDate && endDate ? (
+                `${startDate} - ${endDate}`
+              ) : (
+                <span className="text-[var(--text2)]">
+                  {language === 'ro' ? 'Selectează perioada' : 'Pick a date range'}
+                </span>
+              )}
+            </Button>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-[var(--text2)] text-sm">

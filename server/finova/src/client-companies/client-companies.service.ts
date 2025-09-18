@@ -948,7 +948,7 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
             accountingClientId: accountingClient.id
         };
 
-        if (startDate && endDate) {
+        if (startDate && endDate && startDate.trim() !== '' && endDate.trim() !== '') {
             whereCondition.postingDate = {
                 gte: new Date(startDate),
                 lte: new Date(endDate)
@@ -1025,14 +1025,19 @@ async getCompanyData(currentCompanyEin: string, reqUser: User, year: string) {
         const clientCompany = await this.getClientCompanyByEin(ein, user);
         const accountingClient = await this.getAccountingClient(clientCompany.id, user);
         
+        const whereCondition: any = {
+            accountingClientId: accountingClient.id
+        };
+
+        if (startDate && endDate && startDate.trim() !== '' && endDate.trim() !== '') {
+            whereCondition.postingDate = {
+                gte: new Date(startDate),
+                lte: new Date(endDate)
+            };
+        }
+
         const entries = await this.prisma.generalLedgerEntry.findMany({
-            where: {
-                accountingClientId: accountingClient.id,
-                postingDate: {
-                    gte: new Date(startDate),
-                    lte: new Date(endDate)
-                }
-            },
+            where: whereCondition,
             select: {
                 accountCode: true,
                 debit: true,
