@@ -29,6 +29,65 @@ export interface PostEntriesInput {
 export class PostingService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Reverse ledger entries for a specific document
+  async reverseDocumentEntries(accountingClientId: number, documentId: number, postingDate: Date) {
+    console.log('[POSTING SERVICE] Starting document reversal:', { accountingClientId, documentId, postingDate });
+    
+    try {
+      // Find all ledger entries for this document
+      const existingEntries = await this.prisma.generalLedgerEntry.findMany({
+        where: {
+          accountingClientId,
+          documentId
+        }
+      });
+
+      if (existingEntries.length === 0) {
+        console.log('[POSTING SERVICE] No ledger entries found for document:', documentId);
+        return { reversed: 0, message: 'No entries to reverse' };
+      }
+
+      console.log('[POSTING SERVICE] Found entries to reverse:', existingEntries.length);
+
+      // Create reversal entries (swap debit/credit)
+      const reversalEntries: PostingEntry[] = existingEntries.map(entry => ({
+        accountCode: entry.accountCode,
+        debit: entry.credit.toNumber(), // Swap: original credit becomes debit
+        credit: entry.debit.toNumber()   // Swap: original debit becomes credit
+      }));
+
+      // Post the reversal entries
+      const reversalKey = `reversal:document:${documentId}:${Date.now()}`;
+      const result = await this.postEntries({
+        accountingClientId,
+        postingDate,
+        entries: reversalEntries,
+        sourceType: LedgerSourceType.DOCUMENT_REVERSAL,
+        sourceId: `document-${documentId}`,
+        postingKey: reversalKey,
+        links: {
+          documentId: documentId
+        }
+      });
+
+      console.log('[POSTING SERVICE] Document reversal completed:', { 
+        documentId, 
+        originalEntries: existingEntries.length, 
+        reversalEntries: result.created.length 
+      });
+
+      return {
+        reversed: result.created.length,
+        originalEntries: existingEntries.length,
+        message: `Reversed ${result.created.length} ledger entries for document ${documentId}`
+      };
+
+    } catch (error: any) {
+      console.error('[POSTING SERVICE] Document reversal failed:', error);
+      throw new Error(`Failed to reverse ledger entries for document ${documentId}: ${error.message}`);
+    }
+  }
+
   // Synchronous, idempotent post. If postingKey exists, returns existing entries.
   async postEntries(input: PostEntriesInput) {
     const { accountingClientId, postingDate, entries, sourceType, sourceId, postingKey, links } = input;

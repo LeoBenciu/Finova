@@ -2038,6 +2038,22 @@ export class FilesService {
                     })
                 );
 
+                // Reverse ledger entries for this document before deletion
+                let ledgerReversalResult = null;
+                try {
+                    console.log('[FILES SERVICE] Starting ledger reversal for document:', docId);
+                    ledgerReversalResult = await this.postingService.reverseDocumentEntries(
+                        accountingClientRelation[0].id,
+                        docId,
+                        new Date()
+                    );
+                    console.log('[FILES SERVICE] Ledger reversal completed:', ledgerReversalResult);
+                } catch (error: any) {
+                    console.error('[FILES SERVICE] Ledger reversal failed:', error);
+                    // Don't fail the entire deletion if ledger reversal fails
+                    // Log the error but continue with document deletion
+                }
+
                 const deletedDocument = await prisma.document.delete({
                     where: {
                         id: docId,
@@ -2052,6 +2068,7 @@ export class FilesService {
                     deletedDuplicateChecks,
                     deletedComplianceValidations,
                     deletedUserCorrections,
+                    ledgerReversalResult,
                     s3DeleteStatus: 'Success'
                 };
             });

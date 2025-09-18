@@ -40,11 +40,10 @@ interface Props {
   // State/handlers
   loadingSuggestions: Set<string>;
   setLoadingSuggestions: React.Dispatch<React.SetStateAction<Set<string>>>;
-  rejectingSuggestions: Set<string>;
-  setRejectingSuggestions: React.Dispatch<React.SetStateAction<Set<string>>>;
   setRemovedSuggestions: React.Dispatch<React.SetStateAction<Set<string>>>;
-  regeneratingTransactions: Set<number>;
-  handleRegenerateTransactionSuggestions: (transactionId: string) => void;
+  // NEW: Frontend-only rejection state
+  rejectedSuggestions: Set<string>;
+  setRejectedSuggestions: React.Dispatch<React.SetStateAction<Set<string>>>;
   // Data/ops
   clientCompanyEin: string;
   transactionsData: any[];
@@ -52,7 +51,6 @@ interface Props {
   rejectSuggestion: (args: { suggestionId: number; reason?: string }) => { unwrap: () => Promise<any> };
   createManualAccountReconciliation: (args: { transactionId: string; accountCode: string; notes?: string }) => { unwrap: () => Promise<any> };
   createTransferReconciliation: (args: { clientEin: string; data: { sourceTransactionId: string; destinationTransactionId: string; fxRate?: number; notes?: string } }) => { unwrap: () => Promise<any> };
-  refetchSuggestions?: () => void;
   // Utils
   formatDate: (d: string) => string;
   formatCurrency: (n: number) => string;
@@ -67,18 +65,16 @@ const SuggestionsList: React.FC<Props> = ({
   handleRegenerateAllSuggestions,
   loadingSuggestions,
   setLoadingSuggestions,
-  rejectingSuggestions,
-  setRejectingSuggestions,
   setRemovedSuggestions,
-  regeneratingTransactions,
-  handleRegenerateTransactionSuggestions,
+  // NEW: Frontend-only rejection state
+  rejectedSuggestions,
+  setRejectedSuggestions,
   clientCompanyEin,
   transactionsData,
   acceptSuggestion,
   rejectSuggestion,
   createManualAccountReconciliation,
   createTransferReconciliation,
-  refetchSuggestions,
   formatDate,
   formatCurrency,
 }) => {
@@ -91,9 +87,14 @@ const SuggestionsList: React.FC<Props> = ({
             {language === 'ro' ? 'Sugestii de Reconciliere' : 'Reconciliation Suggestions'}
           </h3>
           <button
-            onClick={handleRegenerateAllSuggestions}
+            onClick={() => {
+              // Clear rejected suggestions when regenerating all
+              setRejectedSuggestions(new Set());
+              handleRegenerateAllSuggestions();
+            }}
             disabled={isRegeneratingAll}
             className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-lg text-sm font-medium transition-colors"
+            title={language === 'ro' ? 'Regenerează toate sugestiile și afișează din nou cele ascunse' : 'Regenerate all suggestions and show previously hidden ones'}
           >
             {isRegeneratingAll ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             {language === 'ro' ? 'Regenerează Toate' : 'Regenerate All'}
@@ -126,10 +127,16 @@ const SuggestionsList: React.FC<Props> = ({
         ) : (
           <div className="space-y-6">
             {(() => {
-              // Filter out duplicate transfer suggestions
+              // Filter out rejected suggestions and duplicate transfer suggestions
               const seenTransferPairs = new Set<string>();
               const filteredSuggestions = displayedSuggestions.filter((s) => {
                 const suggestion = s as Suggestion;
+                
+                // Filter out rejected suggestions (frontend-only rejection)
+                if (rejectedSuggestions.has(String(suggestion.id))) {
+                  console.log(`🔍 FRONTEND: Hiding rejected suggestion ${suggestion.id}`);
+                  return false;
+                }
                 
                 // Only apply filtering to transfer suggestions
                 if (suggestion.matchingCriteria?.type !== 'TRANSFER' || !suggestion.transfer) {
@@ -258,58 +265,18 @@ const SuggestionsList: React.FC<Props> = ({
                       {language === 'ro' ? 'Acceptă' : 'Accept'}
                     </button>
                     <button
-                      onClick={async () => {
+                      onClick={() => {
                         const suggestionId = String(suggestion.id);
-                        setRejectingSuggestions(prev => new Set(prev).add(suggestionId));
-                        try {
-                          const isTransferSuggestion = suggestion.matchingCriteria?.type === 'TRANSFER';
-                          if (isTransferSuggestion) {
-                            setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                          } else {
-                            await rejectSuggestion({
-                              suggestionId: Number.isFinite(suggestion.id as any) ? Number(suggestion.id) : ((): number => { throw new Error('Suggestion id is not numeric for reject'); })(),
-                              reason: 'Manual rejection by user'
-                            }).unwrap();
-                            setRemovedSuggestions(prev => new Set(prev).add(suggestionId));
-                            refetchSuggestions && refetchSuggestions();
-                          }
-                        } catch (error: any) {
-                          if (error?.status === 401 || error?.data?.statusCode === 401) {
-                            window.location.href = '/authentication';
-                          } else {
-                            const errorMsg = error?.data?.message || error?.message || 'Unknown error';
-                            alert(language === 'ro' ? `Eroare la respingerea sugestiei: ${errorMsg}` : `Failed to reject suggestion: ${errorMsg}`);
-                          }
-                        } finally {
-                          setRejectingSuggestions(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(suggestionId);
-                            return newSet;
-                          });
-                        }
+                        // Frontend-only rejection - just hide the suggestion temporarily
+                        setRejectedSuggestions(prev => new Set(prev).add(suggestionId));
+                        console.log(`🔍 FRONTEND: Temporarily rejected suggestion ${suggestionId} (frontend-only)`);
                       }}
-                      disabled={rejectingSuggestions.has(String(suggestion.id))}
-                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
+                      className="px-4 py-2 bg-red-500 text-white rounded-xl hover:bg-red-600 transition-colors text-sm font-medium flex items-center gap-2"
+                      title={language === 'ro' ? 'Ascunde această sugestie temporar' : 'Hide this suggestion temporarily'}
                     >
-                      {rejectingSuggestions.has(String(suggestion.id)) && <Loader2 size={16} className="animate-spin" />}
                       <X size={16} />
-                      {language === 'ro' ? 'Respinge' : 'Reject'}
+                      {language === 'ro' ? 'Ascunde' : 'Dismiss'}
                     </button>
-                    {suggestion.bankTransaction && (
-                      <button
-                        onClick={() => suggestion.bankTransaction && handleRegenerateTransactionSuggestions(suggestion.bankTransaction.id)}
-                        disabled={regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id))}
-                        className="px-3 py-2 bg-[var(--primary)] text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-medium disabled:opacity-50 flex items-center gap-2"
-                        title={language === 'ro' ? 'Regenerează sugestii pentru această tranzacție' : 'Regenerate suggestions for this transaction'}
-                      >
-                        {regeneratingTransactions.has(parseInt(suggestion.bankTransaction.id)) ? (
-                          <Loader2 size={16} className="animate-spin" />
-                        ) : (
-                          <RefreshCw size={16} />
-                        )}
-                        {language === 'ro' ? 'Regenerează' : 'Regenerate'}
-                      </button>
-                    )}
                   </div>
                 </div>
 

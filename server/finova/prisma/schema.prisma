@@ -868,6 +868,7 @@ enum LedgerSourceType {
   RECONCILIATION
   TRANSFER
   ADJUSTMENT
+  DOCUMENT_REVERSAL
 }
 
 /// ==================== DOCUMENT LINE ITEMS ====================

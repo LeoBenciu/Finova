@@ -25,7 +25,6 @@ import {
   useRejectReconciliationSuggestionMutation,
   useUnreconcileTransactionMutation,
   useRegenerateAllSuggestionsMutation,
-  useRegenerateTransactionSuggestionsMutation,
   useCreateManualAccountReconciliationMutation,
   useCreateBulkMatchesMutation,
   useCreateOutstandingItemMutation,
@@ -954,10 +953,9 @@ useEffect(() => {
   const [acceptSuggestion] = useAcceptReconciliationSuggestionMutation();
   const [loadingSuggestions, setLoadingSuggestions] = useState<Set<string>>(new Set());
   const [rejectSuggestion] = useRejectReconciliationSuggestionMutation();
-  const [rejectingSuggestions, setRejectingSuggestions] = useState<Set<string>>(new Set());
+  // NEW: Frontend-only rejection state
+  const [rejectedSuggestions, setRejectedSuggestions] = useState<Set<string>>(new Set());
   const [regenerateAllSuggestions, { isLoading: isRegeneratingAll }] = useRegenerateAllSuggestionsMutation();
-  const [regenerateTransactionSuggestions] = useRegenerateTransactionSuggestionsMutation();
-  const [regeneratingTransactions, setRegeneratingTransactions] = useState<Set<number>>(new Set());
   const [unreconcileTransaction] = useUnreconcileTransactionMutation();
   const [createOutstandingItem] = useCreateOutstandingItemMutation();
 
@@ -1303,32 +1301,6 @@ useEffect(() => {
     }
   };
 
-  const handleRegenerateTransactionSuggestions = async (transactionId: string) => {
-    const txnId = parseInt(transactionId);
-    setRegeneratingTransactions(prev => new Set(prev).add(txnId));
-    try {
-      await regenerateTransactionSuggestions(transactionId).unwrap();
-      console.log(`Suggestions for transaction ${transactionId} regenerated successfully`);
-      setSuggestionsData([]);
-      setSuggestionsPage(1);
-    } catch (error: any) {
-      console.error(`Failed to regenerate suggestions for transaction ${transactionId}:`, error);
-      if (error?.status === 401 || error?.data?.statusCode === 401) {
-        console.warn('Authentication failed - redirecting to login');
-        window.location.href = '/authentication';
-      } else {
-        const errorMsg = error?.data?.message || error?.message || 'Unknown error';
-        console.error('Regenerate transaction suggestions error details:', errorMsg);
-        alert(language === 'ro' ? `Eroare la regenerarea sugestiilor pentru tranzacție: ${errorMsg}` : `Failed to regenerate transaction suggestions: ${errorMsg}`);
-      }
-    } finally {
-      setRegeneratingTransactions(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(txnId);
-        return newSet;
-      });
-    }
-  };
 
   const handleUnreconcileTransaction = async (transactionId: string) => {
     setUnreconciling(prev => new Set(prev).add(transactionId));
@@ -2019,18 +1991,16 @@ useEffect(() => {
             handleRegenerateAllSuggestions={handleRegenerateAllSuggestions}
             loadingSuggestions={loadingSuggestions}
             setLoadingSuggestions={setLoadingSuggestions}
-            rejectingSuggestions={rejectingSuggestions}
-            setRejectingSuggestions={setRejectingSuggestions}
             setRemovedSuggestions={setRemovedSuggestions}
-            regeneratingTransactions={regeneratingTransactions}
-            handleRegenerateTransactionSuggestions={handleRegenerateTransactionSuggestions}
+            // NEW: Frontend-only rejection state
+            rejectedSuggestions={rejectedSuggestions}
+            setRejectedSuggestions={setRejectedSuggestions}
             clientCompanyEin={clientCompanyEin}
             transactionsData={transactionsData}
             acceptSuggestion={acceptSuggestion}
             rejectSuggestion={rejectSuggestion}
             createManualAccountReconciliation={createManualAccountReconciliation}
             createTransferReconciliation={createTransferReconciliation}
-            refetchSuggestions={refetchSuggestions as any}
             formatDate={formatDate}
             formatCurrency={formatCurrency}
           />
