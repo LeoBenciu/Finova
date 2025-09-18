@@ -2,8 +2,7 @@
 import { useState } from "react";
 import { useGetLedgerEntriesQuery, useGetLedgerSummaryQuery } from "@/redux/slices/apiSlice";
 import { useSelector } from "react-redux";
-import { Button } from "@/components/ui/button";
-import { CalendarIcon } from "lucide-react";
+import { MyDateRangePicker } from '@/app/Components/MyDateRangePicker';
 
 type RootState = {
   clientCompany: { current: { ein: string } };
@@ -15,35 +14,32 @@ export default function LedgerViewer() {
   const language = useSelector((state: RootState) => state.user.language);
   
   const [page, setPage] = useState(1);
-  const [startDate, setStartDate] = useState(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0]
-  );
-  const [endDate, setEndDate] = useState(
-    new Date().toISOString().split('T')[0]
-  );
+  const [dateRange, setDateRange] = useState<{ from: string | undefined; to: string | undefined }>({
+    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    to: new Date().toISOString().split('T')[0]
+  });
   const [selectedAccount, setSelectedAccount] = useState('');
 
   const { data: ledgerData, isLoading: entriesLoading, error: entriesError } = useGetLedgerEntriesQuery({
     ein: clientCompanyEin,
     page,
     size: 50,
-    startDate,
-    endDate,
+    startDate: dateRange.from,
+    endDate: dateRange.to,
     accountCode: selectedAccount || undefined
   });
 
   const { data: summaryData, isLoading: summaryLoading, error: summaryError } = useGetLedgerSummaryQuery({
     ein: clientCompanyEin,
-    startDate,
-    endDate
+    startDate: dateRange.from,
+    endDate: dateRange.to
   });
 
   // Debug logging
   console.log('[LEDGER VIEWER] Component state:', {
     clientCompanyEin,
     page,
-    startDate,
-    endDate,
+    dateRange,
     selectedAccount,
     entriesLoading,
     summaryLoading,
@@ -98,28 +94,12 @@ export default function LedgerViewer() {
             <label className="text-[var(--text2)] text-sm">
               {language === 'ro' ? 'Perioada:' : 'Date Range:'}
             </label>
-            <Button
-              variant="outline"
-              className="w-[280px] justify-start text-left font-normal bg-[var(--foreground)] border-[var(--text4)] text-[var(--text1)] hover:bg-[var(--background)]"
-              onClick={() => {
-                // Create a simple date picker dialog
-                const start = prompt(language === 'ro' ? 'Data de început (YYYY-MM-DD):' : 'Start date (YYYY-MM-DD):', startDate);
-                const end = prompt(language === 'ro' ? 'Data de sfârșit (YYYY-MM-DD):' : 'End date (YYYY-MM-DD):', endDate);
-                if (start && end) {
-                  setStartDate(start);
-                  setEndDate(end);
-                }
-              }}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {startDate && endDate ? (
-                `${startDate} - ${endDate}`
-              ) : (
-                <span className="text-[var(--text2)]">
-                  {language === 'ro' ? 'Selectează perioada' : 'Pick a date range'}
-                </span>
-              )}
-            </Button>
+            <div className="w-[280px]">
+              <MyDateRangePicker 
+                dateRange={dateRange} 
+                setDateRange={setDateRange} 
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-[var(--text2)] text-sm">
@@ -196,27 +176,27 @@ export default function LedgerViewer() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--text4)]">
-              {ledgerData?.entries.map((entry: any) => (
+              {ledgerData?.entries?.map((entry: any) => (
                 <tr key={entry.id} className="hover:bg-[var(--background)] transition-colors">
                   <td className="px-4 py-3 text-sm text-[var(--text1)]">
-                    {new Date(entry.postingDate).toLocaleDateString()}
+                    {entry.postingDate ? new Date(entry.postingDate).toLocaleDateString() : '-'}
                   </td>
                   <td className="px-4 py-3 text-sm font-mono text-[var(--text1)]">
                     {entry.accountCode}
                   </td>
                   <td className="px-4 py-3 text-sm text-[var(--text1)]">
-                    {entry.debit > 0 ? (
+                    {entry.debit && entry.debit > 0 ? (
                       <span className="text-red-600 font-medium">
-                        {entry.debit.toLocaleString('ro-RO')} RON
+                        {Number(entry.debit).toLocaleString('ro-RO')} RON
                       </span>
                     ) : (
                       <span className="text-[var(--text3)]">-</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-[var(--text1)]">
-                    {entry.credit > 0 ? (
+                    {entry.credit && entry.credit > 0 ? (
                       <span className="text-green-600 font-medium">
-                        {entry.credit.toLocaleString('ro-RO')} RON
+                        {Number(entry.credit).toLocaleString('ro-RO')} RON
                       </span>
                     ) : (
                       <span className="text-[var(--text3)]">-</span>
