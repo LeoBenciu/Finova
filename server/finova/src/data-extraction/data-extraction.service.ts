@@ -2973,12 +2973,13 @@ export class DataExtractionService {
             }
     
             if (suggestion.confidenceScore >= 0.25) {
-              // Check if this document-transaction pair was previously rejected
-              const pairKey = `${document.id}-${transaction.id}`;
-              if (rejectedDocTransactionPairs.has(pairKey)) {
-                this.logger.warn(`🚫 SKIPPING previously rejected suggestion: Document ${document.id} + Transaction ${transaction.id}`);
-                continue;
-              }
+              // REMOVED: Check for previously rejected document-transaction pairs
+              // The user wants suggestions for all unreconciled transactions, even if they were previously rejected
+              // const pairKey = `${document.id}-${transaction.id}`;
+              // if (rejectedDocTransactionPairs.has(pairKey)) {
+              //   this.logger.warn(`🚫 SKIPPING previously rejected suggestion: Document ${document.id} + Transaction ${transaction.id}`);
+              //   continue;
+              // }
               
               const suggestionData = {
                 documentId: document.id,
@@ -3178,12 +3179,13 @@ export class DataExtractionService {
               );
               this.logger.log(`🤖 Chart of account result for transaction ${transaction.id}: ID=${chartOfAccount.id}`);
               
-              // Check if this transaction-account pair was previously rejected
-              const pairKey = `${transaction.id}-${chartOfAccount.id}`;
-              if (rejectedTransactionAccountPairs.has(pairKey)) {
-                this.logger.warn(`🚫 SKIPPING previously rejected standalone suggestion: Transaction ${transaction.id} + Account ${chartOfAccount.id}`);
-                continue;
-              }
+              // REMOVED: Check for previously rejected suggestions
+              // The user wants suggestions for all unreconciled transactions, even if they were previously rejected
+              // const pairKey = `${transaction.id}-${chartOfAccount.id}`;
+              // if (rejectedTransactionAccountPairs.has(pairKey)) {
+              //   this.logger.warn(`🚫 SKIPPING previously rejected standalone suggestion: Transaction ${transaction.id} + Account ${chartOfAccount.id}`);
+              //   continue;
+              // }
               
               const notes = bestSuggestion.confidence > 0.7 
                 ? `AI-categorized: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%)`
