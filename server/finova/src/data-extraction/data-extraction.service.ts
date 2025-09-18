@@ -3176,7 +3176,7 @@ export class DataExtractionService {
                 : `AI-suggested: ${bestSuggestion.accountName} (${Math.round(bestSuggestion.confidence * 100)}%) - review needed`;
               
               // Create suggestion for standalone transaction
-              await this.prisma.reconciliationSuggestion.create({
+              const createdSuggestion = await this.prisma.reconciliationSuggestion.create({
                 data: {
                   bankTransactionId: transaction.id,
                   chartOfAccountId: chartOfAccount.id,
@@ -3187,7 +3187,7 @@ export class DataExtractionService {
                 },
               });
               
-              this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName}`);
+              this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName} (DB ID: ${createdSuggestion.id})`);
             } else {
               this.logger.warn(`🤖 No account suggestions returned for transaction ${transaction.id}`);
             }
@@ -3205,8 +3205,23 @@ export class DataExtractionService {
           this.logger.log(`Generated ${filteredSuggestions.length} document-transaction match suggestions for client ${accountingClientId}`);
         }
         
+        // Count actual suggestions created in database
+        const actualSuggestionsCount = await this.prisma.reconciliationSuggestion.count({
+          where: {
+            OR: [
+              { document: { accountingClientId } },
+              { 
+                documentId: null,
+                bankTransaction: { bankStatementDocument: { accountingClientId } }
+              }
+            ],
+            status: 'PENDING'
+          }
+        });
+        
         const totalSuggestions = filteredSuggestions.length + standaloneTransactions.length;
         this.logger.log(`🏁 FINAL RESULTS: Generated total of ${totalSuggestions} suggestions (${filteredSuggestions.length} matches + ${standaloneTransactions.length} standalone) for client ${accountingClientId}`);
+        this.logger.log(`🏁 DATABASE VERIFICATION: Found ${actualSuggestionsCount} PENDING suggestions in database for this client`);
         
         // Final summary
         this.logger.log(`🏁 SUMMARY:`);

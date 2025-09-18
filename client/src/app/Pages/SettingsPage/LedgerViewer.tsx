@@ -298,22 +298,22 @@ export default function LedgerViewer() {
                 </tr>
               </thead>
               <tbody>
-                {summaryData.accountSummary.map((account: any) => (
+                {summaryData.accountSummary?.map((account: any) => (
                   <tr key={account.accountCode} className="border-b border-[var(--text4)]">
                     <td className="py-2 text-[var(--text1)] font-mono">
                       {account.accountCode}
                     </td>
                     <td className="py-2 text-right text-[var(--text1)]">
-                      {account.totalDebit.toLocaleString('ro-RO')} RON
+                      {account.totalDebit ? Number(account.totalDebit).toLocaleString('ro-RO') : '0'} RON
                     </td>
                     <td className="py-2 text-right text-[var(--text1)]">
-                      {account.totalCredit.toLocaleString('ro-RO')} RON
+                      {account.totalCredit ? Number(account.totalCredit).toLocaleString('ro-RO') : '0'} RON
                     </td>
                     <td className="py-2 text-right">
                       <span className={`font-medium ${
-                        account.netAmount >= 0 ? 'text-red-600' : 'text-green-600'
+                        (account.netAmount || 0) >= 0 ? 'text-red-600' : 'text-green-600'
                       }`}>
-                        {account.netAmount.toLocaleString('ro-RO')} RON
+                        {account.netAmount ? Number(account.netAmount).toLocaleString('ro-RO') : '0'} RON
                       </span>
                     </td>
                   </tr>
