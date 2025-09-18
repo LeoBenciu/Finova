@@ -2330,9 +2330,10 @@ export class DataExtractionService {
         }
     
         // Get previously rejected suggestions to avoid regenerating them
+        // NOTE: We only avoid REJECTED suggestions, not ACCEPTED suggestions that were later unreconciled
         const rejectedSuggestions = await this.prisma.reconciliationSuggestion.findMany({
           where: {
-            status: SuggestionStatus.REJECTED,
+            status: SuggestionStatus.REJECTED, // Only avoid explicitly rejected suggestions
             OR: [
               {
                 document: { accountingClientId },
@@ -2348,11 +2349,17 @@ export class DataExtractionService {
           select: {
             documentId: true,
             bankTransactionId: true,
-            chartOfAccountId: true
+            chartOfAccountId: true,
+            status: true
           }
         });
         
         this.logger.warn(`🚫 Found ${rejectedSuggestions.length} previously rejected suggestions to avoid regenerating`);
+        
+        // Log the rejected suggestions for debugging
+        rejectedSuggestions.forEach(rejected => {
+          this.logger.warn(`🚫 Rejected suggestion: Transaction ${rejected.bankTransactionId} + Account ${rejected.chartOfAccountId} (Status: ${rejected.status})`);
+        });
         
         // Create sets of rejected combinations to avoid regenerating
         const rejectedDocTransactionPairs = new Set<string>();
