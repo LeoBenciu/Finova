@@ -3144,6 +3144,9 @@ export class DataExtractionService {
         
         this.logger.log(`Processing ${standaloneTransactions.length} standalone transactions for account categorization`);
         
+        let successfulSuggestions = 0;
+        let failedSuggestions = 0;
+        
         for (const transaction of standaloneTransactions) {
           this.logger.log(`🤖 Processing standalone transaction ${transaction.id}: "${transaction.description}" (${transaction.amount} ${transaction.transactionType})`);
           try {
@@ -3188,13 +3191,20 @@ export class DataExtractionService {
               });
               
               this.logger.log(`🤖 Created standalone suggestion for transaction ${transaction.id}: ${bestSuggestion.accountCode} - ${bestSuggestion.accountName} (DB ID: ${createdSuggestion.id})`);
+              successfulSuggestions++;
             } else {
               this.logger.warn(`🤖 No account suggestions returned for transaction ${transaction.id}`);
+              failedSuggestions++;
             }
           } catch (error) {
-            this.logger.error(`Failed to categorize standalone transaction ${transaction.id}:`, error);
+            this.logger.error(`❌ FAILED to categorize standalone transaction ${transaction.id}:`, error);
+            this.logger.error(`❌ Error details: ${error.message}`);
+            this.logger.error(`❌ Stack trace: ${error.stack}`);
+            failedSuggestions++;
           }
         }
+        
+        this.logger.log(`🤖 ACCOUNT SUGGESTION SUMMARY: ${successfulSuggestions} successful, ${failedSuggestions} failed out of ${standaloneTransactions.length} transactions`);
     
         if (filteredSuggestions.length > 0) {
           await this.prisma.reconciliationSuggestion.createMany({
