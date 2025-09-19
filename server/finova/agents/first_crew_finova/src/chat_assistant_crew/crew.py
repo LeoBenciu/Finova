@@ -138,6 +138,14 @@ class ChatAssistantCrew:
             
             You have access to these tools: {tool_list}
             
+            CRITICAL EMAIL RULE: When user says "da" after you show email content, IMMEDIATELY use send_email tool. Do NOT ask for confirmation again - this creates an infinite loop.
+            
+            EMAIL FLOW EXAMPLE:
+            1. User: "Send email to john@example.com about invoice"
+            2. You: Show email content + "Do you want me to send this email?"
+            3. User: "da"
+            4. You: IMMEDIATELY use send_email tool (do NOT ask again)
+            
             CRITICAL RULE - DOCUMENT RESPONSES:
             When a user asks about documents (invoices, bank statements, receipts, payment orders, etc.) you MUST:
             1. ALWAYS use the search_documents tool - NEVER use any other tool for document queries
@@ -178,10 +186,13 @@ class ChatAssistantCrew:
             - Do NOT ask for a subject - it's automatically generated
             - Do NOT search for documents when the user asks to send an email, even if the email content mentions documents, unless the user explicitly asks for you to look for documents and attach them to the email
             - ALWAYS show the email content in chat first and ask "Do you want me to send this email?" before using the send_email tool
-            - When user confirms with "da", "yes", "trimite", "send", "ok", "bine", "go ahead", or similar confirmation words, IMMEDIATELY use the send_email tool
-            - Do NOT ask for confirmation again after the user has already confirmed
+            - CRITICAL: When user confirms with "da", "yes", "trimite", "send", "ok", "bine", "go ahead", or similar confirmation words, you MUST IMMEDIATELY use the send_email tool - do not ask again
+            - Do NOT ask for confirmation again after the user has already confirmed - this creates an infinite loop
             - If user says "da" or "yes" after you show the email content, that means they want you to send it - use the send_email tool right away
             - After sending, provide clear feedback on success or failure
+            - REMEMBER: "da" = send the email immediately, do not ask again
+            - EXAMPLE: If user says "da" after you show email content, respond with: "I'll send the email now." then use send_email tool
+            - OVERRIDE: If you find yourself asking for confirmation again after user said "da", STOP and use send_email tool immediately
             
             IMPORTANT: 
             - Always answer back in the same language as the user asked in
@@ -239,7 +250,7 @@ class ChatAssistantCrew:
             8. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER SPECIAL HANDLING:
-            - For email requests: When asked to send an email, FIRST write the email content in the chat and ask for user confirmation. DO NOT use the send_email tool immediately. When user confirms with "da", "yes", "trimite", "send", or similar words, IMMEDIATELY use the send_email tool. Do NOT ask for confirmation again after user has confirmed. If details are missing, write a professional email yourself and ask for confirmation. NEVER search for documents when the user wants to send an email, even if the email content mentions documents like "factura" or "extras de cont" etc.
+            - For email requests: When asked to send an email, FIRST write the email content in the chat and ask for user confirmation. DO NOT use the send_email tool immediately. When user confirms with "da", "yes", "trimite", "send", or similar words, IMMEDIATELY use the send_email tool. Do NOT ask for confirmation again after user has confirmed - this creates an infinite loop. CRITICAL: "da" means send the email immediately, do not ask again. If details are missing, write a professional email yourself and ask for confirmation. NEVER search for documents when the user wants to send an email, even if the email content mentions documents like "factura" or "extras de cont" etc.
             
             Context Information:
             - Client Company EIN: {client_company_ein}

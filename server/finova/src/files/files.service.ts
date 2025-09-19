@@ -2083,6 +2083,38 @@ export class FilesService {
                     // Log the error but continue with document deletion
                 }
 
+                // Delete orphaned ledger entries that are no longer linked to any document
+                const deletedOrphanedEntries = await prisma.generalLedgerEntry.deleteMany({
+                    where: {
+                        accountingClientId: accountingClientRelation[0].id,
+                        documentId: docId
+                    }
+                });
+                
+                // Also delete entries linked to bank transactions from this document
+                const bankTransactions = await prisma.bankTransaction.findMany({
+                    where: { bankStatementDocumentId: docId },
+                    select: { id: true }
+                });
+                
+                let deletedBankTransactionEntries = 0;
+                if (bankTransactions.length > 0) {
+                    const bankTransactionIds = bankTransactions.map(bt => bt.id);
+                    const deletedBankEntries = await prisma.generalLedgerEntry.deleteMany({
+                        where: {
+                            accountingClientId: accountingClientRelation[0].id,
+                            bankTransactionId: { in: bankTransactionIds }
+                        }
+                    });
+                    deletedBankTransactionEntries = deletedBankEntries.count;
+                }
+                
+                console.log('[FILES SERVICE] Deleted orphaned ledger entries:', {
+                    byDocumentId: deletedOrphanedEntries.count,
+                    byBankTransactionId: deletedBankTransactionEntries,
+                    total: deletedOrphanedEntries.count + deletedBankTransactionEntries
+                });
+
                 const deletedDocument = await prisma.document.delete({
                     where: {
                         id: docId,

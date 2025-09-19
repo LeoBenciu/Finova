@@ -271,16 +271,19 @@ export class PostingService {
           reconciliationId: createData.reconciliationId,
           sourceType: createData.sourceType,
           sourceId: createData.sourceId,
-          postingKey: createData.postingKey
+          postingKey: createData.postingKey,
+          linksObject: links,
+          documentIdFromLinks: links?.documentId
         });
         
         const row = await tx.generalLedgerEntry.create({
           data: createData,
         });
         createdRows.push(row);
-        // Per-row debug
+        
+        // Per-row debug - show what was actually saved
         try {
-          console.log('[Ledger] postEntries created row', {
+          console.log('[POSTING SERVICE] ACTUALLY SAVED TO DATABASE:', {
             id: row.id,
             accountingClientId: row.accountingClientId,
             postingDate: row.postingDate,
@@ -290,11 +293,10 @@ export class PostingService {
             sourceType: row.sourceType,
             sourceId: row.sourceId,
             postingKey: row.postingKey,
-            links: {
-              documentId: row.documentId,
-              bankTransactionId: row.bankTransactionId,
-              reconciliationId: row.reconciliationId,
-            },
+            documentId: row.documentId,  // <-- This should show the actual saved value
+            bankTransactionId: row.bankTransactionId,
+            reconciliationId: row.reconciliationId,
+            createdAt: row.createdAt
           });
         } catch {}
 

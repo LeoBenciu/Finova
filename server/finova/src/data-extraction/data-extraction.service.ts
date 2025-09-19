@@ -2499,22 +2499,15 @@ export class DataExtractionService {
             reasons: string[];
           }> = [];
 
-          // Precompute keyword presence for descriptions
+          // Simplified keyword detection for performance
           const hasTransferKeyword = (desc?: string) => {
             if (!desc) return false;
             const d = desc.toLowerCase();
             return (
-              // English keywords
               d.includes('transfer') || d.includes('intrabank') || d.includes('interbank') ||
-              d.includes('transf') || d.includes('move') || d.includes('shift') ||
-              // Romanian keywords
               d.includes('interne') || d.includes('transfer intern') || d.includes('transfer catre') ||
               d.includes('transfer din') || d.includes('incasare din') || d.includes('plata catre') ||
-              d.includes('virament') || d.includes('virare') || d.includes('mutare') ||
-              // Account-related keywords that often indicate transfers
-              d.includes('contul') || d.includes('cont ') || d.includes('account') ||
-              // Cross-currency indicators
-              d.includes('eur') || d.includes('ron') || d.includes('lei') || d.includes('usd')
+              d.includes('virament') || d.includes('virare')
             );
           };
 
@@ -2628,96 +2621,44 @@ export class DataExtractionService {
                 continue;
               }
 
-              // Enhanced Scoring
-              let score = 0.6; // base for amount+date proximity (reduced from 0.7 to allow more room for bonuses)
+              // Simplified scoring for performance
+              let score = 0.7; // base for amount+date proximity
               const reasons: string[] = [];
               const criteria: any = { transfer: {} };
 
-              // Amount matching (higher weight for exact matches)
-              if (amountDiff === 0) {
-                score += 0.15; // Increased from 0.1
-                reasons.push('Exact amount match');
-              } else if (crossCurrencyOk) {
-                score += 0.12; // Slightly lower than exact match but still high
-                reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
+              if (amountDiff === 0 || crossCurrencyOk) {
+                score += 0.1;
+                if (crossCurrencyOk) {
+                  reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
+                } else {
+                  reasons.push('Exact amount match');
+                }
               } else {
-                score += 0.05; // Reduced for non-exact matches
                 reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
               }
 
-              // Date proximity (higher weight for same day)
               if (daysApart === 0) {
-                score += 0.12; // Increased from 0.08
+                score += 0.08;
                 reasons.push('Same date');
-              } else if (daysApart <= 1) {
-                score += 0.08; // Increased from 0.05
-                reasons.push(`Very close dates (${Math.round(daysApart)} day apart)`);
               } else if (daysApart <= 2) {
                 score += 0.05;
                 reasons.push(`Close dates (${Math.round(daysApart)} days apart)`);
               }
 
-              // Transfer keyword detection (higher weight)
               const kwSrc = hasTransferKeyword(src.description);
               const kwDst = hasTransferKeyword(dst.description);
               if (kwSrc && kwDst) {
                 score += 0.15; // Both have keywords - very strong indicator
                 reasons.push('Transfer keywords detected in both descriptions');
               } else if (kwSrc || kwDst) {
-                score += 0.08; // Increased from 0.05
+                score += 0.1; // Increased bonus for transfer keywords
                 reasons.push('Transfer keyword detected in description');
               }
 
-              // Cross-currency bonus (additional points for currency differences)
-              if (srcCur && dstCur && srcCur !== dstCur) {
-                score += 0.05; // Additional bonus for cross-currency
-                reasons.push('Cross-currency transaction pair');
-              }
-
-              // Same bank bonus
               if (src.bankAccount?.bankName && dst.bankAccount?.bankName) {
                 if (src.bankAccount.bankName === dst.bankAccount.bankName) {
-                  score += 0.03; // Slightly increased from 0.02
+                  score += 0.02;
                   reasons.push('Same bank');
-                }
-              }
-
-              // Account similarity bonus (using IBAN or account name)
-              if (src.bankAccount?.iban && dst.bankAccount?.iban) {
-                const srcIban = src.bankAccount.iban.toString();
-                const dstIban = dst.bankAccount.iban.toString();
-                if (srcIban === dstIban) {
-                  score += 0.1; // Strong bonus for same account
-                  reasons.push('Same IBAN');
-                } else if (srcIban.substring(0, 8) === dstIban.substring(0, 8)) {
-                  score += 0.05; // Bonus for similar IBANs (same bank)
-                  reasons.push('Similar IBANs (same bank)');
-                }
-              } else if (src.bankAccount?.accountName && dst.bankAccount?.accountName) {
-                const srcName = src.bankAccount.accountName.toLowerCase();
-                const dstName = dst.bankAccount.accountName.toLowerCase();
-                if (srcName === dstName) {
-                  score += 0.08; // Bonus for same account name
-                  reasons.push('Same account name');
-                }
-              }
-
-              // Description similarity bonus for transfer-like patterns
-              if (src.description && dst.description) {
-                const srcDesc = src.description.toLowerCase();
-                const dstDesc = dst.description.toLowerCase();
-                
-                // Check for complementary transfer descriptions
-                if ((srcDesc.includes('transfer catre') && dstDesc.includes('incasare din')) ||
-                    (srcDesc.includes('transfer din') && dstDesc.includes('incasare din')) ||
-                    (srcDesc.includes('plata catre') && dstDesc.includes('incasare din')) ||
-                    (srcDesc.includes('virament') && dstDesc.includes('incasare')) ||
-                    (srcDesc.includes('virare') && dstDesc.includes('incasare'))) {
-                  score += 0.08; // Strong bonus for complementary descriptions
-                  reasons.push('Complementary transfer descriptions');
-                } else if (srcDesc.includes('contul') && dstDesc.includes('contul')) {
-                  score += 0.03; // Bonus for both mentioning accounts
-                  reasons.push('Both descriptions mention accounts');
                 }
               }
 
@@ -2729,7 +2670,7 @@ export class DataExtractionService {
               }
             }
 
-            if (bestCandidate && bestScore >= 0.45) { // Lowered from 0.5 to catch more transfers
+            if (bestCandidate && bestScore >= 0.5) {
               const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
               
                // Check if we already created this exact transfer suggestion in this batch
@@ -3188,9 +3129,11 @@ export class DataExtractionService {
         
         // Also include transfer suggestions created in this run to prevent AI account code generation
         this.logger.log(`🔍 Adding current run transfer suggestions to exclusion list...`);
+        this.logger.log(`🔍 uniqueTransferSuggestions.length: ${uniqueTransferSuggestions.length}`);
         for (const suggestion of uniqueTransferSuggestions) {
           try {
             const matchingCriteria = suggestion.matchingCriteria as any;
+            this.logger.log(`🔍 Processing transfer suggestion: ${suggestion.bankTransactionId}, type: ${matchingCriteria?.type}, hasTransfer: ${!!matchingCriteria?.transfer}`);
             if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
               transferTransactionIds.add(suggestion.bankTransactionId);
               transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
@@ -3200,6 +3143,8 @@ export class DataExtractionService {
             this.logger.error(`Error processing current run transfer suggestion ${suggestion.bankTransactionId}:`, e);
           }
         }
+        this.logger.log(`🔍 Final transferTransactionIds size: ${transferTransactionIds.size}`);
+        this.logger.log(`🔍 Final transferTransactionIds: [${Array.from(transferTransactionIds).join(', ')}]`);
         
         // Ensure ALL unreconciled transactions get at least one suggestion
         // First, identify transactions that already have suggestions
@@ -3217,20 +3162,22 @@ export class DataExtractionService {
         this.logger.log(`🔁 Transactions needing account suggestions: ${standaloneTransactions.length}`);
         this.logger.log(`📊 Transaction coverage: ${unreconciliedTransactions.length} total → ${transactionsWithSuggestions.size} have suggestions → ${standaloneTransactions.length} need account suggestions`);
         
-        // Debug: List all transaction IDs
-        this.logger.log(`🔍 ALL UNRECONCILED TRANSACTIONS: [${unreconciliedTransactions.map(t => t.id).join(', ')}]`);
-        this.logger.log(`🔍 TRANSACTIONS WITH SUGGESTIONS: [${Array.from(transactionsWithSuggestions).join(', ')}]`);
-        this.logger.log(`🔍 TRANSACTIONS NEEDING ACCOUNT SUGGESTIONS: [${standaloneTransactions.map(t => t.id).join(', ')}]`);
-        
-        // Check if our target transactions are in the standalone list
+        // Debug: Check if our target transactions are in the standalone list
         const targetStandalone = standaloneTransactions.filter(t => 
+          t.id === '112-0-1757144193573' || t.id === '113-0-1757150333605' ||
           t.id === '110-0-1756203049797' || t.id === '111-0-1756209938791'
         );
         if (targetStandalone.length > 0) {
           this.logger.warn(`❌ TARGET TRANSACTIONS STILL IN STANDALONE: ${targetStandalone.map(t => t.id).join(', ')}`);
+          this.logger.warn(`❌ This means they will get AI account code suggestions instead of transfer suggestions!`);
         } else {
           this.logger.log(`✅ TARGET TRANSACTIONS PROPERLY EXCLUDED FROM STANDALONE`);
         }
+        
+        // Debug: List all transaction IDs
+        this.logger.log(`🔍 ALL UNRECONCILED TRANSACTIONS: [${unreconciliedTransactions.map(t => t.id).join(', ')}]`);
+        this.logger.log(`🔍 TRANSACTIONS WITH SUGGESTIONS: [${Array.from(transactionsWithSuggestions).join(', ')}]`);
+        this.logger.log(`🔍 TRANSACTIONS NEEDING ACCOUNT SUGGESTIONS: [${standaloneTransactions.map(t => t.id).join(', ')}]`);
         
         // Safety check: ensure we have suggestions for all transactions
         const totalTransactionsWithSuggestions = transactionsWithSuggestions.size + standaloneTransactions.length;
