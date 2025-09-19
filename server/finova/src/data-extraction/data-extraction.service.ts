@@ -2462,6 +2462,10 @@ export class DataExtractionService {
         // Transfer suggestions: propose internal transfers between accounts
         // ------------------------------------------------------------------
         this.logger.log(`🔁 STARTING TRANSFER SUGGESTION GENERATION`);
+        
+        // Declare uniqueTransferSuggestions in broader scope for later use
+        let uniqueTransferSuggestions: any[] = [];
+        
         try {
           const dbg = true;
           const daysWindow = 5; // +/- days to consider as close dates
@@ -2500,8 +2504,17 @@ export class DataExtractionService {
             if (!desc) return false;
             const d = desc.toLowerCase();
             return (
+              // English keywords
               d.includes('transfer') || d.includes('intrabank') || d.includes('interbank') ||
-              d.includes('interne') || d.includes('transfer intern') || d.includes('transf')
+              d.includes('transf') || d.includes('move') || d.includes('shift') ||
+              // Romanian keywords
+              d.includes('interne') || d.includes('transfer intern') || d.includes('transfer catre') ||
+              d.includes('transfer din') || d.includes('incasare din') || d.includes('plata catre') ||
+              d.includes('virament') || d.includes('virare') || d.includes('mutare') ||
+              // Account-related keywords that often indicate transfers
+              d.includes('contul') || d.includes('cont ') || d.includes('account') ||
+              // Cross-currency indicators
+              d.includes('eur') || d.includes('ron') || d.includes('lei') || d.includes('usd')
             );
           };
 
@@ -2575,7 +2588,7 @@ export class DataExtractionService {
               const amountDiff = Math.abs(srcAmt - dstAmt);
               const amountTolerance = Math.max(srcAmt * amountTolerancePct, minAmountTolerance);
               
-              // Cross-currency handling: allow plausible FX rate differences (e.g., RON↔EUR around 4–6)
+              // Enhanced cross-currency handling: allow plausible FX rate differences
               const srcCur = getTxnCurrency(src);
               const dstCur = getTxnCurrency(dst);
               let crossCurrencyOk = false;
@@ -2584,15 +2597,20 @@ export class DataExtractionService {
                 const bigger = Math.max(srcAmt, dstAmt);
                 const smaller = Math.max(1e-6, Math.min(srcAmt, dstAmt));
                 impliedRate = Number((bigger / smaller).toFixed(3));
-                // Heuristic bands
+                
+                // Enhanced heuristic bands with more flexibility
                 if ((srcCur === 'RON' && dstCur === 'EUR') || (srcCur === 'EUR' && dstCur === 'RON')) {
-                  // Typical RON/EUR range; broaden slightly to avoid false negatives
-                  crossCurrencyOk = impliedRate >= 4.0 && impliedRate <= 6.0;
+                  // RON/EUR range: broader range to catch more transfers
+                  crossCurrencyOk = impliedRate >= 3.5 && impliedRate <= 7.0;
                 } else if ((srcCur === 'RON' && dstCur === 'USD') || (srcCur === 'USD' && dstCur === 'RON')) {
-                  crossCurrencyOk = impliedRate >= 3.0 && impliedRate <= 6.0;
+                  // RON/USD range: broader range
+                  crossCurrencyOk = impliedRate >= 2.5 && impliedRate <= 7.0;
+                } else if ((srcCur === 'EUR' && dstCur === 'USD') || (srcCur === 'USD' && dstCur === 'EUR')) {
+                  // EUR/USD range: typically around 0.8-1.2
+                  crossCurrencyOk = impliedRate >= 0.7 && impliedRate <= 1.5;
                 } else {
-                  // Generic band for other pairs
-                  crossCurrencyOk = impliedRate >= 0.1 && impliedRate <= 20.0;
+                  // Generic band for other pairs: more permissive
+                  crossCurrencyOk = impliedRate >= 0.05 && impliedRate <= 50.0;
                 }
                 if (dbgSrc) this.logger.warn(`  [~] cross-currency ${srcCur}->${dstCur} impliedRate=${impliedRate} ok=${crossCurrencyOk}`);
               }
@@ -2610,41 +2628,96 @@ export class DataExtractionService {
                 continue;
               }
 
-              // Scoring
-              let score = 0.7; // base for amount+date proximity
+              // Enhanced Scoring
+              let score = 0.6; // base for amount+date proximity (reduced from 0.7 to allow more room for bonuses)
               const reasons: string[] = [];
               const criteria: any = { transfer: {} };
 
-              if (amountDiff === 0 || crossCurrencyOk) {
-                score += 0.1;
-                if (crossCurrencyOk) {
-                  reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
-                } else {
-                  reasons.push('Exact amount match');
-                }
+              // Amount matching (higher weight for exact matches)
+              if (amountDiff === 0) {
+                score += 0.15; // Increased from 0.1
+                reasons.push('Exact amount match');
+              } else if (crossCurrencyOk) {
+                score += 0.12; // Slightly lower than exact match but still high
+                reasons.push(`Cross-currency transfer (${srcCur || '?'}/${dstCur || '?'}, implied rate ${impliedRate})`);
               } else {
+                score += 0.05; // Reduced for non-exact matches
                 reasons.push(`Close amount match (diff: ${amountDiff.toFixed(2)})`);
               }
 
+              // Date proximity (higher weight for same day)
               if (daysApart === 0) {
-                score += 0.08;
+                score += 0.12; // Increased from 0.08
                 reasons.push('Same date');
+              } else if (daysApart <= 1) {
+                score += 0.08; // Increased from 0.05
+                reasons.push(`Very close dates (${Math.round(daysApart)} day apart)`);
               } else if (daysApart <= 2) {
                 score += 0.05;
                 reasons.push(`Close dates (${Math.round(daysApart)} days apart)`);
               }
 
+              // Transfer keyword detection (higher weight)
               const kwSrc = hasTransferKeyword(src.description);
               const kwDst = hasTransferKeyword(dst.description);
-              if (kwSrc || kwDst) {
-                score += 0.05;
+              if (kwSrc && kwDst) {
+                score += 0.15; // Both have keywords - very strong indicator
+                reasons.push('Transfer keywords detected in both descriptions');
+              } else if (kwSrc || kwDst) {
+                score += 0.08; // Increased from 0.05
                 reasons.push('Transfer keyword detected in description');
               }
 
+              // Cross-currency bonus (additional points for currency differences)
+              if (srcCur && dstCur && srcCur !== dstCur) {
+                score += 0.05; // Additional bonus for cross-currency
+                reasons.push('Cross-currency transaction pair');
+              }
+
+              // Same bank bonus
               if (src.bankAccount?.bankName && dst.bankAccount?.bankName) {
                 if (src.bankAccount.bankName === dst.bankAccount.bankName) {
-                  score += 0.02;
+                  score += 0.03; // Slightly increased from 0.02
                   reasons.push('Same bank');
+                }
+              }
+
+              // Account similarity bonus (using IBAN or account name)
+              if (src.bankAccount?.iban && dst.bankAccount?.iban) {
+                const srcIban = src.bankAccount.iban.toString();
+                const dstIban = dst.bankAccount.iban.toString();
+                if (srcIban === dstIban) {
+                  score += 0.1; // Strong bonus for same account
+                  reasons.push('Same IBAN');
+                } else if (srcIban.substring(0, 8) === dstIban.substring(0, 8)) {
+                  score += 0.05; // Bonus for similar IBANs (same bank)
+                  reasons.push('Similar IBANs (same bank)');
+                }
+              } else if (src.bankAccount?.accountName && dst.bankAccount?.accountName) {
+                const srcName = src.bankAccount.accountName.toLowerCase();
+                const dstName = dst.bankAccount.accountName.toLowerCase();
+                if (srcName === dstName) {
+                  score += 0.08; // Bonus for same account name
+                  reasons.push('Same account name');
+                }
+              }
+
+              // Description similarity bonus for transfer-like patterns
+              if (src.description && dst.description) {
+                const srcDesc = src.description.toLowerCase();
+                const dstDesc = dst.description.toLowerCase();
+                
+                // Check for complementary transfer descriptions
+                if ((srcDesc.includes('transfer catre') && dstDesc.includes('incasare din')) ||
+                    (srcDesc.includes('transfer din') && dstDesc.includes('incasare din')) ||
+                    (srcDesc.includes('plata catre') && dstDesc.includes('incasare din')) ||
+                    (srcDesc.includes('virament') && dstDesc.includes('incasare')) ||
+                    (srcDesc.includes('virare') && dstDesc.includes('incasare'))) {
+                  score += 0.08; // Strong bonus for complementary descriptions
+                  reasons.push('Complementary transfer descriptions');
+                } else if (srcDesc.includes('contul') && dstDesc.includes('contul')) {
+                  score += 0.03; // Bonus for both mentioning accounts
+                  reasons.push('Both descriptions mention accounts');
                 }
               }
 
@@ -2656,7 +2729,7 @@ export class DataExtractionService {
               }
             }
 
-            if (bestCandidate && bestScore >= 0.5) {
+            if (bestCandidate && bestScore >= 0.45) { // Lowered from 0.5 to catch more transfers
               const { dst, score, amountDiff, daysApart, reasons } = bestCandidate;
               
                // Check if we already created this exact transfer suggestion in this batch
@@ -2825,7 +2898,7 @@ export class DataExtractionService {
            if (transferSuggestions.length > 0) {
              // Remove duplicates within the same batch (extra safety)
              // Use a more robust deduplication that ensures only one suggestion per transfer pair
-             const uniqueTransferSuggestions = [];
+             uniqueTransferSuggestions = [];
              const seenTransferPairs = new Set<string>();
              let duplicatesSkipped = 0;
              
@@ -3110,6 +3183,21 @@ export class DataExtractionService {
             }
           } catch (e) {
             this.logger.error(`Error processing transfer suggestion ${suggestion.bankTransactionId}:`, e);
+          }
+        }
+        
+        // Also include transfer suggestions created in this run to prevent AI account code generation
+        this.logger.log(`🔍 Adding current run transfer suggestions to exclusion list...`);
+        for (const suggestion of uniqueTransferSuggestions) {
+          try {
+            const matchingCriteria = suggestion.matchingCriteria as any;
+            if (matchingCriteria?.type === 'TRANSFER' && matchingCriteria?.transfer?.destinationTransactionId) {
+              transferTransactionIds.add(suggestion.bankTransactionId);
+              transferTransactionIds.add(matchingCriteria.transfer.destinationTransactionId);
+              this.logger.log(`🔁 Added current run transfer pair: ${suggestion.bankTransactionId} -> ${matchingCriteria.transfer.destinationTransactionId}`);
+            }
+          } catch (e) {
+            this.logger.error(`Error processing current run transfer suggestion ${suggestion.bankTransactionId}:`, e);
           }
         }
         

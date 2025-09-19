@@ -65,12 +65,61 @@ export class PostingService {
       });
 
       // Find all ledger entries for this document
-      const existingEntries = await this.prisma.generalLedgerEntry.findMany({
+      let existingEntries = await this.prisma.generalLedgerEntry.findMany({
         where: {
           accountingClientId,
           documentId
         }
       });
+
+      // If no entries found by documentId, try to find by sourceId as fallback
+      if (existingEntries.length === 0) {
+        console.log('[POSTING SERVICE] No entries found by documentId, trying fallback by sourceId');
+        
+        // Try to find entries that might be related to this document
+        // Look for entries with sourceId containing the document ID
+        const fallbackEntries = await this.prisma.generalLedgerEntry.findMany({
+          where: {
+            accountingClientId,
+            OR: [
+              { sourceId: { contains: `-${documentId}-` } },
+              { sourceId: { contains: `${documentId}-` } },
+              { sourceId: { contains: `-${documentId}` } }
+            ]
+          }
+        });
+        
+        if (fallbackEntries.length > 0) {
+          console.log('[POSTING SERVICE] Found entries by fallback sourceId search:', fallbackEntries.length);
+          existingEntries = fallbackEntries;
+        } else {
+          // Last resort: try to find entries by looking for bank transactions from this document
+          console.log('[POSTING SERVICE] No entries found by sourceId, trying bank transaction fallback');
+          
+          // Get bank transactions for this document
+          const bankTransactions = await this.prisma.bankTransaction.findMany({
+            where: {
+              bankStatementDocumentId: documentId
+            },
+            select: { id: true }
+          });
+          
+          if (bankTransactions.length > 0) {
+            const bankTransactionIds = bankTransactions.map(bt => bt.id);
+            const bankTransactionEntries = await this.prisma.generalLedgerEntry.findMany({
+              where: {
+                accountingClientId,
+                bankTransactionId: { in: bankTransactionIds }
+              }
+            });
+            
+            if (bankTransactionEntries.length > 0) {
+              console.log('[POSTING SERVICE] Found entries by bank transaction fallback:', bankTransactionEntries.length);
+              existingEntries = bankTransactionEntries;
+            }
+          }
+        }
+      }
 
       console.log('[POSTING SERVICE] Query for document-specific entries:', {
         query: { accountingClientId, documentId },
@@ -198,21 +247,35 @@ export class PostingService {
           postingKey: uniquePostingKey
         });
 
+        const createData = {
+          accountingClientId,
+          postingDate,
+          accountCode: e.accountCode,
+          debit: new Prisma.Decimal(e.debit ?? 0),
+          credit: new Prisma.Decimal(e.credit ?? 0),
+          currency: 'RON',
+          sourceType,
+          sourceId: String(sourceId),
+          postingKey: uniquePostingKey,
+          documentId: links?.documentId ?? null,
+          bankTransactionId: links?.bankTransactionId ?? null,
+          reconciliationId: links?.reconciliationId ?? null,
+        };
+        
+        console.log('[POSTING SERVICE] Creating ledger entry with data:', {
+          accountCode: createData.accountCode,
+          debit: createData.debit.toString(),
+          credit: createData.credit.toString(),
+          documentId: createData.documentId,
+          bankTransactionId: createData.bankTransactionId,
+          reconciliationId: createData.reconciliationId,
+          sourceType: createData.sourceType,
+          sourceId: createData.sourceId,
+          postingKey: createData.postingKey
+        });
+        
         const row = await tx.generalLedgerEntry.create({
-          data: {
-            accountingClientId,
-            postingDate,
-            accountCode: e.accountCode,
-            debit: new Prisma.Decimal(e.debit ?? 0),
-            credit: new Prisma.Decimal(e.credit ?? 0),
-            currency: 'RON',
-            sourceType,
-            sourceId: String(sourceId),
-            postingKey: uniquePostingKey,
-            documentId: links?.documentId ?? null,
-            bankTransactionId: links?.bankTransactionId ?? null,
-            reconciliationId: links?.reconciliationId ?? null,
-          },
+          data: createData,
         });
         createdRows.push(row);
         // Per-row debug
