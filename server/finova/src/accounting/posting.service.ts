@@ -34,12 +34,57 @@ export class PostingService {
     console.log('[POSTING SERVICE] Starting document reversal:', { accountingClientId, documentId, postingDate });
     
     try {
+      // First, let's check ALL ledger entries for this accounting client to see what we have
+      const allEntries = await this.prisma.generalLedgerEntry.findMany({
+        where: { accountingClientId },
+        select: {
+          id: true,
+          documentId: true,
+          accountCode: true,
+          debit: true,
+          credit: true,
+          sourceType: true,
+          sourceId: true,
+          postingKey: true,
+          createdAt: true
+        }
+      });
+      
+      console.log('[POSTING SERVICE] ALL ledger entries for accounting client:', {
+        totalEntries: allEntries.length,
+        entries: allEntries.map(e => ({
+          id: e.id,
+          documentId: e.documentId,
+          accountCode: e.accountCode,
+          debit: e.debit.toString(),
+          credit: e.credit.toString(),
+          sourceType: e.sourceType,
+          sourceId: e.sourceId,
+          postingKey: e.postingKey
+        }))
+      });
+
       // Find all ledger entries for this document
       const existingEntries = await this.prisma.generalLedgerEntry.findMany({
         where: {
           accountingClientId,
           documentId
         }
+      });
+
+      console.log('[POSTING SERVICE] Query for document-specific entries:', {
+        query: { accountingClientId, documentId },
+        foundEntries: existingEntries.length,
+        entries: existingEntries.map(e => ({
+          id: e.id,
+          documentId: e.documentId,
+          accountCode: e.accountCode,
+          debit: e.debit.toString(),
+          credit: e.credit.toString(),
+          sourceType: e.sourceType,
+          sourceId: e.sourceId,
+          postingKey: e.postingKey
+        }))
       });
 
       if (existingEntries.length === 0) {

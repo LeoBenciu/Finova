@@ -167,16 +167,18 @@ class ChatAssistantCrew:
             - If asked about company financial data, use company_financial_info tool
             - If asked about documents, use search_documents tool  
             - If asked about accounting research, use serper_accounting_research tool
-            - If asked to send an email, use the send_email tool (subject is automatically set)
+            - If asked to send an email, FIRST write the email content in chat and ask for confirmation, THEN use the send_email tool (subject is automatically set)
             
             EMAIL HANDLING INSTRUCTIONS:
-            - When a user asks to send an email, ALWAYS use the send_email tool
+            - When a user asks to send an email, FIRST write the email content in the chat and ask for user confirmation
+            - DO NOT use the send_email tool immediately - show the email content first
             - You MUST provide: to (recipient) and either text or html content
             - The subject will automatically be set to "Mesaj din partea contabilului - [COMPANY_NAME]"
             - If the user doesn't provide content, write a professional email yourself and ask for confirmation
             - Do NOT ask for a subject - it's automatically generated
             - Do NOT search for documents when the user asks to send an email, even if the email content mentions documents, unless the user explicitly asks for you to look for documents and attach them to the email
-            - Always confirm the email details before sending
+            - ALWAYS show the email content in chat first and ask "Do you want me to send this email?" before using the send_email tool
+            - Only use the send_email tool after the user confirms they want to send the email
             - After sending, provide clear feedback on success or failure
             
             IMPORTANT: 
@@ -235,7 +237,7 @@ class ChatAssistantCrew:
             8. This is the MOST IMPORTANT rule - follow it exactly for ALL document queries
             
             OTHER SPECIAL HANDLING:
-            - For email requests: When asked to send an email, use the send_email tool with complete information. If details are missing, write a professional email yourself and ask for confirmation. NEVER search for documents when the user wants to send an email, even if the email content mentions documents like "factura" or "extras de cont" etc.
+            - For email requests: When asked to send an email, FIRST write the email content in the chat and ask for user confirmation. DO NOT use the send_email tool immediately. Only use the send_email tool after the user confirms they want to send the email. If details are missing, write a professional email yourself and ask for confirmation. NEVER search for documents when the user wants to send an email, even if the email content mentions documents like "factura" or "extras de cont" etc.
             
             Context Information:
             - Client Company EIN: {client_company_ein}

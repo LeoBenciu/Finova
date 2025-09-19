@@ -2041,7 +2041,36 @@ export class FilesService {
                 // Reverse ledger entries for this document before deletion
                 let ledgerReversalResult = null;
                 try {
-                    console.log('[FILES SERVICE] Starting ledger reversal for document:', docId);
+                    console.log('[FILES SERVICE] Starting ledger reversal for document:', {
+                        docId,
+                        accountingClientId: accountingClientRelation[0].id,
+                        documentType: document.type,
+                        documentName: document.name
+                    });
+                    
+                    // Let's also check what ledger entries exist before trying to reverse
+                    const existingLedgerEntries = await this.prisma.generalLedgerEntry.findMany({
+                        where: {
+                            accountingClientId: accountingClientRelation[0].id,
+                            documentId: docId
+                        }
+                    });
+                    
+                    console.log('[FILES SERVICE] Existing ledger entries for document before reversal:', {
+                        documentId: docId,
+                        foundEntries: existingLedgerEntries.length,
+                        entries: existingLedgerEntries.map(e => ({
+                            id: e.id,
+                            documentId: e.documentId,
+                            accountCode: e.accountCode,
+                            debit: e.debit.toString(),
+                            credit: e.credit.toString(),
+                            sourceType: e.sourceType,
+                            sourceId: e.sourceId,
+                            postingKey: e.postingKey
+                        }))
+                    });
+                    
                     ledgerReversalResult = await this.postingService.reverseDocumentEntries(
                         accountingClientRelation[0].id,
                         docId,
