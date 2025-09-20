@@ -1,8 +1,11 @@
 "use client";
 import { useState } from "react";
-import { useGetLedgerEntriesQuery, useGetLedgerSummaryQuery } from "@/redux/slices/apiSlice";
+import { useGetLedgerEntriesQuery, useGetLedgerSummaryQuery, useDeleteJournalEntryMutation } from "@/redux/slices/apiSlice";
 import { useSelector } from "react-redux";
 import { MyDateRangePicker } from '@/app/Components/MyDateRangePicker';
+import ManualJournalEntryModal from '@/app/Components/ManualJournalEntryModal';
+import { Button } from "@/components/ui/button";
+import { Plus, Trash2 } from "lucide-react";
 
 type RootState = {
   clientCompany: { current: { ein: string } };
@@ -19,6 +22,9 @@ export default function LedgerViewer() {
     to: new Date().toISOString().split('T')[0]
   });
   const [selectedAccount, setSelectedAccount] = useState('');
+  const [showManualEntryModal, setShowManualEntryModal] = useState(false);
+  
+  const [deleteEntry] = useDeleteJournalEntryMutation();
 
   // Helper function to convert DD-MM-YYYY to YYYY-MM-DD
   const convertDateFormat = (dateStr: string | undefined): string | undefined => {
@@ -40,6 +46,26 @@ export default function LedgerViewer() {
     originalFrom: dateRange.from,
     originalTo: dateRange.to
   });
+
+  const handleDeleteEntry = async (entryId: number) => {
+    if (!confirm('Are you sure you want to delete this journal entry?')) {
+      return;
+    }
+
+    try {
+      await deleteEntry({ ein: clientCompanyEin, entryId }).unwrap();
+      alert('Journal entry deleted successfully!');
+      // The query will automatically refetch due to cache invalidation
+    } catch (error: any) {
+      console.error('Error deleting journal entry:', error);
+      alert(error?.data?.message || 'Failed to delete journal entry');
+    }
+  };
+
+  const handleManualEntrySuccess = () => {
+    // The query will automatically refetch due to cache invalidation
+    setShowManualEntryModal(false);
+  };
 
   const { data: ledgerData, isLoading: entriesLoading, error: entriesError } = useGetLedgerEntriesQuery({
     ein: clientCompanyEin,
@@ -111,6 +137,13 @@ export default function LedgerViewer() {
           {language === 'ro' ? 'Vizualizare Registru Contabil' : 'Ledger Viewer'}
         </h2>
         <div className="flex gap-4">
+          <Button 
+            onClick={() => setShowManualEntryModal(true)}
+            className="bg-blue-600 hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {language === 'ro' ? 'Adaugă Intrare Manuală' : 'Add Manual Entry'}
+          </Button>
           <div className="flex items-center gap-2">
             <label className="text-[var(--text2)] text-sm">
               {language === 'ro' ? 'Perioada:' : 'Date Range:'}
@@ -194,6 +227,9 @@ export default function LedgerViewer() {
                 <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text2)] uppercase tracking-wider">
                   {language === 'ro' ? 'Document' : 'Document'}
                 </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text2)] uppercase tracking-wider">
+                  {language === 'ro' ? 'Acțiuni' : 'Actions'}
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--text4)]">
@@ -239,6 +275,18 @@ export default function LedgerViewer() {
                       </span>
                     ) : (
                       <span className="text-[var(--text3)]">-</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {(entry.sourceType === 'MANUAL_ENTRY' || entry.sourceId?.includes('manual-')) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDeleteEntry(entry.id)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     )}
                   </td>
                 </tr>
@@ -323,6 +371,14 @@ export default function LedgerViewer() {
           </div>
         </div>
       )}
+
+      {/* Manual Journal Entry Modal */}
+      <ManualJournalEntryModal
+        isOpen={showManualEntryModal}
+        onClose={() => setShowManualEntryModal(false)}
+        clientEin={clientCompanyEin}
+        onSuccess={handleManualEntrySuccess}
+      />
     </div>
   );
 }

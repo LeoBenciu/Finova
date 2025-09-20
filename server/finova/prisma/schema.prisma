@@ -869,6 +869,7 @@ enum LedgerSourceType {
   TRANSFER
   ADJUSTMENT
   DOCUMENT_REVERSAL
+  MANUAL_ENTRY
 }
 
 /// ==================== DOCUMENT LINE ITEMS ====================

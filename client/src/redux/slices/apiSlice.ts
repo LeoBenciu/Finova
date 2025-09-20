@@ -535,6 +535,21 @@ export const finovaApi = createApi({
             })
         }),
 
+        createManualJournalEntry: build.mutation({
+            query: ({ ein, body }) => ({
+                url: `accounting/${ein}/ledger/manual`,
+                method: 'POST',
+                body
+            })
+        }),
+
+        deleteJournalEntry: build.mutation({
+            query: ({ ein, entryId }) => ({
+                url: `accounting/${ein}/ledger/${entryId}`,
+                method: 'DELETE'
+            })
+        }),
+
         getDashboardMetrics: build.query({
             query: (ein) => ({
                 url: `client-companies/${ein}/dashboard-metrics`,
@@ -1383,4 +1398,6 @@ export const {
   useSendChatMessageMutation,
   useGetLedgerEntriesQuery,
   useGetLedgerSummaryQuery,
+  useCreateManualJournalEntryMutation,
+  useDeleteJournalEntryMutation,
 } = finovaApi;
