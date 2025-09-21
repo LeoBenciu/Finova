@@ -1636,17 +1636,41 @@ export class FilesService {
 
                     // Invoices: post on save with proper double-entry using AI-extracted line item account codes
                     if (docType === 'invoice') {
+                        console.log('[INVOICE POSTING] Starting invoice ledger posting for document:', document.id);
+                        
                         const amount = this.extractAmountFromProcessed(processedData);
+                        console.log('[INVOICE POSTING] Extracted amount:', amount);
+                        
                         if (amount && amount > 0) {
                             const direction = this.determineInvoiceDirection(processedData.result, clientEin);
                             const postingDate = this.extractDateFromProcessed(processedData) || new Date();
                             const sourceBase = direction === 'outgoing' ? 'INVOICE_OUT' : 'INVOICE_IN';
                             const postingKey = `DOC:${document.id}:${sourceBase}:${amount}:${postingDate.toISOString().slice(0,10)}`;
 
+                            console.log('[INVOICE POSTING] Invoice details:', {
+                                documentId: document.id,
+                                amount,
+                                direction,
+                                postingDate,
+                                sourceBase,
+                                postingKey
+                            });
+
                             // Get line items with AI-extracted account codes
                             const lineItems = processedData.result?.line_items || [];
                             const vatAmount = processedData.result?.vat_amount || 0;
                             const netAmount = amount - vatAmount;
+
+                            console.log('[INVOICE POSTING] Line items and VAT:', {
+                                lineItemsCount: lineItems.length,
+                                lineItems: lineItems.map(item => ({
+                                    account_code: item.account_code,
+                                    total: item.total,
+                                    name: item.name
+                                })),
+                                vatAmount,
+                                netAmount
+                            });
 
                             let entries: { accountCode: string; debit?: number; credit?: number }[] = [];
 
@@ -1688,10 +1712,21 @@ export class FilesService {
                                 }
                             }
 
+                            console.log('[INVOICE POSTING] Created entries:', entries);
+
                             if (entries.length > 0) {
+                                console.log('[INVOICE POSTING] About to post entries to ledger:', {
+                                    accountingClientId: accountingClientRelation.id,
+                                    postingDate,
+                                    entriesCount: entries.length,
+                                    sourceType: sourceBase,
+                                    sourceId: String(document.id),
+                                    postingKey
+                                });
+
                                 setTimeout(async () => {
                                     try {
-                                        await this.postingService.postEntries({
+                                        const result = await this.postingService.postEntries({
                                             accountingClientId: accountingClientRelation.id,
                                             postingDate,
                                             entries,
@@ -1700,16 +1735,17 @@ export class FilesService {
                                             postingKey,
                                             links: { documentId: document.id }
                                         });
-                                        console.log(`[LEDGER] Posted ${sourceBase.toLowerCase()} for document ${document.id} with ${lineItems.length} line items, amount ${amount}, direction=${direction}`);
+                                        console.log(`[INVOICE POSTING] SUCCESS: Posted ${sourceBase.toLowerCase()} for document ${document.id} with ${lineItems.length} line items, amount ${amount}, direction=${direction}`, result);
                                     } catch (postErr) {
-                                        console.warn(`[LEDGER_WARN] Failed to post invoice for document ${document.id}:`, postErr?.message || postErr);
+                                        console.error(`[INVOICE POSTING] ERROR: Failed to post invoice for document ${document.id}:`, postErr?.message || postErr);
+                                        console.error(`[INVOICE POSTING] ERROR: Full error:`, postErr);
                                     }
                                 }, 0);
                             } else {
-                                console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: no valid line items with account codes`);
+                                console.log(`[INVOICE POSTING] SKIPPED: No valid line items with account codes for document ${document.id}`);
                             }
                         } else {
-                            console.log(`[LEDGER] Skipped invoice posting for document ${document.id}: no parsable positive amount`);
+                            console.log(`[INVOICE POSTING] SKIPPED: No parsable positive amount for document ${document.id}. Amount extracted: ${amount}`);
                         }
                     }
                 } catch (cashPostErr) {

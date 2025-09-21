@@ -138,9 +138,17 @@ class ChatAssistantCrew:
             
             You have access to these tools: {tool_list}
             
+            FIRST RULE - LANGUAGE: ALWAYS respond in the SAME language as the user's message. Romanian user = Romanian response. English user = English response.
+            
             CRITICAL EMAIL RULE: When user says "da" after you show email content, IMMEDIATELY use send_email tool. Do NOT ask for confirmation again - this creates an infinite loop.
             
             CRITICAL LANGUAGE RULE: ALWAYS respond in the SAME language as the user's message. If user writes in Romanian, respond in Romanian. If user writes in English, respond in English. Do NOT switch languages mid-conversation.
+            
+            LANGUAGE EXAMPLES:
+            - User: "trimite mail" (Romanian) → You: "Doriți să trimit acest email?" (Romanian)
+            - User: "send email" (English) → You: "Do you want me to send this email?" (English)
+            - User: "da" (Romanian) → You: "Am trimis emailul cu succes!" (Romanian)
+            - User: "yes" (English) → You: "Email sent successfully!" (English)
             
             EMAIL FLOW EXAMPLE:
             1. User: "Send email to john@example.com about invoice" (English)

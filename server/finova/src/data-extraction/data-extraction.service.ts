@@ -2535,6 +2535,9 @@ export class DataExtractionService {
           };
 
           this.logger.log(`🔁 Starting transfer matching loop for ${debits.length} debits`);
+          this.logger.log(`🔍 DEBIT ORDER: [${debits.map(d => d.id).join(', ')}]`);
+          this.logger.log(`🔍 CREDIT ORDER: [${credits.map(c => c.id).join(', ')}]`);
+          
           for (const src of debits) {
             const srcAmt = Math.abs(Number(src.amount));
             const srcDate = new Date(src.transactionDate);
@@ -2571,6 +2574,10 @@ export class DataExtractionService {
               if (usedDestinationIds.has(dst.id)) {
                 if (dbgSrc) this.logger.warn(`  [X] dst=${dst.id} skipped: already used`);
                 this.logger.log(`🔍 DUPLICATE PREVENTION: Skipping destination ${dst.id} - already in usedDestinationIds`);
+                // Special debug for our target transaction pair
+                if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
+                  this.logger.warn(`🎯 TARGET PAIR BLOCKED: Credit ${dst.id} already used by another debit`);
+                }
                 continue;
               }
               if (src.bankAccount?.id && dst.bankAccount?.id && src.bankAccount.id === dst.bankAccount.id) {
@@ -2809,6 +2816,11 @@ export class DataExtractionService {
               createdTransferKeys.add(transferKey);
               existingTransferPairs.add(transferKey);
               existingTransferPairs.add(reverseTransferKey);
+              
+              // Special debug for our target transaction pair
+              if (dst.id === '113-0-1757150333605') {
+                this.logger.warn(`🎯 TARGET CREDIT MARKED AS USED: ${dst.id} by debit ${src.id}`);
+              }
 
               this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
               this.logger.log(`🔍 DUPLICATE PREVENTION: usedDestinationIds now has ${usedDestinationIds.size} items: [${Array.from(usedDestinationIds).join(', ')}]`);
