@@ -1686,7 +1686,7 @@ export class FilesService {
                                 for (const lineItem of lineItems) {
                                     if (lineItem.account_code && lineItem.total) {
                                         entries.push({ 
-                                            accountCode: String(lineItem.account_code), // Ensure account code is always a string
+                                            accountCode: lineItem.account_code, // Ensure account code is always a string
                                             credit: lineItem.total 
                                         });
                                     }
@@ -1704,7 +1704,7 @@ export class FilesService {
                                 for (const lineItem of lineItems) {
                                     if (lineItem.account_code && lineItem.total) {
                                         entries.push({ 
-                                            accountCode: String(lineItem.account_code), // Ensure account code is always a string
+                                            accountCode: lineItem.account_code, // Ensure account code is always a string
                                             debit: lineItem.total 
                                         });
                                     }

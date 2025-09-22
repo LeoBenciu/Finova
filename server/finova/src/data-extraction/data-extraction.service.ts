@@ -2577,6 +2577,7 @@ export class DataExtractionService {
                 // Special debug for our target transaction pair
                 if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
                   this.logger.warn(`🎯 TARGET PAIR BLOCKED: Credit ${dst.id} already used by another debit`);
+                  this.logger.warn(`🎯 This is why transfer detection fails - credit already consumed`);
                 }
                 continue;
               }
@@ -2603,6 +2604,8 @@ export class DataExtractionService {
                 this.logger.warn(`🎯 EVALUATING TARGET PAIR: ${src.id} -> ${dst.id}`);
                 this.logger.warn(`🎯 Amounts: src=${srcAmt}, dst=${dstAmt}, diff=${amountDiff}, tolerance=${amountTolerance}`);
                 this.logger.warn(`🎯 Descriptions: src="${src.description}", dst="${dst.description}"`);
+                this.logger.warn(`🎯 Used destination IDs: [${Array.from(usedDestinationIds).join(', ')}]`);
+                this.logger.warn(`🎯 Existing transfer pairs: [${Array.from(existingTransferPairs).join(', ')}]`);
               }
               
               // Enhanced cross-currency handling: allow plausible FX rate differences
@@ -2714,6 +2717,9 @@ export class DataExtractionService {
               this.logger.warn(`🎯 TARGET DEBIT RESULT: bestScore=${bestScore.toFixed(3)}, hasCandidate=${!!bestCandidate}, meetsThreshold=${bestScore >= 0.5}`);
               if (bestCandidate) {
                 this.logger.warn(`🎯 Best candidate: ${bestCandidate.dst.id} with score ${bestCandidate.score.toFixed(3)}`);
+              } else {
+                this.logger.warn(`🎯 NO CANDIDATE FOUND for target debit ${src.id}`);
+                this.logger.warn(`🎯 This means the transfer detection failed - will get AI account code suggestion instead`);
               }
             }
 
