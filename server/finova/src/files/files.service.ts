@@ -1125,6 +1125,8 @@ export class FilesService {
     }
 
     async postFile(clientEin: string, processedData: any, file: Express.Multer.File, user: User) {
+        console.log('[POST FILE] Method called with:', { clientEin, docType: processedData?.result?.document_type, fileName: file?.originalname, userId: user.id });
+        
         let uploadResult: any;
         let fileKey: string;
         
@@ -1524,6 +1526,7 @@ export class FilesService {
                 // Trigger cash receipt ledger posting (idempotent) if applicable
                 try {
                     const docType = (document.type || '').toLowerCase();
+                    console.log('[POST FILE] Document type extracted:', { originalType: document.type, docType, documentId: document.id });
                     const docHasRefs = Array.isArray(document.references) && document.references.length > 0;
                     if (docType === 'receipt' && docHasRefs) {
                         const amount = this.extractAmountFromProcessed(processedData);
@@ -1635,6 +1638,7 @@ export class FilesService {
                     }
 
                     // Invoices: post on save with proper double-entry using AI-extracted line item account codes
+                    console.log('[POST FILE] Checking document type:', { docType, documentId: document.id });
                     if (docType === 'invoice') {
                         console.log('[INVOICE POSTING] Starting invoice ledger posting for document:', document.id);
                         
@@ -1682,7 +1686,7 @@ export class FilesService {
                                 for (const lineItem of lineItems) {
                                     if (lineItem.account_code && lineItem.total) {
                                         entries.push({ 
-                                            accountCode: lineItem.account_code, 
+                                            accountCode: String(lineItem.account_code), // Ensure account code is always a string
                                             credit: lineItem.total 
                                         });
                                     }
@@ -1700,7 +1704,7 @@ export class FilesService {
                                 for (const lineItem of lineItems) {
                                     if (lineItem.account_code && lineItem.total) {
                                         entries.push({ 
-                                            accountCode: lineItem.account_code, 
+                                            accountCode: String(lineItem.account_code), // Ensure account code is always a string
                                             debit: lineItem.total 
                                         });
                                     }
