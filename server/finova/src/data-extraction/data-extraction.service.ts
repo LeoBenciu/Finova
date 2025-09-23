@@ -2577,7 +2577,6 @@ export class DataExtractionService {
                 // Special debug for our target transaction pair
                 if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
                   this.logger.warn(`🎯 TARGET PAIR BLOCKED: Credit ${dst.id} already used by another debit`);
-                  this.logger.warn(`🎯 This is why transfer detection fails - credit already consumed`);
                 }
                 continue;
               }
@@ -2604,8 +2603,6 @@ export class DataExtractionService {
                 this.logger.warn(`🎯 EVALUATING TARGET PAIR: ${src.id} -> ${dst.id}`);
                 this.logger.warn(`🎯 Amounts: src=${srcAmt}, dst=${dstAmt}, diff=${amountDiff}, tolerance=${amountTolerance}`);
                 this.logger.warn(`🎯 Descriptions: src="${src.description}", dst="${dst.description}"`);
-                this.logger.warn(`🎯 Used destination IDs: [${Array.from(usedDestinationIds).join(', ')}]`);
-                this.logger.warn(`🎯 Existing transfer pairs: [${Array.from(existingTransferPairs).join(', ')}]`);
               }
               
               // Enhanced cross-currency handling: allow plausible FX rate differences
@@ -2717,9 +2714,6 @@ export class DataExtractionService {
               this.logger.warn(`🎯 TARGET DEBIT RESULT: bestScore=${bestScore.toFixed(3)}, hasCandidate=${!!bestCandidate}, meetsThreshold=${bestScore >= 0.5}`);
               if (bestCandidate) {
                 this.logger.warn(`🎯 Best candidate: ${bestCandidate.dst.id} with score ${bestCandidate.score.toFixed(3)}`);
-              } else {
-                this.logger.warn(`🎯 NO CANDIDATE FOUND for target debit ${src.id}`);
-                this.logger.warn(`🎯 This means the transfer detection failed - will get AI account code suggestion instead`);
               }
             }
 
@@ -2831,12 +2825,6 @@ export class DataExtractionService {
               this.logger.log(`✅ CREATING TRANSFER SUGGESTION: ${src.id} -> ${dst.id} (score: ${score.toFixed(3)})`);
               this.logger.log(`🔍 DUPLICATE PREVENTION: usedDestinationIds now has ${usedDestinationIds.size} items: [${Array.from(usedDestinationIds).join(', ')}]`);
               this.logger.log(`🔍 DUPLICATE PREVENTION: createdTransferKeys now has ${createdTransferKeys.size} items: [${Array.from(createdTransferKeys).join(', ')}]`);
-              
-              // Special debug for our target transaction pair
-              if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
-                this.logger.warn(`🎯 CREATING TARGET TRANSFER SUGGESTION: ${src.id} -> ${dst.id} with score ${score.toFixed(3)}`);
-                this.logger.warn(`🎯 Reasons: ${reasons.join(', ')}`);
-              }
 
               // Calculate impliedRate for cross-currency transfers
               const srcAmt = Math.abs(Number(src.amount));
@@ -2889,16 +2877,6 @@ export class DataExtractionService {
               
               transferSuggestions.push(transferSuggestion);
               this.logger.log(`✅ Added transfer suggestion to array: source=${src.id}, dest=${dst.id}`);
-              
-              // Special debug for our target transaction pair
-              if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
-                this.logger.warn(`🎯 TARGET TRANSFER SUGGESTION ADDED TO ARRAY: ${src.id} -> ${dst.id}`);
-                this.logger.warn(`🎯 Transfer suggestion details:`, {
-                  bankTransactionId: transferSuggestion.bankTransactionId,
-                  confidenceScore: transferSuggestion.confidenceScore,
-                  matchingCriteria: transferSuggestion.matchingCriteria
-                });
-              }
 
               if (dbg) {
                 this.logger.log(
@@ -2935,19 +2913,9 @@ export class DataExtractionService {
                  seenTransferPairs.add(normalizedKey);
                  uniqueTransferSuggestions.push(ts);
                  this.logger.log(`✅ KEPT TRANSFER SUGGESTION: ${sourceId} -> ${destId} (normalized key: ${normalizedKey})`);
-                 
-                 // Special debug for our target transaction pair
-                 if (sourceId === '112-0-1757144193573' && destId === '113-0-1757150333605') {
-                   this.logger.warn(`🎯 TARGET TRANSFER SUGGESTION KEPT IN DEDUPLICATION: ${sourceId} -> ${destId}`);
-                 }
                } else {
                  duplicatesSkipped++;
                  this.logger.log(`🔍 SKIPPED DUPLICATE TRANSFER: ${sourceId} -> ${destId} (normalized key: ${normalizedKey} already exists)`);
-                 
-                 // Special debug for our target transaction pair
-                 if (sourceId === '112-0-1757144193573' && destId === '113-0-1757150333605') {
-                   this.logger.warn(`🎯 TARGET TRANSFER SUGGESTION SKIPPED AS DUPLICATE: ${sourceId} -> ${destId}`);
-                 }
                }
              }
              
