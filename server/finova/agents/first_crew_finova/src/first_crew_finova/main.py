@@ -34,6 +34,36 @@ except Exception as e:
     print(f"Traceback: {traceback.format_exc()}", file=sys.stderr)
     sys.exit(1)
 
+def get_romanian_chart_of_accounts():
+    """Get the Romanian chart of accounts from the backend service."""
+    # Read the chart of accounts from the backend file
+    try:
+        # Get the path to the backend utils directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        backend_utils_path = os.path.join(current_dir, '..', '..', '..', '..', '..', 'server', 'finova', 'src', 'utils', 'romanianChartOfAccounts.ts')
+        
+        if os.path.exists(backend_utils_path):
+            with open(backend_utils_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                # Extract the chart of accounts from the TypeScript file
+                # Look for the content between the backticks
+                start_marker = 'export const ROMANIAN_CHART_OF_ACCOUNTS = `'
+                end_marker = '`'
+                
+                start_idx = content.find(start_marker)
+                if start_idx != -1:
+                    start_idx += len(start_marker)
+                    end_idx = content.find(end_marker, start_idx)
+                    if end_idx != -1:
+                        chart_content = content[start_idx:end_idx].strip()
+                        print(f"Successfully loaded Romanian chart of accounts from backend file", file=sys.stderr)
+                        return chart_content
+        
+        print(f"Warning: Could not load chart from backend file, using fallback", file=sys.stderr)
+        
+    except Exception as e:
+        print(f"Error loading chart of accounts from backend: {str(e)}", file=sys.stderr)
+
 def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[bool, list[str]]:
     """Validate that processed data contains minimum required fields."""
     errors = []
@@ -773,6 +803,7 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             "direction": phase0_data.get("direction", "") if phase0_data else "",
             "referenced_numbers": phase0_data.get("referenced_numbers", []) if phase0_data else [],
             "phase0_data": phase0_data,
+            "romanian_chart_of_accounts": get_romanian_chart_of_accounts(),
         }
 
         print(f"🐍 DEBUG: inputs contains phase0_data: {'phase0_data' in inputs}", file=sys.stderr)
