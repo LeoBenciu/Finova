@@ -29,8 +29,7 @@ extract_invoice_data_task:
 
     Extract line_items array with: quantity, unit_price, vat_amount, total, type (from {incoming_types} for incoming, {outgoing_types} for outgoing), articleCode (existing or next available), name, vat (from {vat_rates}), um (from {units_of_measure}), account_code (e.g., '624' for transport), management (from {management_records} if not 'Nedefinit'), isNew (true if new).
 
-    Use the Romanian Chart of Accounts below to assign appropriate account codes to line items:
-    {romanian_chart_of_accounts}
+    IMPORTANT: Use the Romanian Chart of Accounts provided in the {romanian_chart_of_accounts} variable to assign appropriate account codes to line items. The chart contains all available account codes and descriptions.
     Compare articles with {existing_articles}: if the article referes to the same thing/object/service but the naming is different (ex: 'Pix rosu' and 'Pix rosu cu capac'): replace the name of the article with the name from the database, set isNew false, assign the article code from the database. If the articles from the database don't reffer to the same thing/object/service (ex: 'Pix rosu' and 'Pix albastru'): assign next articleCode, set isNew true, leave the article name like it is if it's relevant(always translate in romanian if the article name is in other language).
     For 'Nedefinit' type, set management to null.
     IMPORTANT: Always check if buyer_ein or vendor_ein matches '{client_company_ein}' - if neither matches, add validation_warning about document relevance.

@@ -65,6 +65,8 @@ def get_romanian_chart_of_accounts():
                         if end_idx != -1:
                             chart_content = content[start_idx:end_idx].strip()
                             print(f"Successfully loaded Romanian chart of accounts from: {backend_utils_path}", file=sys.stderr)
+                            print(f"Chart content length: {len(chart_content)}", file=sys.stderr)
+                            print(f"Chart content preview: {chart_content[:200]}", file=sys.stderr)
                             return chart_content
         except Exception as e:
             print(f"Error with path {backend_utils_path}: {str(e)}", file=sys.stderr)
@@ -1481,6 +1483,9 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         chart_content = get_romanian_chart_of_accounts()
         print(f"🐍 DEBUG: Chart of accounts loaded, length: {len(chart_content) if chart_content else 0}", file=sys.stderr)
         print(f"🐍 DEBUG: Chart content preview: {chart_content[:200] if chart_content else 'None'}", file=sys.stderr)
+        print(f"🐍 DEBUG: Chart content ends with: {chart_content[-200:] if chart_content else 'None'}", file=sys.stderr)
+        print(f"🐍 DEBUG: Chart contains 'Clasa 1': {'Clasa 1' in chart_content if chart_content else False}", file=sys.stderr)
+        print(f"🐍 DEBUG: Chart contains '101. Capital': {'101. Capital' in chart_content if chart_content else False}", file=sys.stderr)
         
         # If chart is empty or None, this could cause the AI agent to fail
         if not chart_content or len(chart_content.strip()) == 0:

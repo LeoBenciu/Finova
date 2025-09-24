@@ -2699,6 +2699,7 @@ export class DataExtractionService {
               if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
                 this.logger.warn(`🎯 FINAL SCORE: ${score.toFixed(3)} for pair ${src.id} -> ${dst.id}`);
                 this.logger.warn(`🎯 Reasons: ${reasons.join(', ')}`);
+                this.logger.warn(`🎯 Score breakdown: base=0.7, amount=${amountDiff === 0 ? 'exact' : 'close'}, date=${daysApart === 0 ? 'same' : 'close'}, keywords=${kwSrc && kwDst ? 'both' : kwSrc || kwDst ? 'one' : 'none'}`);
               }
 
               // Keep best candidate per source
@@ -2706,6 +2707,16 @@ export class DataExtractionService {
                 bestScore = score;
                 bestCandidate = { dst, score, amountDiff, daysApart, reasons };
                 if (dbgSrc) this.logger.warn(`  [✓] candidate dst=${dst.id} score=${score.toFixed(3)} amountDiff=${amountDiff.toFixed(2)} daysApart=${Math.round(daysApart)}`);
+              }
+              
+              // Special debug for our target transaction pair - score comparison
+              if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
+                this.logger.warn(`🎯 SCORE COMPARISON: current=${score.toFixed(3)}, best=${bestScore.toFixed(3)}, isBetter=${score > bestScore}`);
+                if (score > bestScore) {
+                  this.logger.warn(`🎯 NEW BEST CANDIDATE: ${dst.id} with score ${score.toFixed(3)}`);
+                } else {
+                  this.logger.warn(`🎯 NOT BETTER: ${dst.id} score ${score.toFixed(3)} <= best ${bestScore.toFixed(3)}`);
+                }
               }
             }
 
