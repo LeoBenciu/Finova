@@ -1477,6 +1477,19 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         print(f"🐍 DEBUG: inputs contains phase0_data: {'phase0_data' in inputs}", file=sys.stderr)
         print(f"🐍 DEBUG: phase0_data value: {inputs.get('phase0_data')}", file=sys.stderr)
         
+        # Debug chart of accounts loading
+        chart_content = get_romanian_chart_of_accounts()
+        print(f"🐍 DEBUG: Chart of accounts loaded, length: {len(chart_content) if chart_content else 0}", file=sys.stderr)
+        print(f"🐍 DEBUG: Chart content preview: {chart_content[:200] if chart_content else 'None'}", file=sys.stderr)
+        
+        # If chart is empty or None, this could cause the AI agent to fail
+        if not chart_content or len(chart_content.strip()) == 0:
+            print(f"🐍 ERROR: Chart of accounts is empty or None! This will cause AI agent to fail!", file=sys.stderr)
+        
+        # Debug all inputs being passed to the crew
+        print(f"🐍 DEBUG: All inputs keys: {list(inputs.keys())}", file=sys.stderr)
+        print(f"🐍 DEBUG: romanian_chart_of_accounts in inputs: {'romanian_chart_of_accounts' in inputs}", file=sys.stderr)
+        
         if processing_phase == 1 and phase0_data:
             inputs["doc_type"] = phase0_data.get("document_type", "Unknown")
             inputs["direction"] = phase0_data.get("direction", "")
