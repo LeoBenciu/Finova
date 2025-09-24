@@ -2569,6 +2569,7 @@ export class DataExtractionService {
               // Special debug for our target credit transaction
               if (dst.id === '113-0-1757150333605') {
                 this.logger.warn(`🎯 TARGET CREDIT FOUND: ${dst.id} - "${dst.description}" - ${Math.abs(Number(dst.amount))} - ${new Date(dst.transactionDate).toISOString().split('T')[0]}`);
+                this.logger.warn(`🎯 TARGET CREDIT PROCESSING: ${dst.id} for debit ${src.id}`);
               }
               
               if (usedDestinationIds.has(dst.id)) {
@@ -2577,6 +2578,7 @@ export class DataExtractionService {
                 // Special debug for our target transaction pair
                 if (src.id === '112-0-1757144193573' && dst.id === '113-0-1757150333605') {
                   this.logger.warn(`🎯 TARGET PAIR BLOCKED: Credit ${dst.id} already used by another debit`);
+                  this.logger.warn(`🎯 This is why transfer detection fails - credit already consumed`);
                 }
                 continue;
               }
@@ -2603,6 +2605,7 @@ export class DataExtractionService {
                 this.logger.warn(`🎯 EVALUATING TARGET PAIR: ${src.id} -> ${dst.id}`);
                 this.logger.warn(`🎯 Amounts: src=${srcAmt}, dst=${dstAmt}, diff=${amountDiff}, tolerance=${amountTolerance}`);
                 this.logger.warn(`🎯 Descriptions: src="${src.description}", dst="${dst.description}"`);
+                this.logger.warn(`🎯 Credit passed all filters - proceeding to scoring`);
               }
               
               // Enhanced cross-currency handling: allow plausible FX rate differences
