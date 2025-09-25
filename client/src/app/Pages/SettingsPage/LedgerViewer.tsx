@@ -242,8 +242,8 @@ export default function LedgerViewer() {
                     {entry.accountCode}
                   </td>
                   <td className="px-4 py-3 text-sm text-[var(--text1)]">
-                    {entry.debit && entry.debit > 0 ? (
-                      <span className="text-red-600 font-medium">
+                    {entry.debit && entry.debit !== 0 ? (
+                      <span className={entry.debit > 0 ? "text-red-600 font-medium" : "text-orange-600 font-medium"}>
                         {Number(entry.debit).toLocaleString('ro-RO')} RON
                       </span>
                     ) : (
@@ -251,8 +251,8 @@ export default function LedgerViewer() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-sm text-[var(--text1)]">
-                    {entry.credit && entry.credit > 0 ? (
-                      <span className="text-green-600 font-medium">
+                    {entry.credit && entry.credit !== 0 ? (
+                      <span className={entry.credit > 0 ? "text-green-600 font-medium" : "text-orange-600 font-medium"}>
                         {Number(entry.credit).toLocaleString('ro-RO')} RON
                       </span>
                     ) : (

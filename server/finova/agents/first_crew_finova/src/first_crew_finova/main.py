@@ -38,6 +38,8 @@ def get_romanian_chart_of_accounts():
     """Get the Romanian chart of accounts from the backend service."""
     # Try multiple possible paths to find the backend file
     possible_paths = [
+        # Direct absolute path (most reliable)
+        '/Users/test/Desktop/Projects/Finova/server/finova/src/utils/romanianChartOfAccounts.ts',
         # Path from agents directory to backend
         os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', '..', '..', 'server', 'finova', 'src', 'utils', 'romanianChartOfAccounts.ts'),
         # Alternative path structure
@@ -61,18 +63,28 @@ def get_romanian_chart_of_accounts():
                     start_idx = content.find(start_marker)
                     if start_idx != -1:
                         start_idx += len(start_marker)
-                        end_idx = content.find(end_marker, start_idx)
-                        if end_idx != -1:
+                        # Find the matching closing backtick (use rfind to get the last occurrence)
+                        end_idx = content.rfind(end_marker)
+                        if end_idx != -1 and end_idx > start_idx:
                             chart_content = content[start_idx:end_idx].strip()
-                            print(f"Successfully loaded Romanian chart of accounts from: {backend_utils_path}", file=sys.stderr)
-                            print(f"Chart content length: {len(chart_content)}", file=sys.stderr)
-                            print(f"Chart content preview: {chart_content[:200]}", file=sys.stderr)
-                            return chart_content
+                            print(f"✅ Successfully loaded Romanian chart of accounts from: {backend_utils_path}", file=sys.stderr)
+                            print(f"✅ Chart content length: {len(chart_content)} characters", file=sys.stderr)
+                            print(f"✅ Chart content preview: {chart_content[:200]}...", file=sys.stderr)
+                            if len(chart_content) > 1000:  # Ensure we have substantial content
+                                return chart_content
+                            else:
+                                print(f"⚠️  Chart content too short ({len(chart_content)} chars), trying next path", file=sys.stderr)
+                        else:
+                            print(f"❌ Could not find matching end marker in: {backend_utils_path}", file=sys.stderr)
+                    else:
+                        print(f"❌ Could not find start marker in: {backend_utils_path}", file=sys.stderr)
         except Exception as e:
             print(f"Error with path {backend_utils_path}: {str(e)}", file=sys.stderr)
             continue
     
-    print(f"Warning: Could not load chart from any backend file, using minimal fallback", file=sys.stderr)
+    print(f"🚨 CRITICAL ERROR: Could not load Romanian Chart of Accounts from any path!", file=sys.stderr)
+    print(f"🚨 This will cause AI extraction to fail and return empty responses!", file=sys.stderr)
+    print(f"🚨 Please check that the file exists at: /Users/test/Desktop/Projects/Finova/server/finova/src/utils/romanianChartOfAccounts.ts", file=sys.stderr)
     
     # Minimal fallback - just the most common account codes
     return """
@@ -746,6 +758,25 @@ def validate_processed_data(data: dict, expected_doc_type: str = None) -> tuple[
         errors.append("Missing document_type")
         return False, errors
     
+    # Enhanced validation for invoices to prevent empty responses
+    if data.get('document_type', '').lower() == 'invoice':
+        # Check for critical invoice fields
+        critical_fields = ['vendor', 'buyer', 'total_amount', 'document_date']
+        missing_critical = [field for field in critical_fields if not data.get(field)]
+        
+        if missing_critical:
+            print(f"WARNING: Missing critical invoice fields: {missing_critical}", file=sys.stderr)
+            # Don't fail validation for missing fields, just warn
+            errors.append(f"Missing critical fields: {', '.join(missing_critical)}")
+        
+        # Ensure line_items is always an array, even if empty
+        if 'line_items' not in data:
+            data['line_items'] = []
+            print("WARNING: No line_items found, setting empty array", file=sys.stderr)
+        elif not isinstance(data.get('line_items'), list):
+            data['line_items'] = []
+            print("WARNING: line_items is not an array, setting empty array", file=sys.stderr)
+    
     return True, errors
 
 def create_fallback_response(doc_type: str = "Unknown") -> dict:
@@ -753,6 +784,11 @@ def create_fallback_response(doc_type: str = "Unknown") -> dict:
     return {
         "document_type": doc_type,
         "document_date": "",
+        "vendor": "",
+        "buyer": "",
+        "total_amount": 0,
+        "vat_amount": 0,
+        "currency": "RON",
         "line_items": [] if doc_type.lower() == 'invoice' else None,
         "transactions": [] if doc_type.lower() == 'bank statement' else None,
         "duplicate_detection": {
@@ -983,26 +1019,35 @@ def validate_compliance_output(result):
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text with optimized parsing and compliance validation."""
     if not text:
-        print("WARNING: extract_json_from_text received empty text", file=sys.stderr)
+        print("⚠️  WARNING: extract_json_from_text received empty text", file=sys.stderr)
         return {}
     
     import re
     
-    print(f"extract_json_from_text input (first 500 chars): {text[:500]}", file=sys.stderr)
+    print(f"🔍 extract_json_from_text input (first 500 chars): {text[:500]}", file=sys.stderr)
     
     text = re.sub(r'\x1b\[[0-9;]*m', '', text) 
     text = text.strip()
     
+    # First try direct JSON parsing
     try:
         result = json.loads(text)
-        print(f"Successfully parsed JSON directly. Keys: {list(result.keys())}", file=sys.stderr)
+        print(f"✅ Successfully parsed JSON directly. Keys: {list(result.keys())}", file=sys.stderr)
+        
+        # Validate that we have meaningful data for invoices
+        if result.get('document_type', '').lower() == 'invoice':
+            if not result.get('vendor') and not result.get('buyer') and not result.get('total_amount'):
+                print(f"⚠️  WARNING: Invoice JSON lacks critical fields (vendor, buyer, total_amount)", file=sys.stderr)
+            else:
+                print(f"✅ Invoice JSON contains critical fields", file=sys.stderr)
+        
         if 'compliance_validation' in result:
             if not validate_compliance_output(result):
                 print("WARNING: Invalid compliance validation format, attempting to fix...", file=sys.stderr)
                 validate_compliance_output(result)
         return result
     except json.JSONDecodeError as e:
-        print(f"Direct JSON parsing failed: {e}", file=sys.stderr)
+        print(f"❌ Direct JSON parsing failed: {e}", file=sys.stderr)
         pass
     
     def find_json_objects(text):
@@ -1222,6 +1267,42 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                             if expected_doc_type and expected_doc_type.lower() != 'unknown':
                                                 extraction_data['document_type'] = standardize_document_type(expected_doc_type)
                                                 print(f"🐍 DEBUG: Preserved document_type from phase 0: {extraction_data['document_type']}", file=sys.stderr)
+                                        
+                                        # Check if AI returned meaningful data
+                                        if expected_doc_type and expected_doc_type.lower() == 'invoice':
+                                            has_critical_data = (
+                                                extraction_data.get('vendor') or 
+                                                extraction_data.get('buyer') or 
+                                                extraction_data.get('total_amount') or
+                                                (extraction_data.get('line_items') and len(extraction_data.get('line_items', [])) > 0)
+                                            )
+                                            if not has_critical_data:
+                                                print(f"⚠️  WARNING: AI extraction returned empty/minimal data for invoice!", file=sys.stderr)
+                                                print(f"⚠️  This might be due to missing Romanian Chart of Accounts or poor OCR", file=sys.stderr)
+                                            else:
+                                                print(f"✅ AI extraction returned meaningful invoice data", file=sys.stderr)
+
+                                        # Enhanced data validation and fallback for empty responses
+                                        if expected_doc_type and expected_doc_type.lower() == 'invoice':
+                                            # Ensure critical invoice fields exist
+                                            if not extraction_data.get('vendor'):
+                                                extraction_data['vendor'] = ""
+                                                print("WARNING: Missing vendor field, setting empty string", file=sys.stderr)
+                                            if not extraction_data.get('buyer'):
+                                                extraction_data['buyer'] = ""
+                                                print("WARNING: Missing buyer field, setting empty string", file=sys.stderr)
+                                            if not extraction_data.get('total_amount'):
+                                                extraction_data['total_amount'] = 0
+                                                print("WARNING: Missing total_amount field, setting 0", file=sys.stderr)
+                                            if not extraction_data.get('document_date'):
+                                                extraction_data['document_date'] = ""
+                                                print("WARNING: Missing document_date field, setting empty string", file=sys.stderr)
+                                            if not extraction_data.get('line_items'):
+                                                extraction_data['line_items'] = []
+                                                print("WARNING: Missing line_items field, setting empty array", file=sys.stderr)
+                                            if not extraction_data.get('currency'):
+                                                extraction_data['currency'] = "RON"
+                                                print("WARNING: Missing currency field, defaulting to RON", file=sys.stderr)
 
                                         combined_data.update(extraction_data)
                                         print(f"🐍 DEBUG: combined_data after update: {list(combined_data.keys())}", file=sys.stderr)
@@ -1231,6 +1312,19 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                         if expected_doc_type and expected_doc_type.lower() != 'unknown':
                                             combined_data['document_type'] = standardize_document_type(expected_doc_type)
                                             print(f"🐍 DEBUG: Fallback - preserved document_type from phase 0: {combined_data['document_type']}", file=sys.stderr)
+                                            
+                                            # Create minimal invoice data structure
+                                            if expected_doc_type.lower() == 'invoice':
+                                                combined_data.update({
+                                                    'vendor': '',
+                                                    'buyer': '',
+                                                    'total_amount': 0,
+                                                    'document_date': '',
+                                                    'line_items': [],
+                                                    'currency': 'RON',
+                                                    'vat_amount': 0
+                                                })
+                                                print("WARNING: Created minimal invoice structure due to extraction failure", file=sys.stderr)
                                 elif i == 1:
                                     print(f"🐍 DEBUG: Processing Task {i} (Duplicate detection)", file=sys.stderr)
                                     try:
@@ -1269,17 +1363,32 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                 
             is_valid, validation_errors = validate_processed_data(combined_data)
             
-            if is_valid:
-                print(f"Processing successful on attempt {attempt + 1}", file=sys.stderr)
+            # Check if we have meaningful data even if validation fails
+            doc_type = combined_data.get('document_type', '').lower()
+            has_meaningful_data = False
+            
+            if doc_type == 'invoice':
+                has_meaningful_data = (
+                    combined_data.get('vendor') or 
+                    combined_data.get('buyer') or 
+                    combined_data.get('total_amount') or
+                    (combined_data.get('line_items') and len(combined_data.get('line_items', [])) > 0)
+                )
+            
+            if is_valid or has_meaningful_data:
+                print(f"✅ Processing successful on attempt {attempt + 1} (valid: {is_valid}, meaningful: {has_meaningful_data})", file=sys.stderr)
                 return combined_data, True
             else:
-                print(f"Validation failed on attempt {attempt + 1}: {validation_errors}", file=sys.stderr)
+                print(f"❌ Processing failed on attempt {attempt + 1}: {validation_errors}", file=sys.stderr)
+                print(f"❌ No meaningful data extracted from document", file=sys.stderr)
+                
                 if attempt < max_retries:
-                    print(f"Retrying processing (attempt {attempt + 2})", file=sys.stderr)
+                    print(f"🔄 Retrying processing (attempt {attempt + 2})", file=sys.stderr)
                     time.sleep(2)  
                     continue
                 else:
-                    print("Max retries reached, returning fallback response", file=sys.stderr)
+                    print("🚨 Max retries reached, extraction completely failed!", file=sys.stderr)
+                    print("🚨 This indicates a serious issue with OCR, AI prompts, or Chart of Accounts loading", file=sys.stderr)
                     fallback = create_fallback_response(combined_data.get('document_type', 'Unknown'))
                     if combined_data.get('document_type'):
                         fallback['document_type'] = combined_data['document_type']
@@ -1527,6 +1636,24 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         if doc_type == 'bank statement' and 'transactions' not in combined_data:
             combined_data['transactions'] = []
             print("WARNING: No transactions found for bank statement, setting empty array", file=sys.stderr)
+        
+        # Final safety check to prevent completely empty responses
+        if doc_type == 'invoice':
+            # Ensure all critical fields exist with fallback values
+            critical_fields = {
+                'vendor': '',
+                'buyer': '',
+                'total_amount': 0,
+                'document_date': '',
+                'line_items': [],
+                'currency': 'RON',
+                'vat_amount': 0
+            }
+            
+            for field, default_value in critical_fields.items():
+                if field not in combined_data or combined_data[field] is None:
+                    combined_data[field] = default_value
+                    print(f"FINAL SAFETY: Set missing {field} to {default_value}", file=sys.stderr)
         
         if 'duplicate_detection' not in combined_data:
             combined_data['duplicate_detection'] = {

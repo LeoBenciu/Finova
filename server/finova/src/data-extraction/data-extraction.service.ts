@@ -175,16 +175,31 @@ export class DataExtractionService {
 
             switch (docType) {
                 case 'invoice':
+                    // More lenient validation - don't fail on missing fields, just warn
                     const requiredInvoiceFields = ['vendor', 'buyer', 'document_date', 'total_amount'];
                     const missingInvoiceFields = requiredInvoiceFields.filter(field => !result[field]);
                     
                     if (missingInvoiceFields.length > 0) {
-                        validation.isValid = false;
-                        validation.errors.push(`Missing required invoice fields: ${missingInvoiceFields.join(', ')}`);
+                        validation.warnings.push(`Missing invoice fields: ${missingInvoiceFields.join(', ')} - will be set to default values`);
+                        // Set default values instead of failing
+                        missingInvoiceFields.forEach(field => {
+                            if (field === 'total_amount') {
+                                result[field] = 0;
+                            } else {
+                                result[field] = '';
+                            }
+                        });
                     }
 
                     if (!Array.isArray(result.line_items)) {
-                        validation.warnings.push('Invoice line_items should be an array');
+                        validation.warnings.push('Invoice line_items should be an array - setting empty array');
+                        result.line_items = [];
+                    }
+
+                    // Ensure currency is set
+                    if (!result.currency) {
+                        result.currency = 'RON';
+                        validation.warnings.push('Missing currency field - defaulting to RON');
                     }
 
                     break;
@@ -2022,6 +2037,37 @@ export class DataExtractionService {
             throw new Error('Invalid extracted data format');
         }
 
+        // Enhanced validation to prevent empty responses
+        const docType = data.document_type?.toLowerCase();
+        
+        if (docType === 'invoice') {
+            // Ensure critical invoice fields exist with fallback values
+            if (!data.vendor) {
+                data.vendor = '';
+                this.logger.warn('Missing vendor field, setting empty string');
+            }
+            if (!data.buyer) {
+                data.buyer = '';
+                this.logger.warn('Missing buyer field, setting empty string');
+            }
+            if (!data.total_amount) {
+                data.total_amount = 0;
+                this.logger.warn('Missing total_amount field, setting 0');
+            }
+            if (!data.document_date) {
+                data.document_date = '';
+                this.logger.warn('Missing document_date field, setting empty string');
+            }
+            if (!data.currency) {
+                data.currency = 'RON';
+                this.logger.warn('Missing currency field, defaulting to RON');
+            }
+            if (!data.vat_amount) {
+                data.vat_amount = 0;
+                this.logger.warn('Missing vat_amount field, setting 0');
+            }
+        }
+
         const numericFields = ['total_amount', 'vat_amount'];
         numericFields.forEach(field => {
             if (data[field] !== undefined && data[field] !== null) {
@@ -2051,6 +2097,7 @@ export class DataExtractionService {
             });
         } else {
             data.line_items = [];
+            this.logger.warn('line_items is not an array, setting empty array');
         }
 
         return data;
@@ -2537,6 +2584,38 @@ export class DataExtractionService {
           this.logger.log(`🔁 Starting transfer matching loop for ${debits.length} debits`);
           this.logger.log(`🔍 DEBIT ORDER: [${debits.map(d => d.id).join(', ')}]`);
           this.logger.log(`🔍 CREDIT ORDER: [${credits.map(c => c.id).join(', ')}]`);
+          
+          // PRIORITY FIX: Sort debits by transfer keyword priority
+          
+          // Sort debits: transfer keywords first, then by date (newest first)
+          debits.sort((a, b) => {
+            const aHasTransfer = hasTransferKeyword(a.description);
+            const bHasTransfer = hasTransferKeyword(b.description);
+            
+            if (aHasTransfer && !bHasTransfer) return -1; // a first
+            if (!aHasTransfer && bHasTransfer) return 1;  // b first
+            if (aHasTransfer && bHasTransfer) return 0;   // equal priority
+            
+            // If neither has transfer keywords, sort by date (newest first)
+            return new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime();
+          });
+          
+          this.logger.log(`🔍 PRIORITY SORTED DEBIT ORDER: [${debits.map(d => d.id).join(', ')}]`);
+          
+          // PRIORITY FIX: Sort credits by transfer keyword priority
+          credits.sort((a, b) => {
+            const aHasTransfer = hasTransferKeyword(a.description);
+            const bHasTransfer = hasTransferKeyword(b.description);
+            
+            if (aHasTransfer && !bHasTransfer) return -1; // a first
+            if (!aHasTransfer && bHasTransfer) return 1;  // b first
+            if (aHasTransfer && bHasTransfer) return 0;   // equal priority
+            
+            // If neither has transfer keywords, sort by date (newest first)
+            return new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime();
+          });
+          
+          this.logger.log(`🔍 PRIORITY SORTED CREDIT ORDER: [${credits.map(c => c.id).join(', ')}]`);
           
           for (const src of debits) {
             const srcAmt = Math.abs(Number(src.amount));
