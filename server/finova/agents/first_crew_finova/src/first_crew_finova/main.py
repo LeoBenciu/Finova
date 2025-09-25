@@ -1277,8 +1277,74 @@ def process_with_retry(crew_instance, inputs: dict, max_retries: int = 2) -> tup
                                                 (extraction_data.get('line_items') and len(extraction_data.get('line_items', [])) > 0)
                                             )
                                             if not has_critical_data:
-                                                print(f"⚠️  WARNING: AI extraction returned empty/minimal data for invoice!", file=sys.stderr)
-                                                print(f"⚠️  This might be due to missing Romanian Chart of Accounts or poor OCR", file=sys.stderr)
+                                                print(f"🚨 CRITICAL: AI extraction returned EMPTY data for invoice!", file=sys.stderr)
+                                                print(f"🚨 FORCING AI to retry with enhanced prompting...", file=sys.stderr)
+                                                
+                                                # Force AI to retry with better prompting
+                                                try:
+                                                    from openai import OpenAI
+                                                    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+                                                    
+                                                    # Get document text for retry
+                                                    from .tools.simple_text_extractor import SimpleTextExtractorTool
+                                                    text_extractor = SimpleTextExtractorTool()
+                                                    doc_text = text_extractor._run(inputs.get('document_path', ''))
+                                                    
+                                                    if doc_text and len(doc_text.strip()) > 100:
+                                                        print(f"🔄 RETRYING AI extraction with enhanced prompt...", file=sys.stderr)
+                                                        
+                                                        retry_prompt = f"""
+                                                        CRITICAL: The previous AI extraction returned EMPTY data for this Romanian invoice. 
+                                                        You MUST extract meaningful data from this document. FAILURE IS NOT ACCEPTED.
+                                                        
+                                                        Document text: {doc_text[:2000]}...
+                                                        
+                                                        REQUIRED EXTRACTION:
+                                                        - vendor (company name)
+                                                        - buyer (company name) 
+                                                        - total_amount (numeric value)
+                                                        - document_date (DD-MM-YYYY format)
+                                                        - line_items array with at least one item
+                                                        
+                                                        Look for Romanian patterns: "Furnizor:", "Cumpărător:", "Total:", "Suma:", "Data:"
+                                                        Extract ANY amounts, company names, dates you can find.
+                                                        Return valid JSON with actual extracted data, not empty fields.
+                                                        """
+                                                        
+                                                        response = client.chat.completions.create(
+                                                            model="gpt-4o",
+                                                            messages=[
+                                                                {"role": "system", "content": "You are an expert Romanian invoice data extractor. You MUST extract meaningful data from documents. Never return empty responses."},
+                                                                {"role": "user", "content": retry_prompt}
+                                                            ],
+                                                            max_tokens=3000,
+                                                            temperature=0.1
+                                                        )
+                                                        
+                                                        retry_result = response.choices[0].message.content
+                                                        print(f"🔄 Retry response: {retry_result[:500]}...", file=sys.stderr)
+                                                        
+                                                        # Try to parse the retry result
+                                                        retry_data = extract_json_from_text(retry_result)
+                                                        if retry_data and isinstance(retry_data, dict):
+                                                            # Check if retry has meaningful data
+                                                            retry_has_data = (
+                                                                retry_data.get('vendor') or 
+                                                                retry_data.get('buyer') or 
+                                                                retry_data.get('total_amount') or
+                                                                (retry_data.get('line_items') and len(retry_data.get('line_items', [])) > 0)
+                                                            )
+                                                            if retry_has_data:
+                                                                print(f"✅ RETRY SUCCESSFUL: AI extracted meaningful data on second attempt!", file=sys.stderr)
+                                                                extraction_data.update(retry_data)
+                                                            else:
+                                                                print(f"❌ RETRY FAILED: AI still returned empty data on second attempt", file=sys.stderr)
+                                                        else:
+                                                            print(f"❌ RETRY FAILED: Could not parse retry response", file=sys.stderr)
+                                                    else:
+                                                        print(f"❌ RETRY FAILED: Could not extract document text for retry", file=sys.stderr)
+                                                except Exception as e:
+                                                    print(f"❌ RETRY FAILED: {str(e)}", file=sys.stderr)
                                             else:
                                                 print(f"✅ AI extraction returned meaningful invoice data", file=sys.stderr)
 
@@ -1639,6 +1705,72 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         
         # Final safety check to prevent completely empty responses
         if doc_type == 'invoice':
+            # Check if we have any meaningful data at all
+            has_any_data = (
+                combined_data.get('vendor') or 
+                combined_data.get('buyer') or 
+                combined_data.get('total_amount') or
+                combined_data.get('document_date') or
+                (combined_data.get('line_items') and len(combined_data.get('line_items', [])) > 0)
+            )
+            
+            if not has_any_data:
+                print(f"🚨 CRITICAL: No meaningful data extracted from invoice document!", file=sys.stderr)
+                print(f"🚨 This indicates a serious OCR or AI extraction failure!", file=sys.stderr)
+                
+                # Try one last desperate attempt with basic text extraction
+                try:
+                    from .tools.simple_text_extractor import SimpleTextExtractorTool
+                    text_extractor = SimpleTextExtractorTool()
+                    doc_text = text_extractor._run(doc_path)
+                    
+                    if doc_text and len(doc_text.strip()) > 50:
+                        print(f"🆘 Last resort: Attempting basic text parsing...", file=sys.stderr)
+                        
+                        # Very basic extraction patterns
+                        import re
+                        
+                        # Look for any numbers that could be amounts
+                        numbers = re.findall(r'[0-9]+[.,][0-9]+', doc_text)
+                        if numbers:
+                            try:
+                                # Take the largest number as potential total
+                                amounts = [float(n.replace(',', '.')) for n in numbers]
+                                max_amount = max(amounts)
+                                if max_amount > 10:  # Reasonable minimum for an invoice
+                                    combined_data['total_amount'] = max_amount
+                                    print(f"💰 Last resort: Found potential amount: {max_amount}", file=sys.stderr)
+                            except:
+                                pass
+                        
+                        # Look for any company-like text
+                        company_patterns = [
+                            r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:SRL|SA|PFA|S\.A\.|S\.R\.L\.)',
+                            r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:LTD|LIMITED|INC|INCORPORATED)'
+                        ]
+                        
+                        for pattern in company_patterns:
+                            matches = re.findall(pattern, doc_text)
+                            if matches:
+                                company_name = matches[0].strip()
+                                if len(company_name) > 5:
+                                    combined_data['vendor'] = company_name
+                                    print(f"🏢 Last resort: Found potential vendor: {company_name}", file=sys.stderr)
+                                    break
+                        
+                        # Set basic defaults for remaining fields
+                        combined_data.setdefault('buyer', '')
+                        combined_data.setdefault('document_date', '')
+                        combined_data.setdefault('line_items', [])
+                        combined_data.setdefault('currency', 'RON')
+                        combined_data.setdefault('vat_amount', 0)
+                        
+                        print(f"🆘 Last resort extraction completed with basic data", file=sys.stderr)
+                    else:
+                        print(f"❌ Last resort failed: Could not extract any text from document", file=sys.stderr)
+                except Exception as e:
+                    print(f"❌ Last resort extraction failed: {str(e)}", file=sys.stderr)
+            
             # Ensure all critical fields exist with fallback values
             critical_fields = {
                 'vendor': '',

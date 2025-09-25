@@ -90,9 +90,11 @@ class SimpleTextExtractorTool(BaseTool):
                             ],
                         }
                     ],
-                    max_tokens=4000,
+                    max_tokens=6000,  # Increased token limit for better extraction
                 )
-                return response.choices[0].message.content
+                extracted_text = response.choices[0].message.content
+                print(f"🔍 Vision API extracted {len(extracted_text)} characters", file=sys.stderr)
+                return extracted_text
             except Exception as e:
                 print(f"OpenAI Vision extraction failed: {e}", file=sys.stderr)
                 return ""
