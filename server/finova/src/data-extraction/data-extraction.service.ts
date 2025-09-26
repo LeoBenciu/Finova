@@ -146,7 +146,66 @@ export class DataExtractionService {
     }
 
     async extractData(fileBase64: string, clientCompanyEin: string, processingPhase: number, phase0Data?: any) {
-            return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase, phase0Data));
+        return this.processingQueue.add(() => this.processDocument(fileBase64, clientCompanyEin, processingPhase, phase0Data));
+    }
+
+    async processRetryQueue(documents: any[], clientCompanyEin: string, maxRetries: number = 3) {
+        this.logger.log(`🔄 Processing retry queue for ${documents.length} documents`);
+        
+        const retryDocuments = documents.filter(doc => {
+            const data = doc.data || {};
+            const hasEmptyData = !data.vendor && !data.buyer && !data.total_amount && 
+                               (!data.line_items || data.line_items.length === 0);
+            const retryCount = doc.retryCount || 0;
+            
+            return hasEmptyData && retryCount < maxRetries;
+        });
+
+        if (retryDocuments.length === 0) {
+            this.logger.log('✅ No documents need retry');
+            return documents;
+        }
+
+        this.logger.log(`🔄 Found ${retryDocuments.length} documents that need retry`);
+
+        const processedDocuments = [...documents];
+        
+        for (const doc of retryDocuments) {
+            try {
+                this.logger.log(`🔄 Retrying document: ${doc.filename}`);
+                
+                // Re-process the document with enhanced settings
+                const result = await this.processDocument(
+                    doc.fileBase64, 
+                    clientCompanyEin, 
+                    1, // Force phase 1 processing
+                    doc.phase0Data
+                );
+                
+                // Update document with new results
+                doc.data = result;
+                doc.lastAttempt = Date.now();
+                doc.retryCount = (doc.retryCount || 0) + 1;
+                
+                // Check if retry was successful
+                const hasData = result.vendor || result.buyer || result.total_amount || 
+                               (result.line_items && result.line_items.length > 0);
+                
+                if (hasData) {
+                    this.logger.log(`✅ Retry successful for: ${doc.filename}`);
+                    doc.state = 'processed';
+                } else {
+                    this.logger.log(`❌ Retry still failed for: ${doc.filename}`);
+                    doc.state = doc.retryCount >= maxRetries ? 'failed' : 'queued';
+                }
+                
+            } catch (error) {
+                this.logger.error(`❌ Retry processing failed for ${doc.filename}: ${error.message}`);
+                doc.state = 'failed';
+            }
+        }
+
+        return processedDocuments;
     }
 
     private validateProcessedData(data: any, processingPhase: number): ProcessedDataValidation {

@@ -238,18 +238,43 @@ const FileUploadPage = () => {
       
       clearTimeout(timeoutId);
       
-      setDocumentStates(prev => ({
-        ...prev,
-        [nextDocumentName]: { 
-          state: 'processed', 
-          data: processedFile,
-          retryCount: prev[nextDocumentName]?.retryCount || 0,
-          lastAttempt: Date.now(),
-          phase: currentPhase,
-        }
-      }));
+      // Check if we need to proceed to phase 1 after phase 0
+      if (currentPhase === 0) {
+        // Phase 0 completed, now queue for phase 1
+        setDocumentStates(prev => ({
+          ...prev,
+          [nextDocumentName]: { 
+            state: 'queued', 
+            data: processedFile,
+            retryCount: prev[nextDocumentName]?.retryCount || 0,
+            lastAttempt: Date.now(),
+            phase: 1, // Move to phase 1
+          }
+        }));
+        
+        // Add to queue for phase 1 processing
+        setProcessingQueue(prev => {
+          const filtered = prev.filter(name => name !== nextDocumentName);
+          return [...filtered, nextDocumentName];
+        });
+        
+        console.log(`Phase 0 completed for: ${nextDocumentName}, queuing for phase 1`);
+      } else {
+        // Phase 1 completed, document is fully processed
+        setDocumentStates(prev => ({
+          ...prev,
+          [nextDocumentName]: { 
+            state: 'processed', 
+            data: processedFile,
+            retryCount: prev[nextDocumentName]?.retryCount || 0,
+            lastAttempt: Date.now(),
+            phase: currentPhase,
+          }
+        }));
+        
+        console.log(`Successfully processed: ${nextDocumentName}`);
+      }
       
-      console.log(`Successfully processed: ${nextDocumentName}`);
       setQueueErrors(0);
     } catch (error) {
         clearTimeout(timeoutId);
@@ -290,6 +315,18 @@ const FileUploadPage = () => {
             phase: currentPhase,
           }
         }));
+        
+        // If phase 0 failed, don't retry automatically - let user decide
+        if (currentPhase === 0 && willRetry) {
+          setDocumentStates(prev => ({
+            ...prev,
+            [nextDocumentName]: { 
+              ...prev[nextDocumentName],
+              state: 'error',
+              error: errorMessage + ' (Phase 0 failed - manual retry required)',
+            }
+          }));
+        }
         
         setQueueErrors(prev => prev + 1);
         
@@ -394,7 +431,9 @@ const FileUploadPage = () => {
         state: 'queued',
         position: processingQueue.length + 1,
         retryCount: 0,
-        lastAttempt: 0
+        lastAttempt: 0,
+        phase: 0, // Reset phase to 0 to ensure full reprocessing
+        data: null // Clear previous data to force fresh processing
       }
     }));
     
@@ -405,7 +444,16 @@ const FileUploadPage = () => {
     
     // Reset queue errors if retrying manually
     setQueueErrors(0);
-  }, [processingQueue.length]);
+    
+    // Force processing to start if queue is not paused
+    if (!isProcessingPaused && processingQueue.length === 0) {
+      setTimeout(() => {
+        if (!isProcessingRef.current) {
+          processNextInQueue();
+        }
+      }, 100);
+    }
+  }, [processingQueue.length, isProcessingPaused, processNextInQueue]);
 
   const handleManualEdit = useCallback((file: File) => {
     const basicData = {

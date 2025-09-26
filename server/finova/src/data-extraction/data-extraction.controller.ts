@@ -44,4 +44,30 @@ export class DataExtractionController {
         
         return { result: extractedData };
     }
+
+    @Post('retry-queue')
+    async processRetryQueue(
+        @Body() body: { documents: any[]; ein: string; maxRetries?: number }
+    ) {
+        if (!body.documents || !Array.isArray(body.documents)) {
+            throw new BadRequestException('Documents array is required');
+        }
+        if (!body.ein) {
+            throw new BadRequestException('EIN is required');
+        }
+        
+        const maxRetries = body.maxRetries || 3;
+        const processedDocuments = await this.dataExtractionService.processRetryQueue(
+            body.documents,
+            body.ein,
+            maxRetries
+        );
+        
+        return { 
+            result: processedDocuments,
+            retryCount: processedDocuments.filter(doc => doc.retryCount > 0).length,
+            successCount: processedDocuments.filter(doc => doc.state === 'processed').length,
+            failedCount: processedDocuments.filter(doc => doc.state === 'failed').length
+        };
+    }
 }

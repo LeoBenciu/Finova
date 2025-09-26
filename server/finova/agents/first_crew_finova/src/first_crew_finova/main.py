@@ -1541,6 +1541,88 @@ def process_account_attribution(transaction_file_path: str) -> Dict[str, Any]:
             }
         }
 
+def should_retry_document(result_data: Dict[str, Any], max_retries: int = 3) -> bool:
+    """Check if a document should be retried based on extraction results."""
+    if not result_data:
+        return True
+    
+    # Check if document was marked for retry
+    if result_data.get('_requires_retry'):
+        retry_count = result_data.get('_retry_count', 0)
+        if retry_count < max_retries:
+            print(f"🔄 Document eligible for retry (attempt {retry_count + 1}/{max_retries})", file=sys.stderr)
+            return True
+        else:
+            print(f"❌ Document exceeded max retries ({max_retries})", file=sys.stderr)
+            return False
+    
+    # Check for empty invoice data
+    if result_data.get('document_type', '').lower() == 'invoice':
+        has_meaningful_data = (
+            result_data.get('vendor') or 
+            result_data.get('buyer') or 
+            result_data.get('total_amount') or
+            result_data.get('document_date') or
+            (result_data.get('line_items') and len(result_data.get('line_items', [])) > 0)
+        )
+        
+        if not has_meaningful_data:
+            retry_count = result_data.get('_retry_count', 0)
+            if retry_count < max_retries:
+                print(f"🔄 Empty invoice data detected, eligible for retry (attempt {retry_count + 1}/{max_retries})", file=sys.stderr)
+                return True
+    
+    return False
+
+def process_retry_queue(documents: List[Dict[str, Any]], client_company_ein: str, max_retries: int = 3) -> List[Dict[str, Any]]:
+    """Process documents that need retry based on empty responses."""
+    retry_documents = []
+    processed_documents = []
+    
+    for doc in documents:
+        if should_retry_document(doc.get('data', {}), max_retries):
+            retry_documents.append(doc)
+            print(f"🔄 Adding to retry queue: {doc.get('filename', 'unknown')}", file=sys.stderr)
+        else:
+            processed_documents.append(doc)
+    
+    if retry_documents:
+        print(f"🔄 Processing {len(retry_documents)} documents in retry queue...", file=sys.stderr)
+        
+        for doc in retry_documents:
+            try:
+                print(f"🔄 Retrying document: {doc.get('filename', 'unknown')}", file=sys.stderr)
+                
+                # Process with enhanced settings for retry
+                result = process_single_document(
+                    doc.get('filepath', ''),
+                    client_company_ein,
+                    processing_phase=1,
+                    phase0_data=doc.get('phase0_data', {})
+                )
+                
+                # Update the document with new results
+                doc['data'] = result
+                doc['lastAttempt'] = int(time.time() * 1000)
+                doc['retryCount'] = doc.get('retryCount', 0) + 1
+                
+                # Check if retry was successful
+                if not should_retry_document(result, max_retries):
+                    print(f"✅ Retry successful for: {doc.get('filename', 'unknown')}", file=sys.stderr)
+                    doc['state'] = 'processed'
+                else:
+                    print(f"❌ Retry still failed for: {doc.get('filename', 'unknown')}", file=sys.stderr)
+                    doc['state'] = 'failed' if doc.get('retryCount', 0) >= max_retries else 'queued'
+                
+                processed_documents.append(doc)
+                
+            except Exception as e:
+                print(f"❌ Retry processing failed for {doc.get('filename', 'unknown')}: {str(e)}", file=sys.stderr)
+                doc['state'] = 'failed'
+                processed_documents.append(doc)
+    
+    return processed_documents
+
 def process_single_document(doc_path: str, client_company_ein: str, existing_documents: List[Dict] = None, processing_phase: int = 0, phase0_data: Dict[str, Any] = None) -> Dict[str, Any]:
     """Process a single document with memory optimization and improved error handling."""
     print(f"Starting process_single_document for EIN: {client_company_ein}", file=sys.stderr)
@@ -1683,6 +1765,13 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
         if not success:
             print("Processing completed with fallback response", file=sys.stderr)
         
+        # Check if this document should be retried
+        if should_retry_document(combined_data):
+            retry_count = combined_data.get('_retry_count', 0)
+            combined_data['_retry_count'] = retry_count + 1
+            combined_data['_retry_timestamp'] = int(time.time() * 1000)
+            print(f"🔄 Document marked for retry (attempt {retry_count + 1}): {os.path.basename(doc_path)}", file=sys.stderr)
+        
         del crew_instance
         del existing_articles
         del management_records
@@ -1716,60 +1805,14 @@ def process_single_document(doc_path: str, client_company_ein: str, existing_doc
             
             if not has_any_data:
                 print(f"🚨 CRITICAL: No meaningful data extracted from invoice document!", file=sys.stderr)
-                print(f"🚨 This indicates a serious OCR or AI extraction failure!", file=sys.stderr)
+                print(f"🚨 This document should be re-queued for processing!", file=sys.stderr)
                 
-                # Try one last desperate attempt with basic text extraction
-                try:
-                    from .tools.simple_text_extractor import SimpleTextExtractorTool
-                    text_extractor = SimpleTextExtractorTool()
-                    doc_text = text_extractor._run(doc_path)
-                    
-                    if doc_text and len(doc_text.strip()) > 50:
-                        print(f"🆘 Last resort: Attempting basic text parsing...", file=sys.stderr)
-                        
-                        # Very basic extraction patterns
-                        import re
-                        
-                        # Look for any numbers that could be amounts
-                        numbers = re.findall(r'[0-9]+[.,][0-9]+', doc_text)
-                        if numbers:
-                            try:
-                                # Take the largest number as potential total
-                                amounts = [float(n.replace(',', '.')) for n in numbers]
-                                max_amount = max(amounts)
-                                if max_amount > 10:  # Reasonable minimum for an invoice
-                                    combined_data['total_amount'] = max_amount
-                                    print(f"💰 Last resort: Found potential amount: {max_amount}", file=sys.stderr)
-                            except:
-                                pass
-                        
-                        # Look for any company-like text
-                        company_patterns = [
-                            r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:SRL|SA|PFA|S\.A\.|S\.R\.L\.)',
-                            r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s+(?:LTD|LIMITED|INC|INCORPORATED)'
-                        ]
-                        
-                        for pattern in company_patterns:
-                            matches = re.findall(pattern, doc_text)
-                            if matches:
-                                company_name = matches[0].strip()
-                                if len(company_name) > 5:
-                                    combined_data['vendor'] = company_name
-                                    print(f"🏢 Last resort: Found potential vendor: {company_name}", file=sys.stderr)
-                                    break
-                        
-                        # Set basic defaults for remaining fields
-                        combined_data.setdefault('buyer', '')
-                        combined_data.setdefault('document_date', '')
-                        combined_data.setdefault('line_items', [])
-                        combined_data.setdefault('currency', 'RON')
-                        combined_data.setdefault('vat_amount', 0)
-                        
-                        print(f"🆘 Last resort extraction completed with basic data", file=sys.stderr)
-                    else:
-                        print(f"❌ Last resort failed: Could not extract any text from document", file=sys.stderr)
-                except Exception as e:
-                    print(f"❌ Last resort extraction failed: {str(e)}", file=sys.stderr)
+                # Mark this document for retry by adding a special flag
+                combined_data['_requires_retry'] = True
+                combined_data['_retry_reason'] = 'empty_extraction'
+                combined_data['_retry_timestamp'] = int(time.time() * 1000)
+                
+                print(f"🔄 Document marked for retry queue: {os.path.basename(doc_path)}", file=sys.stderr)
             
             # Ensure all critical fields exist with fallback values
             critical_fields = {

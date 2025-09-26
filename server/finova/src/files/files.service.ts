@@ -571,6 +571,36 @@ export class FilesService {
         return '5121';
     }
 
+    private determineRevenueAccount(extractedData: any): string {
+        // Try to determine revenue account from extracted data
+        // This could be enhanced with AI-suggested account codes
+        
+        // Check for specific business indicators
+        const description = (extractedData.description || '').toLowerCase();
+        const businessType = (extractedData.business_type || '').toLowerCase();
+        
+        // Service-related revenue
+        if (description.includes('serviciu') || description.includes('service') || 
+            businessType.includes('serviciu') || businessType.includes('service')) {
+            return '704'; // Service Revenue
+        }
+        
+        // Product sales
+        if (description.includes('produs') || description.includes('product') || 
+            description.includes('marfa') || description.includes('goods')) {
+            return '701'; // Product Sales Revenue
+        }
+        
+        // Consulting
+        if (description.includes('consultanta') || description.includes('consulting') ||
+            description.includes('sfaturi') || description.includes('advice')) {
+            return '704'; // Service Revenue
+        }
+        
+        // Default to Other Revenue
+        return '707'; // Other Revenue
+    }
+
     private async smartArticleProcessing(
         lineItems: any[], 
         existingArticles: any[], 
@@ -1539,7 +1569,7 @@ export class FilesService {
                             const paymentMethod = this.determinePaymentMethod(processedData.result);
                             const cashAccount = paymentMethod === 'bank' ? '5121' : '5311';
                             
-                            // Receipt: Cr 5311/5121 (Cash/Bank) = Dr 401 (Payables)
+                                    // Receipt with references: Cr 5311/5121 (Cash/Bank) = Dr 401 (Payables)
                             const entries = [
                                 { accountCode: cashAccount, credit: amount },
                                 { accountCode: '401', debit: amount }
@@ -1564,6 +1594,49 @@ export class FilesService {
                             }, 0);
                         } else {
                             console.log(`[LEDGER] Skipped posting for receipt ${document.id}: no parsable positive amount`);
+                        }
+                    }
+
+                    // Standalone Receipt (no references): Dr 5311/5121 (Cash/Bank) = Cr Revenue Account
+                    if (docType === 'receipt' && !docHasRefs) {
+                        const amount = this.extractAmountFromProcessed(processedData);
+                        if (amount && amount > 0) {
+                            const postingDate = this.extractDateFromProcessed(processedData) || new Date();
+                            const postingKey = `DOC:${document.id}:STANDALONE_RECEIPT:${amount}:${postingDate.toISOString().slice(0,10)}`;
+                            
+                            // Determine payment method to choose correct cash/bank account
+                            const paymentMethod = this.determinePaymentMethod(processedData.result);
+                            const cashAccount = paymentMethod === 'bank' ? '5121' : '5311';
+                            
+                            // For standalone receipts, we need to determine the revenue account
+                            // This could be enhanced to use AI-suggested account codes from the receipt
+                            const revenueAccount = this.determineRevenueAccount(processedData.result) || '707'; // Default to 707 (Other Revenue)
+                            
+                            // Standalone Receipt: Dr 5311/5121 (Cash/Bank) = Cr 707 (Revenue)
+                            const entries = [
+                                { accountCode: cashAccount, debit: amount },
+                                { accountCode: revenueAccount, credit: amount }
+                            ];
+                            
+                            // Fire-and-forget to avoid blocking upload flow
+                            setTimeout(async () => {
+                                try {
+                                    await this.postingService.postEntries({
+                                        accountingClientId: accountingClientRelation.id,
+                                        postingDate,
+                                        entries,
+                                        sourceType: LedgerSourceType.RECEIPT,
+                                        sourceId: String(document.id),
+                                        postingKey,
+                                        links: { documentId: document.id }
+                                    });
+                                    console.log(`[LEDGER] Posted standalone receipt for document ${document.id} amount ${amount} using ${cashAccount} -> ${revenueAccount}`);
+                                } catch (postErr) {
+                                    console.warn(`[LEDGER_WARN] Failed to post standalone receipt for document ${document.id}:`, postErr?.message || postErr);
+                                }
+                            }, 0);
+                        } else {
+                            console.log(`[LEDGER] Skipped posting for standalone receipt ${document.id}: no parsable positive amount`);
                         }
                     }
 
