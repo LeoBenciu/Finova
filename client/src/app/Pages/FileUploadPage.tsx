@@ -182,6 +182,7 @@ const FileUploadPage = () => {
     }
   }, [processingQueue, isProcessingPaused]);
 
+
   const processNextInQueue = useCallback(async () => {
     if (isProcessingRef.current || processingQueue.length === 0 || isProcessingPaused) {
       return;
@@ -259,6 +260,16 @@ const FileUploadPage = () => {
         });
         
         console.log(`Phase 0 completed for: ${nextDocumentName}, queuing for phase 1`);
+        
+        // Force immediate processing of phase 1 if queue is not paused
+        if (!isProcessingPaused) {
+          setTimeout(() => {
+            if (!isProcessingRef.current) {
+              console.log(`Auto-triggering phase 1 processing for: ${nextDocumentName}`);
+              processNextInQueue();
+            }
+          }, 100);
+        }
       } else {
         // Phase 1 completed, document is fully processed
         setDocumentStates(prev => ({
@@ -358,7 +369,7 @@ const FileUploadPage = () => {
       setCurrentlyProcessing(null);
       isProcessingRef.current = false;
       
-      if (processingQueue.length > 1 && !isProcessingPaused) { 
+      if (processingQueue.length > 0 && !isProcessingPaused) { 
         processingTimeoutRef.current = setTimeout(() => {
           if (!isProcessingPaused && queueErrors < 10) {
             processNextInQueue();
@@ -367,6 +378,45 @@ const FileUploadPage = () => {
       }
     }
   }, [processingQueue, documents, process, clientCompanyEin, isProcessingPaused, documentStates, queueErrors]);
+
+  // Auto-process stuck documents in phase 0
+  useEffect(() => {
+    const stuckDocuments = Object.entries(documentStates).filter(([, state]) => 
+      state.phase === 0 && state.state === 'queued' && state.lastAttempt && 
+      (Date.now() - state.lastAttempt) > 10000 // Stuck for more than 10 seconds
+    );
+    
+    if (stuckDocuments.length > 0 && !isProcessingRef.current && !isProcessingPaused) {
+      console.log(`Found ${stuckDocuments.length} stuck documents, auto-processing...`);
+      const [stuckName] = stuckDocuments[0];
+      const stuckFile = documents.find(doc => doc.name === stuckName);
+      if (stuckFile) {
+        // Force phase 1 processing for stuck document
+        setDocumentStates(prev => ({
+          ...prev,
+          [stuckFile.name]: {
+            ...prev[stuckFile.name],
+            phase: 1,
+            state: 'queued'
+          }
+        }));
+        
+        setProcessingQueue(prev => {
+          const filtered = prev.filter(name => name !== stuckFile.name);
+          return [...filtered, stuckFile.name];
+        });
+        
+        // Force processing to start
+        if (!isProcessingPaused) {
+          setTimeout(() => {
+            if (!isProcessingRef.current) {
+              processNextInQueue();
+            }
+          }, 100);
+        }
+      }
+    }
+  }, [documentStates, documents, isProcessingPaused, processNextInQueue]);
 
   const clearQueue = useCallback(() => {
     if (currentAbortController.current) {
@@ -446,7 +496,7 @@ const FileUploadPage = () => {
     setQueueErrors(0);
     
     // Force processing to start if queue is not paused
-    if (!isProcessingPaused && processingQueue.length === 0) {
+    if (!isProcessingPaused) {
       setTimeout(() => {
         if (!isProcessingRef.current) {
           processNextInQueue();
@@ -454,6 +504,7 @@ const FileUploadPage = () => {
       }, 100);
     }
   }, [processingQueue.length, isProcessingPaused, processNextInQueue]);
+
 
   const handleManualEdit = useCallback((file: File) => {
     const basicData = {
