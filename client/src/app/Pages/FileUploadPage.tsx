@@ -178,9 +178,11 @@ const FileUploadPage = () => {
 
   useEffect(() => {
     if (processingQueue.length > 0 && !isProcessingRef.current && !isProcessingPaused) {
+      console.log(`🔄 Queue processing triggered: ${processingQueue.length} documents in queue`);
       processNextInQueue();
     }
   }, [processingQueue, isProcessingPaused]);
+
 
 
   const processNextInQueue = useCallback(async () => {
@@ -382,38 +384,46 @@ const FileUploadPage = () => {
   // Auto-process stuck documents in phase 0
   useEffect(() => {
     const stuckDocuments = Object.entries(documentStates).filter(([, state]) => 
-      state.phase === 0 && state.state === 'queued' && state.lastAttempt && 
-      (Date.now() - state.lastAttempt) > 10000 // Stuck for more than 10 seconds
+      state.phase === 0 && state.state === 'queued' && 
+      (Date.now() - (state.lastAttempt || 0)) > 5000 // Stuck for more than 5 seconds
     );
     
     if (stuckDocuments.length > 0 && !isProcessingRef.current && !isProcessingPaused) {
-      console.log(`Found ${stuckDocuments.length} stuck documents, auto-processing...`);
-      const [stuckName] = stuckDocuments[0];
-      const stuckFile = documents.find(doc => doc.name === stuckName);
-      if (stuckFile) {
-        // Force phase 1 processing for stuck document
-        setDocumentStates(prev => ({
-          ...prev,
-          [stuckFile.name]: {
-            ...prev[stuckFile.name],
-            phase: 1,
-            state: 'queued'
-          }
-        }));
-        
-        setProcessingQueue(prev => {
-          const filtered = prev.filter(name => name !== stuckFile.name);
-          return [...filtered, stuckFile.name];
-        });
-        
-        // Force processing to start
-        if (!isProcessingPaused) {
-          setTimeout(() => {
-            if (!isProcessingRef.current) {
-              processNextInQueue();
+      console.log(`🚨 Found ${stuckDocuments.length} stuck documents, auto-processing...`);
+      console.log('Stuck documents:', stuckDocuments.map(([name, state]) => ({ name, state })));
+      
+      // Process all stuck documents
+      stuckDocuments.forEach(([stuckName]) => {
+        const stuckFile = documents.find(doc => doc.name === stuckName);
+        if (stuckFile) {
+          console.log(`🔄 Auto-recovering stuck document: ${stuckName}`);
+          
+          // Force phase 1 processing for stuck document
+          setDocumentStates(prev => ({
+            ...prev,
+            [stuckFile.name]: {
+              ...prev[stuckFile.name],
+              phase: 1,
+              state: 'queued',
+              lastAttempt: Date.now()
             }
-          }, 100);
+          }));
+          
+          setProcessingQueue(prev => {
+            const filtered = prev.filter(name => name !== stuckFile.name);
+            return [...filtered, stuckFile.name];
+          });
         }
+      });
+      
+      // Force processing to start immediately
+      if (!isProcessingPaused) {
+        setTimeout(() => {
+          if (!isProcessingRef.current) {
+            console.log('🚀 Auto-triggering processing after stuck document recovery');
+            processNextInQueue();
+          }
+        }, 100);
       }
     }
   }, [documentStates, documents, isProcessingPaused, processNextInQueue]);
@@ -1012,6 +1022,25 @@ const FileUploadPage = () => {
                 >
                   <RefreshCw size={16} />
                   {language === 'ro' ? 'Resetează' : 'Reset'}
+                </motion.button>
+              )}
+
+              {/* Force Process Button */}
+              {processingQueue.length > 0 && (
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    console.log('🚀 Manual force processing triggered');
+                    if (!isProcessingRef.current && !isProcessingPaused) {
+                      processNextInQueue();
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-2xl 
+                  font-medium shadow-sm hover:bg-blue-600 transition-all duration-300"
+                >
+                  <RefreshCw size={16} />
+                  {language === 'ro' ? 'Forțează Procesarea' : 'Force Process'}
                 </motion.button>
               )}
             </div>
